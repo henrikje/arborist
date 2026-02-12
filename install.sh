@@ -11,7 +11,7 @@ success() { printf "${GREEN}%s${NC}\n" "$*"; }
 warn()    { printf "${YELLOW}%s${NC}\n" "$*"; }
 error()   { printf "${RED}%s${NC}\n" "$*" >&2; }
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 BIN_DIR="$HOME/.local/bin"
 SHARE_DIR="$HOME/.local/share/arb"
 
@@ -22,30 +22,29 @@ if [[ "$SHELL" != */zsh ]] && ! command -v zsh &>/dev/null; then
     warn "The arb script itself works in any shell"
 fi
 
-# ── Build if needed ───────────────────────────────────────────────
+# ── Build from source ────────────────────────────────────────────
 
-if [[ ! -f "$SCRIPT_DIR/dist/arb" ]]; then
-    if ! command -v bun &>/dev/null; then
-        error "dist/arb not found and bun is not installed — cannot build"
-        error "Install bun (https://bun.sh) and run: bun run build"
-        exit 1
-    fi
-    log "dist/arb not found, building..."
-    (cd "$SCRIPT_DIR" && bun install && bun run build)
+if ! command -v bun &>/dev/null; then
+    error "bun is not installed — cannot build from source"
+    error "Install bun: https://bun.sh"
+    exit 1
 fi
+
+log "Building from source..."
+(cd "$BASE_DIR" && bun install && bun run build)
 
 # ── Install binary ────────────────────────────────────────────────
 
 mkdir -p "$BIN_DIR"
 
-cp "$SCRIPT_DIR/dist/arb" "$BIN_DIR/arb"
+cp "$BASE_DIR/dist/arb" "$BIN_DIR/arb"
 chmod +x "$BIN_DIR/arb"
 log "Installed arb to $BIN_DIR/arb"
 
 # ── Install shell function ────────────────────────────────────────
 
 mkdir -p "$SHARE_DIR"
-cp "$SCRIPT_DIR/shell/arb.zsh" "$SHARE_DIR/arb.zsh"
+cp "$BASE_DIR/shell/arb.zsh" "$SHARE_DIR/arb.zsh"
 log "Installed arb.zsh to $SHARE_DIR/arb.zsh"
 
 # ── Configure shell ───────────────────────────────────────────────
@@ -54,7 +53,7 @@ ZSHRC="$HOME/.zshrc"
 ARB_MARKER="# Added by Arborist"
 PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
 SOURCE_LINE='source "$HOME/.local/share/arb/arb.zsh"'
-OLD_SOURCE_LINE="source \"$SCRIPT_DIR/shell/arb.zsh\""
+OLD_SOURCE_LINE="source \"$BASE_DIR/shell/arb.zsh\""
 
 # Remove old source line pointing at repo checkout if present
 if [[ -f "$ZSHRC" ]] && grep -qF "$OLD_SOURCE_LINE" "$ZSHRC"; then
