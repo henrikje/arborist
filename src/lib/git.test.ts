@@ -94,7 +94,7 @@ describe("git repo functions", () => {
 		test("returns the HEAD branch name", async () => {
 			const branch = await getDefaultBranch(repoDir);
 			// git init defaults vary, but should be a non-empty string
-			expect(branch).toBeString();
+			if (!branch) throw new Error("expected default branch");
 			expect(branch.length).toBeGreaterThan(0);
 		});
 	});
@@ -166,6 +166,7 @@ describe("git repo functions", () => {
 	describe("checkBranchMatch", () => {
 		test("matches when on expected branch", async () => {
 			const defaultBranch = await getDefaultBranch(repoDir);
+			if (!defaultBranch) throw new Error("expected default branch");
 			const result = await checkBranchMatch(repoDir, defaultBranch);
 			expect(result.matches).toBe(true);
 			expect(result.actual).toBe(defaultBranch);

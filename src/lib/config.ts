@@ -12,6 +12,8 @@ export function configGet(configFile: string, key: string): string | null {
 	);
 }
 
-export function writeConfig(configFile: string, branch: string): void {
-	writeFileSync(configFile, `branch = ${branch}\n`);
+export function writeConfig(configFile: string, branch: string, base?: string): void {
+	let content = `branch = ${branch}\n`;
+	if (base) content += `base = ${base}\n`;
+	writeFileSync(configFile, content);
 }

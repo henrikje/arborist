@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { getDefaultBranch, hasRemote, parseGitStatus, remoteBranchExists } from "../lib/git";
+import { configGet } from "../lib/config";
+import { branchExistsLocally, getDefaultBranch, hasRemote, parseGitStatus, remoteBranchExists } from "../lib/git";
 import { dim, green, red, yellow } from "../lib/output";
 import { workspaceRepoDirs } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
@@ -26,7 +27,7 @@ export async function runStatus(ctx: ArbContext, dirtyOnly: boolean): Promise<vo
 	let configBranch: string | null = null;
 	const wb = await workspaceBranch(wsDir);
 	if (wb) configBranch = wb.branch;
-
+	const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 	const repoDirs = workspaceRepoDirs(wsDir);
 	let found = false;
 
@@ -38,19 +39,32 @@ export async function runStatus(ctx: ArbContext, dirtyOnly: boolean): Promise<vo
 		const branchResult = await Bun.$`git -C ${repoDir} branch --show-current`.quiet().nothrow();
 		const branch = branchResult.exitCode === 0 ? branchResult.text().trim() : "?";
 
-		// Default branch for this repo
-		const defaultBranch = await getDefaultBranch(repoPath);
+		// Base branch: workspace config takes priority if it exists in this repo
+		const repoHasRemote = await hasRemote(repoPath);
+		let defaultBranch: string | null = null;
+		if (configBase) {
+			const baseExists = repoHasRemote
+				? await remoteBranchExists(repoPath, configBase)
+				: await branchExistsLocally(repoPath, configBase);
+			if (baseExists) {
+				defaultBranch = configBase;
+			}
+		}
+		if (!defaultBranch) {
+			defaultBranch = await getDefaultBranch(repoPath);
+		}
 
 		// Ahead/behind default branch
 		let mainAhead = 0;
 		let mainBehind = 0;
-		const repoHasRemote = await hasRemote(repoPath);
-		const compareRef = repoHasRemote ? `origin/${defaultBranch}` : defaultBranch;
-		const lr = await Bun.$`git -C ${repoDir} rev-list --left-right --count ${compareRef}...HEAD`.quiet().nothrow();
-		if (lr.exitCode === 0) {
-			const parts = lr.text().trim().split(/\s+/);
-			mainBehind = Number.parseInt(parts[0] ?? "0", 10);
-			mainAhead = Number.parseInt(parts[1] ?? "0", 10);
+		if (defaultBranch) {
+			const compareRef = repoHasRemote ? `origin/${defaultBranch}` : defaultBranch;
+			const lr = await Bun.$`git -C ${repoDir} rev-list --left-right --count ${compareRef}...HEAD`.quiet().nothrow();
+			if (lr.exitCode === 0) {
+				const parts = lr.text().trim().split(/\s+/);
+				mainBehind = Number.parseInt(parts[0] ?? "0", 10);
+				mainAhead = Number.parseInt(parts[1] ?? "0", 10);
+			}
 		}
 
 		// Push status vs origin/<branch>
@@ -94,13 +108,11 @@ export async function runStatus(ctx: ArbContext, dirtyOnly: boolean): Promise<vo
 		let out = `  ${repo.padEnd(20)} `;
 
 		// vs origin/<default>
-		const mainParts = [mainAhead > 0 && green(`${mainAhead} ahead`), mainBehind > 0 && red(`${mainBehind} behind`)]
-			.filter(Boolean)
-			.join(" ");
-		if (mainParts) {
-			out += `${defaultBranch}: ${mainParts}  `;
-		} else {
-			out += `${defaultBranch}: ${green("even")}  `;
+		if (defaultBranch) {
+			const mainParts = [mainAhead > 0 && green(`${mainAhead} ahead`), mainBehind > 0 && red(`${mainBehind} behind`)]
+				.filter(Boolean)
+				.join(" ");
+			out += mainParts ? `${defaultBranch}: ${mainParts}  ` : `${defaultBranch}: ${green("even")}  `;
 		}
 
 		// vs origin/<branch>

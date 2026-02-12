@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { branchExistsLocally, getDefaultBranch, hasRemote, isRepoDirty } from "./git";
+import { branchExistsLocally, getDefaultBranch, hasRemote, isRepoDirty, remoteBranchExists } from "./git";
 import { error, info, warn } from "./output";
 import { type FetchResult, parallelFetch } from "./parallel-fetch";
 
@@ -15,6 +15,7 @@ export async function addWorktrees(
 	repos: string[],
 	reposDir: string,
 	baseDir: string,
+	baseBranch?: string,
 ): Promise<AddWorktreesResult> {
 	const wsDir = `${baseDir}/${name}`;
 	const result: AddWorktreesResult = { created: [], skipped: [], failed: [] };
@@ -82,7 +83,34 @@ export async function addWorktrees(
 			warn(`  [${repo}] canonical repo has uncommitted changes`);
 		}
 
-		const defaultBranch = await getDefaultBranch(repoPath);
+		const repoHasRemote = await hasRemote(repoPath);
+
+		let effectiveBase: string | null;
+		if (baseBranch) {
+			const baseExists = repoHasRemote
+				? await remoteBranchExists(repoPath, baseBranch)
+				: await branchExistsLocally(repoPath, baseBranch);
+			if (baseExists) {
+				effectiveBase = baseBranch;
+			} else {
+				effectiveBase = await getDefaultBranch(repoPath);
+				if (effectiveBase) {
+					warn(`  [${repo}] base branch '${baseBranch}' not found — using '${effectiveBase}'`);
+				} else {
+					error(`  [${repo}] base branch '${baseBranch}' not found and could not determine default branch`);
+					result.failed.push(repo);
+					continue;
+				}
+			}
+		} else {
+			effectiveBase = await getDefaultBranch(repoPath);
+			if (!effectiveBase) {
+				error(`  [${repo}] could not determine default branch`);
+				result.failed.push(repo);
+				continue;
+			}
+		}
+
 		const branchExists = await branchExistsLocally(repoPath, branch);
 
 		// Prune stale worktrees
@@ -99,8 +127,7 @@ export async function addWorktrees(
 				continue;
 			}
 		} else {
-			const repoHasRemote = await hasRemote(repoPath);
-			const startPoint = repoHasRemote ? `origin/${defaultBranch}` : defaultBranch;
+			const startPoint = repoHasRemote ? `origin/${effectiveBase}` : effectiveBase;
 			process.stderr.write(`  [${repo}] creating branch ${branch} off ${startPoint}... `);
 			const wt = await Bun.$`git -C ${repoPath} worktree add -b ${branch} ${wsDir}/${repo} ${startPoint}`
 				.quiet()
@@ -115,7 +142,7 @@ export async function addWorktrees(
 		}
 
 		// Set upstream so `git push` works without -u on first push
-		if (await hasRemote(repoPath)) {
+		if (repoHasRemote) {
 			await Bun.$`git -C ${wsDir}/${repo} config branch.${branch}.remote origin`.quiet().nothrow();
 			await Bun.$`git -C ${wsDir}/${repo} config branch.${branch}.merge refs/heads/${branch}`.quiet().nothrow();
 		}

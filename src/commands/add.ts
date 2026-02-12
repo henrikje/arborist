@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import checkbox from "@inquirer/checkbox";
 import type { Command } from "commander";
+import { configGet } from "../lib/config";
 import { error, info, warn } from "../lib/output";
 import { listRepos, workspaceRepoDirs } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
@@ -39,8 +40,9 @@ export function registerAddCommand(program: Command, getCtx: () => ArbContext): 
 				}
 			}
 			const branch = await requireBranch(wsDir, workspace);
+			const base = configGet(`${wsDir}/.arbws/config`, "base") ?? undefined;
 
-			const result = await addWorktrees(workspace, branch, repos, ctx.reposDir, ctx.baseDir);
+			const result = await addWorktrees(workspace, branch, repos, ctx.reposDir, ctx.baseDir, base);
 
 			process.stderr.write("\n");
 			if (result.failed.length === 0 && result.skipped.length === 0) {

@@ -12,10 +12,11 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 	program
 		.command("create [name] [repos...]")
 		.option("-b, --branch <branch>", "Branch name")
+		.option("--base <branch>", "Base branch to branch from")
 		.option("-a, --all-repos", "Include all repos")
 		.description("Create a new workspace")
 		.action(
-			async (nameArg: string | undefined, repoArgs: string[], options: { branch?: string; allRepos?: boolean }) => {
+			async (nameArg: string | undefined, repoArgs: string[], options: { branch?: string; base?: string; allRepos?: boolean }) => {
 				const ctx = getCtx();
 
 				let name = nameArg;
@@ -55,6 +56,21 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 					process.exit(1);
 				}
 
+				let base = options.base;
+				if (!base && !nameArg && process.stdin.isTTY) {
+					const baseInput = await input({
+						message: "Base branch (leave blank for repo default):",
+					});
+					if (baseInput.trim()) {
+						base = baseInput.trim();
+					}
+				}
+
+				if (base && !validateBranchName(base)) {
+					error(`Invalid base branch name: ${base}`);
+					process.exit(1);
+				}
+
 				let repos = repoArgs;
 
 				if (options.allRepos) {
@@ -82,11 +98,11 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				}
 
 				mkdirSync(`${wsDir}/.arbws`, { recursive: true });
-				writeConfig(`${wsDir}/.arbws/config`, branch);
+				writeConfig(`${wsDir}/.arbws/config`, branch, base);
 
 				let result = { created: [] as string[], skipped: [] as string[], failed: [] as string[] };
 				if (repos.length > 0) {
-					result = await addWorktrees(name, branch, repos, ctx.reposDir, ctx.baseDir);
+					result = await addWorktrees(name, branch, repos, ctx.reposDir, ctx.baseDir, base);
 				}
 
 				process.stderr.write("\n");

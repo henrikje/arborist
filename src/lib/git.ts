@@ -12,7 +12,7 @@ export async function git(
 	return { exitCode: proc.exitCode ?? 1, stdout };
 }
 
-export async function getDefaultBranch(repoDir: string): Promise<string> {
+export async function getDefaultBranch(repoDir: string): Promise<string | null> {
 	// Try origin/HEAD first
 	const symRef = await git(repoDir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD");
 	if (symRef.exitCode === 0) {
@@ -23,7 +23,7 @@ export async function getDefaultBranch(repoDir: string): Promise<string> {
 	if (headRef.exitCode === 0) {
 		return headRef.stdout.trim();
 	}
-	return "main";
+	return null;
 }
 
 export async function hasRemote(repoDir: string): Promise<boolean> {

@@ -49,5 +49,23 @@ describe("config", () => {
 			writeConfig(configFile, "my-branch");
 			expect(configGet(configFile, "branch")).toBe("my-branch");
 		});
+
+		test("writes base when provided", () => {
+			writeConfig(configFile, "feat/ui", "feat/auth");
+			const content = readFileSync(configFile, "utf-8");
+			expect(content).toBe("branch = feat/ui\nbase = feat/auth\n");
+		});
+
+		test("base is readable back via configGet", () => {
+			writeConfig(configFile, "feat/ui", "feat/auth");
+			expect(configGet(configFile, "branch")).toBe("feat/ui");
+			expect(configGet(configFile, "base")).toBe("feat/auth");
+		});
+
+		test("omits base line when base is undefined", () => {
+			writeConfig(configFile, "my-branch", undefined);
+			expect(readFileSync(configFile, "utf-8")).toBe("branch = my-branch\n");
+			expect(configGet(configFile, "base")).toBeNull();
+		});
 	});
 });

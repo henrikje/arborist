@@ -727,6 +727,45 @@ teardown() {
     [[ "$output" != *"repo-b"*"expected"* ]]
 }
 
+@test "arb status uses configured base branch for stacked workspaces" {
+    # Create a base branch with 2 unique commits in repo-a
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth" >/dev/null 2>&1
+    echo "auth2" > "$TEST_DIR/project/.arb/repos/repo-a/auth2.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth2.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth2" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    # repo-b does NOT have feat/auth — only main
+
+    # Create stacked workspace with both repos
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a repo-b
+
+    # Add a commit to the feature branch in repo-a (on top of feat/auth)
+    echo "ui-change" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui change" >/dev/null 2>&1
+
+    # Add a commit to the feature branch in repo-b (on top of main)
+    echo "ui-change-b" > "$TEST_DIR/project/stacked/repo-b/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-b" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-b" commit -m "ui change b" >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/stacked"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [ "$status" -eq 0 ]
+
+    # repo-a: should compare against feat/auth (1 ahead, not 3 ahead which it would be vs main)
+    [[ "$output" == *"repo-a"*"feat/auth: 1 ahead"* ]]
+
+    # repo-b: base branch feat/auth doesn't exist — should fall back to main
+    [[ "$output" == *"repo-b"*"main: 1 ahead"* ]]
+}
+
 @test "default branch detection with master" {
     git init --bare "$TEST_DIR/origin/repo-master.git" -b master >/dev/null 2>&1
     git clone "$TEST_DIR/origin/repo-master.git" "$TEST_DIR/project/.arb/repos/repo-master" >/dev/null 2>&1
@@ -1228,5 +1267,109 @@ delete_workspace_config() {
     run arb pull
     [ "$status" -eq 0 ]
     [[ "$output" == *"inferred branch"* ]] || [[ "$output" == *"Config missing"* ]]
+}
+
+# ── --base option (stacked PRs) ──────────────────────────────────
+
+@test "arb create --base stores base in config" {
+    arb create stacked --base feat/auth -b feat/auth-ui --all-repos
+    run cat "$TEST_DIR/project/stacked/.arbws/config"
+    [[ "$output" == *"branch = feat/auth-ui"* ]]
+    [[ "$output" == *"base = feat/auth"* ]]
+}
+
+@test "arb create --base branches from the specified base" {
+    # Create a base branch with unique content
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth-content" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "add auth" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace branching from feat/auth
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+    # Content from the base branch should be present
+    [ -f "$TEST_DIR/project/stacked/repo-a/auth.txt" ]
+    run cat "$TEST_DIR/project/stacked/repo-a/auth.txt"
+    [[ "$output" == *"auth-content"* ]]
+}
+
+@test "arb create without --base has no base key in config" {
+    arb create no-base -b feat/plain --all-repos
+    run cat "$TEST_DIR/project/no-base/.arbws/config"
+    [[ "$output" == *"branch = feat/plain"* ]]
+    [[ "$output" != *"base ="* ]]
+}
+
+@test "arb create --base with invalid branch name fails" {
+    run arb create bad-base --base "bad branch name" -b feat/ok repo-a
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Invalid base branch name"* ]]
+}
+
+@test "arb add respects stored base branch" {
+    # Create a base branch with unique content in both repos
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/base >/dev/null 2>&1
+    echo "base-a" > "$TEST_DIR/project/.arb/repos/repo-a/base.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add base.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "base" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/base >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" checkout -b feat/base >/dev/null 2>&1
+    echo "base-b" > "$TEST_DIR/project/.arb/repos/repo-b/base.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" add base.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" commit -m "base" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" push -u origin feat/base >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" checkout --detach >/dev/null 2>&1
+
+    # Create workspace with --base, only including repo-a initially
+    arb create stacked --base feat/base -b feat/stacked repo-a
+    [ -f "$TEST_DIR/project/stacked/repo-a/base.txt" ]
+
+    # Now add repo-b — should also branch from feat/base
+    cd "$TEST_DIR/project/stacked"
+    arb add repo-b
+    [ -f "$TEST_DIR/project/stacked/repo-b/base.txt" ]
+    run cat "$TEST_DIR/project/stacked/repo-b/base.txt"
+    [[ "$output" == *"base-b"* ]]
+}
+
+@test "arb create --base falls back to default branch when base missing" {
+    # repo-a and repo-b do NOT have feat/auth — only their default branch
+    run arb create stacked --base feat/auth -b feat/auth-ui --all-repos
+    [ "$status" -eq 0 ]
+    # Should warn about the missing base branch for each repo
+    [[ "$output" == *"base branch 'feat/auth' not found"* ]]
+    # Worktrees should still be created (branched from default)
+    [ -d "$TEST_DIR/project/stacked/repo-a" ]
+    [ -d "$TEST_DIR/project/stacked/repo-b" ]
+    local branch
+    branch="$(git -C "$TEST_DIR/project/stacked/repo-a" branch --show-current)"
+    [ "$branch" = "feat/auth-ui" ]
+}
+
+@test "arb add falls back to default branch when workspace base missing in repo" {
+    # Create workspace with a base that exists only in repo-a
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/base >/dev/null 2>&1
+    echo "base-a" > "$TEST_DIR/project/.arb/repos/repo-a/base.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add base.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "base" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/base >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    arb create stacked --base feat/base -b feat/stacked repo-a
+    [ -f "$TEST_DIR/project/stacked/repo-a/base.txt" ]
+
+    # repo-b does NOT have feat/base — add should fall back with warning
+    cd "$TEST_DIR/project/stacked"
+    run arb add repo-b
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"base branch 'feat/base' not found"* ]]
+    [ -d "$TEST_DIR/project/stacked/repo-b" ]
+    local branch
+    branch="$(git -C "$TEST_DIR/project/stacked/repo-b" branch --show-current)"
+    [ "$branch" = "feat/stacked" ]
 }
 

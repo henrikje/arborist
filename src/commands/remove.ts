@@ -2,6 +2,7 @@ import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
+import { configGet } from "../lib/config";
 import {
 	branchExistsLocally,
 	getDefaultBranch,
@@ -37,7 +38,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 				process.exit(1);
 			}
 
-			// Read branch from config
+			// Read branch and base from config
 			let branch: string;
 			const wb = await workspaceBranch(wsDir);
 			if (wb) {
@@ -46,6 +47,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 				branch = name.toLowerCase();
 				warn(`Could not determine branch for ${name}, assuming '${branch}'`);
 			}
+			const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 
 			// Discover repos
 			const repoPaths = workspaceRepoDirs(wsDir);
@@ -89,10 +91,12 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 						}
 					} else {
 						// Only flag as "not pushed" if the branch has unique commits
-						const defaultBranch = await getDefaultBranch(repoPath);
-						const ahead = await git(wtPath, "rev-list", "--count", `origin/${defaultBranch}..HEAD`);
-						if (ahead.exitCode === 0 && Number.parseInt(ahead.stdout.trim(), 10) > 0) {
-							notPushedAtAll = true;
+						const defaultBranch = configBase ?? await getDefaultBranch(repoPath);
+						if (defaultBranch) {
+							const ahead = await git(wtPath, "rev-list", "--count", `origin/${defaultBranch}..HEAD`);
+							if (ahead.exitCode === 0 && Number.parseInt(ahead.stdout.trim(), 10) > 0) {
+								notPushedAtAll = true;
+							}
 						}
 					}
 				}
