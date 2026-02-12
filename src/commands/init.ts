@@ -7,7 +7,10 @@ import { error, hint, info } from "../lib/output";
 export function registerInitCommand(program: Command): void {
 	program
 		.command("init [path]")
-		.description("Initialize a directory as an arb root")
+		.summary("Initialize a new arb root")
+		.description(
+			"Create the .arb/ marker directory and scaffolding that arb needs. The current directory (or the given path) becomes the arb root — canonical repos go in .arb/repos/, and workspaces are created as top-level directories.",
+		)
 		.action((path?: string) => {
 			let target = path ?? process.cwd();
 

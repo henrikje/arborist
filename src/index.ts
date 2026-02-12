@@ -20,7 +20,8 @@ import { error } from "./lib/output";
 import type { ArbContext } from "./lib/types";
 import { ARB_VERSION } from "./version";
 
-const WORKSPACE_COMMANDS = new Set(["add", "drop", "status", "fetch", "pull", "push", "exec", "open"]);
+const SETUP_COMMANDS = new Set(["init", "clone", "repos", "help"]);
+const WORKTREE_COMMANDS = new Set(["add", "drop", "status", "fetch", "pull", "push", "exec", "open"]);
 
 function arbFormatHelp(cmd: Command, helper: Help): string {
 	const termWidth = helper.padWidth(cmd, helper);
@@ -50,23 +51,32 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 		output = output.concat([helper.styleTitle("Options:"), ...optionList, ""]);
 	}
 
-	// Commands — split into global and workspace groups
+	// Commands — split into three groups
 	const allCommands = helper.visibleCommands(cmd);
-	const globalCommands = allCommands.filter((c) => !WORKSPACE_COMMANDS.has(c.name()));
-	const workspaceCommands = allCommands.filter((c) => WORKSPACE_COMMANDS.has(c.name()));
+	const setupCommands = allCommands.filter((c) => SETUP_COMMANDS.has(c.name()));
+	const workspaceCommands = allCommands.filter(
+		(c) => !SETUP_COMMANDS.has(c.name()) && !WORKTREE_COMMANDS.has(c.name()),
+	);
+	const worktreeCommands = allCommands.filter((c) => WORKTREE_COMMANDS.has(c.name()));
 
-	if (globalCommands.length > 0) {
-		const globalList = globalCommands.map((c) => {
+	if (setupCommands.length > 0) {
+		const list = setupCommands.map((c) => {
 			return callFormatItem(
 				helper.styleSubcommandTerm(helper.subcommandTerm(c)),
 				helper.styleSubcommandDescription(helper.subcommandDescription(c)),
 			);
 		});
-		output = output.concat([helper.styleTitle("Commands:"), ...globalList, ""]);
+		output = output.concat([
+			helper.styleTitle("Setup Commands:"),
+			"  Set up the arb root and clone repos.",
+			"",
+			...list,
+			"",
+		]);
 	}
 
 	if (workspaceCommands.length > 0) {
-		const wsList = workspaceCommands.map((c) => {
+		const list = workspaceCommands.map((c) => {
 			return callFormatItem(
 				helper.styleSubcommandTerm(helper.subcommandTerm(c)),
 				helper.styleSubcommandDescription(helper.subcommandDescription(c)),
@@ -74,9 +84,25 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 		});
 		output = output.concat([
 			helper.styleTitle("Workspace Commands:"),
-			"  Run from within a workspace, or with -w <workspace>.",
+			"  Create and manage workspaces. Run from within an arb root.",
 			"",
-			...wsList,
+			...list,
+			"",
+		]);
+	}
+
+	if (worktreeCommands.length > 0) {
+		const list = worktreeCommands.map((c) => {
+			return callFormatItem(
+				helper.styleSubcommandTerm(helper.subcommandTerm(c)),
+				helper.styleSubcommandDescription(helper.subcommandDescription(c)),
+			);
+		});
+		output = output.concat([
+			helper.styleTitle("Worktree Commands:"),
+			"  Manage worktrees. Run from within a workspace, or with -w <workspace>.",
+			"",
+			...list,
 			"",
 		]);
 	}

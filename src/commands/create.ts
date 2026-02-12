@@ -14,9 +14,16 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 		.option("-b, --branch <branch>", "Branch name")
 		.option("--base <branch>", "Base branch to branch from")
 		.option("-a, --all-repos", "Include all repos")
-		.description("Create a new workspace")
+		.summary("Create a new workspace")
+		.description(
+			"Create a workspace for a feature or issue. Sets up worktrees for selected repos on a shared feature branch, with isolated working directories. Prompts interactively for name, branch, and repos when run without arguments.",
+		)
 		.action(
-			async (nameArg: string | undefined, repoArgs: string[], options: { branch?: string; base?: string; allRepos?: boolean }) => {
+			async (
+				nameArg: string | undefined,
+				repoArgs: string[],
+				options: { branch?: string; base?: string; allRepos?: boolean },
+			) => {
 				const ctx = getCtx();
 
 				let name = nameArg;

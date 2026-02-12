@@ -12,7 +12,10 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 	program
 		.command("status")
 		.option("-d, --dirty", "Only show dirty repos")
-		.description("Show worktree status")
+		.summary("Show workspace status")
+		.description(
+			"Show each worktree's position relative to the default branch, push status against origin, and local changes (staged, modified, untracked). Use --dirty to only show worktrees with uncommitted changes.",
+		)
 		.action(async (options: { dirty?: boolean }) => {
 			const ctx = getCtx();
 			requireWorkspace(ctx);

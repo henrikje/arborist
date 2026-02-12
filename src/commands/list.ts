@@ -8,7 +8,10 @@ import type { ArbContext } from "../lib/types";
 export function registerListCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("list")
-		.description("List all workspaces")
+		.summary("List all workspaces")
+		.description(
+			"List all workspaces in the arb root, showing which repos each contains. The active workspace (the one you're currently inside) is marked with *.",
+		)
 		.action(() => {
 			const ctx = getCtx();
 			const workspaces = listWorkspaces(ctx.baseDir);

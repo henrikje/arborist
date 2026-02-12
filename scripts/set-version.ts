@@ -17,9 +17,7 @@ try {
 }
 
 // Get commits oldest-to-newest (subject lines only).
-const logCmd = commitRange
-	? $`git log --format=%s --reverse ${commitRange}`
-	: $`git log --format=%s --reverse`;
+const logCmd = commitRange ? $`git log --format=%s --reverse ${commitRange}` : $`git log --format=%s --reverse`;
 const logOutput = (await logCmd.text()).trim();
 const subjects = logOutput ? logOutput.split("\n") : [];
 

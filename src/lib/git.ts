@@ -1,7 +1,4 @@
-export async function git(
-	repoDir: string,
-	...args: string[]
-): Promise<{ exitCode: number; stdout: string }> {
+export async function git(repoDir: string, ...args: string[]): Promise<{ exitCode: number; stdout: string }> {
 	const proc = Bun.spawn(["git", "-C", repoDir, ...args], {
 		stdin: "ignore",
 		stdout: "pipe",

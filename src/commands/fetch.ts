@@ -8,7 +8,10 @@ import { requireWorkspace } from "../lib/workspace-context";
 export function registerFetchCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("fetch")
-		.description("Fetch from origin (parallelized)")
+		.summary("Fetch all repos from origin")
+		.description(
+			"Fetch from origin for every repo in the workspace, in parallel. Nothing is merged — use this to see what's changed before deciding what to do.",
+		)
 		.action(async () => {
 			const ctx = getCtx();
 			const { wsDir } = requireWorkspace(ctx);

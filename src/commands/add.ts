@@ -11,7 +11,10 @@ import { addWorktrees } from "../lib/worktrees";
 export function registerAddCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("add [repos...]")
-		.description("Add worktrees to the workspace")
+		.summary("Add worktrees to the workspace")
+		.description(
+			"Add worktrees for one or more repos to the current workspace on the workspace's feature branch. Prompts with a repo picker when run without arguments.",
+		)
 		.action(async (repoArgs: string[]) => {
 			const ctx = getCtx();
 			const { wsDir, workspace } = requireWorkspace(ctx);

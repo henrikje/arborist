@@ -7,7 +7,10 @@ import type { ArbContext } from "../lib/types";
 export function registerCloneCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("clone <url> [name]")
-		.description("Clone a repo")
+		.summary("Clone a repo into .arb/repos/")
+		.description(
+			"Clone a git repository into .arb/repos/<name> as a canonical copy. These permanent clones are never worked in directly — instead, arb creates worktrees that point back to them. The repo name is derived from the URL if not specified.",
+		)
 		.action(async (url: string, nameArg?: string) => {
 			const ctx = getCtx();
 			const repoName = nameArg || basename(url).replace(/\.git$/, "");

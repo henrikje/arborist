@@ -13,7 +13,10 @@ export function registerDropCommand(program: Command, getCtx: () => ArbContext):
 		.command("drop [repos...]")
 		.option("-f, --force", "Force removal even with uncommitted changes")
 		.option("--delete-branch", "Delete the local branch from the canonical repo")
-		.description("Drop worktrees from the workspace")
+		.summary("Drop worktrees from the workspace")
+		.description(
+			"Remove worktrees from the current workspace without deleting the workspace itself. Skips worktrees with uncommitted changes unless --force is used. Use --delete-branch to also delete the local branch from the canonical repo.",
+		)
 		.action(async (repoArgs: string[], options: { force?: boolean; deleteBranch?: boolean }) => {
 			const ctx = getCtx();
 			const { wsDir, workspace } = requireWorkspace(ctx);

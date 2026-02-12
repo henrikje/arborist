@@ -9,7 +9,10 @@ export function registerOpenCommand(program: Command, getCtx: () => ArbContext):
 	program
 		.command("open <command>")
 		.option("-d, --dirty", "Only open dirty worktrees")
-		.description("Run a command with worktrees as arguments")
+		.summary("Open worktrees in an application")
+		.description(
+			'Run a command with all worktree directories as arguments. Useful for opening worktrees in an editor, e.g. "arb open code". Use --dirty to only include worktrees with uncommitted changes.',
+		)
 		.action(async (editor: string, options: { dirty?: boolean }) => {
 			const ctx = getCtx();
 			const { wsDir } = requireWorkspace(ctx);

@@ -12,7 +12,10 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 		.argument("<command...>", "Command to run in each worktree")
 		.option("-d, --dirty", "Only run in dirty repos")
 		.allowUnknownOption(true)
-		.description("Run a command in each worktree")
+		.summary("Run a command in each worktree")
+		.description(
+			"Run the given command sequentially in each worktree and report which succeeded or failed. Use --dirty to only run in worktrees with uncommitted changes.",
+		)
 		.action(async (args: string[], options: { dirty?: boolean }) => {
 			const ctx = getCtx();
 			const { wsDir } = requireWorkspace(ctx);

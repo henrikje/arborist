@@ -23,7 +23,10 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 		.command("remove <name>")
 		.option("-f, --force", "Force removal without prompts")
 		.option("-d, --delete-remote", "Delete remote branches")
-		.description("Remove a workspace")
+		.summary("Remove a workspace")
+		.description(
+			"Remove a workspace and its worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) before proceeding. Use --force to skip prompts, and --delete-remote to also delete the remote branches.",
+		)
 		.action(async (name: string, options: { force?: boolean; deleteRemote?: boolean }) => {
 			const ctx = getCtx();
 			const validationError = validateWorkspaceName(name);
@@ -91,7 +94,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 						}
 					} else {
 						// Only flag as "not pushed" if the branch has unique commits
-						const defaultBranch = configBase ?? await getDefaultBranch(repoPath);
+						const defaultBranch = configBase ?? (await getDefaultBranch(repoPath));
 						if (defaultBranch) {
 							const ahead = await git(wtPath, "rev-list", "--count", `origin/${defaultBranch}..HEAD`);
 							if (ahead.exitCode === 0 && Number.parseInt(ahead.stdout.trim(), 10) > 0) {

@@ -9,7 +9,10 @@ import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 export function registerPushCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("push")
-		.description("Push the feature branch to origin")
+		.summary("Push the feature branch to origin")
+		.description(
+			"Push the feature branch to origin for every repo in the workspace. Skips repos without a remote and repos where the branch hasn't been set up for tracking yet.",
+		)
 		.action(async () => {
 			const ctx = getCtx();
 			const { wsDir, workspace } = requireWorkspace(ctx);
