@@ -1,0 +1,100 @@
+import { existsSync, rmSync } from "node:fs";
+import { basename } from "node:path";
+import checkbox from "@inquirer/checkbox";
+import type { Command } from "commander";
+import { branchExistsLocally, git, isRepoDirty } from "../lib/git";
+import { error, info, warn } from "../lib/output";
+import { workspaceRepoDirs } from "../lib/repos";
+import type { ArbContext } from "../lib/types";
+import { requireBranch, requireWorkspace } from "../lib/workspace-context";
+
+export function registerDropCommand(program: Command, getCtx: () => ArbContext): void {
+	program
+		.command("drop [repos...]")
+		.option("-f, --force", "Force removal even with uncommitted changes")
+		.option("--delete-branch", "Delete the local branch from the canonical repo")
+		.description("Drop worktrees from the workspace")
+		.action(async (repoArgs: string[], options: { force?: boolean; deleteBranch?: boolean }) => {
+			const ctx = getCtx();
+			const { wsDir, workspace } = requireWorkspace(ctx);
+
+			let repos = repoArgs;
+			if (repos.length === 0) {
+				if (!process.stdin.isTTY) {
+					error("Usage: arb drop <repos...>");
+					error("No repos specified. Pass repo names as arguments.");
+					process.exit(1);
+				}
+				const currentRepos = workspaceRepoDirs(wsDir).map((d) => basename(d));
+				if (currentRepos.length === 0) {
+					error("No repos in this workspace.");
+					process.exit(1);
+				}
+				repos = await checkbox({
+					message: "Select repos to drop",
+					choices: currentRepos.map((name) => ({ name, value: name })),
+				});
+				if (repos.length === 0) {
+					error("No repos selected.");
+					process.exit(1);
+				}
+			}
+			const branch = await requireBranch(wsDir, workspace);
+
+			const dropped: string[] = [];
+			const skipped: string[] = [];
+
+			for (const repo of repos) {
+				const wtPath = `${wsDir}/${repo}`;
+
+				if (!existsSync(wtPath) || !existsSync(`${wtPath}/.git`)) {
+					warn(`  [${repo}] not in this workspace — skipping`);
+					skipped.push(repo);
+					continue;
+				}
+
+				// Check for uncommitted changes
+				if (!options.force) {
+					const porcelain = await git(wtPath, "status", "--porcelain");
+					if (porcelain.exitCode === 0 && porcelain.stdout.trim()) {
+						warn(`  [${repo}] has uncommitted changes — skipping (use --force to override)`);
+						skipped.push(repo);
+						continue;
+					}
+				}
+
+				process.stderr.write(`  [${repo}] removing worktree... `);
+				const removeArgs = ["worktree", "remove"];
+				if (options.force) removeArgs.push("--force");
+				removeArgs.push(wtPath);
+				const removeResult = await git(`${ctx.reposDir}/${repo}`, ...removeArgs);
+				if (removeResult.exitCode !== 0) {
+					// Fallback: rm and prune
+					rmSync(wtPath, { recursive: true, force: true });
+					await git(`${ctx.reposDir}/${repo}`, "worktree", "prune");
+				}
+				info("ok");
+
+				if (options.deleteBranch) {
+					if (await isRepoDirty(`${ctx.reposDir}/${repo}`)) {
+						warn(`  [${repo}] canonical repo has uncommitted changes`);
+					}
+					if (await branchExistsLocally(`${ctx.reposDir}/${repo}`, branch)) {
+						process.stderr.write(`  [${repo}] deleting branch ${branch}... `);
+						const delResult = await git(`${ctx.reposDir}/${repo}`, "branch", "-d", branch);
+						if (delResult.exitCode === 0) {
+							info("ok");
+						} else {
+							warn("failed (branch not fully merged, use git branch -D to force)");
+						}
+					}
+				}
+
+				dropped.push(repo);
+			}
+
+			process.stderr.write("\n");
+			if (dropped.length > 0) info(`Dropped ${dropped.length} repo(s) from ${ctx.currentWorkspace}`);
+			if (skipped.length > 0) warn(`Skipped: ${skipped.join(" ")}`);
+		});
+}

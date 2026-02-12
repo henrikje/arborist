@@ -1,0 +1,6 @@
+.idea/
+.claude/
+node_modules/
+dist/
+*.tsbuildinfo
+/.*.bun-build

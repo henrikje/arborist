@@ -1,0 +1,13 @@
+pre-commit:
+  parallel: true
+  commands:
+    check:
+      glob: "*.{ts,json}"
+      run: bunx biome check --staged {staged_files}
+    typecheck:
+      run: bunx tsc --noEmit
+
+commit-msg:
+  commands:
+    commitlint:
+      run: bunx commitlint --edit {1}
