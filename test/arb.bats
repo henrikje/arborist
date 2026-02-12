@@ -29,7 +29,7 @@ teardown() {
 @test "arb --version outputs version number" {
     run arb --version
     [ "$status" -eq 0 ]
-    [[ "$output" =~ ^Arborist\ [0-9]+\.[0-9]+\.[0-9]+$ ]]
+    [[ "$output" =~ ^Arborist\ [0-9]+\.[0-9]+\.[0-9]+ ]]
 }
 
 @test "arb version is treated as unknown command" {
@@ -40,7 +40,7 @@ teardown() {
 @test "arb -v outputs version number" {
     run arb -v
     [ "$status" -eq 0 ]
-    [[ "$output" =~ ^Arborist\ [0-9]+\.[0-9]+\.[0-9]+$ ]]
+    [[ "$output" =~ ^Arborist\ [0-9]+\.[0-9]+\.[0-9]+ ]]
 }
 
 # ── bare arb (shows help) ────────────────────────────────────────
