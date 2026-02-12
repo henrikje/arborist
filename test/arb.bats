@@ -156,6 +156,25 @@ teardown() {
     [ -d "$TEST_DIR/project/.arb/repos/derived-name/.git" ]
 }
 
+@test "arb clone detaches HEAD in canonical repo" {
+    run arb clone "$TEST_DIR/origin/repo-a.git" detach-test
+    [ "$status" -eq 0 ]
+    run git -C "$TEST_DIR/project/.arb/repos/detach-test" status
+    [[ "$output" == *"HEAD detached"* ]]
+}
+
+@test "arb clone allows workspace on default branch" {
+    run arb clone "$TEST_DIR/origin/repo-a.git" main-test
+    [ "$status" -eq 0 ]
+    # Creating a workspace on main should succeed because HEAD is detached
+    run arb create main-ws --branch main main-test
+    [ "$status" -eq 0 ]
+    [ -d "$TEST_DIR/project/main-ws/main-test" ]
+    local branch
+    branch="$(git -C "$TEST_DIR/project/main-ws/main-test" branch --show-current)"
+    [ "$branch" = "main" ]
+}
+
 @test "arb clone fails if repo already exists" {
     run arb clone "$TEST_DIR/origin/repo-a.git" repo-a
     [ "$status" -ne 0 ]

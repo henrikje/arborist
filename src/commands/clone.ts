@@ -25,6 +25,7 @@ export function registerCloneCommand(program: Command, getCtx: () => ArbContext)
 
 			const result = await Bun.$`git clone ${url} ${target}`.quiet().nothrow();
 			if (result.exitCode === 0) {
+				await Bun.$`git -C ${target} checkout --detach`.quiet().nothrow();
 				info(`Cloned repo ${repoName}`);
 				hint(`Create a workspace:  arb create <workspace> ${repoName}`);
 				hint(`Add to a workspace:  arb add ${repoName}`);
