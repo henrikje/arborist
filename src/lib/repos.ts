@@ -30,33 +30,40 @@ export function workspaceRepoDirs(wsDir: string): string[] {
 		.sort();
 }
 
-export async function selectReposInteractive(reposDir: string): Promise<string[]> {
-	const repos = listRepos(reposDir);
-	if (repos.length === 0) {
-		throw new Error("No repos found under repos/. Clone a repo first: arb clone <url>");
+export async function selectInteractive(items: string[], message: string): Promise<string[]> {
+	if (items.length === 0) {
+		throw new Error("No items to select");
 	}
 
-	if (repos.length === 1) {
+	if (items.length === 1) {
 		const yes = await confirm({
-			message: `Only repo available: ${repos[0]}. Include it?`,
+			message: `Only option: ${items[0]}. Include it?`,
 			default: true,
 		});
 		if (!yes) {
 			throw new Error("Aborted");
 		}
-		return repos;
+		return items;
 	}
 
 	const selected = await checkbox({
-		message: "Select repos to include",
-		choices: repos.map((name) => ({ name, value: name })),
+		message,
+		choices: items.map((name) => ({ name, value: name })),
 		pageSize: 20,
 	});
 
 	if (selected.length === 0) {
-		throw new Error("No repos selected");
+		throw new Error("No items selected");
 	}
 	return selected;
+}
+
+export async function selectReposInteractive(reposDir: string): Promise<string[]> {
+	const repos = listRepos(reposDir);
+	if (repos.length === 0) {
+		throw new Error("No repos found. Clone a repo first: arb clone <url>");
+	}
+	return selectInteractive(repos, "Select repos to include");
 }
 
 export async function classifyRepos(

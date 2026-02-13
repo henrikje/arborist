@@ -178,7 +178,7 @@ teardown() {
 @test "arb clone fails if repo already exists" {
     run arb clone "$TEST_DIR/origin/repo-a.git" repo-a
     [ "$status" -ne 0 ]
-    [[ "$output" == *"already exists"* ]]
+    [[ "$output" == *"already cloned"* ]]
 }
 
 @test "arb clone fails with invalid path" {
@@ -351,12 +351,37 @@ teardown() {
     [[ "$output" == *"Not inside a workspace"* ]]
 }
 
-@test "arb add without args fails" {
+@test "arb add without args fails in non-TTY" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb add
     [ "$status" -ne 0 ]
-    [[ "$output" == *"Usage: arb add"* ]]
+    [[ "$output" == *"No repos specified"* ]]
+    [[ "$output" == *"--all-repos"* ]]
+}
+
+@test "arb add -a adds all remaining repos" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb add -a
+    [ "$status" -eq 0 ]
+    [ -d "$TEST_DIR/project/my-feature/repo-b" ]
+}
+
+@test "arb add --all-repos adds all remaining repos" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb add --all-repos
+    [ "$status" -eq 0 ]
+    [ -d "$TEST_DIR/project/my-feature/repo-b" ]
+}
+
+@test "arb add -a when all repos already present errors" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb add -a
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"All repos are already in this workspace"* ]]
 }
 
 @test "arb add recovers from stale worktree reference" {
@@ -424,12 +449,40 @@ teardown() {
     [[ "$output" == *"not in this workspace"* ]]
 }
 
-@test "arb drop without args fails" {
+@test "arb drop without args fails in non-TTY" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb drop
     [ "$status" -ne 0 ]
-    [[ "$output" == *"Usage: arb drop"* ]]
+    [[ "$output" == *"No repos specified"* ]]
+    [[ "$output" == *"--all-repos"* ]]
+}
+
+@test "arb drop -a drops all repos from workspace" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb drop -a
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/my-feature/repo-a" ]
+    [ ! -d "$TEST_DIR/project/my-feature/repo-b" ]
+}
+
+@test "arb drop --all-repos drops all repos from workspace" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb drop --all-repos
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/my-feature/repo-a" ]
+    [ ! -d "$TEST_DIR/project/my-feature/repo-b" ]
+}
+
+@test "arb drop -a on empty workspace errors" {
+    mkdir -p "$TEST_DIR/project/empty-ws/.arbws"
+    echo "branch = empty" > "$TEST_DIR/project/empty-ws/.arbws/config"
+    cd "$TEST_DIR/project/empty-ws"
+    run arb drop -a
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"No repos in this workspace"* ]]
 }
 
 @test "arb drop without workspace context fails" {
@@ -488,22 +541,37 @@ teardown() {
     [[ "$output" == *"No workspace found"* ]]
 }
 
-@test "arb remove without name fails" {
+@test "arb remove without args fails in non-TTY" {
     run arb remove
     [ "$status" -ne 0 ]
-    [[ "$output" == *"missing required argument"* ]]
+    [[ "$output" == *"No workspace specified"* ]]
+}
+
+@test "arb remove multiple workspaces with --force" {
+    arb create ws-a repo-a
+    arb create ws-b repo-b
+    arb remove ws-a ws-b --force
+    [ ! -d "$TEST_DIR/project/ws-a" ]
+    [ ! -d "$TEST_DIR/project/ws-b" ]
+}
+
+@test "arb remove multiple workspaces removes all" {
+    arb create ws-one repo-a
+    arb create ws-two repo-b
+    run arb remove ws-one ws-two --force
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/ws-one" ]
+    [ ! -d "$TEST_DIR/project/ws-two" ]
 }
 
 # ── list ─────────────────────────────────────────────────────────
 
-@test "arb list shows workspaces and repos" {
+@test "arb list shows workspaces" {
     arb create ws-one repo-a
     arb create ws-two repo-b
     run arb list
     [[ "$output" == *"ws-one"* ]]
     [[ "$output" == *"ws-two"* ]]
-    [[ "$output" == *"repo-a"* ]]
-    [[ "$output" == *"repo-b"* ]]
 }
 
 @test "arb list highlights active workspace" {
@@ -530,9 +598,10 @@ teardown() {
     [[ "$output" != *$'\033'* ]]
 }
 
-@test "arb list with no workspaces shows message" {
+@test "arb list with no workspaces is silent" {
     run arb list
-    [[ "$output" == *"No workspaces found"* ]]
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
 }
 
 # ── path ─────────────────────────────────────────────────────────
@@ -941,10 +1010,10 @@ SCRIPT
     arb create my-feature repo-a repo-b
     cd "$TEST_DIR/project/my-feature"
     run arb exec echo hello
-    [[ "$output" == *"[repo-a]"* ]]
-    [[ "$output" == *"[repo-b]"* ]]
+    [[ "$output" == *"==> repo-a <=="* ]]
+    [[ "$output" == *"==> repo-b <=="* ]]
     [[ "$output" == *"hello"* ]]
-    [[ "$output" != *"[.arbws]"* ]]
+    [[ "$output" != *".arbws"* ]]
 }
 
 @test "arb exec pwd runs in each repo directory" {
@@ -1108,6 +1177,12 @@ SCRIPT
     run arb -w ws-two status
     [ "$status" -eq 0 ]
     [[ "$output" == *"repo-b"* ]]
+}
+
+@test "arb --workspace with nonexistent workspace fails" {
+    run arb -w ghost status
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"does not exist"* ]]
 }
 
 @test "arb --workspace without value fails" {

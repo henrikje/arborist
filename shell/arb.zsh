@@ -9,13 +9,7 @@ arb() {
         cd "${_arb_recover:-/}" 2>/dev/null || cd "$HOME"
     fi
 
-    if [[ "${1:-}" == "cd" ]]; then
-        local dir
-        dir="$(command arb path "${@:2}")" || return 1
-        cd "$dir"
-    else
-        command arb "$@"
-    fi
+    command arb "$@"
 }
 
 _arb() {
@@ -58,7 +52,6 @@ _arb() {
                 'remove:Remove a workspace'
                 'list:List all workspaces'
                 'path:Print the path to the arb root or a workspace'
-                'cd:Change directory to a workspace'
                 'add:Add worktrees to the workspace'
                 'drop:Drop worktrees from the workspace'
                 'status:Show worktree status'
@@ -75,11 +68,11 @@ _arb() {
             case "${words[1]}" in
                 remove)
                     _arguments \
-                        '1:workspace:($ws_names)' \
+                        '*:workspace:($ws_names)' \
                         '(-f --force)'{-f,--force}'[Force removal]' \
                         '(-d --delete-remote)'{-d,--delete-remote}'[Delete remote branches]'
                     ;;
-                path|cd)
+                path)
                     _arguments '1:workspace:($ws_names)'
                     ;;
                 create)
@@ -90,11 +83,14 @@ _arb() {
                         '*:repo:($repo_names)'
                     ;;
                 add)
-                    _arguments '*:repo:($repo_names)'
+                    _arguments \
+                        '(-a --all-repos)'{-a,--all-repos}'[Add all remaining repos]' \
+                        '*:repo:($repo_names)'
                     ;;
                 drop)
                     _arguments \
                         '(-f --force)'{-f,--force}'[Force removal even with uncommitted changes]' \
+                        '(-a --all-repos)'{-a,--all-repos}'[Drop all repos from the workspace]' \
                         '--delete-branch[Delete the local branch from the canonical repo]' \
                         '*:repo:($repo_names)'
                     ;;

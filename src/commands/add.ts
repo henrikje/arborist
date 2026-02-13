@@ -1,9 +1,8 @@
 import { basename } from "node:path";
-import checkbox from "@inquirer/checkbox";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { error, info, warn } from "../lib/output";
-import { listRepos, workspaceRepoDirs } from "../lib/repos";
+import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 import { addWorktrees } from "../lib/worktrees";
@@ -11,36 +10,36 @@ import { addWorktrees } from "../lib/worktrees";
 export function registerAddCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("add [repos...]")
+		.option("-a, --all-repos", "Add all remaining repos")
 		.summary("Add worktrees to the workspace")
 		.description(
-			"Add worktrees for one or more repos to the current workspace on the workspace's feature branch. Prompts with a repo picker when run without arguments.",
+			"Add worktrees for one or more repos to the current workspace on the workspace's feature branch. Prompts with a repo picker when run without arguments. Use --all-repos to add all repos not yet in the workspace.",
 		)
-		.action(async (repoArgs: string[]) => {
+		.action(async (repoArgs: string[], options: { allRepos?: boolean }) => {
 			const ctx = getCtx();
 			const { wsDir, workspace } = requireWorkspace(ctx);
 
+			const allRepos = listRepos(ctx.reposDir);
+			const currentRepos = new Set(workspaceRepoDirs(wsDir).map((d) => basename(d)));
+			const available = allRepos.filter((r) => !currentRepos.has(r));
+
 			let repos = repoArgs;
-			if (repos.length === 0) {
-				if (!process.stdin.isTTY) {
-					error("Usage: arb add <repos...>");
-					error("No repos specified. Pass repo names as arguments.");
-					process.exit(1);
-				}
-				const allRepos = listRepos(ctx.reposDir);
-				const currentRepos = new Set(workspaceRepoDirs(wsDir).map((d) => basename(d)));
-				const available = allRepos.filter((r) => !currentRepos.has(r));
+			if (options.allRepos) {
 				if (available.length === 0) {
 					error("All repos are already in this workspace.");
 					process.exit(1);
 				}
-				repos = await checkbox({
-					message: "Select repos to add",
-					choices: available.map((name) => ({ name, value: name })),
-				});
-				if (repos.length === 0) {
-					error("No repos selected.");
+				repos = available;
+			} else if (repos.length === 0) {
+				if (!process.stdin.isTTY) {
+					error("No repos specified. Pass repo names or use --all-repos.");
 					process.exit(1);
 				}
+				if (available.length === 0) {
+					error("All repos are already in this workspace.");
+					process.exit(1);
+				}
+				repos = await selectInteractive(available, "Select repos to add");
 			}
 			const branch = await requireBranch(wsDir, workspace);
 			const base = configGet(`${wsDir}/.arbws/config`, "base") ?? undefined;

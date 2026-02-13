@@ -1,10 +1,9 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
-import checkbox from "@inquirer/checkbox";
 import type { Command } from "commander";
 import { branchExistsLocally, git, isRepoDirty } from "../lib/git";
 import { error, info, warn } from "../lib/output";
-import { workspaceRepoDirs } from "../lib/repos";
+import { selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
@@ -12,35 +11,35 @@ export function registerDropCommand(program: Command, getCtx: () => ArbContext):
 	program
 		.command("drop [repos...]")
 		.option("-f, --force", "Force removal even with uncommitted changes")
+		.option("-a, --all-repos", "Drop all repos from the workspace")
 		.option("--delete-branch", "Delete the local branch from the canonical repo")
 		.summary("Drop worktrees from the workspace")
 		.description(
-			"Remove worktrees from the current workspace without deleting the workspace itself. Skips worktrees with uncommitted changes unless --force is used. Use --delete-branch to also delete the local branch from the canonical repo.",
+			"Remove worktrees from the current workspace without deleting the workspace itself. Skips worktrees with uncommitted changes unless --force is used. Use --all-repos to drop all repos. Use --delete-branch to also delete the local branch from the canonical repo.",
 		)
-		.action(async (repoArgs: string[], options: { force?: boolean; deleteBranch?: boolean }) => {
+		.action(async (repoArgs: string[], options: { force?: boolean; allRepos?: boolean; deleteBranch?: boolean }) => {
 			const ctx = getCtx();
 			const { wsDir, workspace } = requireWorkspace(ctx);
 
+			const currentRepos = workspaceRepoDirs(wsDir).map((d) => basename(d));
+
 			let repos = repoArgs;
-			if (repos.length === 0) {
-				if (!process.stdin.isTTY) {
-					error("Usage: arb drop <repos...>");
-					error("No repos specified. Pass repo names as arguments.");
-					process.exit(1);
-				}
-				const currentRepos = workspaceRepoDirs(wsDir).map((d) => basename(d));
+			if (options.allRepos) {
 				if (currentRepos.length === 0) {
 					error("No repos in this workspace.");
 					process.exit(1);
 				}
-				repos = await checkbox({
-					message: "Select repos to drop",
-					choices: currentRepos.map((name) => ({ name, value: name })),
-				});
-				if (repos.length === 0) {
-					error("No repos selected.");
+				repos = currentRepos;
+			} else if (repos.length === 0) {
+				if (!process.stdin.isTTY) {
+					error("No repos specified. Pass repo names or use --all-repos.");
 					process.exit(1);
 				}
+				if (currentRepos.length === 0) {
+					error("No repos in this workspace.");
+					process.exit(1);
+				}
+				repos = await selectInteractive(currentRepos, "Select repos to drop");
 			}
 			const branch = await requireBranch(wsDir, workspace);
 
