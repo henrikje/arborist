@@ -1,8 +1,12 @@
 # Arborist (`arb`)
 
-**Arborist** is a workspace manager for multi-repo projects built on [Git worktrees](https://git-scm.com/docs/git-worktree). It groups repositories into named workspaces, using the same branch name across repositories, with isolated working directories. Work on multiple features across several repos in parallel — without disturbing your main checkouts or mixing changes across tasks.
+**Arborist** makes multi-repo development safe and simple. Built on [Git worktrees](https://git-scm.com/docs/git-worktree), it creates isolated workspaces that check out the same branch across repositories, so you can work on multiple cross-repo changes in parallel and stay in control.
 
 > **arborist** (noun) _ˈär-bə-rist_ — a specialist in the care and maintenance of trees
+
+## Mental model
+
+Git worktrees make it possible to check out multiple branches of the same repository at the same time, each in its own directory. Arborist builds on this by keeping a stable canonical clone of each repository and creating temporary workspaces for actual development. Each workspace represents one feature or issue. It creates a separate worktree for each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete.
 
 ## Getting started
 
@@ -17,9 +21,11 @@ cd arb
 source ~/.zshrc
 ```
 
-This puts `arb` on your PATH and sets up zsh tab completion.
+This puts `arb` on your PATH and sets up zsh tab completion. (Just run the installer again to upgrade.)
 
 ### Set up an arb root
+
+An arb root is the top-level directory that holds all your workspaces for a given project.
 
 Pick a directory to serve as the root and initialize it:
 
@@ -28,17 +34,19 @@ mkdir ~/my-project && cd ~/my-project
 arb init
 ```
 
-This creates the `.arb/` marker directory. Canonical clones go in `.arb/repos/`; workspaces are created as top-level directories.
+This creates the `.arb/` marker directory. Repository clones go in `.arb/repos/` and your workspaces are created as top-level directories.
 
-Now clone the repos you work with:
+### Clone some repos
+
+Now clone the repositories you work with in that project:
 
 ```bash
-arb clone git@github.com:acme/frontend.git
-arb clone git@github.com:acme/backend.git
-arb clone git@github.com:acme/shared.git
+arb clone https://github.com/example/frontend.git
+arb clone https://github.com/example/backend.git
+arb clone https://github.com/example/shared.git
 ```
 
-Each ends up in `.arb/repos/<name>`. These are permanent clones — you never work in them directly. Instead, arb creates worktrees that point back to them.
+Each repository ends up in `.arb/repos/<name>`. These are canonical clones — you never work in them directly. Instead, arb creates worktrees that point back to them.
 
 To see which repos have been cloned:
 
@@ -46,15 +54,19 @@ To see which repos have been cloned:
 arb repos
 ```
 
-### Create your first workspace
+## Day-to-day workflow
 
-Create a new workspace for each feature or issue you work on. A workspace ties together one or more repos under a shared feature branch:
+### Create a workspace for your task
+
+You will create a new workspace for each feature or issue you work on. A workspace ties together one or more repos under a shared feature branch:
 
 ```bash
 arb create fix-login frontend backend
 ```
 
-This creates the branch `fix-login` in `frontend` and `backend`, sets up worktrees under `fix-login/`, and configures push tracking.
+This creates a `fix-login` workspace, checks out a `fix-login` branch in `frontend` and `backend`, and creates separate working directories for each under `fix-login/`. The branches are created if they do not exist and set up with upstream tracking.
+
+_Tips_: Using an issue number or feature name as a workspace name is a good starting point.
 
 To include every cloned repo, use `--all-repos` (`-a`):
 
@@ -68,11 +80,17 @@ If you need a branch name that differs from the workspace name, pass `--branch` 
 arb create dark-mode --branch "feat/dark-mode" frontend shared
 ```
 
+By default, Arborist detects the default branch for each repo and uses it as the base for the feature branch. To stack branches on top of each other, use `--base`:
+
+```bash
+arb create auth-ui --base feat/auth --branch feat/auth-ui --all-repos
+```
+
 Running `arb create` without arguments prompts interactively for a name, branch, and repos.
 
-## Day-to-day workflow
+### Work in your repos as usual
 
-Each repo in a workspace is a regular Git worktree. You edit files, run builds, and use Git exactly as you normally would:
+Each directory in a workspace is a regular Git worktree. You edit files, run builds, and use Git exactly as you normally would:
 
 ```bash
 cd ~/my-project/fix-login/frontend
@@ -87,23 +105,29 @@ The commands below run from inside a workspace or worktree. You can also target 
 
 ### Check status
 
+Once you've made some changes, you can check the status of your workspace:
+
 ```bash
 arb status
 ```
 
-Shows each repo's position relative to the default branch, push status against origin, and local changes (staged, modified, untracked). Use `--dirty` (`-d`) to show only repos with uncommitted changes:
+This shows the state of each worktree — its state relative to the base branch, push status against origin, and any local changes (staged, modified, untracked). The active worktree (if you're currently inside one) is marked with `*`.
+
+Use `--dirty` (`-d`) to show only repos with uncommitted changes:
 
 ```bash
 arb status --dirty
 ```
 
-### Sync with origin
+### Stay in sync
 
-**`arb fetch`** fetches origin for every repo in parallel. Nothing is merged — use it to see what's changed before deciding what to do.
+There are several commands to sync your workspace with origin:
 
-**`arb pull`** pulls the feature branch from origin. Useful when a teammate has pushed to the same branch. Repos that haven't been pushed yet are skipped.
+**`arb fetch`** fetches origin for every repo without merging any changes. You can use it to see what's changed before deciding what to do. To speed things up, Arborist fetches all repositories in parallel.
 
-**`arb push`** pushes the feature branch to origin for every repo. Skips local repos and repos without upstream tracking.
+**`arb pull`** pulls the feature branch from origin. Useful when a teammate has pushed to the same branch. Repos that do not have a corresponding remote branch yet are skipped.
+
+**`arb push`** pushes the feature branch to origin for every repo. Skips repos without upstream tracking.
 
 ### Run commands across repos
 
@@ -112,16 +136,17 @@ arb exec git log --oneline -5
 arb exec npm install
 ```
 
-Runs the given command in each worktree sequentially. Use `--dirty` (`-d`) to run only in repos with uncommitted changes.
+Runs the given command in each worktree sequentially. It supports running interactive commands. Each execution of the command uses the corresponding worktree as working directory. Use `--dirty` (`-d`) to run only in repos with uncommitted changes.
 
 ### Open in your editor
 
 ```bash
-arb open code   # VS Code
-arb open idea   # IntelliJ IDEA
+arb open code   
+# expands to:
+# code /home/you/my-project/fix-login/frontend /home/you/my-project/fix-login/backend
 ```
 
-Runs the given command with all worktree directories as arguments — useful for opening them in an editor like VS Code. Use `--dirty` (`-d`) to only include repos with uncommitted changes.
+Runs the given command with all worktree directories as arguments — useful for opening them in an editor like VS Code. All directories are specified as absolute paths. Use `--dirty` (`-d`) to only include repos with uncommitted changes.
 
 ## Managing workspaces
 
@@ -131,16 +156,16 @@ Runs the given command with all worktree directories as arguments — useful for
 arb list
 ```
 
-The active workspace (the one you're currently inside) is marked with `*`.
+The active workspace (the one you're currently inside) is marked with `*`. Arborist shows `(empty)` for workspaces with no worktrees and `(config missing)` for broken workspaces.
 
 ### Navigate
 
-`arb path` prints the absolute path to the arb root, a workspace, or a worktree within a workspace:
+`arb path` prints the absolute path to the arb root, a workspace, or a worktree from anywhere below the arb root:
 
 ```bash
+arb path                       # /home/you/my-project (the arb root)
 arb path fix-login             # /home/you/my-project/fix-login
 arb path fix-login/frontend    # /home/you/my-project/fix-login/frontend
-arb path                       # /home/you/my-project (the arb root)
 ```
 
 ### Add and drop repos
@@ -156,6 +181,8 @@ To add all remaining repos at once, use `--all-repos` (`-a`):
 ```bash
 arb add --all-repos
 ```
+
+If the workspace was created with a non-default base branch, any new repos added to it will also be created on top of that branch.
 
 To remove a repo from a workspace without deleting the workspace itself:
 
@@ -201,33 +228,25 @@ arb remove fix-login dark-mode
 
 Running `arb remove` without arguments opens an interactive workspace picker.
 
-### Stacked branches
-
-To create a workspace that branches from a feature branch instead of the default branch, use `--base`:
-
-```bash
-arb create auth-ui --base feat/auth --branch feat/auth-ui --all-repos
-```
-
-The base branch is recorded in the workspace config (`.arbws/config`). When you later `arb add` repos, they also branch from the base. `arb status` compares against the base branch instead of the default.
-
 ## Tips
 
 ### Browsing the default branch
 
-To get a read-only view of the latest default-branch code across all repos:
+To view the latest default-branch code across all repos:
 
 ```bash
-arb create main --all-repos
+arb create main --all-repos  # assuming main is the default branch
 ```
+
+_Note_: Creating a workspace for the default branch works because Arborist keeps the canonical clones in detached HEAD state. 
 
 ### Working with AI agents
 
-When using Claude Code or other AI coding agents, start them from the workspace directory rather than an individual repo. This gives the agent visibility across all repos in the workspace.
+When using Claude Code or other AI coding agents, start them from the workspace directory rather than an individual worktree. This gives the agent visibility across all repos in the workspace.
 
 ### Multiple arb roots
 
-Each arb root is independent. Commands find the right one by walking up from the current directory looking for the `.arb/` marker:
+Each arb root is independent. Commands find the right one by walking up from the current directory looking for the `.arb/` marker. Feel free to create multiple roots for different projects:
 
 ```bash
 cd ~/project-a && arb init
