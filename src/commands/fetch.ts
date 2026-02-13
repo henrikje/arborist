@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { error, hint, info, warn } from "../lib/output";
+import { error, info, warn } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { classifyRepos } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
@@ -18,8 +18,6 @@ export function registerFetchCommand(program: Command, getCtx: () => ArbContext)
 			const { repos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
 
 			if (fetchDirs.length === 0 && localRepos.length === 0) {
-				hint("Check workspace status:  arb status");
-				hint("Pull feature branch:  arb pull");
 				return;
 			}
 
@@ -50,8 +48,6 @@ export function registerFetchCommand(program: Command, getCtx: () => ArbContext)
 			} else {
 				error(`Failed: ${fetchFailed.join(" ")}`);
 			}
-			hint("Check workspace status:  arb status");
-			hint("Pull feature branch:  arb pull");
 
 			if (fetchFailed.length > 0) process.exit(1);
 		});

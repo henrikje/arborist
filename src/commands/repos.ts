@@ -10,7 +10,7 @@ export function registerReposCommand(program: Command, getCtx: () => ArbContext)
 		.action(() => {
 			const ctx = getCtx();
 			for (const repo of listRepos(ctx.reposDir)) {
-				process.stdout.write(`${repo}\n`);
+				process.stdout.write(`  ${repo}\n`);
 			}
 		});
 }

@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, resolve } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { branchExistsLocally, getDefaultBranch, hasRemote, parseGitStatus, remoteBranchExists } from "../lib/git";
@@ -33,6 +33,17 @@ export async function runStatus(ctx: ArbContext, dirtyOnly: boolean): Promise<vo
 	const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 	const repoDirs = workspaceRepoDirs(wsDir);
 	let found = false;
+
+	// Detect current repo from cwd
+	const cwd = resolve(process.cwd());
+	let currentRepo: string | null = null;
+	for (const repoDir of repoDirs) {
+		const resolvedRepoDir = resolve(repoDir);
+		if (cwd === resolvedRepoDir || cwd.startsWith(`${resolvedRepoDir}/`)) {
+			currentRepo = basename(repoDir);
+			break;
+		}
+	}
 
 	for (const repoDir of repoDirs) {
 		const repo = basename(repoDir);
@@ -108,7 +119,8 @@ export async function runStatus(ctx: ArbContext, dirtyOnly: boolean): Promise<vo
 		found = true;
 
 		// Build output
-		let out = `  ${repo.padEnd(20)} `;
+		const marker = repo === currentRepo ? `${green("*")} ` : "  ";
+		let out = `${marker}${repo.padEnd(20)} `;
 
 		// vs origin/<default>
 		if (defaultBranch) {

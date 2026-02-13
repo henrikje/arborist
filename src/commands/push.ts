@@ -33,7 +33,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				// Check branch match
 				const bm = await checkBranchMatch(repoDir, branch);
 				if (!bm.matches) {
-					error(`  [${repo}] on branch ${bm.actual}, expected ${branch} — skipping`);
+					warn(`  [${repo}] on branch ${bm.actual}, expected ${branch} — skipping`);
 					continue;
 				}
 

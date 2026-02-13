@@ -31,7 +31,7 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 					}
 				}
 
-				boldLine(`  [${repo}]`);
+				boldLine(`==> ${repo} <==`);
 				const proc = Bun.spawn(args, {
 					cwd: repoDir,
 					stdout: "inherit",

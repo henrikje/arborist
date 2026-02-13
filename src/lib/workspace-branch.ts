@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { configGet } from "./config";
-import { hint, warn } from "./output";
+import { warn } from "./output";
 import { workspaceRepoDirs } from "./repos";
 
 export interface WorkspaceBranchResult {
@@ -28,7 +28,6 @@ export async function workspaceBranch(wsDir: string): Promise<WorkspaceBranchRes
 			if (branch) {
 				const wsName = basename(wsDir);
 				warn(`Config missing for ${wsName}, inferred branch '${branch}' from worktree`);
-				hint(`Repair config:  echo 'branch = ${branch}' > ${configFile}`);
 				return { branch, inferred: true };
 			}
 		}

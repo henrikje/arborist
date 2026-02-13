@@ -3,7 +3,7 @@ import input from "@inquirer/input";
 import type { Command } from "commander";
 import { writeConfig } from "../lib/config";
 import { validateBranchName, validateWorkspaceName } from "../lib/git";
-import { error, hint, info, warn } from "../lib/output";
+import { error, info, warn } from "../lib/output";
 import { listRepos, selectReposInteractive } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
 import { addWorktrees } from "../lib/worktrees";
@@ -121,7 +121,6 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 					if (result.skipped.length > 0) warn(`  skipped: ${result.skipped.join(" ")}`);
 					if (result.failed.length > 0) error(`  failed:  ${result.failed.join(" ")}`);
 				}
-				hint(`Enter the workspace:  arb cd ${name}`);
 			},
 		);
 }

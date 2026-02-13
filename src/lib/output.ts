@@ -48,20 +48,6 @@ export function boldLine(text: string): void {
 	process.stderr.write(`${bold(text)}\n`);
 }
 
-let hintShown = false;
-
-export function hint(text: string): void {
-	if (!hintShown) {
-		hintShown = true;
-		process.stderr.write("\n");
-	}
-	process.stderr.write(`${dim(text)}\n`);
-}
-
-export function resetHint(): void {
-	hintShown = false;
-}
-
 export function stderr(text: string): void {
 	process.stderr.write(text);
 }

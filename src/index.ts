@@ -1,6 +1,5 @@
 import { Command, type Help } from "commander";
 import { registerAddCommand } from "./commands/add";
-import { registerCdCommand } from "./commands/cd";
 import { registerCloneCommand } from "./commands/clone";
 import { registerCreateCommand } from "./commands/create";
 import { registerDropCommand } from "./commands/drop";
@@ -38,17 +37,6 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 	if (commandDescription.length > 0) {
 		const helpWidth = helper.helpWidth ?? 80;
 		output = output.concat([helper.boxWrap(helper.styleCommandDescription(commandDescription), helpWidth), ""]);
-	}
-
-	// Options
-	const optionList = helper.visibleOptions(cmd).map((option) => {
-		return callFormatItem(
-			helper.styleOptionTerm(helper.optionTerm(option)),
-			helper.styleOptionDescription(helper.optionDescription(option)),
-		);
-	});
-	if (optionList.length > 0) {
-		output = output.concat([helper.styleTitle("Options:"), ...optionList, ""]);
 	}
 
 	// Commands — split into three groups
@@ -107,6 +95,17 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 		]);
 	}
 
+	// Global Options (moved after commands)
+	const optionList = helper.visibleOptions(cmd).map((option) => {
+		return callFormatItem(
+			helper.styleOptionTerm(helper.optionTerm(option)),
+			helper.styleOptionDescription(helper.optionDescription(option)),
+		);
+	});
+	if (optionList.length > 0) {
+		output = output.concat([helper.styleTitle("Options:"), ...optionList, ""]);
+	}
+
 	return output.join("\n");
 }
 
@@ -146,7 +145,6 @@ registerCreateCommand(program, getCtx);
 registerRemoveCommand(program, getCtx);
 registerListCommand(program, getCtx);
 registerPathCommand(program, getCtx);
-registerCdCommand(program);
 registerAddCommand(program, getCtx);
 registerDropCommand(program, getCtx);
 registerStatusCommand(program, getCtx);

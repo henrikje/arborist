@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Command } from "commander";
 import { detectBaseDir } from "../lib/base-dir";
-import { error, hint, info } from "../lib/output";
+import { error, info } from "../lib/output";
 
 export function registerInitCommand(program: Command): void {
 	program
@@ -33,11 +33,5 @@ export function registerInitCommand(program: Command): void {
 			mkdirSync(`${target}/.arb/repos`, { recursive: true });
 
 			info(`Initialized arb in ${target}`);
-			process.stderr.write("\n");
-			if (path) {
-				hint(`Clone a repo:  cd ${path} && arb clone <url>`);
-			} else {
-				hint("Clone a repo:  arb clone <url>");
-			}
 		});
 }
