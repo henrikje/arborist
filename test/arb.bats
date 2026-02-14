@@ -274,12 +274,11 @@ teardown() {
     [[ "$output" == *"already exists"* ]]
 }
 
-@test "arb create with no repos and no --all-repos fails" {
+@test "arb create with no repos creates empty workspace" {
     run arb create no-repos-ws
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"No repos specified"* ]]
-    [[ "$output" == *"--all-repos"* ]]
-    [ ! -d "$TEST_DIR/project/no-repos-ws" ]
+    [ "$status" -eq 0 ]
+    [ -d "$TEST_DIR/project/no-repos-ws/.arbws" ]
+    [[ "$output" == *"No repos added"* ]]
 }
 
 @test "arb create without name fails" {

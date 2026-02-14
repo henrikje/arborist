@@ -40,6 +40,10 @@ export function registerDropCommand(program: Command, getCtx: () => ArbContext):
 					process.exit(1);
 				}
 				repos = await selectInteractive(currentRepos, "Select repos to drop");
+				if (repos.length === 0) {
+					error("No repos selected.");
+					process.exit(1);
+				}
 			}
 			const branch = await requireBranch(wsDir, workspace);
 

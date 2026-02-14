@@ -26,6 +26,11 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 			) => {
 				const ctx = getCtx();
 
+				if (listRepos(ctx.reposDir).length === 0) {
+					error("No repos found. Clone a repo first: arb clone <url>");
+					process.exit(1);
+				}
+
 				let name = nameArg;
 				if (!name) {
 					if (!process.stdin.isTTY) {
@@ -84,16 +89,11 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 					repos = listRepos(ctx.reposDir);
 				}
 
-				if (repos.length === 0) {
-					if (process.stdin.isTTY) {
-						try {
-							repos = await selectReposInteractive(ctx.reposDir);
-						} catch (e) {
-							error((e as Error).message);
-							process.exit(1);
-						}
-					} else {
-						error("No repos specified. List repos to include, or use --all-repos for all repos in this root.");
+				if (repos.length === 0 && process.stdin.isTTY) {
+					try {
+						repos = await selectReposInteractive(ctx.reposDir);
+					} catch (e) {
+						error((e as Error).message);
 						process.exit(1);
 					}
 				}
@@ -113,7 +113,10 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				}
 
 				process.stderr.write("\n");
-				if (result.failed.length === 0 && result.skipped.length === 0) {
+				if (repos.length === 0) {
+					success(`Created workspace ${name} on branch ${branch}`);
+					warn("No repos added. Use 'arb add' to add repos to this workspace.");
+				} else if (result.failed.length === 0 && result.skipped.length === 0) {
 					success(`Created workspace ${name} with ${result.created.length} worktree(s) on branch ${branch}`);
 				} else {
 					success(`Created workspace ${name} on branch ${branch}`);

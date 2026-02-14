@@ -213,6 +213,10 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 					process.exit(1);
 				}
 				names = await selectInteractive(workspaces, "Select workspaces to remove");
+				if (names.length === 0) {
+					error("No workspaces selected.");
+					process.exit(1);
+				}
 			}
 
 			for (const name of names) {

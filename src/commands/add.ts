@@ -40,6 +40,10 @@ export function registerAddCommand(program: Command, getCtx: () => ArbContext): 
 					process.exit(1);
 				}
 				repos = await selectInteractive(available, "Select repos to add");
+				if (repos.length === 0) {
+					error("No repos selected.");
+					process.exit(1);
+				}
 			}
 			const branch = await requireBranch(wsDir, workspace);
 			const base = configGet(`${wsDir}/.arbws/config`, "base") ?? undefined;

@@ -31,7 +31,7 @@ export function registerCloneCommand(program: Command, getCtx: () => ArbContext)
 				await Bun.$`git -C ${target} checkout --detach`.quiet().nothrow();
 				success(`Cloned repo ${repoName}`);
 			} else {
-				error("Clone failed");
+				error(`Clone failed: ${result.stderr.toString().trim()}`);
 				process.exit(1);
 			}
 		});

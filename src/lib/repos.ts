@@ -41,22 +41,14 @@ export async function selectInteractive(items: string[], message: string): Promi
 			message: `Only option: ${items[0]}. Include it?`,
 			default: true,
 		});
-		if (!yes) {
-			throw new Error("Aborted");
-		}
-		return items;
+		return yes ? items : [];
 	}
 
-	const selected = await checkbox({
+	return checkbox({
 		message,
 		choices: items.map((name) => ({ name, value: name })),
 		pageSize: 20,
 	});
-
-	if (selected.length === 0) {
-		throw new Error("No items selected");
-	}
-	return selected;
 }
 
 export async function selectReposInteractive(reposDir: string): Promise<string[]> {
