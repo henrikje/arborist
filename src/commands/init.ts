@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Command } from "commander";
 import { detectBaseDir } from "../lib/base-dir";
-import { error, info } from "../lib/output";
+import { error, success } from "../lib/output";
 
 export function registerInitCommand(program: Command): void {
 	program
@@ -32,6 +32,6 @@ export function registerInitCommand(program: Command): void {
 
 			mkdirSync(`${target}/.arb/repos`, { recursive: true });
 
-			info(`Initialized arb in ${target}`);
+			success(`Initialized arb in ${target}`);
 		});
 }

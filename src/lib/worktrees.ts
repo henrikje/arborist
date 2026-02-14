@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { branchExistsLocally, getDefaultBranch, hasRemote, isRepoDirty, remoteBranchExists } from "./git";
-import { error, info, warn } from "./output";
+import { error, inlineResult, inlineStart, warn } from "./output";
 import { type FetchResult, parallelFetch } from "./parallel-fetch";
 
 export interface AddWorktreesResult {
@@ -117,28 +117,30 @@ export async function addWorktrees(
 		await Bun.$`git -C ${repoPath} worktree prune`.quiet().nothrow();
 
 		if (branchExists) {
-			process.stderr.write(`  [${repo}] attaching existing branch ${branch}... `);
+			inlineStart(repo, `attaching branch ${branch}`);
 			const wt = await Bun.$`git -C ${repoPath} worktree add ${wsDir}/${repo} ${branch}`.quiet().nothrow();
 			if (wt.exitCode !== 0) {
-				error("failed");
+				inlineResult(repo, "failed");
 				const errText = wt.stderr.toString().trim();
 				if (errText) error(`    ${errText}`);
 				result.failed.push(repo);
 				continue;
 			}
+			inlineResult(repo, `branch ${branch} attached`);
 		} else {
 			const startPoint = repoHasRemote ? `origin/${effectiveBase}` : effectiveBase;
-			process.stderr.write(`  [${repo}] creating branch ${branch} off ${startPoint}... `);
+			inlineStart(repo, `creating branch ${branch} from ${startPoint}`);
 			const wt = await Bun.$`git -C ${repoPath} worktree add -b ${branch} ${wsDir}/${repo} ${startPoint}`
 				.quiet()
 				.nothrow();
 			if (wt.exitCode !== 0) {
-				error("failed");
+				inlineResult(repo, "failed");
 				const errText = wt.stderr.toString().trim();
 				if (errText) error(`    ${errText}`);
 				result.failed.push(repo);
 				continue;
 			}
+			inlineResult(repo, `branch ${branch} created from ${startPoint}`);
 		}
 
 		// Set upstream so `git push` works without -u on first push
@@ -147,7 +149,6 @@ export async function addWorktrees(
 			await Bun.$`git -C ${wsDir}/${repo} config branch.${branch}.merge refs/heads/${branch}`.quiet().nothrow();
 		}
 
-		info("ok");
 		result.created.push(repo);
 	}
 

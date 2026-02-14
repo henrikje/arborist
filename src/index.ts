@@ -7,10 +7,12 @@ import { registerExecCommand } from "./commands/exec";
 import { registerFetchCommand } from "./commands/fetch";
 import { registerInitCommand } from "./commands/init";
 import { registerListCommand } from "./commands/list";
+import { registerMergeCommand } from "./commands/merge";
 import { registerOpenCommand } from "./commands/open";
 import { registerPathCommand } from "./commands/path";
 import { registerPullCommand } from "./commands/pull";
 import { registerPushCommand } from "./commands/push";
+import { registerRebaseCommand } from "./commands/rebase";
 import { registerRemoveCommand } from "./commands/remove";
 import { registerReposCommand } from "./commands/repos";
 import { registerStatusCommand } from "./commands/status";
@@ -20,7 +22,18 @@ import type { ArbContext } from "./lib/types";
 import { ARB_VERSION } from "./version";
 
 const SETUP_COMMANDS = new Set(["init", "clone", "repos", "help"]);
-const WORKTREE_COMMANDS = new Set(["add", "drop", "status", "fetch", "pull", "push", "exec", "open"]);
+const WORKTREE_COMMANDS = new Set([
+	"add",
+	"drop",
+	"status",
+	"fetch",
+	"pull",
+	"push",
+	"rebase",
+	"merge",
+	"exec",
+	"open",
+]);
 
 function arbFormatHelp(cmd: Command, helper: Help): string {
 	const termWidth = helper.padWidth(cmd, helper);
@@ -151,6 +164,8 @@ registerStatusCommand(program, getCtx);
 registerFetchCommand(program, getCtx);
 registerPullCommand(program, getCtx);
 registerPushCommand(program, getCtx);
+registerRebaseCommand(program, getCtx);
+registerMergeCommand(program, getCtx);
 registerExecCommand(program, getCtx);
 registerOpenCommand(program, getCtx);
 

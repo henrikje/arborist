@@ -1446,7 +1446,7 @@ SCRIPT
     git -C "$TEST_DIR/project/my-feature/repo-a" add conflict.txt >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "local" >/dev/null 2>&1
 
-    run arb pull
+    run arb pull --yes
     # repo-b should still have been attempted
     [[ "$output" == *"repo-b"* ]]
 }
@@ -1458,11 +1458,11 @@ SCRIPT
     # Manually switch repo-a to a different branch
     git -C "$TEST_DIR/project/my-feature/repo-a" checkout -b experiment >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    run arb pull
-    [[ "$output" == *"[repo-a] on branch experiment, expected my-feature"* ]]
-    [[ "$output" == *"skipping"* ]]
-    # repo-b should still be pulled
-    [[ "$output" == *"[repo-b] pulling my-feature"* ]]
+    run arb pull --yes
+    [[ "$output" == *"on branch experiment, expected my-feature"* ]]
+    [[ "$output" == *"skipped"* ]]
+    # repo-b should still appear in plan
+    [[ "$output" == *"repo-b"* ]]
 }
 
 @test "arb pull without workspace context fails" {
@@ -1479,7 +1479,7 @@ SCRIPT
     git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    run arb push
+    run arb push --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"Pushed"* ]]
     # Verify the branch exists on the remote
@@ -1491,18 +1491,19 @@ SCRIPT
     setup_local_repo
     arb create push-ws local-lib
     cd "$TEST_DIR/project/push-ws"
-    run arb push
+    run arb push --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"local repo"* ]]
-    [[ "$output" == *"skipping"* ]]
+    [[ "$output" == *"skipped"* ]]
 }
 
 @test "arb push skips repo on wrong branch" {
     arb create my-feature repo-a repo-b
     git -C "$TEST_DIR/project/my-feature/repo-a" checkout -b experiment >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    run arb push
-    [[ "$output" == *"[repo-a] on branch experiment, expected my-feature"* ]]
+    run arb push --yes
+    [[ "$output" == *"on branch experiment, expected my-feature"* ]]
+    [[ "$output" == *"skipped"* ]]
 }
 
 @test "arb push without workspace context fails" {
@@ -1738,10 +1739,10 @@ setup_local_repo() {
     setup_local_repo
     arb create local-ws local-lib
     cd "$TEST_DIR/project/local-ws"
-    run arb pull
+    run arb pull --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"local repo"* ]]
-    [[ "$output" == *"skipping"* ]]
+    [[ "$output" == *"skipped"* ]]
 }
 
 @test "arb remove cleans up local repo without attempting remote operations" {
@@ -1774,7 +1775,7 @@ setup_local_repo() {
     [[ "$output" == *"repo-a"* ]]
 
     # pull skips local
-    run arb pull
+    run arb pull --yes
     [ "$status" -eq 0 ]
 }
 
@@ -1950,5 +1951,502 @@ delete_workspace_config() {
     local branch
     branch="$(git -C "$TEST_DIR/project/stacked/repo-b" branch --show-current)"
     [ "$branch" = "feat/stacked" ]
+}
+
+# ── rebase ───────────────────────────────────────────────────────
+
+@test "arb rebase rebases feature branch onto updated base" {
+    arb create my-feature repo-a repo-b
+
+    # Push a commit to main on origin for repo-a
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream change" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb rebase --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Rebased"* ]]
+
+    # Verify the upstream commit is now reachable from the feature branch
+    run git -C "$TEST_DIR/project/my-feature/repo-a" log --oneline
+    [[ "$output" == *"upstream change"* ]]
+}
+
+@test "arb rebase shows up to date when nothing to do" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb rebase --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"up to date"* ]]
+}
+
+@test "arb rebase skips dirty repos" {
+    arb create my-feature repo-a
+
+    # Push upstream change
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    # Make worktree dirty
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb rebase --yes
+    [[ "$output" == *"skipped"* ]]
+    [[ "$output" == *"uncommitted changes"* ]]
+}
+
+@test "arb rebase skips wrong branch" {
+    arb create my-feature repo-a
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    git -C "$TEST_DIR/project/my-feature/repo-a" checkout -b experiment >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb rebase --yes
+    [[ "$output" == *"skipped"* ]]
+    [[ "$output" == *"expected my-feature"* ]]
+}
+
+@test "arb rebase conflict stops and shows instructions" {
+    arb create my-feature repo-a repo-b
+
+    # Create conflicting changes
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/conflict.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add conflict.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature change" >/dev/null 2>&1
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream-conflict" > conflict.txt && git add conflict.txt && git commit -m "upstream conflict" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb rebase repo-a repo-b --yes
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"conflict"* ]]
+    [[ "$output" == *"git rebase --continue"* ]]
+    [[ "$output" == *"git rebase --abort"* ]]
+}
+
+@test "arb rebase with specific repos only processes those repos" {
+    arb create my-feature repo-a repo-b
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb rebase repo-a --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Rebased 1 repo(s)"* ]]
+    # repo-b should not appear in output
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb rebase --yes skips confirmation" {
+    arb create my-feature repo-a
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb rebase --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Rebased"* ]]
+}
+
+@test "arb rebase non-TTY without --yes errors" {
+    arb create my-feature repo-a
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    # Pipe to force non-TTY
+    run bash -c 'echo "" | arb rebase'
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Not a terminal"* ]] || [[ "$output" == *"--yes"* ]]
+}
+
+@test "arb rebase with --fetch fetches before rebasing" {
+    arb create my-feature repo-a
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    # Don't fetch manually — let --fetch do it
+    run arb rebase --fetch --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Fetching"* ]]
+    [[ "$output" == *"Rebased"* ]]
+}
+
+@test "arb rebase with custom base branch" {
+    # Create a base branch with a commit
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+
+    # Push a new commit to feat/auth on origin
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout feat/auth && echo "new-auth" > new-auth.txt && git add new-auth.txt && git commit -m "new auth commit" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/stacked"
+    arb fetch >/dev/null 2>&1
+    run arb rebase --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"rebase onto feat/auth"* ]]
+    [[ "$output" == *"Rebased"* ]]
+
+    # Verify the upstream commit is reachable
+    run git -C "$TEST_DIR/project/stacked/repo-a" log --oneline
+    [[ "$output" == *"new auth commit"* ]]
+}
+
+@test "arb rebase skips in-progress operation" {
+    arb create my-feature repo-a
+
+    # Create conflicting changes for a manual rebase
+    echo "base" > "$TEST_DIR/project/my-feature/repo-a/conflict.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add conflict.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "base" >/dev/null 2>&1
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream-conflict" > conflict.txt && git add conflict.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    # Start a rebase that will conflict
+    git -C "$TEST_DIR/project/my-feature/repo-a" rebase origin/main >/dev/null 2>&1 || true
+
+    run arb rebase --yes
+    [[ "$output" == *"skipped"* ]]
+    [[ "$output" == *"rebase in progress"* ]]
+}
+
+# ── merge ────────────────────────────────────────────────────────
+
+@test "arb merge merges base branch into feature branch" {
+    arb create my-feature repo-a repo-b
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream change" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb merge --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Merged"* ]]
+
+    # Verify merge commit exists
+    run git -C "$TEST_DIR/project/my-feature/repo-a" log --oneline
+    [[ "$output" == *"upstream change"* ]]
+}
+
+@test "arb merge shows up to date when nothing to do" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb merge --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"up to date"* ]]
+}
+
+@test "arb merge conflict shows merge instructions" {
+    arb create my-feature repo-a
+
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/conflict.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add conflict.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature change" >/dev/null 2>&1
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream-conflict" > conflict.txt && git add conflict.txt && git commit -m "upstream conflict" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb merge repo-a --yes
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"conflict"* ]]
+    [[ "$output" == *"git merge --continue"* ]]
+    [[ "$output" == *"git merge --abort"* ]]
+}
+
+# ── pull (plan+confirm) ─────────────────────────────────────────
+
+@test "arb pull --yes skips confirmation" {
+    arb create my-feature repo-a
+    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "change" > file.txt && git add file.txt && git commit -m "change" && git push -u origin my-feature) >/dev/null 2>&1
+
+    # Push a new commit from another clone
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pulled"* ]]
+    [[ "$output" == *"to pull"* ]]
+}
+
+@test "arb pull shows plan before pulling" {
+    arb create my-feature repo-a repo-b
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"up to date"* ]]
+}
+
+# ── push (plan+confirm) ─────────────────────────────────────────
+
+@test "arb push --yes skips confirmation" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pushed"* ]]
+    [[ "$output" == *"to push"* ]]
+}
+
+@test "arb push shows plan before pushing" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    echo "more" > "$TEST_DIR/project/my-feature/repo-a/file2.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file2.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "more" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"1 commit"* ]]
+    [[ "$output" == *"Pushed"* ]]
+}
+
+# ── push [repos...] and --force ─────────────────────────────────
+
+@test "arb push repo-a --yes only pushes named repo" {
+    arb create my-feature repo-a repo-b
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
+    echo "change" > "$TEST_DIR/project/my-feature/repo-b/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-b" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" commit -m "change" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push repo-a --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pushed 1 repo(s)"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb push --force pushes diverged repo after rebase" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Push an upstream change to main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    # Rebase the feature branch
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    arb rebase --yes >/dev/null 2>&1
+
+    # Now push with --force
+    run arb push --force --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"force"* ]]
+    [[ "$output" == *"Pushed"* ]]
+}
+
+@test "arb push skips diverged repo without --force" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Push upstream change and rebase
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    arb rebase --yes >/dev/null 2>&1
+
+    # Push without --force should skip
+    run arb push --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"diverged from origin"* ]]
+    [[ "$output" == *"--force"* ]]
+}
+
+@test "arb push -f short flag works" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    arb rebase --yes >/dev/null 2>&1
+
+    run arb push -f --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pushed"* ]]
+}
+
+@test "arb push nonexistent repo errors" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb push nonexistent-repo --yes
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not in this workspace"* ]]
+}
+
+@test "arb push --force on non-diverged repo does normal push" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push --force --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pushed"* ]]
+}
+
+# ── pull [repos...] ─────────────────────────────────────────────
+
+@test "arb pull repo-a --yes only pulls named repo" {
+    arb create my-feature repo-a repo-b
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
+
+    # Push a remote commit to repo-a
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone-a" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone-a" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull repo-a --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pulled 1 repo(s)"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb pull nonexistent repo errors" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull nonexistent-repo --yes
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not in this workspace"* ]]
+}
+
+# ── rebase+push end-to-end ──────────────────────────────────────
+
+@test "arb rebase then push --force end-to-end" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb rebase --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Rebased"* ]]
+
+    run arb push --force --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pushed"* ]]
+
+    # Verify remote has both commits
+    run git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch origin my-feature
+    run git -C "$TEST_DIR/project/.arb/repos/repo-a" log --oneline origin/my-feature
+    [[ "$output" == *"feature"* ]]
+    [[ "$output" == *"upstream"* ]]
+}
+
+# ── pull --rebase / --merge ──────────────────────────────────────
+
+@test "arb pull defaults to merge mode in plan and result" {
+    arb create my-feature repo-a
+    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "change" > file.txt && git add file.txt && git commit -m "change" && git push -u origin my-feature) >/dev/null 2>&1
+
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"to pull (merge)"* ]]
+    [[ "$output" == *"(merge)"* ]]
+}
+
+@test "arb pull detects rebase from pull.rebase config" {
+    arb create my-feature repo-a
+    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "change" > file.txt && git add file.txt && git commit -m "change" && git push -u origin my-feature) >/dev/null 2>&1
+
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
+
+    git -C "$TEST_DIR/project/my-feature/repo-a" config pull.rebase true
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"to pull (rebase)"* ]]
+    [[ "$output" == *"(rebase)"* ]]
+}
+
+@test "arb pull --rebase forces rebase mode" {
+    arb create my-feature repo-a
+    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "change" > file.txt && git add file.txt && git commit -m "change" && git push -u origin my-feature) >/dev/null 2>&1
+
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --rebase --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"to pull (rebase)"* ]]
+    [[ "$output" == *"(rebase)"* ]]
+}
+
+@test "arb pull --merge forces merge mode" {
+    arb create my-feature repo-a
+    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "change" > file.txt && git add file.txt && git commit -m "change" && git push -u origin my-feature) >/dev/null 2>&1
+
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
+
+    # Set rebase in config, but --merge flag should override
+    git -C "$TEST_DIR/project/my-feature/repo-a" config pull.rebase true
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --merge --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"to pull (merge)"* ]]
+    [[ "$output" == *"(merge)"* ]]
+}
+
+@test "arb pull --rebase --merge errors" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --rebase --merge --yes
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot use both --rebase and --merge"* ]]
 }
 

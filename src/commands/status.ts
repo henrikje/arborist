@@ -382,7 +382,7 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 	if (repo.base && repo.base.ahead > 0) {
 		const commits = await getCommitsBetween(repoDir, `origin/${repo.base.name}`, "HEAD");
 		if (commits.length > 0) {
-			let section = `\n${SECTION_INDENT}${dim(`Ahead of ${repo.base.name}:`)}\n`;
+			let section = `\n${SECTION_INDENT}Ahead of ${repo.base.name}:\n`;
 			for (const c of commits) {
 				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
 			}
@@ -394,7 +394,7 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 	if (repo.base && repo.base.behind > 0) {
 		const commits = await getCommitsBetween(repoDir, "HEAD", `origin/${repo.base.name}`);
 		if (commits.length > 0) {
-			let section = `\n${SECTION_INDENT}${dim(`Behind ${repo.base.name}:`)}\n`;
+			let section = `\n${SECTION_INDENT}Behind ${repo.base.name}:\n`;
 			for (const c of commits) {
 				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
 			}
@@ -407,7 +407,7 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 		const trackRef = repo.origin.trackingBranch ?? `origin/${repo.branch.actual}`;
 		const commits = await getCommitsBetween(repoDir, trackRef, "HEAD");
 		if (commits.length > 0) {
-			let section = `\n${SECTION_INDENT}${dim("Unpushed to origin:")}\n`;
+			let section = `\n${SECTION_INDENT}Unpushed to origin:\n`;
 			for (const c of commits) {
 				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
 			}
@@ -420,25 +420,25 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 		const files = await parseGitStatusFiles(repoDir);
 
 		if (files.staged.length > 0) {
-			let section = `\n${SECTION_INDENT}${green("Changes to be committed:")}\n`;
+			let section = `\n${SECTION_INDENT}Changes to be committed:\n`;
 			for (const f of files.staged) {
-				section += `${ITEM_INDENT}${green(formatFileChange(f))}\n`;
+				section += `${ITEM_INDENT}${formatFileChange(f)}\n`;
 			}
 			sections.push(section);
 		}
 
 		if (files.unstaged.length > 0) {
-			let section = `\n${SECTION_INDENT}${yellow("Changes not staged for commit:")}\n`;
+			let section = `\n${SECTION_INDENT}Changes not staged for commit:\n`;
 			for (const f of files.unstaged) {
-				section += `${ITEM_INDENT}${yellow(formatFileChange(f))}\n`;
+				section += `${ITEM_INDENT}${formatFileChange(f)}\n`;
 			}
 			sections.push(section);
 		}
 
 		if (files.untracked.length > 0) {
-			let section = `\n${SECTION_INDENT}${yellow("Untracked files:")}\n`;
+			let section = `\n${SECTION_INDENT}Untracked files:\n`;
 			for (const f of files.untracked) {
-				section += `${ITEM_INDENT}${yellow(f)}\n`;
+				section += `${ITEM_INDENT}${f}\n`;
 			}
 			sections.push(section);
 		}

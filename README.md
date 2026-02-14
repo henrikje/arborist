@@ -6,7 +6,7 @@
 
 ## Mental model
 
-Git worktrees make it possible to check out multiple branches of the same repository at the same time, each in its own directory. Arborist builds on this by keeping a stable canonical clone of each repository and creating temporary workspaces for actual development. Each workspace represents one feature or issue. It creates a separate worktree for each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete.
+Git worktrees make it possible to check out multiple branches of the same repository at the same time, each in its own directory. Arborist builds on this by keeping a stable canonical clone of each repository and creating temporary workspaces for actual development. Each workspace represents one feature or issue. It contains a separate worktree for each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete.
 
 ## Getting started
 
@@ -149,15 +149,50 @@ Fetches origin for every repo without merging any changes. You can use it to see
 
 ```bash
 arb pull
+arb pull repo-a
 ```
 
-Pulls the feature branch from origin. Useful when a teammate has pushed to the same branch. Repos that do not have a corresponding remote branch yet are skipped.
+Pulls the feature branch from origin for all repos, or only the named repos. Shows a plan of what will happen, then asks for confirmation. Repos that do not have a corresponding remote branch yet are skipped. Use `--rebase` or `--merge` to override the pull strategy; by default, arb detects the strategy from your Git config. Use `--yes` (`-y`) to skip confirmation.
 
 ```bash
 arb push
+arb push repo-a
+arb push --force
 ```
 
-Pushes the feature branch to origin for every repo. Skips repos without upstream tracking.
+Pushes the feature branch to origin for all repos, or only the named repos. Shows a plan of what will happen, then asks for confirmation. Skips repos without upstream tracking. Use `--force` (`-f`) to force push with lease — needed after rebasing or amending commits. Use `--yes` (`-y`) to skip confirmation.
+
+### Integrate base branch changes
+
+When the base branch has moved forward (e.g. teammates merged PRs to `main`),
+bring those changes into your feature branches:
+
+```bash
+arb rebase
+arb rebase repo-a
+```
+
+Rebases all repos by default, or only the named repos. Shows a plan of what
+will happen, then asks for confirmation. Repos with uncommitted changes or that
+are already up to date are skipped. Use `--fetch` to fetch before rebasing and
+`--yes` (`-y`) to skip confirmation.
+
+If a rebase conflicts, arb stops and shows instructions. Resolve the conflict
+with git, then re-run `arb rebase` for the remaining repos.
+
+After rebasing, your branches will have diverged from origin. Force push to update:
+
+```bash
+arb push --force
+```
+
+If you prefer merge commits over rebasing:
+
+```bash
+arb merge
+```
+
+Same workflow, but uses `git merge` instead of `git rebase`.
 
 ### Run commands across repos
 

@@ -11,7 +11,7 @@ import {
 	remoteBranchExists,
 	validateWorkspaceName,
 } from "../lib/git";
-import { error, green, info, red, warn, yellow } from "../lib/output";
+import { error, green, inlineResult, inlineStart, red, success, warn, yellow } from "../lib/output";
 import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import { type RepoStatus, gatherRepoStatus } from "../lib/status";
 import type { ArbContext } from "../lib/types";
@@ -156,7 +156,7 @@ async function removeWorkspace(
 
 	// Remove worktrees and branches
 	for (const repo of repos) {
-		process.stderr.write(`  [${repo}] removing... `);
+		inlineStart(repo, "removing");
 
 		await git(`${ctx.reposDir}/${repo}`, "worktree", "remove", "--force", `${wsDir}/${repo}`);
 
@@ -168,13 +168,13 @@ async function removeWorkspace(
 			if (await remoteBranchExists(`${ctx.reposDir}/${repo}`, branch)) {
 				const pushResult = await git(`${ctx.reposDir}/${repo}`, "push", "origin", "--delete", branch);
 				if (pushResult.exitCode !== 0) {
-					warn("ok (failed to delete remote)");
+					inlineResult(repo, "removed (failed to delete remote)");
 					continue;
 				}
 			}
 		}
 
-		info("ok");
+		inlineResult(repo, "removed");
 	}
 
 	// Clean up workspace directory
@@ -186,7 +186,7 @@ async function removeWorkspace(
 	}
 
 	process.stderr.write("\n");
-	info(`Removed workspace ${name}`);
+	success(`Removed workspace ${name}`);
 }
 
 export function registerRemoveCommand(program: Command, getCtx: () => ArbContext): void {

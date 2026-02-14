@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { error, info } from "../lib/output";
+import { error, success } from "../lib/output";
 import type { ArbContext } from "../lib/types";
 
 export function registerCloneCommand(program: Command, getCtx: () => ArbContext): void {
@@ -29,7 +29,7 @@ export function registerCloneCommand(program: Command, getCtx: () => ArbContext)
 			const result = await Bun.$`git clone ${url} ${target}`.quiet().nothrow();
 			if (result.exitCode === 0) {
 				await Bun.$`git -C ${target} checkout --detach`.quiet().nothrow();
-				info(`Cloned repo ${repoName}`);
+				success(`Cloned repo ${repoName}`);
 			} else {
 				error("Clone failed");
 				process.exit(1);

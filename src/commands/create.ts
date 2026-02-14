@@ -3,7 +3,7 @@ import input from "@inquirer/input";
 import type { Command } from "commander";
 import { writeConfig } from "../lib/config";
 import { validateBranchName, validateWorkspaceName } from "../lib/git";
-import { error, info, warn } from "../lib/output";
+import { error, info, success, warn } from "../lib/output";
 import { listRepos, selectReposInteractive } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
 import { addWorktrees } from "../lib/worktrees";
@@ -114,9 +114,9 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 
 				process.stderr.write("\n");
 				if (result.failed.length === 0 && result.skipped.length === 0) {
-					info(`Created workspace ${name} with ${result.created.length} worktree(s) on branch ${branch}`);
+					success(`Created workspace ${name} with ${result.created.length} worktree(s) on branch ${branch}`);
 				} else {
-					info(`Created workspace ${name} on branch ${branch}`);
+					success(`Created workspace ${name} on branch ${branch}`);
 					if (result.created.length > 0) info(`  added:   ${result.created.join(" ")}`);
 					if (result.skipped.length > 0) warn(`  skipped: ${result.skipped.join(" ")}`);
 					if (result.failed.length > 0) error(`  failed:  ${result.failed.join(" ")}`);

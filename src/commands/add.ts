@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
-import { error, info, warn } from "../lib/output";
+import { error, info, success, warn } from "../lib/output";
 import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -48,7 +48,7 @@ export function registerAddCommand(program: Command, getCtx: () => ArbContext): 
 
 			process.stderr.write("\n");
 			if (result.failed.length === 0 && result.skipped.length === 0) {
-				info(`Added ${result.created.length} repo(s) to ${ctx.currentWorkspace}`);
+				success(`Added ${result.created.length} repo(s) to ${ctx.currentWorkspace}`);
 			} else {
 				if (result.created.length > 0) info(`  added:   ${result.created.join(" ")}`);
 				if (result.skipped.length > 0) warn(`  skipped: ${result.skipped.join(" ")}`);

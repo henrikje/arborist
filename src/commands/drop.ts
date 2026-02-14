@@ -2,7 +2,7 @@ import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { branchExistsLocally, git, isRepoDirty } from "../lib/git";
-import { error, info, warn } from "../lib/output";
+import { error, inlineResult, inlineStart, success, warn } from "../lib/output";
 import { selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -65,7 +65,7 @@ export function registerDropCommand(program: Command, getCtx: () => ArbContext):
 					}
 				}
 
-				process.stderr.write(`  [${repo}] removing worktree... `);
+				inlineStart(repo, "removing worktree");
 				const removeArgs = ["worktree", "remove"];
 				if (options.force) removeArgs.push("--force");
 				removeArgs.push(wtPath);
@@ -75,19 +75,19 @@ export function registerDropCommand(program: Command, getCtx: () => ArbContext):
 					rmSync(wtPath, { recursive: true, force: true });
 					await git(`${ctx.reposDir}/${repo}`, "worktree", "prune");
 				}
-				info("ok");
+				inlineResult(repo, "removed");
 
 				if (options.deleteBranch) {
 					if (await isRepoDirty(`${ctx.reposDir}/${repo}`)) {
 						warn(`  [${repo}] canonical repo has uncommitted changes`);
 					}
 					if (await branchExistsLocally(`${ctx.reposDir}/${repo}`, branch)) {
-						process.stderr.write(`  [${repo}] deleting branch ${branch}... `);
+						inlineStart(repo, `deleting branch ${branch}`);
 						const delResult = await git(`${ctx.reposDir}/${repo}`, "branch", "-d", branch);
 						if (delResult.exitCode === 0) {
-							info("ok");
+							inlineResult(repo, "branch deleted");
 						} else {
-							warn("failed (branch not fully merged, use git branch -D to force)");
+							warn(`  [${repo}] failed (branch not fully merged, use git branch -D to force)`);
 						}
 					}
 				}
@@ -96,7 +96,7 @@ export function registerDropCommand(program: Command, getCtx: () => ArbContext):
 			}
 
 			process.stderr.write("\n");
-			if (dropped.length > 0) info(`Dropped ${dropped.length} repo(s) from ${ctx.currentWorkspace}`);
+			if (dropped.length > 0) success(`Dropped ${dropped.length} repo(s) from ${ctx.currentWorkspace}`);
 			if (skipped.length > 0) warn(`Skipped: ${skipped.join(" ")}`);
 		});
 }

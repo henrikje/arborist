@@ -3,6 +3,7 @@ import { basename, join } from "node:path";
 import checkbox from "@inquirer/checkbox";
 import confirm from "@inquirer/confirm";
 import { hasRemote } from "./git";
+import { error } from "./output";
 
 export function listWorkspaces(baseDir: string): string[] {
 	return readdirSync(baseDir)
@@ -64,6 +65,27 @@ export async function selectReposInteractive(reposDir: string): Promise<string[]
 		throw new Error("No repos found. Clone a repo first: arb clone <url>");
 	}
 	return selectInteractive(repos, "Select repos to include");
+}
+
+export function resolveRepoSelection(wsDir: string, repoArgs: string[]): string[] {
+	const allRepoNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
+
+	if (allRepoNames.length === 0) {
+		error("No repos in this workspace.");
+		process.exit(1);
+	}
+
+	if (repoArgs.length > 0) {
+		for (const repo of repoArgs) {
+			if (!allRepoNames.includes(repo)) {
+				error(`Repo '${repo}' is not in this workspace.`);
+				process.exit(1);
+			}
+		}
+		return repoArgs;
+	}
+
+	return allRepoNames;
 }
 
 export async function classifyRepos(

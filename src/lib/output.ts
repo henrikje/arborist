@@ -32,8 +32,12 @@ export function dim(text: string): string {
 	return color(DIM, text);
 }
 
-export function info(text: string): void {
+export function success(text: string): void {
 	process.stderr.write(`${green(text)}\n`);
+}
+
+export function info(text: string): void {
+	process.stderr.write(`${text}\n`);
 }
 
 export function warn(text: string): void {
@@ -46,6 +50,20 @@ export function error(text: string): void {
 
 export function boldLine(text: string): void {
 	process.stderr.write(`${bold(text)}\n`);
+}
+
+export function inlineStart(repo: string, verb: string): void {
+	if (isTTY()) {
+		process.stderr.write(`  [${repo}] ${verb}...`);
+	}
+}
+
+export function inlineResult(repo: string, text: string): void {
+	if (isTTY()) {
+		process.stderr.write(`\r\x1B[2K  [${repo}] ${text}\n`);
+	} else {
+		process.stderr.write(`  [${repo}] ${text}\n`);
+	}
 }
 
 export function stderr(text: string): void {

@@ -2,9 +2,11 @@
 
 ## Project Overview
 
-Arb is a workspace manager for multi-repo projects. It uses Git worktrees to let developers work on multiple features across several repositories in parallel. Built with Bun and TypeScript.
+Arborist (`arb`) is a workspace manager for multi-repo projects. It uses Git worktrees to let developers work on multiple features across several repositories in parallel. Built with Bun and TypeScript.
 
 Key concepts: an `.arb/` marker directory lives at the project root, canonical repos are cloned into `.arb/repos/` (kept in detached HEAD state), and workspaces are top-level directories containing git worktrees on feature branches.
+
+Must read [GUIDELINES.md](GUIDELINES.md) before making changes. It documents the design principles, UX conventions, and architectural patterns that all code must follow.
 
 ## Commands
 
@@ -42,7 +44,7 @@ Each command exports a `register*Command(program, getCtx)` function. The `getCtx
 - **`config.ts`** — INI-style config reader/writer for `.arbws/config` files (`key = value` format)
 - **`parallel-fetch.ts`** — concurrent git fetch with configurable timeout (`ARB_FETCH_TIMEOUT` env var, default 120s)
 - **`workspace-context.ts`** — `requireWorkspace()` and `requireBranch()` helpers that exit on missing context
-- **`output.ts`** — TTY-aware colored output helpers; `info/warn/error/hint` write to stderr, `stdout` writes to stdout
+- **`output.ts`** — TTY-aware colored output helpers; `success/info/warn/error` write to stderr, `stdout` writes to stdout, `inlineStart/inlineResult` for progress lines
 
 ### Testing
 
