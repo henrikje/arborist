@@ -135,7 +135,7 @@ describe("git repo functions", () => {
 
 	describe("parseGitStatus", () => {
 		test("returns zeros when clean", async () => {
-			expect(await parseGitStatus(repoDir)).toEqual({ staged: 0, modified: 0, untracked: 0 });
+			expect(await parseGitStatus(repoDir)).toEqual({ staged: 0, modified: 0, untracked: 0, conflicts: 0 });
 		});
 
 		test("counts untracked files", async () => {

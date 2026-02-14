@@ -5,16 +5,15 @@ import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import {
 	branchExistsLocally,
-	getDefaultBranch,
 	git,
 	hasRemote,
 	isRepoDirty,
-	parseGitStatus,
 	remoteBranchExists,
 	validateWorkspaceName,
 } from "../lib/git";
 import { error, green, info, red, warn, yellow } from "../lib/output";
 import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
+import { type RepoStatus, gatherRepoStatus } from "../lib/status";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
 
@@ -56,74 +55,75 @@ async function removeWorkspace(
 		return;
 	}
 
-	// Per-repo status gathering
-	const repoStatuses: string[] = [];
+	// Per-repo status gathering using shared logic
+	const repoStatuses: RepoStatus[] = [];
+	for (const repo of repos) {
+		const wtPath = `${wsDir}/${repo}`;
+		repoStatuses.push(await gatherRepoStatus(wtPath, ctx.reposDir, branch, configBase));
+	}
+
+	// Check canonical repos for dirt
+	const canonicalDirtyMap = new Map<string, boolean>();
+	for (const repo of repos) {
+		const repoPath = `${ctx.reposDir}/${repo}`;
+		canonicalDirtyMap.set(repo, await isRepoDirty(repoPath));
+	}
+
+	// Determine at-risk repos and collect remote repos
 	let hasAtRisk = false;
 	let atRiskCount = 0;
 	const remoteRepos: string[] = [];
 	let deleteRemote = options.deleteRemote ?? false;
 
-	for (const repo of repos) {
-		const wtPath = `${wsDir}/${repo}`;
-		let unpushed = 0;
-		let notPushedAtAll = false;
-		let _hasRemoteBranch = false;
-
-		// Parse git status
-		const { staged, modified, untracked } = await parseGitStatus(wtPath);
-
-		// Check canonical repo for uncommitted changes
-		const repoPath = `${ctx.reposDir}/${repo}`;
-		const canonicalDirty = await isRepoDirty(repoPath);
-
-		// Push status
+	for (const status of repoStatuses) {
+		const repoPath = `${ctx.reposDir}/${status.name}`;
 		if (await hasRemote(repoPath)) {
-			if (await remoteBranchExists(repoPath, branch)) {
-				_hasRemoteBranch = true;
-				remoteRepos.push(repo);
-				const lr = await git(wtPath, "rev-list", "--left-right", "--count", `origin/${branch}...HEAD`);
-				if (lr.exitCode === 0) {
-					const parts = lr.stdout.trim().split(/\s+/);
-					unpushed = Number.parseInt(parts[1] ?? "0", 10);
-				}
-			} else {
-				// Only flag as "not pushed" if the branch has unique commits
-				const defaultBranch = configBase ?? (await getDefaultBranch(repoPath));
-				if (defaultBranch) {
-					const ahead = await git(wtPath, "rev-list", "--count", `origin/${defaultBranch}..HEAD`);
-					if (ahead.exitCode === 0 && Number.parseInt(ahead.stdout.trim(), 10) > 0) {
-						notPushedAtAll = true;
-					}
-				}
+			if (status.origin.pushed) {
+				remoteRepos.push(status.name);
 			}
 		}
 
-		// Determine at-risk status
-		const atRisk = staged > 0 || modified > 0 || untracked > 0 || unpushed > 0 || notPushedAtAll;
+		const isDirty = status.local.staged > 0 || status.local.modified > 0 || status.local.untracked > 0;
+		const isUnpushed = !status.origin.local && (!status.origin.pushed || status.origin.ahead > 0);
+		const canonicalDirty = canonicalDirtyMap.get(status.name) ?? false;
+
+		// Check if branch has unique commits but was never pushed
+		let notPushedWithCommits = false;
+		if (!status.origin.local && !status.origin.pushed && status.base && status.base.ahead > 0) {
+			notPushedWithCommits = true;
+		}
+
+		const atRisk = isDirty || isUnpushed || notPushedWithCommits || canonicalDirty;
 		if (atRisk) {
 			hasAtRisk = true;
 			atRiskCount++;
 		}
+	}
 
-		// Build status description
+	// Display status table
+	const maxRepoLen = Math.max(...repos.map((r) => r.length));
+	process.stderr.write("\n");
+	for (const status of repoStatuses) {
+		const canonicalDirty = canonicalDirtyMap.get(status.name) ?? false;
+		const notPushedWithCommits = !status.origin.local && !status.origin.pushed && status.base && status.base.ahead > 0;
+
 		const parts = [
-			staged > 0 && green(`${staged} staged`),
-			modified > 0 && yellow(`${modified} modified`),
-			untracked > 0 && yellow(`${untracked} untracked`),
+			status.local.staged > 0 && green(`${status.local.staged} staged`),
+			status.local.modified > 0 && yellow(`${status.local.modified} modified`),
+			status.local.untracked > 0 && yellow(`${status.local.untracked} untracked`),
 			canonicalDirty && yellow("canonical repo dirty"),
-			notPushedAtAll ? red("not pushed at all") : unpushed > 0 && yellow(`${unpushed} commits not pushed`),
+			notPushedWithCommits
+				? red("not pushed at all")
+				: status.origin.pushed && status.origin.ahead > 0
+					? yellow(`${status.origin.ahead} commits not pushed`)
+					: !status.origin.local && !status.origin.pushed && false,
 		]
 			.filter(Boolean)
 			.join(", ");
 
-		repoStatuses.push(parts || green("\u2714 clean, pushed"));
+		const display = parts || green("\u2714 clean, pushed");
+		process.stderr.write(`  ${status.name.padEnd(maxRepoLen)} ${display}\n`);
 	}
-
-	// Display status table
-	process.stderr.write("\n");
-	repos.forEach((repo, i) => {
-		process.stderr.write(`  ${repo.padEnd(20)} ${repoStatuses[i]}\n`);
-	});
 	process.stderr.write("\n");
 
 	if (hasAtRisk) {

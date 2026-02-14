@@ -75,9 +75,9 @@ export async function isRepoDirty(repoDir: string): Promise<boolean> {
 
 export async function parseGitStatus(
 	repoDir: string,
-): Promise<{ staged: number; modified: number; untracked: number }> {
+): Promise<{ staged: number; modified: number; untracked: number; conflicts: number }> {
 	const result = await git(repoDir, "status", "--porcelain");
-	if (result.exitCode !== 0) return { staged: 0, modified: 0, untracked: 0 };
+	if (result.exitCode !== 0) return { staged: 0, modified: 0, untracked: 0, conflicts: 0 };
 	return result.stdout
 		.split("\n")
 		.filter(Boolean)
@@ -86,12 +86,86 @@ export async function parseGitStatus(
 				const x = line[0];
 				const y = line[1];
 				if (x === "?") acc.untracked++;
-				else {
+				else if (x === "U" || y === "U" || (x === "A" && y === "A") || (x === "D" && y === "D")) {
+					acc.conflicts++;
+				} else {
 					if (x !== " " && x !== "?") acc.staged++;
 					if (y !== " " && y !== "?") acc.modified++;
 				}
 				return acc;
 			},
-			{ staged: 0, modified: 0, untracked: 0 },
+			{ staged: 0, modified: 0, untracked: 0, conflicts: 0 },
 		);
+}
+
+export interface FileChange {
+	file: string;
+	type: "new file" | "modified" | "deleted" | "renamed" | "copied";
+}
+
+function stagedType(code: string): FileChange["type"] {
+	switch (code) {
+		case "A":
+			return "new file";
+		case "M":
+			return "modified";
+		case "D":
+			return "deleted";
+		case "R":
+			return "renamed";
+		case "C":
+			return "copied";
+		default:
+			return "modified";
+	}
+}
+
+function unstagedType(code: string): FileChange["type"] {
+	switch (code) {
+		case "D":
+			return "deleted";
+		default:
+			return "modified";
+	}
+}
+
+export async function parseGitStatusFiles(
+	repoDir: string,
+): Promise<{ staged: FileChange[]; unstaged: FileChange[]; untracked: string[] }> {
+	const result = await git(repoDir, "status", "--porcelain");
+	const staged: FileChange[] = [];
+	const unstaged: FileChange[] = [];
+	const untracked: string[] = [];
+	if (result.exitCode !== 0) return { staged, unstaged, untracked };
+	for (const line of result.stdout.split("\n").filter(Boolean)) {
+		const x = line[0];
+		const y = line[1];
+		const file = line.slice(3);
+		if (x === "?") {
+			untracked.push(file);
+		} else {
+			if (x && x !== " " && x !== "?") staged.push({ file, type: stagedType(x) });
+			if (y && y !== " " && y !== "?") unstaged.push({ file, type: unstagedType(y) });
+		}
+	}
+	return { staged, unstaged, untracked };
+}
+
+export async function getCommitsBetween(
+	repoDir: string,
+	ref1: string,
+	ref2: string,
+): Promise<{ hash: string; subject: string }[]> {
+	const result = await git(repoDir, "log", "--oneline", `${ref1}..${ref2}`);
+	if (result.exitCode !== 0) return [];
+	return result.stdout
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => {
+			const spaceIdx = line.indexOf(" ");
+			return {
+				hash: line.slice(0, spaceIdx),
+				subject: line.slice(spaceIdx + 1),
+			};
+		});
 }

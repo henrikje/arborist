@@ -1,159 +1,455 @@
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import type { Command } from "commander";
-import { configGet } from "../lib/config";
-import { branchExistsLocally, getDefaultBranch, hasRemote, parseGitStatus, remoteBranchExists } from "../lib/git";
-import { dim, green, red, yellow } from "../lib/output";
-import { workspaceRepoDirs } from "../lib/repos";
+import { type FileChange, getCommitsBetween, parseGitStatusFiles } from "../lib/git";
+import { dim, green, yellow } from "../lib/output";
+import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
+import { classifyRepos } from "../lib/repos";
+import { type RepoStatus, type WorkspaceSummary, gatherWorkspaceSummary, getVerdict } from "../lib/status";
 import type { ArbContext } from "../lib/types";
-import { workspaceBranch } from "../lib/workspace-branch";
 import { requireWorkspace } from "../lib/workspace-context";
 
 export function registerStatusCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("status")
-		.option("-d, --dirty", "Only show dirty repos")
+		.option("-d, --dirty", "Only show repos with local changes")
+		.option("-r, --at-risk", "Only show repos that need attention")
+		.option("-f, --fetch", "Fetch from all remotes before showing status")
+		.option("--verbose", "Show file-level detail for each repo")
+		.option("--json", "Output structured JSON")
 		.summary("Show workspace status")
 		.description(
-			"Show each worktree's position relative to the default branch, push status against origin, and local changes (staged, modified, untracked). Use --dirty to only show worktrees with uncommitted changes.",
+			"Show each worktree's position relative to the default branch, push status against origin, and local changes (staged, modified, untracked). Use --dirty to only show worktrees with uncommitted changes. Use --at-risk to only show repos that need attention (unpushed, drifted, dirty, etc). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
 		)
-		.action(async (options: { dirty?: boolean }) => {
-			const ctx = getCtx();
-			requireWorkspace(ctx);
-			await runStatus(ctx, options.dirty ?? false);
-		});
+		.action(
+			async (options: {
+				dirty?: boolean;
+				atRisk?: boolean;
+				fetch?: boolean;
+				verbose?: boolean;
+				json?: boolean;
+			}) => {
+				const ctx = getCtx();
+				requireWorkspace(ctx);
+				const code = await runStatus(ctx, options);
+				process.exit(code);
+			},
+		);
 }
 
-export async function runStatus(ctx: ArbContext, dirtyOnly: boolean): Promise<void> {
+// 7-column cell data for width measurement (plain text, no ANSI)
+interface CellData {
+	repo: string;
+	branch: string;
+	baseName: string;
+	baseDiff: string;
+	remoteName: string;
+	remoteDiff: string;
+	local: string;
+}
+
+async function runStatus(
+	ctx: ArbContext,
+	options: { dirty?: boolean; atRisk?: boolean; fetch?: boolean; verbose?: boolean; json?: boolean },
+): Promise<number> {
 	const wsDir = `${ctx.baseDir}/${ctx.currentWorkspace}`;
 
-	// Read expected branch from config
-	let configBranch: string | null = null;
-	const wb = await workspaceBranch(wsDir);
-	if (wb) configBranch = wb.branch;
-	const configBase = configGet(`${wsDir}/.arbws/config`, "base");
-	const repoDirs = workspaceRepoDirs(wsDir);
-	let found = false;
+	// Fetch if requested
+	if (options.fetch) {
+		const { repos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
+		const results = await parallelFetch(fetchDirs);
+		const failed = reportFetchFailures(repos, localRepos, results);
+		if (failed.length > 0) return 1;
+	}
+
+	const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir);
+
+	// JSON output
+	if (options.json) {
+		process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+		return hasIssues(summary) ? 1 : 0;
+	}
+
+	// Filter dirty if requested
+	let repos = summary.repos;
+	if (options.dirty) {
+		repos = repos.filter(
+			(r) => r.local.staged > 0 || r.local.modified > 0 || r.local.untracked > 0 || r.local.conflicts > 0,
+		);
+	}
+	if (options.atRisk) {
+		repos = repos.filter((r) => isAtRisk(r, summary));
+	}
+
+	if (repos.length === 0) {
+		process.stdout.write("  (no repos)\n");
+		return 0;
+	}
 
 	// Detect current repo from cwd
 	const cwd = resolve(process.cwd());
 	let currentRepo: string | null = null;
-	for (const repoDir of repoDirs) {
-		const resolvedRepoDir = resolve(repoDir);
-		if (cwd === resolvedRepoDir || cwd.startsWith(`${resolvedRepoDir}/`)) {
-			currentRepo = basename(repoDir);
+	for (const repo of repos) {
+		const repoDir = resolve(`${wsDir}/${repo.name}`);
+		if (cwd === repoDir || cwd.startsWith(`${repoDir}/`)) {
+			currentRepo = repo.name;
 			break;
 		}
 	}
 
-	for (const repoDir of repoDirs) {
-		const repo = basename(repoDir);
-		const repoPath = `${ctx.reposDir}/${repo}`;
+	// Pass 1: compute plain-text cells and track max widths
+	const cells: CellData[] = [];
+	let maxRepo = 0;
+	let maxBranch = 0;
+	let maxBaseName = 0;
+	let maxBaseDiff = 0;
+	let maxRemoteName = 0;
+	let maxRemoteDiff = 0;
 
-		// Branch name
-		const branchResult = await Bun.$`git -C ${repoDir} branch --show-current`.quiet().nothrow();
-		const branch = branchResult.exitCode === 0 ? branchResult.text().trim() : "?";
+	for (const repo of repos) {
+		const cell = plainCells(repo);
+		cells.push(cell);
+		if (cell.repo.length > maxRepo) maxRepo = cell.repo.length;
+		if (cell.branch.length > maxBranch) maxBranch = cell.branch.length;
+		if (cell.baseName.length > maxBaseName) maxBaseName = cell.baseName.length;
+		if (cell.baseDiff.length > maxBaseDiff) maxBaseDiff = cell.baseDiff.length;
+		if (cell.remoteName.length > maxRemoteName) maxRemoteName = cell.remoteName.length;
+		if (cell.remoteDiff.length > maxRemoteDiff) maxRemoteDiff = cell.remoteDiff.length;
+	}
 
-		// Base branch: workspace config takes priority if it exists in this repo
-		const repoHasRemote = await hasRemote(repoPath);
-		let defaultBranch: string | null = null;
-		if (configBase) {
-			const baseExists = repoHasRemote
-				? await remoteBranchExists(repoPath, configBase)
-				: await branchExistsLocally(repoPath, configBase);
-			if (baseExists) {
-				defaultBranch = configBase;
-			}
-		}
-		if (!defaultBranch) {
-			defaultBranch = await getDefaultBranch(repoPath);
-		}
+	// Ensure minimum widths for header labels
+	if (maxRepo < 4) maxRepo = 4; // "REPO"
+	if (maxBranch < 6) maxBranch = 6; // "BRANCH"
+	// BASE group must fit "BASE" (4 chars), ORIGIN group must fit "ORIGIN" (6 chars)
+	// Each group = name + 2sp + diff. Expand the diff column if needed.
+	if (maxBaseName + 2 + maxBaseDiff < 4) maxBaseDiff = Math.max(maxBaseDiff, 4 - maxBaseName - 2);
+	if (maxRemoteName + 2 + maxRemoteDiff < 6) maxRemoteDiff = Math.max(maxRemoteDiff, 6 - maxRemoteName - 2);
 
-		// Ahead/behind default branch
-		let mainAhead = 0;
-		let mainBehind = 0;
-		if (defaultBranch) {
-			const compareRef = repoHasRemote ? `origin/${defaultBranch}` : defaultBranch;
-			const lr = await Bun.$`git -C ${repoDir} rev-list --left-right --count ${compareRef}...HEAD`.quiet().nothrow();
-			if (lr.exitCode === 0) {
-				const parts = lr.text().trim().split(/\s+/);
-				mainBehind = Number.parseInt(parts[0] ?? "0", 10);
-				mainAhead = Number.parseInt(parts[1] ?? "0", 10);
-			}
-		}
+	// Header line
+	const baseGroupWidth = maxBaseName + 2 + maxBaseDiff;
+	const remoteGroupWidth = maxRemoteName + 2 + maxRemoteDiff;
+	let header = `  ${dim("REPO")}${" ".repeat(maxRepo - 4)}`;
+	header += `    ${dim("BRANCH")}${" ".repeat(maxBranch - 6)}`;
+	header += `    ${dim("BASE")}${" ".repeat(baseGroupWidth - 4)}`;
+	header += `    ${dim("ORIGIN")}${" ".repeat(remoteGroupWidth - 6)}`;
+	header += `    ${dim("LOCAL")}`;
+	process.stdout.write(`${header}\n`);
 
-		// Push status vs origin/<branch>
-		let pushStatus: string;
-		if (!repoHasRemote) {
-			pushStatus = dim("local");
-		} else if (await remoteBranchExists(repoDir, branch)) {
-			const pushLr = await Bun.$`git -C ${repoDir} rev-list --left-right --count origin/${branch}...HEAD`
-				.quiet()
-				.nothrow();
-			let pushAhead = 0;
-			let pushBehind = 0;
-			if (pushLr.exitCode === 0) {
-				const parts = pushLr.text().trim().split(/\s+/);
-				pushBehind = Number.parseInt(parts[0] ?? "0", 10);
-				pushAhead = Number.parseInt(parts[1] ?? "0", 10);
-			}
-			if (pushAhead === 0 && pushBehind === 0) {
-				pushStatus = green("in sync");
-			} else {
-				pushStatus = yellow(
-					[pushAhead > 0 && `${pushAhead} to push`, pushBehind > 0 && `${pushBehind} to pull`]
-						.filter(Boolean)
-						.join(", "),
-				);
-			}
+	// Pass 2: render with colors and padding
+	for (let i = 0; i < repos.length; i++) {
+		const repo = repos[i];
+		const cell = cells[i];
+		if (!repo || !cell) continue;
+
+		const isActive = repo.name === currentRepo;
+		const risk = isAtRisk(repo, summary);
+
+		// Col 1: Repo name
+		const marker = isActive ? `${green("*")} ` : "  ";
+		const repoName = risk ? yellow(repo.name) : repo.name;
+		const repoPad = maxRepo - cell.repo.length;
+
+		// Col 2: Current branch
+		const branchText = repo.branch.detached ? "(detached)" : repo.branch.actual;
+		const branchColored = repo.branch.drifted ? yellow(branchText) : branchText;
+		const branchPad = maxBranch - cell.branch.length;
+
+		// Col 3: Base name
+		let baseNameColored: string;
+		if (cell.baseName) {
+			const baseFellBack = summary.base !== null && repo.base !== null && repo.base.name !== summary.base;
+			baseNameColored = baseFellBack ? yellow(cell.baseName) : cell.baseName;
 		} else {
-			pushStatus = yellow("not pushed");
+			baseNameColored = "";
+		}
+		const baseNamePad = maxBaseName - cell.baseName.length;
+
+		// Col 4: Base diff
+		const baseDiffColored = cell.baseDiff;
+		const baseDiffPad = maxBaseDiff - cell.baseDiff.length;
+
+		// Col 5: Remote name
+		let remoteNameColored: string;
+		if (repo.origin.local) {
+			remoteNameColored = cell.remoteName;
+		} else if (repo.branch.detached) {
+			remoteNameColored = yellow(cell.remoteName);
+		} else if (cell.remoteName) {
+			const expectedTracking = `origin/${repo.branch.actual}`;
+			const isUnexpected = repo.origin.trackingBranch !== null && repo.origin.trackingBranch !== expectedTracking;
+			remoteNameColored = isUnexpected || repo.branch.drifted ? yellow(cell.remoteName) : cell.remoteName;
+		} else {
+			remoteNameColored = "";
+		}
+		const remoteNamePad = maxRemoteName - cell.remoteName.length;
+
+		// Col 6: Remote diff
+		let remoteDiffColored: string;
+		if (cell.remoteDiff === "aligned") {
+			remoteDiffColored = cell.remoteDiff;
+		} else if (cell.remoteDiff === "no remote" || (repo.origin.ahead === 0 && repo.origin.behind > 0)) {
+			remoteDiffColored = cell.remoteDiff;
+		} else if (repo.origin.ahead > 0) {
+			remoteDiffColored = yellow(cell.remoteDiff);
+		} else {
+			remoteDiffColored = cell.remoteDiff;
+		}
+		const remoteDiffPad = maxRemoteDiff - cell.remoteDiff.length;
+
+		// Col 7: Local changes
+		const localColored = colorLocal(repo);
+
+		// Assemble line with grouping: [repo]  4sp  [branch]  4sp  [baseName  2sp  baseDiff]  4sp  [remoteName  2sp  remoteDiff]  4sp  [local]
+		let line = `${marker}${repoName}${" ".repeat(repoPad)}`;
+		line += `    ${branchColored}${" ".repeat(branchPad)}`;
+
+		// Base group (name + diff)
+		if (cell.baseName) {
+			line += `    ${baseNameColored}${" ".repeat(baseNamePad)}  ${baseDiffColored}${" ".repeat(baseDiffPad)}`;
+		} else {
+			line += " ".repeat(4 + maxBaseName + 2 + maxBaseDiff);
 		}
 
-		// Parse porcelain status
-		const { staged, modified, untracked } = await parseGitStatus(repoDir);
-
-		if (dirtyOnly && staged === 0 && modified === 0 && untracked === 0) {
-			continue;
+		// Remote group (name + diff)
+		if (repo.origin.local) {
+			// Local repos: columns 5-6 collapse to "local"
+			line += `    ${remoteNameColored}${" ".repeat(remoteNamePad + 2 + maxRemoteDiff)}`;
+		} else if (repo.branch.detached) {
+			// Detached: show "detached" with no diff
+			line += `    ${remoteNameColored}${" ".repeat(remoteNamePad + 2 + maxRemoteDiff)}`;
+		} else {
+			line += `    ${remoteNameColored}${" ".repeat(remoteNamePad)}`;
+			if (cell.remoteDiff) {
+				line += `  ${remoteDiffColored}${" ".repeat(remoteDiffPad)}`;
+			} else {
+				line += " ".repeat(2 + maxRemoteDiff);
+			}
 		}
 
-		found = true;
+		// Local changes
+		line += `    ${localColored}`;
 
-		// Build output
-		const marker = repo === currentRepo ? `${green("*")} ` : "  ";
-		let out = `${marker}${repo.padEnd(20)} `;
+		process.stdout.write(`${line}\n`);
 
-		// vs origin/<default>
-		if (defaultBranch) {
-			const mainParts = [mainAhead > 0 && green(`${mainAhead} ahead`), mainBehind > 0 && red(`${mainBehind} behind`)]
-				.filter(Boolean)
-				.join(" ");
-			out += mainParts ? `${defaultBranch}: ${mainParts}  ` : `${defaultBranch}: ${green("even")}  `;
+		// Verbose detail
+		if (options.verbose) {
+			await printVerboseDetail(repo, wsDir);
+			if (i < repos.length - 1) {
+				process.stdout.write("\n");
+			}
 		}
-
-		// vs origin/<branch>
-		out += `remote: ${pushStatus}`;
-
-		// Working tree details
-		const wtParts = [
-			staged > 0 && green(`${staged} staged`),
-			modified > 0 && yellow(`${modified} modified`),
-			untracked > 0 && yellow(`${untracked} untracked`),
-		]
-			.filter(Boolean)
-			.join(", ");
-		if (wtParts) {
-			out += `  local: ${wtParts}`;
-		}
-
-		// Branch drift warning
-		if (configBranch && branch !== configBranch) {
-			out += `  ${red(`on branch ${branch}, expected ${configBranch}`)}`;
-		}
-
-		process.stdout.write(`${out}\n`);
 	}
 
-	if (!found) {
-		process.stdout.write("  (no repos)\n");
+	return hasIssues(summary) ? 1 : 0;
+}
+
+function hasIssues(summary: WorkspaceSummary): boolean {
+	return summary.repos.some((r) => {
+		const v = getVerdict(r);
+		return v !== "ok" && v !== "local";
+	});
+}
+
+// At-risk check: repo has unique content that could be lost
+function isAtRisk(repo: RepoStatus, summary: WorkspaceSummary): boolean {
+	return (
+		repo.branch.detached ||
+		repo.operation !== null ||
+		repo.local.conflicts > 0 ||
+		(!repo.origin.local && !repo.origin.pushed && repo.base !== null && repo.base.ahead > 0) ||
+		repo.origin.ahead > 0 ||
+		repo.local.staged > 0 ||
+		repo.local.modified > 0 ||
+		repo.local.untracked > 0 ||
+		repo.branch.drifted ||
+		(summary.base !== null && repo.base !== null && repo.base.name !== summary.base) ||
+		(!repo.origin.local &&
+			repo.origin.trackingBranch !== null &&
+			repo.origin.trackingBranch !== `origin/${repo.branch.actual}`)
+	);
+}
+
+// Plain-text cell computation (no ANSI codes) for width measurement
+
+function plainCells(repo: RepoStatus): CellData {
+	// Col 1: repo name
+	const repoName = repo.name;
+
+	// Col 2: branch
+	const branch = repo.branch.detached ? "(detached)" : repo.branch.actual;
+
+	// Col 3: base name
+	const baseName = repo.base ? repo.base.name : "";
+
+	// Col 4: base diff
+	let baseDiff = "";
+	if (repo.base) {
+		if (repo.branch.detached) {
+			baseDiff = "";
+		} else {
+			baseDiff = plainBaseDiff(repo.base);
+		}
 	}
+
+	// Col 5: remote name
+	let remoteName: string;
+	if (repo.origin.local) {
+		remoteName = "local";
+	} else if (repo.branch.detached) {
+		remoteName = "detached";
+	} else if (repo.origin.trackingBranch) {
+		remoteName = repo.origin.trackingBranch;
+	} else {
+		remoteName = `origin/${repo.branch.actual}`;
+	}
+
+	// Col 6: remote diff
+	let remoteDiff = "";
+	if (!repo.origin.local && !repo.branch.detached) {
+		remoteDiff = plainRemoteDiff(repo);
+	}
+
+	// Col 7: local
+	const local = plainLocal(repo);
+
+	return { repo: repoName, branch, baseName, baseDiff, remoteName, remoteDiff, local };
+}
+
+function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
+	const parts = [base.ahead > 0 && `${base.ahead} ahead`, base.behind > 0 && `${base.behind} behind`]
+		.filter(Boolean)
+		.join(", ");
+	return parts || "aligned";
+}
+
+function plainRemoteDiff(repo: RepoStatus): string {
+	if (!repo.origin.pushed) return "no remote";
+	if (repo.origin.ahead === 0 && repo.origin.behind === 0) return "aligned";
+	const parts = [
+		repo.origin.ahead > 0 && `${repo.origin.ahead} to push`,
+		repo.origin.behind > 0 && `${repo.origin.behind} to pull`,
+	]
+		.filter(Boolean)
+		.join(", ");
+	return parts;
+}
+
+function plainLocal(repo: RepoStatus): string {
+	const parts = [
+		repo.local.conflicts > 0 && `${repo.local.conflicts} conflicts`,
+		repo.local.staged > 0 && `${repo.local.staged} staged`,
+		repo.local.modified > 0 && `${repo.local.modified} modified`,
+		repo.local.untracked > 0 && `${repo.local.untracked} untracked`,
+	]
+		.filter(Boolean)
+		.join(", ");
+	if (!parts) {
+		const suffix = repo.operation ? ` (${repo.operation})` : "";
+		return `clean${suffix}`;
+	}
+	if (repo.operation) return `${parts} (${repo.operation})`;
+	return parts;
+}
+
+// Colored helpers
+
+function colorLocal(repo: RepoStatus): string {
+	const parts: string[] = [];
+	if (repo.local.conflicts > 0) parts.push(`${repo.local.conflicts} conflicts`);
+	if (repo.local.staged > 0) parts.push(`${repo.local.staged} staged`);
+	if (repo.local.modified > 0) parts.push(`${repo.local.modified} modified`);
+	if (repo.local.untracked > 0) parts.push(`${repo.local.untracked} untracked`);
+
+	if (parts.length === 0) {
+		const suffix = repo.operation ? yellow(` (${repo.operation})`) : "";
+		return `clean${suffix}`;
+	}
+
+	const text = parts.join(", ");
+	if (repo.operation) return `${yellow(text)} ${yellow(`(${repo.operation})`)}`;
+	return yellow(text);
+}
+
+// Verbose output with git-status-style sections
+
+const SECTION_INDENT = "      ";
+const ITEM_INDENT = "          ";
+
+async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void> {
+	const repoDir = `${wsDir}/${repo.name}`;
+	const sections: string[] = [];
+
+	// Ahead of base
+	if (repo.base && repo.base.ahead > 0) {
+		const commits = await getCommitsBetween(repoDir, `origin/${repo.base.name}`, "HEAD");
+		if (commits.length > 0) {
+			let section = `\n${SECTION_INDENT}${dim(`Ahead of ${repo.base.name}:`)}\n`;
+			for (const c of commits) {
+				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
+			}
+			sections.push(section);
+		}
+	}
+
+	// Behind base
+	if (repo.base && repo.base.behind > 0) {
+		const commits = await getCommitsBetween(repoDir, "HEAD", `origin/${repo.base.name}`);
+		if (commits.length > 0) {
+			let section = `\n${SECTION_INDENT}${dim(`Behind ${repo.base.name}:`)}\n`;
+			for (const c of commits) {
+				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
+			}
+			sections.push(section);
+		}
+	}
+
+	// Unpushed to origin
+	if (repo.origin.pushed && repo.origin.ahead > 0) {
+		const trackRef = repo.origin.trackingBranch ?? `origin/${repo.branch.actual}`;
+		const commits = await getCommitsBetween(repoDir, trackRef, "HEAD");
+		if (commits.length > 0) {
+			let section = `\n${SECTION_INDENT}${dim("Unpushed to origin:")}\n`;
+			for (const c of commits) {
+				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
+			}
+			sections.push(section);
+		}
+	}
+
+	// File-level detail
+	if (repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0) {
+		const files = await parseGitStatusFiles(repoDir);
+
+		if (files.staged.length > 0) {
+			let section = `\n${SECTION_INDENT}${green("Changes to be committed:")}\n`;
+			for (const f of files.staged) {
+				section += `${ITEM_INDENT}${green(formatFileChange(f))}\n`;
+			}
+			sections.push(section);
+		}
+
+		if (files.unstaged.length > 0) {
+			let section = `\n${SECTION_INDENT}${yellow("Changes not staged for commit:")}\n`;
+			for (const f of files.unstaged) {
+				section += `${ITEM_INDENT}${yellow(formatFileChange(f))}\n`;
+			}
+			sections.push(section);
+		}
+
+		if (files.untracked.length > 0) {
+			let section = `\n${SECTION_INDENT}${yellow("Untracked files:")}\n`;
+			for (const f of files.untracked) {
+				section += `${ITEM_INDENT}${yellow(f)}\n`;
+			}
+			sections.push(section);
+		}
+	}
+
+	for (const section of sections) {
+		process.stdout.write(section);
+	}
+}
+
+function formatFileChange(fc: FileChange): string {
+	const typeWidth = 12;
+	return `${`${fc.type}:`.padEnd(typeWidth)}${fc.file}`;
 }

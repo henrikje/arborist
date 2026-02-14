@@ -604,6 +604,65 @@ teardown() {
     [ -z "$output" ]
 }
 
+@test "arb list shows repo count" {
+    arb create ws-one repo-a repo-b
+    run arb list
+    [[ "$output" == *"2"* ]]
+}
+
+@test "arb list shows unpushed status" {
+    arb create ws-one repo-a
+    run arb list
+    [[ "$output" == *"1 unpushed"* ]]
+}
+
+@test "arb list shows ok status when pushed" {
+    arb create ws-one repo-a
+    echo "change" > "$TEST_DIR/project/ws-one/repo-a/f.txt"
+    git -C "$TEST_DIR/project/ws-one/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/ws-one/repo-a" commit -m "commit" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/ws-one/repo-a" push -u origin ws-one >/dev/null 2>&1
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && git fetch origin) >/dev/null 2>&1
+    run arb list
+    [[ "$output" == *"ok"* ]]
+}
+
+@test "arb list shows UPPERCASE headers" {
+    arb create ws-one repo-a
+    run arb list
+    [[ "$output" == *"WORKSPACE"* ]]
+    [[ "$output" == *"BRANCH"* ]]
+    [[ "$output" == *"REPOS"* ]]
+    [[ "$output" == *"STATUS"* ]]
+}
+
+@test "arb list shows branch name" {
+    arb create ws-one --branch feat/payments repo-a
+    run arb list
+    [[ "$output" == *"feat/payments"* ]]
+}
+
+@test "arb list shows BASE column for stacked workspaces" {
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+    arb create normal repo-b
+    run arb list
+    [[ "$output" == *"BASE"* ]]
+    [[ "$output" == *"feat/auth"* ]]
+}
+
+@test "arb list hides BASE column when no stacked workspaces" {
+    arb create ws-one repo-a
+    run arb list
+    [[ "$output" != *"BASE"* ]]
+}
+
 # ── path ─────────────────────────────────────────────────────────
 
 @test "arb path returns correct path" {
@@ -646,18 +705,39 @@ teardown() {
 
 # ── status ───────────────────────────────────────────────────────
 
-@test "arb status uses dynamic default branch label" {
+@test "arb status shows base branch name" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb status
-    [[ "$output" == *"main:"* ]]
+    [[ "$output" == *"main"* ]]
 }
 
-@test "arb status shows even when on same commit as default branch" {
+@test "arb status shows aligned when on same commit as default branch" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb status
-    [[ "$output" == *"even"* ]]
+    [[ "$output" == *"aligned"* ]]
+}
+
+@test "arb status shows current branch name" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [[ "$output" == *"my-feature"* ]]
+}
+
+@test "arb status shows origin/ prefix in remote column" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [[ "$output" == *"origin/my-feature"* ]]
+}
+
+@test "arb status shows clean for repos with no local changes" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [[ "$output" == *"clean"* ]]
 }
 
 @test "arb status shows ahead count after local commit" {
@@ -682,14 +762,14 @@ teardown() {
     [[ "$output" == *"1 behind"* ]]
 }
 
-@test "arb status shows not pushed when branch not on remote" {
+@test "arb status shows no remote when branch not on remote" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb status
-    [[ "$output" == *"not pushed"* ]]
+    [[ "$output" == *"no remote"* ]]
 }
 
-@test "arb status shows in sync after push with no new commits" {
+@test "arb status shows aligned after push with no new commits" {
     arb create my-feature repo-a
 
     echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
@@ -700,7 +780,7 @@ teardown() {
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb status
-    [[ "$output" == *"in sync"* ]]
+    [[ "$output" == *"aligned"* ]]
 }
 
 @test "arb status shows staged count" {
@@ -761,7 +841,6 @@ teardown() {
     echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
     cd "$TEST_DIR/project/my-feature"
     run arb status --dirty
-    [ "$status" -eq 0 ]
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" != *"repo-b"* ]]
 }
@@ -771,7 +850,6 @@ teardown() {
     echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
     cd "$TEST_DIR/project/my-feature"
     run arb status -d
-    [ "$status" -eq 0 ]
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" != *"repo-b"* ]]
 }
@@ -784,16 +862,18 @@ teardown() {
     [[ "$output" == *"(no repos)"* ]]
 }
 
-@test "arb status shows drift warning when on wrong branch" {
+@test "arb status shows drifted branch in branch column" {
     arb create my-feature repo-a repo-b
     # Manually switch repo-a to a different branch
     git -C "$TEST_DIR/project/my-feature/repo-a" checkout -b experiment >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
     run arb status
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"on branch experiment, expected my-feature"* ]]
-    # repo-b should NOT have the warning
-    [[ "$output" != *"repo-b"*"expected"* ]]
+    [ "$status" -eq 1 ]
+    # repo-a should show experiment in branch column and origin/experiment in remote column
+    [[ "$output" == *"repo-a"*"experiment"* ]]
+    [[ "$output" == *"origin/experiment"* ]]
+    # repo-b should show expected branch
+    [[ "$output" == *"repo-b"*"my-feature"* ]]
 }
 
 @test "arb status uses configured base branch for stacked workspaces" {
@@ -826,13 +906,12 @@ teardown() {
     cd "$TEST_DIR/project/stacked"
     arb fetch >/dev/null 2>&1
     run arb status
-    [ "$status" -eq 0 ]
 
     # repo-a: should compare against feat/auth (1 ahead, not 3 ahead which it would be vs main)
-    [[ "$output" == *"repo-a"*"feat/auth: 1 ahead"* ]]
+    [[ "$output" == *"repo-a"*"feat/auth"*"1 ahead"* ]]
 
     # repo-b: base branch feat/auth doesn't exist — should fall back to main
-    [[ "$output" == *"repo-b"*"main: 1 ahead"* ]]
+    [[ "$output" == *"repo-b"*"main"*"1 ahead"* ]]
 }
 
 @test "default branch detection with master" {
@@ -843,7 +922,435 @@ teardown() {
     arb create test-master repo-master
     cd "$TEST_DIR/project/test-master"
     run arb status
-    [[ "$output" == *"master:"* ]]
+    [[ "$output" == *"master"* ]]
+}
+
+@test "arb status exits 0 when all repos are clean and pushed" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "commit" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"aligned"* ]]
+}
+
+@test "arb status exits 1 when repos are unpushed" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"no remote"* ]]
+}
+
+@test "arb status exits 1 when repos are dirty" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "commit" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"untracked"* ]]
+}
+
+@test "arb status --fetch fetches before showing status" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --fetch
+    [[ "$output" == *"repo-a"* ]]
+}
+
+@test "arb status -f fetches before showing status" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status -f
+    [[ "$output" == *"repo-a"* ]]
+}
+
+@test "arb status --verbose shows file details for dirty repos" {
+    arb create my-feature repo-a
+    echo "new" > "$TEST_DIR/project/my-feature/repo-a/newfile.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --verbose
+    [[ "$output" == *"Untracked files:"* ]]
+    [[ "$output" == *"newfile.txt"* ]]
+}
+
+@test "arb status --verbose shows staged file names" {
+    arb create my-feature repo-a
+    echo "staged" > "$TEST_DIR/project/my-feature/repo-a/staged.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add staged.txt >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --verbose
+    [[ "$output" == *"Changes to be committed:"* ]]
+    [[ "$output" == *"new file:"* ]]
+    [[ "$output" == *"staged.txt"* ]]
+}
+
+@test "arb status shows origin to push count" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "first" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    # Now make another commit without pushing
+    echo "more" > "$TEST_DIR/project/my-feature/repo-a/g.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add g.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "second" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [[ "$output" == *"1 to push"* ]]
+}
+
+@test "arb status shows origin to pull count" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "first" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    # Clone a fresh copy, push a commit to origin on my-feature
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [[ "$output" == *"1 to pull"* ]]
+}
+
+@test "arb status --verbose shows ahead of base section" {
+    arb create my-feature repo-a
+    echo "new" > "$TEST_DIR/project/my-feature/repo-a/new.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add new.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "ahead commit" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --verbose
+    [[ "$output" == *"Ahead of main:"* ]]
+    [[ "$output" == *"ahead commit"* ]]
+}
+
+@test "arb status --verbose shows behind base section" {
+    arb create my-feature repo-a
+
+    # Add a commit to origin's default branch so we're behind
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream change" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status --verbose
+    [[ "$output" == *"Behind main:"* ]]
+    [[ "$output" == *"upstream change"* ]]
+}
+
+@test "arb status --verbose shows unpushed to origin section" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "first push" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    # Make another commit without pushing
+    echo "unpushed" > "$TEST_DIR/project/my-feature/repo-a/g.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add g.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "unpushed commit" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status --verbose
+    [[ "$output" == *"Unpushed to origin:"* ]]
+    [[ "$output" == *"unpushed commit"* ]]
+}
+
+@test "arb status --verbose shows unstaged modifications" {
+    arb create my-feature repo-a
+    # Create a tracked file first
+    echo "orig" > "$TEST_DIR/project/my-feature/repo-a/tracked.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add tracked.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "add tracked" >/dev/null 2>&1
+    # Now modify it without staging
+    echo "changed" > "$TEST_DIR/project/my-feature/repo-a/tracked.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --verbose
+    [[ "$output" == *"Changes not staged for commit:"* ]]
+    [[ "$output" == *"modified:"* ]]
+    [[ "$output" == *"tracked.txt"* ]]
+}
+
+@test "arb status --json outputs valid JSON" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --json
+    # Verify it's valid JSON by piping through a JSON parser
+    echo "$output" | python3 -c "import sys, json; d = json.load(sys.stdin); assert d['workspace'] == 'my-feature'"
+}
+
+@test "arb status --json includes repo data" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --json
+    echo "$output" | python3 -c "import sys, json; d = json.load(sys.stdin); assert d['total'] == 2; assert len(d['repos']) == 2"
+}
+
+@test "arb status --json includes new fields" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --json
+    # Verify new fields exist in JSON output
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+r = d['repos'][0]
+assert 'detached' in r['branch']
+assert 'trackingBranch' in r['origin']
+assert 'conflicts' in r['local']
+assert 'operation' in r
+"
+}
+
+@test "arb status shows pushed and synced repo as aligned" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "commit" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"aligned"* ]]
+    [[ "$output" == *"clean"* ]]
+}
+
+@test "arb status shows ahead of base and pushed as aligned remote" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "first" >/dev/null 2>&1
+    echo "change2" > "$TEST_DIR/project/my-feature/repo-a/g.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add g.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "second" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [[ "$output" == *"2 ahead"* ]]
+    [[ "$output" == *"origin/my-feature"*"aligned"* ]]
+}
+
+@test "arb status shows diverged base counts" {
+    arb create my-feature repo-a
+    # Make a local commit
+    echo "local" > "$TEST_DIR/project/my-feature/repo-a/local.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add local.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "local" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    # Advance main on origin
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [[ "$output" == *"1 ahead"* ]]
+    [[ "$output" == *"1 behind"* ]]
+}
+
+@test "arb status shows detached HEAD" {
+    arb create my-feature repo-a
+    # Detach HEAD in the worktree
+    local head_sha
+    head_sha="$(git -C "$TEST_DIR/project/my-feature/repo-a" rev-parse HEAD)"
+    git -C "$TEST_DIR/project/my-feature/repo-a" checkout "$head_sha" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"(detached)"* ]]
+    [[ "$output" == *"detached"* ]]
+}
+
+@test "arb status detects upstream mismatch" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "commit" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    # Create another remote branch and set upstream to it
+    git -C "$TEST_DIR/project/my-feature/repo-a" push origin my-feature:other-branch >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" branch --set-upstream-to=origin/other-branch >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    # Remote column should show origin/other-branch (mismatch)
+    [[ "$output" == *"origin/other-branch"* ]]
+}
+
+@test "arb status shows local repo with dirty files" {
+    setup_local_repo
+    arb create local-ws local-lib
+    echo "dirty" > "$TEST_DIR/project/local-ws/local-lib/dirty.txt"
+    cd "$TEST_DIR/project/local-ws"
+    run arb status
+    # Local repos should show "local" and local changes
+    [[ "$output" == *"local"* ]]
+    [[ "$output" == *"1 untracked"* ]]
+}
+
+@test "arb status shows multiple local change types" {
+    arb create my-feature repo-a
+    # Create a tracked file, commit, then modify
+    echo "orig" > "$TEST_DIR/project/my-feature/repo-a/tracked.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add tracked.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "add tracked" >/dev/null 2>&1
+    # Stage a new file
+    echo "staged" > "$TEST_DIR/project/my-feature/repo-a/staged.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add staged.txt >/dev/null 2>&1
+    # Modify tracked file
+    echo "changed" > "$TEST_DIR/project/my-feature/repo-a/tracked.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [[ "$output" == *"1 staged"* ]]
+    [[ "$output" == *"1 modified"* ]]
+}
+
+@test "arb status shows fell-back base branch for stacked workspace" {
+    # repo-a has feat/auth, repo-b does NOT
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a repo-b
+    cd "$TEST_DIR/project/stacked"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    # repo-a should show feat/auth as base
+    [[ "$output" == *"repo-a"*"feat/auth"* ]]
+    # repo-b should show main (fell back) — base name still appears
+    [[ "$output" == *"repo-b"*"main"* ]]
+}
+
+@test "arb status with fresh workspace shows no remote and clean" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [[ "$output" == *"no remote"* ]]
+    [[ "$output" == *"clean"* ]]
+}
+
+@test "arb status with fresh workspace and one commit shows no remote" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "first" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [[ "$output" == *"1 ahead"* ]]
+    [[ "$output" == *"no remote"* ]]
+    [[ "$output" == *"clean"* ]]
+}
+
+@test "arb status detects rebase in progress" {
+    arb create my-feature repo-a
+    # Set up conflicting changes for rebase
+    echo "base" > "$TEST_DIR/project/my-feature/repo-a/conflict.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add conflict.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "base" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Push a conflicting commit on main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream-conflict" > conflict.txt && git add conflict.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    # Fetch and start a rebase that will conflict
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" rebase origin/main >/dev/null 2>&1 || true
+
+    run arb status
+    [[ "$output" == *"(rebase)"* ]]
+}
+
+@test "arb status detects merge conflicts" {
+    arb create my-feature repo-a
+    echo "base" > "$TEST_DIR/project/my-feature/repo-a/conflict.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add conflict.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "base" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Push a conflicting commit on main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream-conflict" > conflict.txt && git add conflict.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    # Start a merge that will conflict
+    git -C "$TEST_DIR/project/my-feature/repo-a" merge origin/main >/dev/null 2>&1 || true
+
+    run arb status
+    [[ "$output" == *"conflicts"* ]]
+    [[ "$output" == *"(merge)"* ]]
+}
+
+@test "arb status shows UPPERCASE headers" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [[ "$output" == *"REPO"* ]]
+    [[ "$output" == *"BRANCH"* ]]
+    [[ "$output" == *"BASE"* ]]
+    [[ "$output" == *"ORIGIN"* ]]
+    [[ "$output" == *"LOCAL"* ]]
+}
+
+@test "arb status --at-risk shows only at-risk repos" {
+    arb create my-feature repo-a repo-b
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "commit" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    echo "change" > "$TEST_DIR/project/my-feature/repo-b/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-b" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" commit -m "commit" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    # Both repos are clean and pushed — at-risk should show no repos
+    run arb status --at-risk
+    [[ "$output" == *"(no repos)"* ]]
+}
+
+@test "arb status -r shows only at-risk repos" {
+    arb create my-feature repo-a repo-b
+    # Make repo-a dirty (at-risk), leave repo-b clean and unpushed (also at-risk)
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    echo "change" > "$TEST_DIR/project/my-feature/repo-b/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-b" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" commit -m "commit" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status -r
+    # repo-a is at-risk (dirty + unpushed), repo-b is not at-risk (clean + pushed)
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb status column alignment with multiple repos" {
+    arb create my-feature repo-a repo-b
+    # Make one dirty and one clean
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [ "$status" -eq 1 ]
+    # Both repos should appear
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"repo-b"* ]]
+    # Clean repo should show "clean", dirty repo should show "untracked"
+    [[ "$output" == *"clean"* ]]
+    [[ "$output" == *"1 untracked"* ]]
 }
 
 # ── fetch ────────────────────────────────────────────────────────
@@ -1166,7 +1673,6 @@ SCRIPT
     arb create ws-two repo-b
     cd "$TEST_DIR/project/ws-one"
     run arb --workspace ws-two status
-    [ "$status" -eq 0 ]
     [[ "$output" == *"repo-b"* ]]
 }
 
@@ -1175,7 +1681,6 @@ SCRIPT
     arb create ws-two repo-b
     cd "$TEST_DIR/project/ws-one"
     run arb -w ws-two status
-    [ "$status" -eq 0 ]
     [[ "$output" == *"repo-b"* ]]
 }
 
@@ -1212,6 +1717,7 @@ setup_local_repo() {
     arb create local-ws local-lib
     cd "$TEST_DIR/project/local-ws"
     run arb status
+    # Local-only repos don't count as issues — exit 0
     [ "$status" -eq 0 ]
     [[ "$output" == *"local-lib"* ]]
     [[ "$output" == *"local"* ]]
@@ -1256,9 +1762,8 @@ setup_local_repo() {
 
     cd "$TEST_DIR/project/mixed-ws"
 
-    # status works for both
+    # status works for both (exit 1 because repo-a is unpushed)
     run arb status
-    [ "$status" -eq 0 ]
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" == *"local-lib"* ]]
 
@@ -1286,7 +1791,6 @@ delete_workspace_config() {
     delete_workspace_config my-feature
     cd "$TEST_DIR/project/my-feature"
     run arb status
-    [ "$status" -eq 0 ]
     [[ "$output" == *"repo-a"* ]]
     # Should warn about missing config
     [[ "$output" == *"Config missing"* ]] || [[ "$output" == *"inferred branch"* ]]

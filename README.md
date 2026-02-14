@@ -111,7 +111,19 @@ Once you've made some changes, you can check the status of your workspace:
 arb status
 ```
 
-This shows the state of each worktree — its state relative to the base branch, push status against origin, and any local changes (staged, modified, untracked). The active worktree (if you're currently inside one) is marked with `*`.
+This shows the state of each worktree in a compact table with labeled columns:
+
+```
+  REPO         BRANCH        BASE                     ORIGIN                          LOCAL
+  repo-a       my-feature    main  aligned            origin/my-feature  aligned      clean
+  repo-b       my-feature    main  2 ahead            origin/my-feature  2 to push    1 staged, 1 modified
+  repo-c       experiment    main  2 ahead, 1 behind  origin/experiment  1 to pull    clean
+  local-lib    my-feature    main  aligned            local                           clean
+```
+
+The columns show: repo name, current branch, base branch with ahead/behind counts, remote tracking branch with push/pull counts, and local changes. The active worktree (if you're currently inside one) is marked with `*`.
+
+Yellow highlights things that need attention: unpushed commits, local changes, unexpected branches.
 
 Use `--dirty` (`-d`) to show only repos with uncommitted changes:
 
@@ -119,15 +131,33 @@ Use `--dirty` (`-d`) to show only repos with uncommitted changes:
 arb status --dirty
 ```
 
+Use `--at-risk` (`-r`) to show only repos that need attention (unpushed commits, drifted branches, dirty files, etc):
+
+```bash
+arb status --at-risk
+```
+
 ### Stay in sync
 
 There are several commands to sync your workspace with origin:
 
-**`arb fetch`** fetches origin for every repo without merging any changes. You can use it to see what's changed before deciding what to do. To speed things up, Arborist fetches all repositories in parallel.
+```bash
+arb fetch
+```
 
-**`arb pull`** pulls the feature branch from origin. Useful when a teammate has pushed to the same branch. Repos that do not have a corresponding remote branch yet are skipped.
+Fetches origin for every repo without merging any changes. You can use it to see what's changed before deciding what to do. To speed things up, Arborist fetches all repositories in parallel.
 
-**`arb push`** pushes the feature branch to origin for every repo. Skips repos without upstream tracking.
+```bash
+arb pull
+```
+
+Pulls the feature branch from origin. Useful when a teammate has pushed to the same branch. Repos that do not have a corresponding remote branch yet are skipped.
+
+```bash
+arb push
+```
+
+Pushes the feature branch to origin for every repo. Skips repos without upstream tracking.
 
 ### Run commands across repos
 
@@ -156,7 +186,15 @@ Runs the given command with all worktree directories as arguments — useful for
 arb list
 ```
 
-The active workspace (the one you're currently inside) is marked with `*`. Arborist shows `(empty)` for workspaces with no worktrees and `(config missing)` for broken workspaces.
+Shows all workspaces with their branch, repo count, and aggregate status:
+
+```
+  WORKSPACE    BRANCH         REPOS  STATUS
+* ws-one       my-feature     2      ok
+  ws-two       feat/payments  1      1 dirty, 1 unpushed
+```
+
+The active workspace (the one you're currently inside) is marked with `*`.
 
 ### Navigate
 
