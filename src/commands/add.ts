@@ -13,7 +13,7 @@ export function registerAddCommand(program: Command, getCtx: () => ArbContext): 
 		.option("-a, --all-repos", "Add all remaining repos")
 		.summary("Add worktrees to the workspace")
 		.description(
-			"Add worktrees for one or more repos to the current workspace on the workspace's feature branch. Prompts with a repo picker when run without arguments. Use --all-repos to add all repos not yet in the workspace.",
+			"Add worktrees for one or more repos to the current workspace on the workspace's feature branch. If the workspace has a configured base branch, new worktrees branch from it. Prompts with a repo picker when run without arguments. Use --all-repos to add all repos not yet in the workspace.",
 		)
 		.action(async (repoArgs: string[], options: { allRepos?: boolean }) => {
 			const ctx = getCtx();

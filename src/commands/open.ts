@@ -11,7 +11,7 @@ export function registerOpenCommand(program: Command, getCtx: () => ArbContext):
 		.option("-d, --dirty", "Only open dirty worktrees")
 		.summary("Open worktrees in an application")
 		.description(
-			'Run a command with all worktree directories as arguments. Useful for opening worktrees in an editor, e.g. "arb open code". Use --dirty to only include worktrees with uncommitted changes.',
+			'Run a command with all worktree directories as arguments, using absolute paths. Useful for opening worktrees in an editor, e.g. "arb open code". The command must exist in your PATH. Use --dirty to only include worktrees with uncommitted changes.',
 		)
 		.action(async (editor: string, options: { dirty?: boolean }) => {
 			const ctx = getCtx();

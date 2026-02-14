@@ -83,6 +83,12 @@ Scope: all state-changing commands (push, pull, rebase, merge).
 
 When a repo fails mid-execution, stop, print the git error output and step-by-step instructions for resolving the issue, and tell the user to re-run for remaining repos. The developer is never left stranded.
 
+### Documentation: help is reference, README is tutorial
+
+The `--help` output for each command is the authoritative reference. It should document every option, argument, and behavioral detail a user needs. Keep descriptions concise but complete.
+
+The README is a tutorial. It walks through workflows with examples and explains the mental model. It does not need to cover every option or every command — it focuses on the bigger picture and links to `arb help <command>` for details.
+
 ---
 
 ## Architectural Patterns

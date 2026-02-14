@@ -21,6 +21,13 @@ import { error } from "./lib/output";
 import type { ArbContext } from "./lib/types";
 import { ARB_VERSION } from "./version";
 
+function helpBold(str: string): string {
+	return process.stdout.isTTY ? `\x1b[1m${str}\x1b[0m` : str;
+}
+function helpDim(str: string): string {
+	return process.stdout.isTTY ? `\x1b[2m${str}\x1b[0m` : str;
+}
+
 const SETUP_COMMANDS = new Set(["init", "clone", "repos", "help"]);
 const WORKTREE_COMMANDS = new Set([
 	"add",
@@ -50,6 +57,18 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 	if (commandDescription.length > 0) {
 		const helpWidth = helper.helpWidth ?? 80;
 		output = output.concat([helper.boxWrap(helper.styleCommandDescription(commandDescription), helpWidth), ""]);
+		// Extra description lines for the root command only
+		if (cmd.name() === "arb") {
+			output = output.concat([
+				helper.boxWrap(
+					"Built on Git worktrees, it creates isolated workspaces so you can work on cross-repo features in parallel.",
+					helpWidth,
+				),
+				"",
+				helpDim("arborist (noun) \u02C8\u00E4r-b\u0259-rist \u2014 a specialist in the care and maintenance of trees"),
+				"",
+			]);
+		}
 	}
 
 	// Commands — split into three groups
@@ -69,7 +88,7 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 		});
 		output = output.concat([
 			helper.styleTitle("Setup Commands:"),
-			"  Set up the arb root and clone repos.",
+			helpDim("  Set up the arb root and clone repos."),
 			"",
 			...list,
 			"",
@@ -85,7 +104,7 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 		});
 		output = output.concat([
 			helper.styleTitle("Workspace Commands:"),
-			"  Create and manage workspaces. Run from within an arb root.",
+			helpDim("  Create and manage workspaces. Run from within an arb root."),
 			"",
 			...list,
 			"",
@@ -101,7 +120,7 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 		});
 		output = output.concat([
 			helper.styleTitle("Worktree Commands:"),
-			"  Manage worktrees. Run from within a workspace, or with -w <workspace>.",
+			helpDim("  Manage worktrees. Run from within a workspace, or with -w <workspace>."),
 			"",
 			...list,
 			"",
@@ -138,11 +157,11 @@ function getCtx(): ArbContext {
 const program = new Command();
 program
 	.name("arb")
-	.description("Arborist is a workspace manager for multi-repo projects built on Git worktrees.")
+	.description("Arborist is a workspace manager that makes multi-repo development safe and simple.")
 	.version(`Arborist ${ARB_VERSION}`, "-v, --version")
 	.option("-w, --workspace <name>", "Target workspace (overrides auto-detect)")
 	.usage("[options] [command]")
-	.configureHelp({ formatHelp: arbFormatHelp })
+	.configureHelp({ formatHelp: arbFormatHelp, styleTitle: (str) => helpBold(str) })
 	.configureOutput({
 		outputError: (str) => {
 			error(str.replace(/^error: /, "").trimEnd());

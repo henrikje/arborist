@@ -6,7 +6,9 @@ export function registerReposCommand(program: Command, getCtx: () => ArbContext)
 	program
 		.command("repos")
 		.summary("List cloned repos")
-		.description("List all repositories that have been cloned into .arb/repos/.")
+		.description(
+			"List all repositories that have been cloned into .arb/repos/. These are the canonical clones that workspaces create worktrees from.",
+		)
 		.action(() => {
 			const ctx = getCtx();
 			for (const repo of listRepos(ctx.reposDir)) {

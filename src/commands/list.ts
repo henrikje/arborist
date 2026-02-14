@@ -23,7 +23,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		.command("list")
 		.summary("List all workspaces")
 		.description(
-			"List all workspaces in the arb root with aggregate status. The active workspace (the one you're currently inside) is marked with *.",
+			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, and status for each workspace. The active workspace (the one you're currently inside) is marked with *.",
 		)
 		.action(async () => {
 			const ctx = getCtx();

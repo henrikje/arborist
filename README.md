@@ -1,6 +1,6 @@
 # Arborist (`arb`)
 
-**Arborist** makes multi-repo development safe and simple. Built on [Git worktrees](https://git-scm.com/docs/git-worktree), it creates isolated workspaces that check out the same branch across repositories, so you can work on multiple cross-repo changes in parallel and stay in control.
+**Arborist** is a workspace manager that makes multi-repo development safe and simple. Built on [Git worktrees](https://git-scm.com/docs/git-worktree), it creates isolated workspaces so you can work on cross-repo features in parallel.
 
 > **arborist** (noun) _ˈär-bə-rist_ — a specialist in the care and maintenance of trees
 
@@ -66,27 +66,12 @@ arb create fix-login frontend backend
 
 This creates a `fix-login` workspace, checks out a `fix-login` branch in `frontend` and `backend`, and creates separate working directories for each under `fix-login/`. The branches are created if they do not exist and set up with upstream tracking.
 
-_Tips_: Using an issue number or feature name as a workspace name is a good starting point.
+_Tip_: using an issue number or feature name as a workspace name is a good starting point.
 
-To include every cloned repo, use `--all-repos` (`-a`):
-
-```bash
-arb create fix-login --all-repos
-```
-
-If you need a branch name that differs from the workspace name, pass `--branch` (`-b`):
-
-```bash
-arb create dark-mode --branch "feat/dark-mode" frontend shared
-```
-
-By default, Arborist detects the default branch for each repo and uses it as the base for the feature branch. To stack branches on top of each other, use `--base`:
-
-```bash
-arb create auth-ui --base feat/auth --branch feat/auth-ui --all-repos
-```
-
-Running `arb create` without arguments prompts interactively for a name, branch, and repos.
+- `--all-repos` (`-a`): include every cloned repo — `arb create fix-login --all-repos`
+- `--branch` (`-b`): use a different branch name — `arb create dark-mode --branch "feat/dark-mode" frontend shared`
+- `--base`: stack on another branch — `arb create auth-ui --base feat/auth --all-repos`
+- Running without arguments prompts interactively for name, branch, and repos.
 
 ### Work in your repos as usual
 
@@ -125,17 +110,11 @@ The columns show: repo name, current branch, base branch with ahead/behind count
 
 Yellow highlights things that need attention: unpushed commits, local changes, unexpected branches.
 
-Use `--dirty` (`-d`) to show only repos with uncommitted changes:
-
-```bash
-arb status --dirty
-```
-
-Use `--at-risk` (`-r`) to show only repos that need attention (unpushed commits, drifted branches, dirty files, etc):
-
-```bash
-arb status --at-risk
-```
+- `--dirty` (`-d`): only repos with uncommitted changes
+- `--at-risk` (`-r`): only repos that need attention (unpushed, drifted, dirty)
+- `--fetch` (`-f`): fetch before showing status
+- `--verbose`: file-level detail
+- `--json`: machine-readable output
 
 ### Stay in sync
 
@@ -149,18 +128,15 @@ Fetches origin for every repo without merging any changes. You can use it to see
 
 ```bash
 arb pull
-arb pull repo-a
 ```
 
-Pulls the feature branch from origin for all repos, or only the named repos. Shows a plan of what will happen, then asks for confirmation. Repos that do not have a corresponding remote branch yet are skipped. Use `--rebase` or `--merge` to override the pull strategy; by default, arb detects the strategy from your Git config. Use `--yes` (`-y`) to skip confirmation.
+Pulls the feature branch from origin for all repos. Shows a plan of what will happen, then asks for confirmation. Pass repo names to pull specific repos. Use `--rebase` or `--merge` to override the pull strategy; by default, arb detects the strategy from your Git config. Use `--yes` (`-y`) to skip confirmation.
 
 ```bash
 arb push
-arb push repo-a
-arb push --force
 ```
 
-Pushes the feature branch to origin for all repos, or only the named repos. Shows a plan of what will happen, then asks for confirmation. Skips repos without upstream tracking. Use `--force` (`-f`) to force push with lease — needed after rebasing or amending commits. Use `--yes` (`-y`) to skip confirmation.
+Pushes the feature branch to origin for all repos. Shows a plan of what will happen, then asks for confirmation. Pass repo names to push specific repos. Use `--force` (`-f`) to force push with lease — needed after rebasing or amending commits. Use `--yes` (`-y`) to skip confirmation.
 
 ### Integrate base branch changes
 
@@ -169,30 +145,19 @@ bring those changes into your feature branches:
 
 ```bash
 arb rebase
-arb rebase repo-a
 ```
 
-Rebases all repos by default, or only the named repos. Shows a plan of what
-will happen, then asks for confirmation. Repos with uncommitted changes or that
-are already up to date are skipped. Use `--fetch` to fetch before rebasing and
-`--yes` (`-y`) to skip confirmation.
+Rebases all repos by default, or pass repo names to target specific ones. Shows a plan of what will happen, then asks for confirmation. Repos with uncommitted changes or that are already up to date are skipped. Use `--fetch` to fetch before rebasing and `--yes` (`-y`) to skip confirmation.
 
-If a rebase conflicts, arb stops and shows instructions. Resolve the conflict
-with git, then re-run `arb rebase` for the remaining repos.
+If a rebase conflicts, arb stops and shows instructions. Resolve the conflict with git, then re-run `arb rebase` for the remaining repos.
+
+Prefer merge commits? Use `arb merge` instead — same workflow, uses `git merge`.
 
 After rebasing, your branches will have diverged from origin. Force push to update:
 
 ```bash
 arb push --force
 ```
-
-If you prefer merge commits over rebasing:
-
-```bash
-arb merge
-```
-
-Same workflow, but uses `git merge` instead of `git rebase`.
 
 ### Run commands across repos
 
@@ -249,13 +214,10 @@ You can add more repos to an existing workspace at any time:
 arb add shared
 ```
 
-To add all remaining repos at once, use `--all-repos` (`-a`):
+If the workspace has a configured base branch, new worktrees branch from it.
 
-```bash
-arb add --all-repos
-```
-
-If the workspace was created with a non-default base branch, any new repos added to it will also be created on top of that branch.
+- `--all-repos` (`-a`): add all remaining repos — `arb add --all-repos`
+- Running without arguments opens an interactive repo picker.
 
 To remove a repo from a workspace without deleting the workspace itself:
 
@@ -263,15 +225,10 @@ To remove a repo from a workspace without deleting the workspace itself:
 arb drop shared
 ```
 
-To drop all repos, use `--all-repos` (`-a`):
-
-```bash
-arb drop --all-repos
-```
-
-`drop` skips repos with uncommitted changes unless `--force` (`-f`) is used. Use `--delete-branch` to also delete the local branch from the canonical repo.
-
-Running `arb add` or `arb drop` without arguments opens an interactive repo picker.
+- `--all-repos` (`-a`): drop all repos — `arb drop --all-repos`
+- `--force` (`-f`): drop even with uncommitted changes
+- `--delete-branch`: also delete the local branch from the canonical repo
+- Running without arguments opens an interactive repo picker.
 
 ### Remove workspaces
 
@@ -281,25 +238,12 @@ When a feature is done:
 arb remove fix-login
 ```
 
-This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force` (`-f`):
+This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force` (`-f`).
 
-```bash
-arb remove fix-login --force
-```
-
-To also delete the remote branches, add `--delete-remote` (`-d`):
-
-```bash
-arb remove fix-login --force --delete-remote
-```
-
-You can remove multiple workspaces at once:
-
-```bash
-arb remove fix-login dark-mode
-```
-
-Running `arb remove` without arguments opens an interactive workspace picker.
+- `--force` (`-f`): skip safety prompts — `arb remove fix-login --force`
+- `--delete-remote` (`-d`): also delete remote branches
+- Remove multiple: `arb remove fix-login dark-mode`
+- Running without arguments opens a workspace picker.
 
 ## Tips
 

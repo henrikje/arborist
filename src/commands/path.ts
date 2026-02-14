@@ -6,7 +6,7 @@ import type { ArbContext } from "../lib/types";
 export function registerPathCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("path [name]")
-		.summary("Print the path to a workspace")
+		.summary("Print a path (arb root, workspace, or worktree)")
 		.description(
 			'Print the absolute path to the arb root, a workspace, or a worktree within a workspace. Useful in scripts and shell pipelines. Supports workspace/repo paths (e.g. "fix-login/frontend").',
 		)
