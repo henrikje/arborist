@@ -313,7 +313,7 @@ Arborist thinks in terms of two remote roles:
 - **upstream** — the source of base branches and the target for rebase/merge operations
 - **publish** — where feature branches are pushed and pulled
 
-For single-remote repos, both roles resolve to `origin`. For fork setups, `upstream` typically points to the canonical repository and `publish` to your fork.
+For single-remote repos, both roles typically resolve to `origin`. For fork setups, the upstream role maps to the canonical repository (often a remote named `upstream`), and the publish role maps to your fork (often `origin`).
 
 ### Setting up a fork
 
