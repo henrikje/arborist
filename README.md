@@ -1,12 +1,34 @@
 # Arborist (`arb`)
 
-**Arborist** is a workspace manager that makes multi-repo development safe and simple. Built on [Git worktrees](https://git-scm.com/docs/git-worktree), it creates isolated workspaces so you can work on cross-repo features in parallel.
+Working on a feature that spans multiple repositories means juggling branches across all of them — and switching to a different task while one repo has uncommitted changes is a recipe for lost work.
+
+**Arborist** fixes this by creating workspaces backed by [Git worktrees](https://git-scm.com/docs/git-worktree). Each workspace groups several repos on the same feature branch, so you can work on multiple features in parallel without conflicts.
 
 > **arborist** (noun) _ˈär-bə-rist_ — a specialist in the care and maintenance of trees
 
 ## Mental model
 
 Git worktrees make it possible to check out multiple branches of the same repository at the same time, each in its own directory. Arborist builds on this by keeping a stable canonical clone of each repository and creating temporary workspaces for actual development. Each workspace represents one feature or issue. It contains a separate worktree for each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete.
+
+Here's what that looks like on disk:
+
+```
+~/my-project/
+├── .arb/repos/
+│   ├── frontend/           ← canonical clones, managed by arb
+│   ├── backend/
+│   └── shared/
+│
+├── fix-login/              ← workspace on branch "fix-login"
+│   ├── frontend/
+│   └── backend/
+│
+└── dark-mode/              ← workspace on branch "feat/dark-mode"
+    ├── frontend/
+    └── shared/
+```
+
+You work in the workspaces. The canonical clones under `.arb/` are managed by arb — you never touch them directly.
 
 ## Getting started
 
@@ -15,10 +37,10 @@ Git worktrees make it possible to check out multiple branches of the same reposi
 Clone the repo and run the installer:
 
 ```bash
-git clone <this-repo>
-cd arb
+git clone https://github.com/henrikje/arborist
+cd arborist
 ./install.sh
-source ~/.zshrc
+source ~/.zshrc # assuming you're running zsh
 ```
 
 This puts `arb` on your PATH and sets up zsh tab completion. (Just run the installer again to upgrade.)
@@ -54,9 +76,44 @@ To see which repos have been cloned:
 arb repos
 ```
 
-## Day-to-day workflow
+## Quick walkthrough
 
-### Create a workspace for your task
+Here's the full lifecycle of a workspace — from creation to cleanup:
+
+```bash
+# Create a workspace for your feature
+arb create fix-login frontend backend
+
+# Work in individual repos as usual
+cd fix-login/frontend
+# hack hack hack
+git add -p && git commit -m "Fix the login page"
+
+cd ../backend
+# hack hack hack
+git add -p && git commit -m "Fix the login endpoint"
+
+# Check status across all repos in the workspace
+arb status
+
+# Push all repos to origin
+arb push
+
+# Rebase both repos onto the latest base branch, then force push
+arb rebase
+arb push --force
+
+# Done with the feature — clean up
+arb remove fix-login
+```
+
+Every command that changes state shows a plan and asks for confirmation before proceeding.
+
+## Day-to-day usage
+
+The sections below go deeper on the commands you use when working in a workspace. See `arb help <command>` for all options.
+
+### Create a workspace
 
 You will create a new workspace for each feature or issue you work on. A workspace ties together one or more repos under a shared feature branch:
 
@@ -66,12 +123,13 @@ arb create fix-login frontend backend
 
 This creates a `fix-login` workspace, checks out a `fix-login` branch in `frontend` and `backend`, and creates separate working directories for each under `fix-login/`. The branches are created if they do not exist and set up with upstream tracking.
 
-_Tip_: using an issue number or feature name as a workspace name is a good starting point.
+Use `--branch` (`-b`) when the branch name differs from the workspace name, and `--all-repos` (`-a`) to include every cloned repo:
 
-- `--all-repos` (`-a`): include every cloned repo — `arb create fix-login --all-repos`
-- `--branch` (`-b`): use a different branch name — `arb create dark-mode --branch "feat/dark-mode" frontend shared`
-- `--base`: stack on another branch — `arb create auth-ui --base feat/auth --all-repos`
-- Running without arguments prompts interactively for name, branch, and repos.
+```bash
+arb create dark-mode --branch "feat/dark-mode" --all-repos
+```
+
+Running `arb create` without arguments walks you through it interactively. See `arb create --help` for all options.
 
 ### Work in your repos as usual
 
@@ -106,58 +164,40 @@ This shows the state of each worktree in a compact table with labeled columns:
   local-lib    my-feature    main  aligned            local                           clean
 ```
 
-The columns show: repo name, current branch, base branch with ahead/behind counts, remote tracking branch with push/pull counts, and local changes. The active worktree (if you're currently inside one) is marked with `*`.
+This view is designed to give you the full picture in one glance — repo name, current branch, how far you've drifted from the base branch, whether origin is ahead or behind, and what's uncommitted locally. Yellow highlights things that need attention: unpushed commits, local changes, unexpected branches.
 
-Yellow highlights things that need attention: unpushed commits, local changes, unexpected branches.
-
-- `--dirty` (`-d`): only repos with uncommitted changes
-- `--at-risk` (`-r`): only repos that need attention (unpushed, drifted, dirty)
-- `--fetch` (`-f`): fetch before showing status
-- `--verbose`: file-level detail
-- `--json`: machine-readable output
+See `arb status --help` for all options.
 
 ### Stay in sync
 
-There are several commands to sync your workspace with origin:
+**See what changed** — fetch origin for every repo without merging. Arborist fetches all repos in parallel:
 
 ```bash
 arb fetch
 ```
 
-Fetches origin for every repo without merging any changes. You can use it to see what's changed before deciding what to do. To speed things up, Arborist fetches all repositories in parallel.
+**Pull teammate changes** — pull the feature branch from origin for all repos:
 
 ```bash
 arb pull
 ```
 
-Pulls the feature branch from origin for all repos. Shows a plan of what will happen, then asks for confirmation. Pass repo names to pull specific repos. Use `--rebase` or `--merge` to override the pull strategy; by default, arb detects the strategy from your Git config. Use `--yes` (`-y`) to skip confirmation.
-
-```bash
-arb push
-```
-
-Pushes the feature branch to origin for all repos. Shows a plan of what will happen, then asks for confirmation. Pass repo names to push specific repos. Use `--force` (`-f`) to force push with lease — needed after rebasing or amending commits. Use `--yes` (`-y`) to skip confirmation.
-
-### Integrate base branch changes
-
-When the base branch has moved forward (e.g. teammates merged PRs to `main`),
-bring those changes into your feature branches:
+**Integrate base branch updates** — when the base branch has moved forward (e.g. teammates merged PRs to `main`), rebase your feature branches onto it:
 
 ```bash
 arb rebase
 ```
 
-Rebases all repos by default, or pass repo names to target specific ones. Shows a plan of what will happen, then asks for confirmation. Repos with uncommitted changes or that are already up to date are skipped. Use `--fetch` to fetch before rebasing and `--yes` (`-y`) to skip confirmation.
+If a rebase conflicts, arb stops and shows instructions. Resolve the conflict with git, then re-run `arb rebase` for the remaining repos. Prefer merge commits? Use `arb merge` instead — same workflow, uses `git merge`.
 
-If a rebase conflicts, arb stops and shows instructions. Resolve the conflict with git, then re-run `arb rebase` for the remaining repos.
-
-Prefer merge commits? Use `arb merge` instead — same workflow, uses `git merge`.
-
-After rebasing, your branches will have diverged from origin. Force push to update:
+**Push your work** — push the feature branch to origin for all repos. After rebasing, use `--force` to force push with lease:
 
 ```bash
+arb push
 arb push --force
 ```
+
+All commands show a plan before proceeding. See `arb help <command>` for options.
 
 ### Run commands across repos
 
@@ -166,17 +206,17 @@ arb exec git log --oneline -5
 arb exec npm install
 ```
 
-Runs the given command in each worktree sequentially. It supports running interactive commands. Each execution of the command uses the corresponding worktree as working directory. Use `--dirty` (`-d`) to run only in repos with uncommitted changes.
+Runs the given command in each worktree sequentially. It supports running interactive commands. Each execution of the command uses the corresponding worktree as working directory. See `arb exec --help` for all options.
 
 ### Open in your editor
 
 ```bash
-arb open code   
+arb open code
 # expands to:
 # code /home/you/my-project/fix-login/frontend /home/you/my-project/fix-login/backend
 ```
 
-Runs the given command with all worktree directories as arguments — useful for opening them in an editor like VS Code. All directories are specified as absolute paths. Use `--dirty` (`-d`) to only include repos with uncommitted changes.
+Runs the given command with all worktree directories as arguments — useful for opening them in an editor like VS Code. All directories are specified as absolute paths. See `arb open --help` for all options.
 
 ## Managing workspaces
 
@@ -212,12 +252,10 @@ You can add more repos to an existing workspace at any time:
 
 ```bash
 arb add shared
+arb add --all-repos
 ```
 
-If the workspace has a configured base branch, new worktrees branch from it.
-
-- `--all-repos` (`-a`): add all remaining repos — `arb add --all-repos`
-- Running without arguments opens an interactive repo picker.
+If the workspace has a configured base branch, new worktrees branch from it. Running without arguments opens an interactive repo picker.
 
 To remove a repo from a workspace without deleting the workspace itself:
 
@@ -225,10 +263,7 @@ To remove a repo from a workspace without deleting the workspace itself:
 arb drop shared
 ```
 
-- `--all-repos` (`-a`): drop all repos — `arb drop --all-repos`
-- `--force` (`-f`): drop even with uncommitted changes
-- `--delete-branch`: also delete the local branch from the canonical repo
-- Running without arguments opens an interactive repo picker.
+Arb refuses to drop repos with uncommitted changes unless you pass `--force`. See `arb drop --help` for all options.
 
 ### Remove workspaces
 
@@ -238,12 +273,7 @@ When a feature is done:
 arb remove fix-login
 ```
 
-This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force` (`-f`).
-
-- `--force` (`-f`): skip safety prompts — `arb remove fix-login --force`
-- `--delete-remote` (`-d`): also delete remote branches
-- Remove multiple: `arb remove fix-login dark-mode`
-- Running without arguments opens a workspace picker.
+This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. Use `--delete-remote` to also clean up the remote branches. See `arb remove --help` for all options.
 
 ## Tips
 
