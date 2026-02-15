@@ -566,6 +566,45 @@ teardown() {
     [ ! -d "$TEST_DIR/project/ws-two" ]
 }
 
+@test "arb remove refuses workspace with merge conflict" {
+    arb create my-feature repo-a
+    local wt="$TEST_DIR/project/my-feature/repo-a"
+
+    # Create a file on the feature branch
+    echo "feature" > "$wt/conflict.txt"
+    git -C "$wt" add conflict.txt
+    git -C "$wt" commit -m "feature change" >/dev/null 2>&1
+
+    # Create a conflicting change on the default branch via the canonical repo
+    local canonical="$TEST_DIR/project/.arb/repos/repo-a"
+    local default_branch
+    default_branch="$(git -C "$canonical" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')"
+    git -C "$canonical" checkout "$default_branch" >/dev/null 2>&1
+    echo "main" > "$canonical/conflict.txt"
+    git -C "$canonical" add conflict.txt
+    git -C "$canonical" commit -m "main change" >/dev/null 2>&1
+    git -C "$canonical" push >/dev/null 2>&1
+    git -C "$canonical" checkout --detach HEAD >/dev/null 2>&1
+
+    # Fetch and attempt merge to create conflict state
+    git -C "$wt" fetch origin >/dev/null 2>&1
+    git -C "$wt" merge "origin/$default_branch" >/dev/null 2>&1 || true
+
+    # Status should show conflicts
+    run arb status -w my-feature
+    [[ "$output" == *"conflicts"* ]]
+
+    # Remove without --force should refuse (non-TTY exits before at-risk check)
+    run arb remove my-feature
+    [ "$status" -ne 0 ]
+    # Workspace should still exist
+    [ -d "$TEST_DIR/project/my-feature" ]
+
+    # Force remove should succeed
+    arb remove my-feature --force
+    [ ! -d "$TEST_DIR/project/my-feature" ]
+}
+
 # ── list ─────────────────────────────────────────────────────────
 
 @test "arb list shows workspaces" {

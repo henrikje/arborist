@@ -3,7 +3,7 @@ import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { bold, dim, green, info, red, yellow } from "../lib/output";
 import { listWorkspaces, workspaceRepoDirs } from "../lib/repos";
-import { gatherWorkspaceSummary } from "../lib/status";
+import { gatherWorkspaceSummary, isUnpushed } from "../lib/status";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
 
@@ -91,9 +91,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 				// Compute deduplicated counts
 				const dirtyCount = summary.dirty;
-				const unpushedCount = summary.repos.filter(
-					(r) => !r.remote.local && (r.remote.ahead > 0 || (!r.remote.pushed && r.base !== null && r.base.ahead > 0)),
-				).length;
+				const unpushedCount = summary.repos.filter((r) => !r.remote.local && isUnpushed(r)).length;
 				const behindCount = summary.repos.filter((r) => (r.base && r.base.behind > 0) || r.remote.behind > 0).length;
 				const driftedCount = summary.drifted;
 

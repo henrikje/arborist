@@ -1,3 +1,18 @@
+import { existsSync } from "node:fs";
+
+export type GitOperation = "rebase" | "merge" | "cherry-pick" | null;
+
+export async function detectOperation(repoDir: string): Promise<GitOperation> {
+	const gitDirResult = await git(repoDir, "rev-parse", "--git-dir");
+	if (gitDirResult.exitCode !== 0) return null;
+	const gitDir = gitDirResult.stdout.trim();
+	const absGitDir = gitDir.startsWith("/") ? gitDir : `${repoDir}/${gitDir}`;
+	if (existsSync(`${absGitDir}/rebase-merge`) || existsSync(`${absGitDir}/rebase-apply`)) return "rebase";
+	if (existsSync(`${absGitDir}/MERGE_HEAD`)) return "merge";
+	if (existsSync(`${absGitDir}/CHERRY_PICK_HEAD`)) return "cherry-pick";
+	return null;
+}
+
 export async function git(repoDir: string, ...args: string[]): Promise<{ exitCode: number; stdout: string }> {
 	const proc = Bun.spawn(["git", "-C", repoDir, ...args], {
 		stdin: "ignore",

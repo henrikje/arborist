@@ -4,7 +4,14 @@ import { type FileChange, getCommitsBetween, parseGitStatusFiles } from "../lib/
 import { dim, green, success, warn, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { classifyRepos } from "../lib/repos";
-import { type RepoStatus, type WorkspaceSummary, gatherWorkspaceSummary, getVerdict } from "../lib/status";
+import {
+	type RepoStatus,
+	type WorkspaceSummary,
+	gatherWorkspaceSummary,
+	getVerdict,
+	isDirty,
+	isUnpushed,
+} from "../lib/status";
 import type { ArbContext } from "../lib/types";
 import { requireWorkspace } from "../lib/workspace-context";
 
@@ -72,9 +79,7 @@ async function runStatus(
 	// Filter dirty if requested
 	let repos = summary.repos;
 	if (options.dirty) {
-		repos = repos.filter(
-			(r) => r.local.staged > 0 || r.local.modified > 0 || r.local.untracked > 0 || r.local.conflicts > 0,
-		);
+		repos = repos.filter((r) => isDirty(r));
 	}
 	if (options.atRisk) {
 		repos = repos.filter((r) => isAtRisk(r, summary));
@@ -188,7 +193,7 @@ async function runStatus(
 			remoteDiffColored = cell.remoteDiff;
 		} else if (cell.remoteDiff === "not pushed" || (repo.remote.ahead === 0 && repo.remote.behind > 0)) {
 			remoteDiffColored = cell.remoteDiff;
-		} else if (repo.remote.ahead > 0 || (!repo.remote.pushed && repo.base !== null && repo.base.ahead > 0)) {
+		} else if (isUnpushed(repo)) {
 			remoteDiffColored = yellow(cell.remoteDiff);
 		} else {
 			remoteDiffColored = cell.remoteDiff;
@@ -280,21 +285,16 @@ function hasIssues(summary: WorkspaceSummary): boolean {
 
 // At-risk check: repo has unique content that could be lost
 function isAtRisk(repo: RepoStatus, summary: WorkspaceSummary): boolean {
-	return (
-		repo.branch.detached ||
-		repo.operation !== null ||
-		repo.local.conflicts > 0 ||
-		(!repo.remote.local && !repo.remote.pushed && repo.base !== null && repo.base.ahead > 0) ||
-		repo.remote.ahead > 0 ||
-		repo.local.staged > 0 ||
-		repo.local.modified > 0 ||
-		repo.local.untracked > 0 ||
-		repo.branch.drifted ||
-		(summary.base !== null && repo.base !== null && repo.base.name !== summary.base) ||
-		(!repo.remote.local &&
-			repo.remote.trackingBranch !== null &&
-			repo.remote.trackingBranch !== `${repo.remotes.publish}/${repo.branch.actual}`)
-	);
+	const v = getVerdict(repo);
+	if (v !== "ok" && v !== "local") return true;
+	if (summary.base !== null && repo.base !== null && repo.base.name !== summary.base) return true;
+	if (
+		!repo.remote.local &&
+		repo.remote.trackingBranch !== null &&
+		repo.remote.trackingBranch !== `${repo.remotes.publish}/${repo.branch.actual}`
+	)
+		return true;
+	return false;
 }
 
 // Plain-text cell computation (no ANSI codes) for width measurement
@@ -463,7 +463,7 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 	}
 
 	// File-level detail
-	if (repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0) {
+	if (isDirty(repo)) {
 		const files = await parseGitStatusFiles(repoDir);
 
 		if (files.staged.length > 0) {

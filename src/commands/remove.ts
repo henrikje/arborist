@@ -14,7 +14,7 @@ import {
 import { error, green, inlineResult, inlineStart, red, success, warn, yellow } from "../lib/output";
 import { resolveRemotes } from "../lib/remotes";
 import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
-import { type RepoStatus, gatherRepoStatus } from "../lib/status";
+import { type RepoStatus, gatherRepoStatus, isDirty, isUnpushed } from "../lib/status";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
 
@@ -84,10 +84,8 @@ async function removeWorkspace(
 			}
 		}
 
-		const isDirty = status.local.staged > 0 || status.local.modified > 0 || status.local.untracked > 0;
-		const isUnpushed =
-			!status.remote.local &&
-			(status.remote.ahead > 0 || (!status.remote.pushed && status.base !== null && status.base.ahead > 0));
+		const repoIsDirty = isDirty(status);
+		const repoIsUnpushed = !status.remote.local && isUnpushed(status);
 		const canonicalDirty = canonicalDirtyMap.get(status.name) ?? false;
 
 		// Check if branch has unique commits but was never pushed
@@ -96,7 +94,7 @@ async function removeWorkspace(
 			notPushedWithCommits = true;
 		}
 
-		const atRisk = isDirty || isUnpushed || notPushedWithCommits || canonicalDirty;
+		const atRisk = repoIsDirty || repoIsUnpushed || notPushedWithCommits || canonicalDirty;
 		if (atRisk) {
 			hasAtRisk = true;
 			atRiskCount++;

@@ -1,7 +1,14 @@
-import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { configGet } from "./config";
-import { branchExistsLocally, getDefaultBranch, git, hasRemote, parseGitStatus, remoteBranchExists } from "./git";
+import {
+	branchExistsLocally,
+	detectOperation,
+	getDefaultBranch,
+	git,
+	hasRemote,
+	parseGitStatus,
+	remoteBranchExists,
+} from "./git";
 import { type RepoRemotes, resolveRemotes } from "./remotes";
 import { workspaceRepoDirs } from "./repos";
 import { workspaceBranch } from "./workspace-branch";
@@ -30,17 +37,20 @@ export interface WorkspaceSummary {
 
 export type Verdict = "ok" | "dirty" | "unpushed" | "at-risk" | "local";
 
+export function isDirty(repo: RepoStatus): boolean {
+	return repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0;
+}
+
+export function isUnpushed(repo: RepoStatus): boolean {
+	return repo.remote.ahead > 0 || (!repo.remote.pushed && repo.base !== null && repo.base.ahead > 0);
+}
+
 export function getVerdict(repo: RepoStatus): Verdict {
 	if (repo.remote.local) return "local";
-
-	const isDirty =
-		repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0;
-	const isUnpushed = repo.remote.ahead > 0 || (!repo.remote.pushed && repo.base !== null && repo.base.ahead > 0);
-
-	if (repo.branch.drifted || repo.branch.detached || repo.operation !== null || (isDirty && isUnpushed))
+	if (repo.branch.drifted || repo.branch.detached || repo.operation !== null || (isDirty(repo) && isUnpushed(repo)))
 		return "at-risk";
-	if (isDirty) return "dirty";
-	if (isUnpushed) return "unpushed";
+	if (isDirty(repo)) return "dirty";
+	if (isUnpushed(repo)) return "unpushed";
 	return "ok";
 }
 
@@ -144,19 +154,7 @@ export async function gatherRepoStatus(
 	const local = await parseGitStatus(repoDir);
 
 	// Detect in-progress operations via git dir sentinel files
-	const gitDirResult = await git(repoDir, "rev-parse", "--git-dir");
-	let operation: RepoStatus["operation"] = null;
-	if (gitDirResult.exitCode === 0) {
-		const gitDir = gitDirResult.stdout.trim();
-		const absGitDir = gitDir.startsWith("/") ? gitDir : `${repoDir}/${gitDir}`;
-		if (existsSync(`${absGitDir}/rebase-merge`) || existsSync(`${absGitDir}/rebase-apply`)) {
-			operation = "rebase";
-		} else if (existsSync(`${absGitDir}/MERGE_HEAD`)) {
-			operation = "merge";
-		} else if (existsSync(`${absGitDir}/CHERRY_PICK_HEAD`)) {
-			operation = "cherry-pick";
-		}
-	}
+	const operation = await detectOperation(repoDir);
 
 	return {
 		name: repo,
@@ -194,14 +192,8 @@ export async function gatherWorkspaceSummary(wsDir: string, reposDir: string): P
 	let drifted = 0;
 
 	for (const repo of repos) {
-		if (
-			repo.remote.local ||
-			(repo.remote.pushed && repo.remote.ahead === 0) ||
-			(!repo.remote.pushed && (repo.base === null || repo.base.ahead === 0))
-		)
-			pushed++;
-		if (repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0)
-			dirty++;
+		if (repo.remote.local || !isUnpushed(repo)) pushed++;
+		if (isDirty(repo)) dirty++;
 		if (repo.base && repo.base.behind > 0) behind++;
 		if (repo.remote.behind > 0) behind++;
 		if (repo.branch.drifted) drifted++;

@@ -1,7 +1,14 @@
-import { existsSync } from "node:fs";
 import confirm from "@inquirer/confirm";
 import { configGet } from "./config";
-import { checkBranchMatch, getDefaultBranch, git, hasRemote, isRepoDirty, remoteBranchExists } from "./git";
+import {
+	checkBranchMatch,
+	detectOperation,
+	getDefaultBranch,
+	git,
+	hasRemote,
+	isRepoDirty,
+	remoteBranchExists,
+} from "./git";
 import { error, info, inlineResult, inlineStart, red, success, yellow } from "./output";
 import { parallelFetch, reportFetchFailures } from "./parallel-fetch";
 import { type RepoRemotes, resolveRemotesMap } from "./remotes";
@@ -155,19 +162,9 @@ async function assessRepo(
 	}
 
 	// Detect in-progress operation (before branch check — during rebase/merge HEAD may be detached)
-	const gitDirResult = await git(repoDir, "rev-parse", "--git-dir");
-	if (gitDirResult.exitCode === 0) {
-		const gitDir = gitDirResult.stdout.trim();
-		const absGitDir = gitDir.startsWith("/") ? gitDir : `${repoDir}/${gitDir}`;
-		if (existsSync(`${absGitDir}/rebase-merge`) || existsSync(`${absGitDir}/rebase-apply`)) {
-			return { ...base, skipReason: "rebase in progress" };
-		}
-		if (existsSync(`${absGitDir}/MERGE_HEAD`)) {
-			return { ...base, skipReason: "merge in progress" };
-		}
-		if (existsSync(`${absGitDir}/CHERRY_PICK_HEAD`)) {
-			return { ...base, skipReason: "cherry-pick in progress" };
-		}
+	const operation = await detectOperation(repoDir);
+	if (operation) {
+		return { ...base, skipReason: `${operation} in progress` };
 	}
 
 	// Check branch match
