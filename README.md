@@ -206,9 +206,10 @@ All commands show a plan before proceeding. See `arb help <command>` for options
 ```bash
 arb exec git log --oneline -5
 arb exec npm install
+arb exec --dirty git diff -d   # --dirty is arb's, -d goes to git diff
 ```
 
-Runs the given command in each worktree sequentially. It supports running interactive commands. Each execution of the command uses the corresponding worktree as working directory. See `arb exec --help` for all options.
+Runs the given command in each worktree sequentially. It supports running interactive commands. Each execution of the command uses the corresponding worktree as working directory. Arb flags (like `--dirty`) come before the command — everything after the command name passes through verbatim. See `arb exec --help` for all options.
 
 ### Open in your editor
 
@@ -216,9 +217,10 @@ Runs the given command in each worktree sequentially. It supports running intera
 arb open code
 # expands to:
 # code /home/you/my-project/fix-login/frontend /home/you/my-project/fix-login/backend
+arb open code -n --add    # -n and --add are passed to code
 ```
 
-Runs the given command with all worktree directories as arguments — useful for opening them in an editor like VS Code. All directories are specified as absolute paths. See `arb open --help` for all options.
+Runs the given command with all worktree directories as arguments — useful for opening them in an editor like VS Code. All directories are specified as absolute paths. Arb flags come before the command — everything after the command name passes through verbatim. See `arb open --help` for all options.
 
 ## Managing workspaces
 

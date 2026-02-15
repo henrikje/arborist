@@ -157,6 +157,7 @@ function getCtx(): ArbContext {
 const program = new Command();
 program
 	.name("arb")
+	.enablePositionalOptions()
 	.description("Arborist is a workspace manager that makes multi-repo development safe and simple.")
 	.version(`Arborist ${ARB_VERSION}`, "-v, --version")
 	.option("-w, --workspace <name>", "Target workspace (overrides auto-detect)")

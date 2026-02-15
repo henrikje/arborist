@@ -7,20 +7,23 @@ import { requireWorkspace } from "../lib/workspace-context";
 
 export function registerOpenCommand(program: Command, getCtx: () => ArbContext): void {
 	program
-		.command("open <command>")
+		.command("open")
+		.argument("<command...>", "Command to open worktrees with")
 		.option("-d, --dirty", "Only open dirty worktrees")
+		.passThroughOptions()
 		.summary("Open worktrees in an application")
 		.description(
-			'Run a command with all worktree directories as arguments, using absolute paths. Useful for opening worktrees in an editor, e.g. "arb open code". The command must exist in your PATH. Use --dirty to only include worktrees with uncommitted changes.',
+			'Run a command with all worktree directories as arguments, using absolute paths. Useful for opening worktrees in an editor, e.g. "arb open code". The command must exist in your PATH.\n\nArb flags (--dirty) must come before the command. Everything after the command name is passed through verbatim:\n\n  arb open --dirty code -n --add    # --dirty → arb, -n --add → code',
 		)
-		.action(async (editor: string, options: { dirty?: boolean }) => {
+		.action(async (args: string[], options: { dirty?: boolean }) => {
+			const [command = "", ...extraFlags] = args;
 			const ctx = getCtx();
 			const { wsDir } = requireWorkspace(ctx);
 
-			// Check if editor exists in PATH
-			const which = Bun.spawnSync(["which", editor]);
+			// Check if command exists in PATH
+			const which = Bun.spawnSync(["which", command]);
 			if (which.exitCode !== 0) {
-				error(`'${editor}' not found in PATH`);
+				error(`'${command}' not found in PATH`);
 				process.exit(1);
 			}
 
@@ -44,7 +47,7 @@ export function registerOpenCommand(program: Command, getCtx: () => ArbContext):
 				return;
 			}
 
-			const proc = Bun.spawn([editor, ...dirsToOpen], {
+			const proc = Bun.spawn([command, ...extraFlags, ...dirsToOpen], {
 				stdout: "inherit",
 				stderr: "inherit",
 				stdin: "inherit",

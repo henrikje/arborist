@@ -8,6 +8,10 @@ Key concepts: an `.arb/` marker directory lives at the project root, canonical r
 
 Must read [GUIDELINES.md](GUIDELINES.md) before making changes. It documents the design principles, UX conventions, and architectural patterns that all code must follow.
 
+## Getting Started
+
+Run `bun install` before developing.
+
 ## Commands
 
 | Command | Purpose |

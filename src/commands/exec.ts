@@ -11,10 +11,10 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 		.command("exec")
 		.argument("<command...>", "Command to run in each worktree")
 		.option("-d, --dirty", "Only run in dirty repos")
-		.allowUnknownOption(true)
+		.passThroughOptions()
 		.summary("Run a command in each worktree")
 		.description(
-			"Run the given command sequentially in each worktree and report which succeeded or failed. Each worktree is preceded by an ==> repo <== header. The command inherits your terminal, so interactive programs work. Use --dirty to only run in worktrees with uncommitted changes.",
+			"Run the given command sequentially in each worktree and report which succeeded or failed. Each worktree is preceded by an ==> repo <== header. The command inherits your terminal, so interactive programs work.\n\nArb flags (--dirty) must come before the command. Everything after the command name is passed through verbatim:\n\n  arb exec --dirty git diff -d    # --dirty → arb, -d → git diff",
 		)
 		.action(async (args: string[], options: { dirty?: boolean }) => {
 			const ctx = getCtx();

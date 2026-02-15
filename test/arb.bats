@@ -1750,6 +1750,45 @@ SCRIPT
     [[ "$output" != *"repo-b"* ]]
 }
 
+@test "arb exec passes flags through to the command" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    local spy="$TEST_DIR/exec-spy"
+    cat > "$spy" <<'SCRIPT'
+#!/usr/bin/env bash
+for arg in "$@"; do printf '%s\n' "$arg"; done >> "$TEST_DIR/exec-args"
+SCRIPT
+    chmod +x "$spy"
+    export TEST_DIR
+    run arb exec "$spy" -d --verbose -x
+    [ "$status" -eq 0 ]
+    run cat "$TEST_DIR/exec-args"
+    [[ "$output" == *"-d"* ]]
+    [[ "$output" == *"--verbose"* ]]
+    [[ "$output" == *"-x"* ]]
+}
+
+@test "arb exec combines arb flags with pass-through flags" {
+    arb create my-feature repo-a repo-b
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    local spy="$TEST_DIR/exec-spy"
+    cat > "$spy" <<'SCRIPT'
+#!/usr/bin/env bash
+for arg in "$@"; do printf '%s\n' "$arg"; done >> "$TEST_DIR/exec-args"
+SCRIPT
+    chmod +x "$spy"
+    export TEST_DIR
+    run arb exec --dirty "$spy" -d --verbose
+    [ "$status" -eq 0 ]
+    # --dirty filtered to repo-a only; -d and --verbose passed through
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+    run cat "$TEST_DIR/exec-args"
+    [[ "$output" == *"-d"* ]]
+    [[ "$output" == *"--verbose"* ]]
+}
+
 # ── open ─────────────────────────────────────────────────────────
 
 @test "arb open opens all worktrees by default with single invocation" {
@@ -1818,6 +1857,45 @@ SCRIPT
     run arb open -d "$spy"
     [ "$status" -eq 0 ]
     run cat "$TEST_DIR/opened-dirs"
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb open passes flags through to the command" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    local spy="$TEST_DIR/editor-spy"
+    cat > "$spy" <<'SCRIPT'
+#!/usr/bin/env bash
+for arg in "$@"; do printf '%s\n' "$arg"; done >> "$TEST_DIR/opened-args"
+SCRIPT
+    chmod +x "$spy"
+    export TEST_DIR
+    run arb open "$spy" --extra-flag -n
+    [ "$status" -eq 0 ]
+    run cat "$TEST_DIR/opened-args"
+    [[ "$output" == *"--extra-flag"* ]]
+    [[ "$output" == *"-n"* ]]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"repo-b"* ]]
+}
+
+@test "arb open combines arb flags with pass-through flags" {
+    arb create my-feature repo-a repo-b
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    local spy="$TEST_DIR/editor-spy"
+    cat > "$spy" <<'SCRIPT'
+#!/usr/bin/env bash
+for arg in "$@"; do printf '%s\n' "$arg"; done >> "$TEST_DIR/opened-args"
+SCRIPT
+    chmod +x "$spy"
+    export TEST_DIR
+    run arb open --dirty "$spy" --extra-flag -n
+    [ "$status" -eq 0 ]
+    run cat "$TEST_DIR/opened-args"
+    [[ "$output" == *"--extra-flag"* ]]
+    [[ "$output" == *"-n"* ]]
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" != *"repo-b"* ]]
 }
