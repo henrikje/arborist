@@ -92,7 +92,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				// Compute deduplicated counts
 				const dirtyCount = summary.dirty;
 				const unpushedCount = summary.repos.filter(
-					(r) => !r.remote.local && (!r.remote.pushed || r.remote.ahead > 0),
+					(r) => !r.remote.local && (r.remote.ahead > 0 || (!r.remote.pushed && r.base !== null && r.base.ahead > 0)),
 				).length;
 				const behindCount = summary.repos.filter((r) => (r.base && r.base.behind > 0) || r.remote.behind > 0).length;
 				const driftedCount = summary.drifted;

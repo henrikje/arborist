@@ -85,7 +85,9 @@ async function removeWorkspace(
 		}
 
 		const isDirty = status.local.staged > 0 || status.local.modified > 0 || status.local.untracked > 0;
-		const isUnpushed = !status.remote.local && (!status.remote.pushed || status.remote.ahead > 0);
+		const isUnpushed =
+			!status.remote.local &&
+			(status.remote.ahead > 0 || (!status.remote.pushed && status.base !== null && status.base.ahead > 0));
 		const canonicalDirty = canonicalDirtyMap.get(status.name) ?? false;
 
 		// Check if branch has unique commits but was never pushed

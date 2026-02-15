@@ -186,9 +186,9 @@ async function runStatus(
 		let remoteDiffColored: string;
 		if (cell.remoteDiff === "aligned") {
 			remoteDiffColored = cell.remoteDiff;
-		} else if (cell.remoteDiff === "no remote" || (repo.remote.ahead === 0 && repo.remote.behind > 0)) {
+		} else if (cell.remoteDiff === "not pushed" || (repo.remote.ahead === 0 && repo.remote.behind > 0)) {
 			remoteDiffColored = cell.remoteDiff;
-		} else if (repo.remote.ahead > 0) {
+		} else if (repo.remote.ahead > 0 || (!repo.remote.pushed && repo.base !== null && repo.base.ahead > 0)) {
 			remoteDiffColored = yellow(cell.remoteDiff);
 		} else {
 			remoteDiffColored = cell.remoteDiff;
@@ -357,7 +357,12 @@ function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
 }
 
 function plainRemoteDiff(repo: RepoStatus): string {
-	if (!repo.remote.pushed) return "no remote";
+	if (!repo.remote.pushed) {
+		if (repo.base !== null && repo.base.ahead > 0) {
+			return `${repo.base.ahead} to push`;
+		}
+		return "not pushed";
+	}
 	if (repo.remote.ahead === 0 && repo.remote.behind === 0) return "aligned";
 	const parts = [
 		repo.remote.ahead > 0 && `${repo.remote.ahead} to push`,

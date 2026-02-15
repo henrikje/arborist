@@ -612,10 +612,11 @@ teardown() {
     [[ "$output" == *"2"* ]]
 }
 
-@test "arb list shows unpushed status" {
+@test "arb list shows ok status for fresh branch with no commits" {
     arb create ws-one repo-a
     run arb list
-    [[ "$output" == *"1 unpushed"* ]]
+    [[ "$output" == *"ok"* ]]
+    [[ "$output" != *"unpushed"* ]]
 }
 
 @test "arb list shows ok status when pushed" {
@@ -764,11 +765,11 @@ teardown() {
     [[ "$output" == *"1 behind"* ]]
 }
 
-@test "arb status shows no remote when branch not on remote" {
+@test "arb status shows not pushed when branch not on remote" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb status
-    [[ "$output" == *"no remote"* ]]
+    [[ "$output" == *"not pushed"* ]]
 }
 
 @test "arb status shows aligned after push with no new commits" {
@@ -940,12 +941,12 @@ teardown() {
     [[ "$output" == *"aligned"* ]]
 }
 
-@test "arb status exits 1 when repos are unpushed" {
+@test "arb status exits 0 when fresh branch has no commits" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb status
-    [ "$status" -eq 1 ]
-    [[ "$output" == *"no remote"* ]]
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"not pushed"* ]]
 }
 
 @test "arb status exits 1 when repos are dirty" {
@@ -1236,15 +1237,15 @@ assert 'operation' in r
     [[ "$output" == *"repo-b"*"main"* ]]
 }
 
-@test "arb status with fresh workspace shows no remote and clean" {
+@test "arb status with fresh workspace shows not pushed and clean" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb status
-    [[ "$output" == *"no remote"* ]]
+    [[ "$output" == *"not pushed"* ]]
     [[ "$output" == *"clean"* ]]
 }
 
-@test "arb status with fresh workspace and one commit shows no remote" {
+@test "arb status with fresh workspace and one commit shows to push" {
     arb create my-feature repo-a
     echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
@@ -1252,8 +1253,22 @@ assert 'operation' in r
     cd "$TEST_DIR/project/my-feature"
     run arb status
     [[ "$output" == *"1 ahead"* ]]
-    [[ "$output" == *"no remote"* ]]
+    [[ "$output" == *"1 to push"* ]]
     [[ "$output" == *"clean"* ]]
+    [[ "$output" == *"1 unpushed"* ]]
+    [ "$status" -eq 1 ]
+}
+
+@test "arb status exits 1 when not pushed with commits" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "unpushed commit" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"1 to push"* ]]
+    [[ "$output" == *"1 unpushed"* ]]
 }
 
 @test "arb status detects rebase in progress" {
@@ -1326,7 +1341,7 @@ assert 'operation' in r
 
 @test "arb status -r shows only at-risk repos" {
     arb create my-feature repo-a repo-b
-    # Make repo-a dirty (at-risk), leave repo-b clean and unpushed (also at-risk)
+    # Make repo-a dirty (at-risk), push repo-b so it's clean and pushed (not at-risk)
     echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
     echo "change" > "$TEST_DIR/project/my-feature/repo-b/f.txt"
     git -C "$TEST_DIR/project/my-feature/repo-b" add f.txt >/dev/null 2>&1
@@ -1335,7 +1350,7 @@ assert 'operation' in r
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb status -r
-    # repo-a is at-risk (dirty + unpushed), repo-b is not at-risk (clean + pushed)
+    # repo-a is at-risk (dirty), repo-b is not at-risk (clean + pushed)
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" != *"repo-b"* ]]
 }
@@ -1373,11 +1388,12 @@ assert 'operation' in r
     [[ "$output" == *"2 clean"* ]]
 }
 
-@test "arb status summary shows unpushed" {
+@test "arb status summary shows clean for fresh branch" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb status
-    [[ "$output" == *"1 unpushed"* ]]
+    [[ "$output" == *"1 clean"* ]]
+    [[ "$output" != *"unpushed"* ]]
 }
 
 @test "arb status summary shows dirty" {
@@ -1433,12 +1449,12 @@ assert 'operation' in r
     git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    # repo-b: unpushed (no remote)
+    # repo-b: fresh branch with no commits (ok verdict — nothing at risk)
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb status
-    [[ "$output" == *"1 clean"* ]]
-    [[ "$output" == *"1 unpushed"* ]]
+    [[ "$output" == *"2 clean"* ]]
+    [[ "$output" != *"unpushed"* ]]
 }
 
 @test "arb status summary respects --dirty filter" {
@@ -1449,12 +1465,11 @@ assert 'operation' in r
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
     echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
-    # repo-b: clean and unpushed
+    # repo-b: clean and not pushed (but no commits, so not unpushed)
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb status --dirty
     [[ "$output" == *"1 dirty"* ]]
-    # Should not mention repo-b's unpushed state
     [[ "$output" != *"unpushed"* ]]
 }
 
@@ -1886,7 +1901,7 @@ setup_local_repo() {
 
     cd "$TEST_DIR/project/mixed-ws"
 
-    # status works for both (exit 1 because repo-a is unpushed)
+    # status works for both (exit 0 — fresh branch with no commits is not unpushed)
     run arb status
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" == *"local-lib"* ]]
@@ -2864,9 +2879,10 @@ setup_fork_repo() {
     [ "$status" -eq 0 ]
     [ -d "$TEST_DIR/project/ambig-ws/ambig" ]
 
-    # Status runs without crashing (exit 1 is expected — fresh branch is unpushed)
+    # Status runs without crashing (exit 0 — fresh branch with no commits is not unpushed)
     cd "$TEST_DIR/project/ambig-ws"
     run arb status
+    [ "$status" -eq 0 ]
     [[ "$output" == *"ambig"* ]]
 }
 

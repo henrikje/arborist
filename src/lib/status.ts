@@ -35,7 +35,7 @@ export function getVerdict(repo: RepoStatus): Verdict {
 
 	const isDirty =
 		repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0;
-	const isUnpushed = !repo.remote.pushed || repo.remote.ahead > 0;
+	const isUnpushed = repo.remote.ahead > 0 || (!repo.remote.pushed && repo.base !== null && repo.base.ahead > 0);
 
 	if (repo.branch.drifted || repo.branch.detached || repo.operation !== null || (isDirty && isUnpushed))
 		return "at-risk";
@@ -194,7 +194,12 @@ export async function gatherWorkspaceSummary(wsDir: string, reposDir: string): P
 	let drifted = 0;
 
 	for (const repo of repos) {
-		if (repo.remote.local || (repo.remote.pushed && repo.remote.ahead === 0)) pushed++;
+		if (
+			repo.remote.local ||
+			(repo.remote.pushed && repo.remote.ahead === 0) ||
+			(!repo.remote.pushed && (repo.base === null || repo.base.ahead === 0))
+		)
+			pushed++;
 		if (repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0)
 			dirty++;
 		if (repo.base && repo.base.behind > 0) behind++;
