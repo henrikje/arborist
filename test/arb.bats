@@ -591,7 +591,7 @@ teardown() {
     git -C "$wt" merge "origin/$default_branch" >/dev/null 2>&1 || true
 
     # Status should show conflicts
-    run arb status -w my-feature
+    run arb -w my-feature status
     [[ "$output" == *"conflicts"* ]]
 
     # Remove without --force should refuse (non-TTY exits before at-risk check)
