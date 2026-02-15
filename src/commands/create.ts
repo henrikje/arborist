@@ -116,12 +116,14 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 
 				process.stderr.write("\n");
 				if (repos.length === 0) {
-					success(`Created workspace ${name} on branch ${branch}`);
+					success(`Created workspace ${name} on branch ${branch} at ${wsDir}`);
 					warn("No repos added. Use 'arb add' to add repos to this workspace.");
 				} else if (result.failed.length === 0 && result.skipped.length === 0) {
-					success(`Created workspace ${name} with ${result.created.length} worktree(s) on branch ${branch}`);
+					success(
+						`Created workspace ${name} with ${result.created.length} worktree(s) on branch ${branch} at ${wsDir}`,
+					);
 				} else {
-					success(`Created workspace ${name} on branch ${branch}`);
+					success(`Created workspace ${name} on branch ${branch} at ${wsDir}`);
 					if (result.created.length > 0) info(`  added:   ${result.created.join(" ")}`);
 					if (result.skipped.length > 0) warn(`  skipped: ${result.skipped.join(" ")}`);
 					if (result.failed.length > 0) error(`  failed:  ${result.failed.join(" ")}`);

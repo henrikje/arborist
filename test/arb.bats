@@ -270,6 +270,12 @@ teardown() {
     [ -z "$output" ]
 }
 
+@test "arb create shows workspace path" {
+    run arb create path-test repo-a
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"$TEST_DIR/project/path-test"* ]]
+}
+
 @test "arb create with duplicate workspace name fails" {
     arb create my-feature repo-a
     run arb create my-feature repo-b
