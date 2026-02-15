@@ -115,9 +115,12 @@ teardown() {
     local dir="$TEST_DIR/fresh"
     mkdir -p "$dir"
     cd "$dir"
-    arb init
+    run arb init
+    [ "$status" -eq 0 ]
     [ -d "$dir/.arb" ]
     [ -d "$dir/.arb/repos" ]
+    [[ "$output" == *"arb clone"* ]]
+    [[ "$output" == *"arb create"* ]]
 }
 
 @test "arb init on existing root fails" {
@@ -597,10 +600,10 @@ teardown() {
     [[ "$output" != *$'\033'* ]]
 }
 
-@test "arb list with no workspaces is silent" {
+@test "arb list with no workspaces shows hint" {
     run arb list
     [ "$status" -eq 0 ]
-    [ -z "$output" ]
+    [[ "$output" == *"arb create"* ]]
 }
 
 @test "arb list shows repo count" {

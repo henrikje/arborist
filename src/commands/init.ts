@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Command } from "commander";
 import { detectBaseDir } from "../lib/base-dir";
-import { error, success } from "../lib/output";
+import { dim, error, info, success } from "../lib/output";
 
 export function registerInitCommand(program: Command): void {
 	program
@@ -33,5 +33,9 @@ export function registerInitCommand(program: Command): void {
 			mkdirSync(`${target}/.arb/repos`, { recursive: true });
 
 			success(`Initialized arb in ${target}`);
+			info("");
+			info("Next steps:");
+			info(`  arb clone <url>    ${dim("Clone repos into the project")}`);
+			info(`  arb create <name>  ${dim("Create a workspace with worktrees")}`);
 		});
 }

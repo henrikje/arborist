@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
-import { bold, dim, green, red, yellow } from "../lib/output";
+import { bold, dim, green, info, red, yellow } from "../lib/output";
 import { listWorkspaces, workspaceRepoDirs } from "../lib/repos";
 import { gatherWorkspaceSummary } from "../lib/status";
 import type { ArbContext } from "../lib/types";
@@ -144,7 +144,10 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				});
 			}
 
-			if (rows.length === 0) return;
+			if (rows.length === 0) {
+				info("No workspaces yet. Create one with: arb create <name>");
+				return;
+			}
 
 			// Ensure minimum widths for header labels
 			if (maxName < 9) maxName = 9; // "WORKSPACE"
