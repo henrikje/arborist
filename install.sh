@@ -17,9 +17,9 @@ SHARE_DIR="$HOME/.local/share/arb"
 
 # ── Pre-flight checks ────────────────────────────────────────────
 
-if [[ "$SHELL" != */zsh ]] && ! command -v zsh &>/dev/null; then
-    warn "zsh is required for the shell function and tab completion"
-    warn "The arb script itself works in any shell"
+IS_ZSH=false
+if [[ "$SHELL" == */zsh ]] || command -v zsh &>/dev/null; then
+    IS_ZSH=true
 fi
 
 # ── Build from source ────────────────────────────────────────────
@@ -49,34 +49,36 @@ log "Installed arb.zsh to $SHARE_DIR/arb.zsh"
 
 # ── Configure shell ───────────────────────────────────────────────
 
-ZSHRC="$HOME/.zshrc"
-ARB_MARKER="# Added by Arborist"
-PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
-SOURCE_LINE='source "$HOME/.local/share/arb/arb.zsh"'
-OLD_SOURCE_LINE="source \"$BASE_DIR/shell/arb.zsh\""
+if $IS_ZSH; then
+    ZSHRC="$HOME/.zshrc"
+    ARB_MARKER="# Added by Arborist"
+    PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
+    SOURCE_LINE='source "$HOME/.local/share/arb/arb.zsh"'
+    OLD_SOURCE_LINE="source \"$BASE_DIR/shell/arb.zsh\""
 
-# Remove old source line pointing at repo checkout if present
-if [[ -f "$ZSHRC" ]] && grep -qF "$OLD_SOURCE_LINE" "$ZSHRC"; then
-    sed -i '' "\|$OLD_SOURCE_LINE|d" "$ZSHRC" 2>/dev/null || true
-    log "Removed old source line from .zshrc"
-fi
-
-# Add Arborist block if not already present
-if [[ -f "$ZSHRC" ]] && grep -qF "$ARB_MARKER" "$ZSHRC"; then
-    warn "Arborist block already present in .zshrc, skipping"
-else
-    ARB_BLOCK="$ARB_MARKER"
-    case ":$PATH:" in
-        *":$BIN_DIR:"*) ;;
-        *) ARB_BLOCK="$ARB_BLOCK"$'\n'"$PATH_LINE" ;;
-    esac
-    ARB_BLOCK="$ARB_BLOCK"$'\n'"$SOURCE_LINE"
-
-    if [[ -f "$ZSHRC" ]] && [[ "$(tail -c 2 "$ZSHRC")" != "" ]]; then
-        printf '\n' >> "$ZSHRC"
+    # Remove old source line pointing at repo checkout if present
+    if [[ -f "$ZSHRC" ]] && grep -qF "$OLD_SOURCE_LINE" "$ZSHRC"; then
+        sed -i '' "\|$OLD_SOURCE_LINE|d" "$ZSHRC" 2>/dev/null || true
+        log "Removed old source line from .zshrc"
     fi
-    printf '%s\n' "$ARB_BLOCK" >> "$ZSHRC"
-    log "Added Arborist block to .zshrc"
+
+    # Add Arborist block if not already present
+    if [[ -f "$ZSHRC" ]] && grep -qF "$ARB_MARKER" "$ZSHRC"; then
+        warn "Arborist block already present in .zshrc, skipping"
+    else
+        ARB_BLOCK="$ARB_MARKER"
+        case ":$PATH:" in
+            *":$BIN_DIR:"*) ;;
+            *) ARB_BLOCK="$ARB_BLOCK"$'\n'"$PATH_LINE" ;;
+        esac
+        ARB_BLOCK="$ARB_BLOCK"$'\n'"$SOURCE_LINE"
+
+        if [[ -f "$ZSHRC" ]] && [[ "$(tail -c 2 "$ZSHRC")" != "" ]]; then
+            printf '\n' >> "$ZSHRC"
+        fi
+        printf '%s\n' "$ARB_BLOCK" >> "$ZSHRC"
+        log "Added Arborist block to .zshrc"
+    fi
 fi
 
 # ── Done ──────────────────────────────────────────────────────────
@@ -84,6 +86,18 @@ fi
 echo ""
 success "Installation complete!"
 echo ""
-echo "  Restart your shell or run 'source ~/.zshrc'."
+if $IS_ZSH; then
+    echo "  Restart your shell or run 'source ~/.zshrc'."
+else
+    warn "zsh was not detected. Add the following to your shell profile manually:"
+    echo ""
+    case ":$PATH:" in
+        *":$BIN_DIR:"*) ;;
+        *) echo "  export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
+    esac
+    echo "  source \"\$HOME/.local/share/arb/arb.zsh\""
+    echo ""
+    warn "Note: The shell function and tab completion require zsh."
+fi
 echo "  Then run 'arb init' in a project directory to get started."
 echo ""
