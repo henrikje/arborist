@@ -2,24 +2,14 @@
 
 This file contains a prioritized list of planned or potential improvements to Arborist.
 
-## Essential – This is do or die
-
-- **Invest further in `arb status` as the killer feature.**
-The reviewer's strongest insight: *"If `arb status` becomes indispensable, the tool wins."* Status already shows base drift, origin drift, dirty state, at-risk detection, and conflict state. Potential enhancements:
-  - A compact summary line at the bottom (e.g. "3 repos clean, 1 needs rebase, 1 has unpushed commits") to make quick scanning even faster
-  - Consider whether `--verbose` output could show the specific commits that are ahead/behind
-  - Add something along the "indespensible->win" idea as a GUIDELINE.md entry.
-
 ## Priority 1 – Must-haves
 
 - **Versioned GitHub releases with precompiled binaries.**
 The reviewer correctly identifies this as the biggest practical weakness. Source-build requiring Bun is friction. Actions:
   - CI pipeline that cross-compiles for macOS arm64/x64 and Linux arm64/x64 via `bun build --target`
   - GitHub Releases with semver tags and binaries
-  - Update `install.sh` to download precompiled binaries instead of building from source (fall back to source build if no matching binary)
-
-- **Homebrew tap**
-Low effort once releases exist. Creates the "one-liner install" experience engineers expect.
+  - Update `install.sh` to download precompiled binaries instead of building from source (fall back to source build if no matching binary). 
+  - Homebrew tap: Low effort once releases exist. Creates the "one-liner install" experience engineers expect.
 
 - **Bash shell integration**
 The installer currently only auto-configures zsh. The shell helper (`arb.zsh`) provides the `arb` wrapper function for `cd` behavior. A `arb.bash` equivalent would widen adoption. Fish is lower priority but worth considering.

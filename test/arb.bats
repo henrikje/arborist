@@ -1355,6 +1355,108 @@ assert 'operation' in r
     [[ "$output" == *"1 untracked"* ]]
 }
 
+# ── status summary line ──────────────────────────────────────────
+
+@test "arb status summary shows all clean" {
+    arb create my-feature repo-a repo-b
+    echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    echo "c" > "$TEST_DIR/project/my-feature/repo-b/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-b" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" commit -m "c" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [[ "$output" == *"2 clean"* ]]
+}
+
+@test "arb status summary shows unpushed" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [[ "$output" == *"1 unpushed"* ]]
+}
+
+@test "arb status summary shows dirty" {
+    arb create my-feature repo-a
+    echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [[ "$output" == *"1 dirty"* ]]
+}
+
+@test "arb status summary shows behind base" {
+    arb create my-feature repo-a
+    echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    # Add a commit to origin's default branch
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [[ "$output" == *"1 behind base"* ]]
+}
+
+@test "arb status summary shows mixed counts" {
+    arb create my-feature repo-a repo-b
+    # repo-a: pushed and clean (ok verdict)
+    echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    # repo-b: unpushed (no remote)
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [[ "$output" == *"1 clean"* ]]
+    [[ "$output" == *"1 unpushed"* ]]
+}
+
+@test "arb status summary respects --dirty filter" {
+    arb create my-feature repo-a repo-b
+    # repo-a: pushed and dirty
+    echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    # repo-b: clean and unpushed
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status --dirty
+    [[ "$output" == *"1 dirty"* ]]
+    # Should not mention repo-b's unpushed state
+    [[ "$output" != *"unpushed"* ]]
+}
+
+@test "arb status summary not in --json output" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --json
+    # JSON should parse cleanly without summary text contaminating stdout
+    echo "$output" | python3 -c "import sys, json; json.load(sys.stdin)"
+}
+
+@test "arb status no summary for empty repos" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --dirty
+    # All clean, so --dirty shows "(no repos)" and no summary
+    [[ "$output" == *"(no repos)"* ]]
+    [[ "$output" != *"clean"* ]]
+    [[ "$output" != *"dirty"* ]]
+}
+
 # ── fetch ────────────────────────────────────────────────────────
 
 @test "arb fetch succeeds" {

@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import type { Command } from "commander";
 import { type FileChange, getCommitsBetween, parseGitStatusFiles } from "../lib/git";
-import { dim, green, yellow } from "../lib/output";
+import { dim, green, success, warn, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { classifyRepos } from "../lib/repos";
 import { type RepoStatus, type WorkspaceSummary, gatherWorkspaceSummary, getVerdict } from "../lib/status";
@@ -237,6 +237,30 @@ async function runStatus(
 				process.stdout.write("\n");
 			}
 		}
+	}
+
+	// Summary line
+	const verdicts = repos.map((r) => getVerdict(r));
+	const clean = verdicts.filter((v) => v === "ok" || v === "local").length;
+	const dirty = verdicts.filter((v) => v === "dirty").length;
+	const unpushed = verdicts.filter((v) => v === "unpushed").length;
+	const atRisk = verdicts.filter((v) => v === "at-risk").length;
+	const behindBase = repos.filter((r) => r.base !== null && r.base.behind > 0).length;
+
+	const parts: string[] = [];
+	if (clean > 0) parts.push(`${clean} clean`);
+	if (unpushed > 0) parts.push(`${unpushed} unpushed`);
+	if (dirty > 0) parts.push(`${dirty} dirty`);
+	if (atRisk > 0) parts.push(`${atRisk} at-risk`);
+	if (behindBase > 0) parts.push(`${behindBase} behind base`);
+
+	const line = parts.join(", ");
+	const allGood = unpushed === 0 && dirty === 0 && atRisk === 0 && behindBase === 0;
+
+	if (allGood) {
+		success(line);
+	} else {
+		warn(line);
 	}
 
 	return hasIssues(summary) ? 1 : 0;

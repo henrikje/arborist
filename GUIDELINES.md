@@ -14,6 +14,10 @@ Everything in Arborist exists to let a developer work on multiple features acros
 
 Commands, flags, and terminology mirror Git wherever possible. A developer who knows Git should feel at home immediately. Arborist is a thin coordination layer on top of Git worktrees, not a replacement for Git.
 
+### Visibility and control are everything
+
+Arborist operates across many repositories, so clarity is non-negotiable. The developer must always have a complete, honest view of the workspace — what changed, what drifted, what is at risk — and nothing mutates without explicit approval. The user is never left guessing about the current state or the consequences of an action. Features such as a fast, information-dense, and scannable `arb status`, along with preview–confirm–execute workflows for state changes, are expressions of this principle: visibility first, control always in the developer's hands.
+
 ### Convention over configuration
 
 Arborist uses marker directories (`.arb/`, `.arbws/`) and filesystem scanning instead of databases, registries, or config files beyond what's needed. If something can be discovered from the directory tree, it should be.
