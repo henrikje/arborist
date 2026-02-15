@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { branchExistsLocally, getDefaultBranch, hasRemote, isRepoDirty, remoteBranchExists } from "./git";
 import { error, inlineResult, inlineStart, warn } from "./output";
 import { type FetchResult, parallelFetch } from "./parallel-fetch";
+import type { RepoRemotes } from "./remotes";
 
 export interface AddWorktreesResult {
 	created: string[];
@@ -16,6 +17,7 @@ export async function addWorktrees(
 	reposDir: string,
 	baseDir: string,
 	baseBranch?: string,
+	remotesMap?: Map<string, RepoRemotes>,
 ): Promise<AddWorktreesResult> {
 	const wsDir = `${baseDir}/${name}`;
 	const result: AddWorktreesResult = { created: [], skipped: [], failed: [] };
@@ -39,7 +41,7 @@ export async function addWorktrees(
 
 	if (reposDirsToFetch.length > 0) {
 		process.stderr.write(`Fetching ${reposDirsToFetch.length} repo(s)...\n`);
-		const fetched = await parallelFetch(reposDirsToFetch);
+		const fetched = await parallelFetch(reposDirsToFetch, undefined, remotesMap);
 		for (const [repo, fr] of fetched) {
 			fetchResults.set(repo, fr);
 		}
@@ -85,15 +87,20 @@ export async function addWorktrees(
 
 		const repoHasRemote = await hasRemote(repoPath);
 
+		// Resolve remote names for this repo
+		const repoRemotes = remotesMap?.get(repo);
+		const upstreamRemote = repoRemotes?.upstream ?? "origin";
+		const publishRemote = repoRemotes?.publish ?? "origin";
+
 		let effectiveBase: string | null;
 		if (baseBranch) {
 			const baseExists = repoHasRemote
-				? await remoteBranchExists(repoPath, baseBranch)
+				? await remoteBranchExists(repoPath, baseBranch, upstreamRemote)
 				: await branchExistsLocally(repoPath, baseBranch);
 			if (baseExists) {
 				effectiveBase = baseBranch;
 			} else {
-				effectiveBase = await getDefaultBranch(repoPath);
+				effectiveBase = await getDefaultBranch(repoPath, upstreamRemote);
 				if (effectiveBase) {
 					warn(`  [${repo}] base branch '${baseBranch}' not found — using '${effectiveBase}'`);
 				} else {
@@ -103,7 +110,7 @@ export async function addWorktrees(
 				}
 			}
 		} else {
-			effectiveBase = await getDefaultBranch(repoPath);
+			effectiveBase = await getDefaultBranch(repoPath, upstreamRemote);
 			if (!effectiveBase) {
 				error(`  [${repo}] could not determine default branch`);
 				result.failed.push(repo);
@@ -128,7 +135,7 @@ export async function addWorktrees(
 			}
 			inlineResult(repo, `branch ${branch} attached`);
 		} else {
-			const startPoint = repoHasRemote ? `origin/${effectiveBase}` : effectiveBase;
+			const startPoint = repoHasRemote ? `${upstreamRemote}/${effectiveBase}` : effectiveBase;
 			inlineStart(repo, `creating branch ${branch} from ${startPoint}`);
 			const wt = await Bun.$`git -C ${repoPath} worktree add -b ${branch} ${wsDir}/${repo} ${startPoint}`
 				.quiet()
@@ -145,7 +152,7 @@ export async function addWorktrees(
 
 		// Set upstream so `git push` works without -u on first push
 		if (repoHasRemote) {
-			await Bun.$`git -C ${wsDir}/${repo} config branch.${branch}.remote origin`.quiet().nothrow();
+			await Bun.$`git -C ${wsDir}/${repo} config branch.${branch}.remote ${publishRemote}`.quiet().nothrow();
 			await Bun.$`git -C ${wsDir}/${repo} config branch.${branch}.merge refs/heads/${branch}`.quiet().nothrow();
 		}
 

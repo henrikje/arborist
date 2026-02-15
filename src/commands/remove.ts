@@ -12,6 +12,7 @@ import {
 	validateWorkspaceName,
 } from "../lib/git";
 import { error, green, inlineResult, inlineStart, red, success, warn, yellow } from "../lib/output";
+import { resolveRemotes } from "../lib/remotes";
 import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import { type RepoStatus, gatherRepoStatus } from "../lib/status";
 import type { ArbContext } from "../lib/types";
@@ -78,18 +79,18 @@ async function removeWorkspace(
 	for (const status of repoStatuses) {
 		const repoPath = `${ctx.reposDir}/${status.name}`;
 		if (await hasRemote(repoPath)) {
-			if (status.origin.pushed) {
+			if (status.remote.pushed) {
 				remoteRepos.push(status.name);
 			}
 		}
 
 		const isDirty = status.local.staged > 0 || status.local.modified > 0 || status.local.untracked > 0;
-		const isUnpushed = !status.origin.local && (!status.origin.pushed || status.origin.ahead > 0);
+		const isUnpushed = !status.remote.local && (!status.remote.pushed || status.remote.ahead > 0);
 		const canonicalDirty = canonicalDirtyMap.get(status.name) ?? false;
 
 		// Check if branch has unique commits but was never pushed
 		let notPushedWithCommits = false;
-		if (!status.origin.local && !status.origin.pushed && status.base && status.base.ahead > 0) {
+		if (!status.remote.local && !status.remote.pushed && status.base && status.base.ahead > 0) {
 			notPushedWithCommits = true;
 		}
 
@@ -105,7 +106,7 @@ async function removeWorkspace(
 	process.stderr.write("\n");
 	for (const status of repoStatuses) {
 		const canonicalDirty = canonicalDirtyMap.get(status.name) ?? false;
-		const notPushedWithCommits = !status.origin.local && !status.origin.pushed && status.base && status.base.ahead > 0;
+		const notPushedWithCommits = !status.remote.local && !status.remote.pushed && status.base && status.base.ahead > 0;
 
 		const parts = [
 			status.local.staged > 0 && green(`${status.local.staged} staged`),
@@ -114,9 +115,9 @@ async function removeWorkspace(
 			canonicalDirty && yellow("canonical repo dirty"),
 			notPushedWithCommits
 				? red("not pushed at all")
-				: status.origin.pushed && status.origin.ahead > 0
-					? yellow(`${status.origin.ahead} commits not pushed`)
-					: !status.origin.local && !status.origin.pushed && false,
+				: status.remote.pushed && status.remote.ahead > 0
+					? yellow(`${status.remote.ahead} commits not pushed`)
+					: !status.remote.local && !status.remote.pushed && false,
 		]
 			.filter(Boolean)
 			.join(", ");
@@ -165,8 +166,15 @@ async function removeWorkspace(
 		}
 
 		if (deleteRemote && (await hasRemote(`${ctx.reposDir}/${repo}`))) {
-			if (await remoteBranchExists(`${ctx.reposDir}/${repo}`, branch)) {
-				const pushResult = await git(`${ctx.reposDir}/${repo}`, "push", "origin", "--delete", branch);
+			let publishRemote = "origin";
+			try {
+				const remotes = await resolveRemotes(`${ctx.reposDir}/${repo}`);
+				publishRemote = remotes.publish;
+			} catch {
+				// Fall back to origin
+			}
+			if (await remoteBranchExists(`${ctx.reposDir}/${repo}`, branch, publishRemote)) {
+				const pushResult = await git(`${ctx.reposDir}/${repo}`, "push", publishRemote, "--delete", branch);
 				if (pushResult.exitCode !== 0) {
 					inlineResult(repo, "removed (failed to delete remote)");
 					continue;

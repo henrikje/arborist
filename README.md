@@ -96,7 +96,7 @@ git add -p && git commit -m "Fix the login endpoint"
 # Check status across all repos in the workspace
 arb status
 
-# Push all repos to origin
+# Push all repos
 arb push
 
 # Rebase both repos onto the latest base branch, then force push
@@ -157,26 +157,26 @@ arb status
 This shows the state of each worktree in a compact table with labeled columns:
 
 ```
-  REPO         BRANCH        BASE                     ORIGIN                          LOCAL
+  REPO         BRANCH        BASE                     REMOTE                          LOCAL
   repo-a       my-feature    main  aligned            origin/my-feature  aligned      clean
   repo-b       my-feature    main  2 ahead            origin/my-feature  2 to push    1 staged, 1 modified
   repo-c       experiment    main  2 ahead, 1 behind  origin/experiment  1 to pull    clean
   local-lib    my-feature    main  aligned            local                           clean
 ```
 
-This view is designed to give you the full picture in one glance — repo name, current branch, how far you've drifted from the base branch, whether origin is ahead or behind, and what's uncommitted locally. Yellow highlights things that need attention: unpushed commits, local changes, unexpected branches.
+This view is designed to give you the full picture in one glance — repo name, current branch, how far you've drifted from the base branch, whether the remote is ahead or behind, and what's uncommitted locally. Yellow highlights things that need attention: unpushed commits, local changes, unexpected branches.
 
 See `arb status --help` for all options.
 
 ### Stay in sync
 
-**See what changed** — fetch origin for every repo without merging. Arborist fetches all repos in parallel:
+**See what changed** — fetch the remote for every repo without merging. Arborist fetches all repos in parallel:
 
 ```bash
 arb fetch
 ```
 
-**Pull teammate changes** — pull the feature branch from origin for all repos:
+**Pull teammate changes** — pull the feature branch from the remote for all repos:
 
 ```bash
 arb pull
@@ -192,7 +192,7 @@ If a rebase hits conflicts, arb stops at that repo and prints step-by-step instr
 
 Arb auto-detects each repo's default branch, so repos using `main`, `master`, or `develop` coexist without extra configuration.
 
-**Push your work** — push the feature branch to origin for all repos. After rebasing, use `--force` to force push with lease:
+**Push your work** — push the feature branch to the remote for all repos. After rebasing, use `--force` to force push with lease:
 
 ```bash
 arb push
@@ -302,6 +302,54 @@ cd ~/project-a && arb init
 cd ~/project-b && arb init
 ```
 
+## Fork workflows
+
+Arborist has built-in support for fork-based development, where you push feature branches to your fork and rebase onto the canonical (upstream) repository.
+
+### Remote roles
+
+Arborist thinks in terms of two remote roles:
+
+- **upstream** — the source of base branches and the target for rebase/merge operations
+- **publish** — where feature branches are pushed and pulled
+
+For single-remote repos, both roles resolve to `origin`. For fork setups, `upstream` typically points to the canonical repository and `publish` to your fork.
+
+### Setting up a fork
+
+Use `arb clone` with `--upstream` to clone a fork and register the canonical repo in one step:
+
+```bash
+arb clone https://github.com/you/api.git --upstream https://github.com/org/api.git
+```
+
+This clones your fork as `origin`, adds the canonical repo as `upstream`, sets `remote.pushDefault = origin`, and fetches both remotes.
+
+### Auto-detection
+
+Arborist reads `remote.pushDefault` and remote names from git config to determine roles automatically. No arborist-specific configuration is needed. Detection follows these rules:
+
+1. Single remote — used for both roles
+2. `remote.pushDefault` set — that remote is `publish`, the other is `upstream`
+3. Remotes named `upstream` and `origin` — conventional fork layout
+4. Ambiguous — arb reports an error with guidance on how to configure `remote.pushDefault`
+
+### Per-repo flexibility
+
+Different repos in a workspace can have different remote layouts. Some repos might be forked while others use a single origin. Arborist resolves remotes independently per repo.
+
+### Status display
+
+In fork setups, `arb status` shows the upstream remote prefix in the BASE column so you can see where each repo's base branch lives:
+
+```
+  REPO      BRANCH        BASE                          REMOTE                          LOCAL
+  api       my-feature    upstream/main  2 ahead        origin/my-feature  2 to push    clean
+  web       my-feature    main           aligned        origin/my-feature  aligned      clean
+```
+
+Here `api` is a fork (base is `upstream/main`) while `web` uses a single origin (base is just `main`).
+
 ## Scripting & automation
 
 ### Non-interactive mode
@@ -314,7 +362,7 @@ arb rebase --yes && arb push --force --yes
 
 ### Machine-readable status
 
-`arb status --json` writes structured JSON to stdout. Each repo includes branch state, base drift, origin drift, local changes, and any in-progress operation:
+`arb status --json` writes structured JSON to stdout. Each repo includes branch state, base drift, remote drift, local changes, and any in-progress operation:
 
 ```bash
 arb status --json | jq '[.repos[] | select(.base.behind > 0) | .name]'
@@ -367,7 +415,7 @@ Each workspace has a `.arbws/config` file that records the branch name (and opti
 branch = fix-login
 ```
 
-Arb auto-detects each repo's default branch by checking `refs/remotes/origin/HEAD` (set automatically during fetch), falling back to the repo's local HEAD. Each repo resolves independently, so `main`, `master`, and `develop` can coexist across repos in the same workspace. To override a workspace's base branch explicitly, add it to the config:
+Arb auto-detects each repo's default branch by checking the upstream remote's HEAD ref (e.g. `refs/remotes/origin/HEAD` for single-remote repos, `refs/remotes/upstream/HEAD` for forks), falling back to the repo's local HEAD. Each repo resolves independently, so `main`, `master`, and `develop` can coexist across repos in the same workspace. To override a workspace's base branch explicitly, add it to the config:
 
 ```ini
 branch = fix-login

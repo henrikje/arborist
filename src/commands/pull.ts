@@ -4,6 +4,7 @@ import type { Command } from "commander";
 import { checkBranchMatch, git, remoteBranchExists } from "../lib/git";
 import { error, info, inlineResult, inlineStart, red, success, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
+import { type RepoRemotes, resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos, resolveRepoSelection } from "../lib/repos";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
@@ -24,9 +25,9 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 		.option("-y, --yes", "Skip confirmation prompt")
 		.option("--rebase", "Pull with rebase")
 		.option("--merge", "Pull with merge")
-		.summary("Pull the feature branch from origin")
+		.summary("Pull the feature branch from the publish remote")
 		.description(
-			"Pull the feature branch from origin for all repos, or only the named repos. Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos that haven't been pushed yet are skipped.",
+			"Pull the feature branch for all repos, or only the named repos. Pulls from the publish remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos that haven't been pushed yet are skipped.",
 		)
 		.action(async (repoArgs: string[], options: { rebase?: boolean; merge?: boolean; yes?: boolean }) => {
 			if (options.rebase && options.merge) {
@@ -41,6 +42,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 
 			const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
 			const selectedSet = new Set(selectedRepos);
+			const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
 
 			// Phase 1: parallel fetch (only selected repos)
 			const { repos: allRepos, fetchDirs: allFetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
@@ -50,7 +52,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 			let fetchResults = new Map<string, { exitCode: number; output: string }>();
 			if (fetchDirs.length > 0) {
 				process.stderr.write(`Fetching ${fetchDirs.length} repo(s)...\n`);
-				fetchResults = await parallelFetch(fetchDirs);
+				fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
 			}
 
 			const fetchFailed = reportFetchFailures(repos, localRepos, fetchResults);
@@ -59,7 +61,9 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 			const assessments: PullAssessment[] = [];
 			for (const repo of repos) {
 				const repoDir = `${wsDir}/${repo}`;
-				assessments.push(await assessPullRepo(repo, repoDir, branch, localRepos, fetchFailed, flagMode));
+				assessments.push(
+					await assessPullRepo(repo, repoDir, branch, localRepos, fetchFailed, flagMode, remotesMap.get(repo)),
+				);
 			}
 
 			// Phase 3: display plan
@@ -69,9 +73,11 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 
 			process.stderr.write("\n");
 			for (const a of assessments) {
+				const remotes = remotesMap.get(a.repo);
+				const forkSuffix = remotes && remotes.upstream !== remotes.publish ? ` ← ${remotes.publish}` : "";
 				if (a.outcome === "will-pull") {
 					process.stderr.write(
-						`  ${a.repo}   ${a.behind} commit${a.behind === 1 ? "" : "s"} to pull (${a.pullMode})\n`,
+						`  ${a.repo}   ${a.behind} commit${a.behind === 1 ? "" : "s"} to pull (${a.pullMode})${forkSuffix}\n`,
 					);
 				} else if (a.outcome === "up-to-date") {
 					process.stderr.write(`  ${a.repo}   up to date\n`);
@@ -149,7 +155,9 @@ async function assessPullRepo(
 	localRepos: string[],
 	fetchFailed: string[],
 	flagMode: "rebase" | "merge" | undefined,
+	remotes?: RepoRemotes,
 ): Promise<PullAssessment> {
+	const publishRemote = remotes?.publish ?? "origin";
 	const base: PullAssessment = { repo, repoDir, outcome: "skip", behind: 0, pullMode: "merge" };
 
 	if (localRepos.includes(repo)) {
@@ -165,14 +173,14 @@ async function assessPullRepo(
 		return { ...base, skipReason: `on branch ${bm.actual}, expected ${branch}` };
 	}
 
-	if (!(await remoteBranchExists(repoDir, branch))) {
+	if (!(await remoteBranchExists(repoDir, branch, publishRemote))) {
 		return { ...base, skipReason: "not pushed yet" };
 	}
 
-	// Check how many commits behind origin
-	const lr = await git(repoDir, "rev-list", "--left-right", "--count", `origin/${branch}...HEAD`);
+	// Check how many commits behind the publish remote
+	const lr = await git(repoDir, "rev-list", "--left-right", "--count", `${publishRemote}/${branch}...HEAD`);
 	if (lr.exitCode !== 0) {
-		return { ...base, skipReason: "cannot compare with origin" };
+		return { ...base, skipReason: `cannot compare with ${publishRemote}` };
 	}
 
 	const parts = lr.stdout.trim().split(/\s+/);

@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import { error } from "./output";
+import type { RepoRemotes } from "./remotes";
 import { isTTY } from "./tty";
 
 export interface FetchResult {
@@ -8,7 +9,11 @@ export interface FetchResult {
 	output: string;
 }
 
-export async function parallelFetch(repoDirs: string[], timeout?: number): Promise<Map<string, FetchResult>> {
+export async function parallelFetch(
+	repoDirs: string[],
+	timeout?: number,
+	remotesMap?: Map<string, RepoRemotes>,
+): Promise<Map<string, FetchResult>> {
 	const fetchTimeout = timeout ?? (Number(process.env.ARB_FETCH_TIMEOUT) || 120);
 	const results = new Map<string, FetchResult>();
 	const total = repoDirs.length;
@@ -34,29 +39,55 @@ export async function parallelFetch(repoDirs: string[], timeout?: number): Promi
 	const fetchOne = async (repoDir: string): Promise<void> => {
 		const repo = basename(repoDir);
 		try {
-			const proc = Bun.spawn(["git", "-C", repoDir, "fetch", "origin"], {
-				stdout: "pipe",
-				stderr: "pipe",
-			});
-
-			// Race fetch against abort
-			const abortPromise = new Promise<"aborted">((resolve) => {
-				controller.signal.addEventListener("abort", () => resolve("aborted"), { once: true });
-			});
-
-			const raceResult = await Promise.race([proc.exited, abortPromise]);
-
-			if (raceResult === "aborted") {
-				proc.kill();
-				await proc.exited;
-				results.set(repo, { repo, exitCode: 124, output: `fetch timed out after ${fetchTimeout}s` });
+			// Determine which remotes to fetch
+			const repoRemotes = remotesMap?.get(repo);
+			const remotesToFetch = new Set<string>();
+			if (repoRemotes) {
+				remotesToFetch.add(repoRemotes.upstream);
+				remotesToFetch.add(repoRemotes.publish);
 			} else {
+				remotesToFetch.add("origin");
+			}
+			const upstreamRemote = repoRemotes?.upstream ?? "origin";
+
+			let allOutput = "";
+			let lastExitCode = 0;
+
+			for (const remote of remotesToFetch) {
+				const proc = Bun.spawn(["git", "-C", repoDir, "fetch", remote], {
+					stdout: "pipe",
+					stderr: "pipe",
+				});
+
+				// Race fetch against abort
+				const abortPromise = new Promise<"aborted">((resolve) => {
+					controller.signal.addEventListener("abort", () => resolve("aborted"), { once: true });
+				});
+
+				const raceResult = await Promise.race([proc.exited, abortPromise]);
+
+				if (raceResult === "aborted") {
+					proc.kill();
+					await proc.exited;
+					results.set(repo, { repo, exitCode: 124, output: `fetch timed out after ${fetchTimeout}s` });
+					completed++;
+					updateProgress();
+					return;
+				}
+
 				const stderrText = await new Response(proc.stderr).text();
-				results.set(repo, { repo, exitCode: raceResult, output: stderrText.trim() });
+				if (stderrText.trim()) {
+					allOutput += (allOutput ? "\n" : "") + stderrText.trim();
+				}
+				if (raceResult !== 0) {
+					lastExitCode = raceResult;
+				}
 			}
 
-			// Auto-detect remote HEAD
-			await Bun.$`git -C ${repoDir} remote set-head origin --auto`.quiet().nothrow();
+			results.set(repo, { repo, exitCode: lastExitCode, output: allOutput });
+
+			// Auto-detect remote HEAD on the upstream remote
+			await Bun.$`git -C ${repoDir} remote set-head ${upstreamRemote} --auto`.quiet().nothrow();
 		} catch {
 			results.set(repo, { repo, exitCode: 1, output: "fetch failed" });
 		}

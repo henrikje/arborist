@@ -29,7 +29,7 @@ Currently `base` in `.arbws/config` applies to all repos in a workspace. In prac
 - **Continue past conflicts in `rebase` / `merge`**
 Currently `arb rebase` and `arb merge` stop at the first repo that conflicts, forcing the user to resolve before remaining repos can be processed. A `--continue` or `--skip-conflicts` flag would attempt all repos, skip those that conflict, report which ones need attention at the end, and let the user resolve them after.
 
-## P3 — Nice-to-have enhancements
+## Priority 3 — Nice-to-have enhancements
 
 - **Repo groups**
 The reviewer suggests "frontend-set" style grouping. This would be useful for projects with 10+ repos where you commonly operate on subsets. Lower priority until arb sees usage at that scale.

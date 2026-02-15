@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import { error, success, warn } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
+import { resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
 import { requireWorkspace } from "../lib/workspace-context";
@@ -8,9 +9,9 @@ import { requireWorkspace } from "../lib/workspace-context";
 export function registerFetchCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("fetch")
-		.summary("Fetch all repos from origin")
+		.summary("Fetch all repos from their remotes")
 		.description(
-			"Fetch from origin for every repo in the workspace, in parallel. Nothing is merged — use this to see what's changed before deciding what to do.",
+			"Fetch from all configured remotes for every repo in the workspace, in parallel. Nothing is merged — use this to see what's changed before deciding what to do.",
 		)
 		.action(async () => {
 			const ctx = getCtx();
@@ -25,10 +26,11 @@ export function registerFetchCommand(program: Command, getCtx: () => ArbContext)
 				warn(`  [${repo}] local repo — skipping`);
 			}
 
+			const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
 			let results = new Map<string, { exitCode: number; output: string }>();
 			if (fetchDirs.length > 0) {
 				process.stderr.write(`Fetching ${fetchDirs.length} repo(s)...\n`);
-				results = await parallelFetch(fetchDirs);
+				results = await parallelFetch(fetchDirs, undefined, remotesMap);
 			}
 
 			// Report results

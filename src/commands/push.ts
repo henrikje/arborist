@@ -2,6 +2,7 @@ import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { checkBranchMatch, git, hasRemote, remoteBranchExists } from "../lib/git";
 import { error, info, inlineResult, inlineStart, red, success, yellow } from "../lib/output";
+import { type RepoRemotes, resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection } from "../lib/repos";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
@@ -15,6 +16,7 @@ interface PushAssessment {
 	ahead: number;
 	behind: number;
 	branch: string;
+	publishRemote: string;
 }
 
 export function registerPushCommand(program: Command, getCtx: () => ArbContext): void {
@@ -22,9 +24,9 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 		.command("push [repos...]")
 		.option("-f, --force", "Force push with lease (after rebase or amend)")
 		.option("-y, --yes", "Skip confirmation prompt")
-		.summary("Push the feature branch to origin")
+		.summary("Push the feature branch to the publish remote")
 		.description(
-			"Push the feature branch to origin for all repos, or only the named repos. Shows a plan and asks for confirmation before pushing. Skips repos without a remote and repos where the branch hasn't been set up for tracking yet. Use --force after rebase or amend to force push with lease.",
+			"Push the feature branch for all repos, or only the named repos. Pushes to the publish remote (origin by default, or as configured for fork workflows). Shows a plan and asks for confirmation before pushing. Skips repos without a remote and repos where the branch hasn't been set up for tracking yet. Use --force after rebase or amend to force push with lease.",
 		)
 		.action(async (repoArgs: string[], options: { force?: boolean; yes?: boolean }) => {
 			const ctx = getCtx();
@@ -32,19 +34,20 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 			const branch = await requireBranch(wsDir, workspace);
 
 			const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
+			const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
 
 			// Phase 1: assess each repo
 			const assessments: PushAssessment[] = [];
 			for (const repo of selectedRepos) {
 				const repoDir = `${wsDir}/${repo}`;
-				assessments.push(await assessPushRepo(repo, repoDir, branch, ctx.reposDir));
+				assessments.push(await assessPushRepo(repo, repoDir, branch, ctx.reposDir, remotesMap.get(repo)));
 			}
 
 			// Reclassify force-push when --force is not set
 			for (const a of assessments) {
 				if (a.outcome === "will-force-push" && !options.force) {
 					a.outcome = "skip";
-					a.skipReason = "diverged from origin (use --force)";
+					a.skipReason = `diverged from ${a.publishRemote} (use --force)`;
 				}
 			}
 
@@ -55,11 +58,13 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 
 			process.stderr.write("\n");
 			for (const a of assessments) {
+				const remotes = remotesMap.get(a.repo);
+				const forkSuffix = remotes && remotes.upstream !== remotes.publish ? ` → ${a.publishRemote}` : "";
 				if (a.outcome === "will-push") {
-					process.stderr.write(`  ${a.repo}   ${a.ahead} commit${a.ahead === 1 ? "" : "s"} to push\n`);
+					process.stderr.write(`  ${a.repo}   ${a.ahead} commit${a.ahead === 1 ? "" : "s"} to push${forkSuffix}\n`);
 				} else if (a.outcome === "will-force-push") {
 					process.stderr.write(
-						`  ${a.repo}   ${a.ahead} commit${a.ahead === 1 ? "" : "s"} to push (force — ${a.behind} behind origin)\n`,
+						`  ${a.repo}   ${a.ahead} commit${a.ahead === 1 ? "" : "s"} to push (force — ${a.behind} behind ${a.publishRemote})\n`,
 					);
 				} else if (a.outcome === "up-to-date") {
 					process.stderr.write(`  ${a.repo}   up to date\n`);
@@ -99,8 +104,8 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				inlineStart(a.repo, "pushing");
 				const pushArgs =
 					a.outcome === "will-force-push"
-						? ["push", "--force-with-lease", "origin", a.branch]
-						: ["push", "origin", a.branch];
+						? ["push", "--force-with-lease", a.publishRemote, a.branch]
+						: ["push", a.publishRemote, a.branch];
 				const pushResult = await Bun.$`git -C ${a.repoDir} ${pushArgs}`.quiet().nothrow();
 				if (pushResult.exitCode === 0) {
 					inlineResult(a.repo, `pushed ${a.ahead} commit(s)`);
@@ -133,8 +138,10 @@ async function assessPushRepo(
 	repoDir: string,
 	branch: string,
 	reposDir: string,
+	remotes?: RepoRemotes,
 ): Promise<PushAssessment> {
-	const base: PushAssessment = { repo, repoDir, outcome: "skip", ahead: 0, behind: 0, branch };
+	const publishRemote = remotes?.publish ?? "origin";
+	const base: PushAssessment = { repo, repoDir, outcome: "skip", ahead: 0, behind: 0, branch, publishRemote };
 
 	if (!(await hasRemote(`${reposDir}/${repo}`))) {
 		return { ...base, skipReason: "local repo" };
@@ -145,24 +152,24 @@ async function assessPushRepo(
 		return { ...base, skipReason: `on branch ${bm.actual}, expected ${branch}` };
 	}
 
-	// Check upstream
-	const upstream = await Bun.$`git -C ${repoDir} config branch.${branch}.remote`.quiet().nothrow();
-	if (upstream.exitCode !== 0 || !upstream.text().trim()) {
-		return { ...base, skipReason: `no upstream (run: git push -u origin ${branch})` };
+	// Check upstream tracking config
+	const trackingRemote = await Bun.$`git -C ${repoDir} config branch.${branch}.remote`.quiet().nothrow();
+	if (trackingRemote.exitCode !== 0 || !trackingRemote.text().trim()) {
+		return { ...base, skipReason: `no upstream (run: git push -u ${publishRemote} ${branch})` };
 	}
 
 	// Check if remote branch exists — if not, this is a first push
-	if (!(await remoteBranchExists(repoDir, branch))) {
+	if (!(await remoteBranchExists(repoDir, branch, publishRemote))) {
 		// Count commits on the branch for display
 		const log = await git(repoDir, "rev-list", "--count", "HEAD");
 		const count = log.exitCode === 0 ? Number.parseInt(log.stdout.trim(), 10) : 1;
 		return { ...base, outcome: "will-push", ahead: count };
 	}
 
-	// Check how many commits ahead/behind origin
-	const lr = await git(repoDir, "rev-list", "--left-right", "--count", `origin/${branch}...HEAD`);
+	// Check how many commits ahead/behind the publish remote
+	const lr = await git(repoDir, "rev-list", "--left-right", "--count", `${publishRemote}/${branch}...HEAD`);
 	if (lr.exitCode !== 0) {
-		return { ...base, skipReason: "cannot compare with origin" };
+		return { ...base, skipReason: `cannot compare with ${publishRemote}` };
 	}
 
 	const parts = lr.stdout.trim().split(/\s+/);
@@ -174,7 +181,7 @@ async function assessPushRepo(
 	}
 
 	if (ahead === 0 && behind > 0) {
-		return { ...base, outcome: "skip", skipReason: "behind origin (pull first?)", behind };
+		return { ...base, outcome: "skip", skipReason: `behind ${publishRemote} (pull first?)`, behind };
 	}
 
 	if (ahead > 0 && behind > 0) {

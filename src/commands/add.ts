@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { error, info, success, warn } from "../lib/output";
+import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -48,7 +49,8 @@ export function registerAddCommand(program: Command, getCtx: () => ArbContext): 
 			const branch = await requireBranch(wsDir, workspace);
 			const base = configGet(`${wsDir}/.arbws/config`, "base") ?? undefined;
 
-			const result = await addWorktrees(workspace, branch, repos, ctx.reposDir, ctx.baseDir, base);
+			const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
+			const result = await addWorktrees(workspace, branch, repos, ctx.reposDir, ctx.baseDir, base, remotesMap);
 
 			process.stderr.write("\n");
 			if (result.failed.length === 0 && result.skipped.length === 0) {

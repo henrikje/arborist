@@ -4,6 +4,7 @@ import { configGet } from "./config";
 import { checkBranchMatch, getDefaultBranch, git, hasRemote, isRepoDirty, remoteBranchExists } from "./git";
 import { error, info, inlineResult, inlineStart, red, success, yellow } from "./output";
 import { parallelFetch, reportFetchFailures } from "./parallel-fetch";
+import { type RepoRemotes, resolveRemotesMap } from "./remotes";
 import { classifyRepos, resolveRepoSelection } from "./repos";
 import { isTTY } from "./tty";
 import type { ArbContext } from "./types";
@@ -17,6 +18,7 @@ interface RepoAssessment {
 	outcome: "will-operate" | "up-to-date" | "skip";
 	skipReason?: string;
 	baseBranch?: string;
+	upstreamRemote: string;
 	behind: number;
 	ahead: number;
 }
@@ -29,7 +31,6 @@ export async function integrate(
 ): Promise<void> {
 	const verb = mode === "rebase" ? "Rebase" : "Merge";
 	const verbed = mode === "rebase" ? "Rebased" : "Merged";
-	const verbing = mode === "rebase" ? "rebasing" : "merging";
 
 	// Phase 1: context & repo selection
 	const { wsDir, workspace } = requireWorkspace(ctx);
@@ -38,12 +39,15 @@ export async function integrate(
 
 	const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
 
+	// Resolve remotes for all repos
+	const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
+
 	// Phase 2: optional fetch
 	if (options.fetch) {
 		const { repos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
 		if (fetchDirs.length > 0) {
 			process.stderr.write(`Fetching ${fetchDirs.length} repo(s)...\n`);
-			const fetchResults = await parallelFetch(fetchDirs);
+			const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
 			reportFetchFailures(repos, localRepos, fetchResults);
 		}
 	}
@@ -51,7 +55,7 @@ export async function integrate(
 	// Phase 3: assess each repo
 	const assessments: RepoAssessment[] = [];
 	for (const repo of selectedRepos) {
-		assessments.push(await assessRepo(repo, wsDir, ctx.reposDir, branch, configBase));
+		assessments.push(await assessRepo(repo, wsDir, ctx.reposDir, branch, configBase, remotesMap.get(repo)));
 	}
 
 	// Phase 4: display plan & confirm
@@ -66,7 +70,9 @@ export async function integrate(
 				.filter(Boolean)
 				.join(", ");
 			const diffStr = diffParts ? ` \u2014 ${diffParts}` : "";
-			process.stderr.write(`  ${a.repo}   ${mode} onto ${a.baseBranch}${diffStr}\n`);
+			const baseRef = `${a.upstreamRemote}/${a.baseBranch}`;
+			const action = mode === "rebase" ? `rebase ${branch} onto ${baseRef}` : `merge ${baseRef} into ${branch}`;
+			process.stderr.write(`  ${a.repo}   ${action}${diffStr}\n`);
 		} else if (a.outcome === "up-to-date") {
 			process.stderr.write(`  ${a.repo}   up to date\n`);
 		} else {
@@ -100,12 +106,14 @@ export async function integrate(
 	// Phase 5: execute sequentially
 	let succeeded = 0;
 	for (const a of willOperate) {
-		const ref = `origin/${a.baseBranch}`;
-		inlineStart(a.repo, `${verbing} onto ${ref}`);
+		const ref = `${a.upstreamRemote}/${a.baseBranch}`;
+		const progressMsg = mode === "rebase" ? `rebasing ${branch} onto ${ref}` : `merging ${ref} into ${branch}`;
+		inlineStart(a.repo, progressMsg);
 
 		const result = await git(a.repoDir, mode, ref);
 		if (result.exitCode === 0) {
-			inlineResult(a.repo, `${verbed.toLowerCase()} onto ${ref}`);
+			const doneMsg = mode === "rebase" ? `rebased ${branch} onto ${ref}` : `merged ${ref} into ${branch}`;
+			inlineResult(a.repo, doneMsg);
 			succeeded++;
 		} else {
 			inlineResult(a.repo, red("conflict"));
@@ -134,10 +142,12 @@ async function assessRepo(
 	reposDir: string,
 	branch: string,
 	configBase: string | null,
+	remotes?: RepoRemotes,
 ): Promise<RepoAssessment> {
 	const repoDir = `${wsDir}/${repo}`;
 	const repoPath = `${reposDir}/${repo}`;
-	const base: RepoAssessment = { repo, repoDir, outcome: "skip", behind: 0, ahead: 0 };
+	const upstreamRemote = remotes?.upstream ?? "origin";
+	const base: RepoAssessment = { repo, repoDir, outcome: "skip", behind: 0, ahead: 0, upstreamRemote };
 
 	// Check remote
 	if (!(await hasRemote(repoPath))) {
@@ -174,19 +184,19 @@ async function assessRepo(
 	// Resolve base branch
 	let baseBranch: string | null = null;
 	if (configBase) {
-		if (await remoteBranchExists(repoPath, configBase)) {
+		if (await remoteBranchExists(repoPath, configBase, upstreamRemote)) {
 			baseBranch = configBase;
 		}
 	}
 	if (!baseBranch) {
-		baseBranch = await getDefaultBranch(repoPath);
+		baseBranch = await getDefaultBranch(repoPath, upstreamRemote);
 	}
 	if (!baseBranch) {
 		return { ...base, skipReason: "no base branch" };
 	}
 
 	// Ahead/behind base
-	const lr = await git(repoDir, "rev-list", "--left-right", "--count", `origin/${baseBranch}...HEAD`);
+	const lr = await git(repoDir, "rev-list", "--left-right", "--count", `${upstreamRemote}/${baseBranch}...HEAD`);
 	if (lr.exitCode !== 0) {
 		return { ...base, skipReason: "cannot compare with base" };
 	}

@@ -9,13 +9,13 @@ export async function git(repoDir: string, ...args: string[]): Promise<{ exitCod
 	return { exitCode: proc.exitCode ?? 1, stdout };
 }
 
-export async function getDefaultBranch(repoDir: string): Promise<string | null> {
-	// Try origin/HEAD first
-	const symRef = await git(repoDir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD");
+export async function getDefaultBranch(repoDir: string, remote = "origin"): Promise<string | null> {
+	// Try remote HEAD first
+	const symRef = await git(repoDir, "symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`);
 	if (symRef.exitCode === 0) {
-		return symRef.stdout.trim().replace(/^origin\//, "");
+		return symRef.stdout.trim().replace(new RegExp(`^${remote}/`), "");
 	}
-	// No origin — use the repo's own HEAD branch
+	// No remote HEAD — use the repo's own HEAD branch
 	const headRef = await git(repoDir, "symbolic-ref", "--short", "HEAD");
 	if (headRef.exitCode === 0) {
 		return headRef.stdout.trim();
@@ -63,8 +63,8 @@ export async function branchExistsLocally(repoDir: string, branch: string): Prom
 	return result.exitCode === 0;
 }
 
-export async function remoteBranchExists(repoDir: string, branch: string): Promise<boolean> {
-	const result = await git(repoDir, "show-ref", "--verify", "--quiet", `refs/remotes/origin/${branch}`);
+export async function remoteBranchExists(repoDir: string, branch: string, remote = "origin"): Promise<boolean> {
+	const result = await git(repoDir, "show-ref", "--verify", "--quiet", `refs/remotes/${remote}/${branch}`);
 	return result.exitCode === 0;
 }
 

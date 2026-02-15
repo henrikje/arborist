@@ -4,6 +4,7 @@ import type { Command } from "commander";
 import { writeConfig } from "../lib/config";
 import { validateBranchName, validateWorkspaceName } from "../lib/git";
 import { error, info, success, warn } from "../lib/output";
+import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, selectReposInteractive } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
 import { addWorktrees } from "../lib/worktrees";
@@ -109,7 +110,8 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 
 				let result = { created: [] as string[], skipped: [] as string[], failed: [] as string[] };
 				if (repos.length > 0) {
-					result = await addWorktrees(name, branch, repos, ctx.reposDir, ctx.baseDir, base);
+					const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
+					result = await addWorktrees(name, branch, repos, ctx.reposDir, ctx.baseDir, base, remotesMap);
 				}
 
 				process.stderr.write("\n");
