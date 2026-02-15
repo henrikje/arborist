@@ -189,7 +189,7 @@ async function runStatus(
 
 		// Col 6: Remote diff
 		let remoteDiffColored: string;
-		if (cell.remoteDiff === "aligned") {
+		if (cell.remoteDiff === "aligned" || cell.remoteDiff === "gone") {
 			remoteDiffColored = cell.remoteDiff;
 		} else if (cell.remoteDiff === "not pushed" || (repo.remote.ahead === 0 && repo.remote.behind > 0)) {
 			remoteDiffColored = cell.remoteDiff;
@@ -357,6 +357,7 @@ function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
 }
 
 function plainRemoteDiff(repo: RepoStatus): string {
+	if (repo.remote.gone) return "gone";
 	if (!repo.remote.pushed) {
 		if (repo.base !== null && repo.base.ahead > 0) {
 			return `${repo.base.ahead} to push`;

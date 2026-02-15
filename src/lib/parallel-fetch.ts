@@ -54,7 +54,7 @@ export async function parallelFetch(
 			let lastExitCode = 0;
 
 			for (const remote of remotesToFetch) {
-				const proc = Bun.spawn(["git", "-C", repoDir, "fetch", remote], {
+				const proc = Bun.spawn(["git", "-C", repoDir, "fetch", "--prune", remote], {
 					stdout: "pipe",
 					stderr: "pipe",
 				});

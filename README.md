@@ -121,7 +121,7 @@ You will create a new workspace for each feature or issue you work on. A workspa
 arb create fix-login frontend backend
 ```
 
-This creates a `fix-login` workspace, checks out a `fix-login` branch in `frontend` and `backend`, and creates separate working directories for each under `fix-login/`. The branches are created if they do not exist and set up with upstream tracking.
+This creates a `fix-login` workspace, checks out a `fix-login` branch in `frontend` and `backend`, and creates separate working directories for each under `fix-login/`. The branches are created if they do not exist.
 
 Use `--branch` (`-b`) when the branch name differs from the workspace name, and `--all-repos` (`-a`) to include every cloned repo:
 

@@ -90,7 +90,6 @@ export async function addWorktrees(
 		// Resolve remote names for this repo
 		const repoRemotes = remotesMap?.get(repo);
 		const upstreamRemote = repoRemotes?.upstream ?? "origin";
-		const publishRemote = repoRemotes?.publish ?? "origin";
 
 		let effectiveBase: string | null;
 		if (baseBranch) {
@@ -137,7 +136,12 @@ export async function addWorktrees(
 		} else {
 			const startPoint = repoHasRemote ? `${upstreamRemote}/${effectiveBase}` : effectiveBase;
 			inlineStart(repo, `creating branch ${branch} from ${startPoint}`);
-			const wt = await Bun.$`git -C ${repoPath} worktree add -b ${branch} ${wsDir}/${repo} ${startPoint}`
+			// Prevent git from auto-setting tracking config (branch.autoSetupMerge) when
+			// branching from a remote ref. We rely on tracking config being absent for fresh
+			// branches and present only after `arb push -u`, so we can detect "gone" branches
+			// (pushed, merged, remote branch deleted) vs never-pushed branches.
+			const noTrack = repoHasRemote ? ["--no-track"] : [];
+			const wt = await Bun.$`git -C ${repoPath} worktree add ${noTrack} -b ${branch} ${wsDir}/${repo} ${startPoint}`
 				.quiet()
 				.nothrow();
 			if (wt.exitCode !== 0) {
@@ -148,12 +152,6 @@ export async function addWorktrees(
 				continue;
 			}
 			inlineResult(repo, `branch ${branch} created from ${startPoint}`);
-		}
-
-		// Set upstream so `git push` works without -u on first push
-		if (repoHasRemote) {
-			await Bun.$`git -C ${wsDir}/${repo} config branch.${branch}.remote ${publishRemote}`.quiet().nothrow();
-			await Bun.$`git -C ${wsDir}/${repo} config branch.${branch}.merge refs/heads/${branch}`.quiet().nothrow();
 		}
 
 		result.created.push(repo);

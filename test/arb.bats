@@ -2978,11 +2978,6 @@ setup_fork_repo() {
     [ "$status" -eq 0 ]
     [ -d "$TEST_DIR/project/fork-add/repo-b-fork" ]
 
-    # Verify worktree tracks the publish remote (origin), not upstream
-    local tracking_remote
-    tracking_remote="$(git -C "$TEST_DIR/project/fork-add/repo-b-fork" config branch.fork-add.remote)"
-    [ "$tracking_remote" = "origin" ]
-
     # Verify the branch was created from upstream (has upstream content)
     [ -f "$TEST_DIR/project/fork-add/repo-b-fork/file.txt" ]
 }
@@ -2997,5 +2992,90 @@ setup_fork_repo() {
     run arb clone "$TEST_DIR/fork/bad-upstream.git" bad-upstream --upstream "/nonexistent/path/repo.git"
     [ "$status" -ne 0 ]
     [[ "$output" == *"Failed to fetch upstream"* ]]
+}
+
+# ── gone remote branches ─────────────────────────────────────────
+
+# Helper: push a workspace branch via arb, then delete it on the bare remote
+push_then_delete_remote() {
+    local ws="$1" repo="$2"
+    local wt="$TEST_DIR/project/$ws/$repo"
+    echo "change" > "$wt/file.txt"
+    git -C "$wt" add file.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    (cd "$TEST_DIR/project/$ws" && arb push --yes) >/dev/null 2>&1
+    # Delete the branch on the bare remote (simulates GitHub auto-delete after merge)
+    git -C "$TEST_DIR/origin/$repo.git" branch -D "$ws" >/dev/null 2>&1
+    # Prune so the local tracking ref is gone
+    git -C "$TEST_DIR/project/.arb/repos/$repo" fetch --prune >/dev/null 2>&1
+}
+
+@test "arb fetch prunes deleted remote branches" {
+    arb create gone-fetch repo-a
+    local wt="$TEST_DIR/project/gone-fetch/repo-a"
+    echo "change" > "$wt/file.txt"
+    git -C "$wt" add file.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    cd "$TEST_DIR/project/gone-fetch"
+    arb push --yes >/dev/null 2>&1
+
+    # Verify tracking ref exists before
+    run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/remotes/origin/gone-fetch"
+    [ "$status" -eq 0 ]
+
+    # Delete on bare remote
+    git -C "$TEST_DIR/origin/repo-a.git" branch -D gone-fetch >/dev/null 2>&1
+
+    # Fetch should prune the stale tracking ref
+    arb fetch
+
+    run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/remotes/origin/gone-fetch"
+    [ "$status" -ne 0 ]
+}
+
+@test "arb status shows gone for deleted remote branch" {
+    arb create gone-status repo-a repo-b
+    push_then_delete_remote gone-status repo-a
+
+    cd "$TEST_DIR/project/gone-status"
+    run arb status
+    [[ "$output" == *"gone"* ]]
+    [[ "$output" != *"not pushed"* ]]
+}
+
+@test "arb status exits 0 for gone repos" {
+    arb create gone-exit repo-a
+    push_then_delete_remote gone-exit repo-a
+
+    cd "$TEST_DIR/project/gone-exit"
+    run arb status
+    [ "$status" -eq 0 ]
+}
+
+@test "arb push skips gone repos" {
+    arb create gone-push repo-a
+    push_then_delete_remote gone-push repo-a
+
+    cd "$TEST_DIR/project/gone-push"
+    run arb push --yes
+    [[ "$output" == *"remote branch gone"* ]]
+}
+
+@test "arb pull skips gone repos" {
+    arb create gone-pull repo-a
+    push_then_delete_remote gone-pull repo-a
+
+    cd "$TEST_DIR/project/gone-pull"
+    run arb pull --yes
+    [[ "$output" == *"remote branch gone"* ]]
+}
+
+@test "arb remove treats gone repos as safe" {
+    arb create gone-remove repo-a
+    push_then_delete_remote gone-remove repo-a
+
+    run arb remove gone-remove --force
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/gone-remove" ]
 }
 

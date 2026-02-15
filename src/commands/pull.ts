@@ -27,7 +27,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 		.option("--merge", "Pull with merge")
 		.summary("Pull the feature branch from the publish remote")
 		.description(
-			"Pull the feature branch for all repos, or only the named repos. Pulls from the publish remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos that haven't been pushed yet are skipped.",
+			"Pull the feature branch for all repos, or only the named repos. Pulls from the publish remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos that haven't been pushed yet or where the remote branch has been deleted are skipped.",
 		)
 		.action(async (repoArgs: string[], options: { rebase?: boolean; merge?: boolean; yes?: boolean }) => {
 			if (options.rebase && options.merge) {
@@ -115,8 +115,9 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 
 			for (const a of willPull) {
 				inlineStart(a.repo, `pulling (${a.pullMode})`);
+				const pullRemote = remotesMap.get(a.repo)?.publish ?? "origin";
 				const pullFlag = a.pullMode === "rebase" ? "--rebase" : "--no-rebase";
-				const pullResult = await Bun.$`git -C ${a.repoDir} pull ${pullFlag}`.quiet().nothrow();
+				const pullResult = await Bun.$`git -C ${a.repoDir} pull ${pullFlag} ${pullRemote} ${branch}`.quiet().nothrow();
 				if (pullResult.exitCode === 0) {
 					inlineResult(a.repo, `pulled ${a.behind} commit(s) (${a.pullMode})`);
 					pullOk++;
@@ -174,6 +175,10 @@ async function assessPullRepo(
 	}
 
 	if (!(await remoteBranchExists(repoDir, branch, publishRemote))) {
+		const configRemote = await Bun.$`git -C ${repoDir} config branch.${branch}.remote`.quiet().nothrow();
+		if (configRemote.exitCode === 0 && configRemote.text().trim().length > 0) {
+			return { ...base, skipReason: "remote branch gone" };
+		}
 		return { ...base, skipReason: "not pushed yet" };
 	}
 

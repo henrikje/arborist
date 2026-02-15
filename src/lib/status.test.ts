@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { RepoStatus } from "./status";
-import { isDirty, isUnpushed } from "./status";
+import { getVerdict, isDirty, isUnpushed } from "./status";
 
 function makeRepo(overrides: Partial<RepoStatus> = {}): RepoStatus {
 	return {
 		name: "test-repo",
 		branch: { expected: "feature", actual: "feature", drifted: false, detached: false },
 		base: { name: "main", ahead: 0, behind: 0 },
-		remote: { pushed: true, ahead: 0, behind: 0, local: false, trackingBranch: "origin/feature" },
+		remote: { pushed: true, ahead: 0, behind: 0, local: false, gone: false, trackingBranch: "origin/feature" },
 		remotes: { upstream: "origin", publish: "origin" },
 		local: { staged: 0, modified: 0, untracked: 0, conflicts: 0 },
 		operation: null,
@@ -45,7 +45,16 @@ describe("isUnpushed", () => {
 	test("returns true when remote.ahead > 0", () => {
 		expect(
 			isUnpushed(
-				makeRepo({ remote: { pushed: true, ahead: 2, behind: 0, local: false, trackingBranch: "origin/feature" } }),
+				makeRepo({
+					remote: {
+						pushed: true,
+						ahead: 2,
+						behind: 0,
+						local: false,
+						gone: false,
+						trackingBranch: "origin/feature",
+					},
+				}),
 			),
 		).toBe(true);
 	});
@@ -54,7 +63,7 @@ describe("isUnpushed", () => {
 		expect(
 			isUnpushed(
 				makeRepo({
-					remote: { pushed: false, ahead: 0, behind: 0, local: false, trackingBranch: null },
+					remote: { pushed: false, ahead: 0, behind: 0, local: false, gone: false, trackingBranch: null },
 					base: { name: "main", ahead: 3, behind: 0 },
 				}),
 			),
@@ -65,7 +74,7 @@ describe("isUnpushed", () => {
 		expect(
 			isUnpushed(
 				makeRepo({
-					remote: { pushed: false, ahead: 0, behind: 0, local: false, trackingBranch: null },
+					remote: { pushed: false, ahead: 0, behind: 0, local: false, gone: false, trackingBranch: null },
 					base: { name: "main", ahead: 0, behind: 0 },
 				}),
 			),
@@ -76,10 +85,33 @@ describe("isUnpushed", () => {
 		expect(
 			isUnpushed(
 				makeRepo({
-					remote: { pushed: false, ahead: 0, behind: 0, local: false, trackingBranch: null },
+					remote: { pushed: false, ahead: 0, behind: 0, local: false, gone: false, trackingBranch: null },
 					base: null,
 				}),
 			),
 		).toBe(false);
+	});
+
+	test("returns false when gone even with base.ahead > 0", () => {
+		expect(
+			isUnpushed(
+				makeRepo({
+					remote: { pushed: true, ahead: 0, behind: 0, local: false, gone: true, trackingBranch: null },
+					base: { name: "main", ahead: 3, behind: 0 },
+				}),
+			),
+		).toBe(false);
+	});
+});
+
+describe("getVerdict", () => {
+	test("returns ok when gone and clean", () => {
+		expect(
+			getVerdict(
+				makeRepo({
+					remote: { pushed: true, ahead: 0, behind: 0, local: false, gone: true, trackingBranch: null },
+				}),
+			),
+		).toBe("ok");
 	});
 });

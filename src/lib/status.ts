@@ -17,7 +17,14 @@ export interface RepoStatus {
 	name: string;
 	branch: { expected: string; actual: string; drifted: boolean; detached: boolean };
 	base: { name: string; ahead: number; behind: number } | null;
-	remote: { pushed: boolean; ahead: number; behind: number; local: boolean; trackingBranch: string | null };
+	remote: {
+		pushed: boolean;
+		ahead: number;
+		behind: number;
+		local: boolean;
+		gone: boolean;
+		trackingBranch: string | null;
+	};
 	remotes: RepoRemotes;
 	local: { staged: number; modified: number; untracked: number; conflicts: number };
 	operation: "rebase" | "merge" | "cherry-pick" | null;
@@ -42,6 +49,7 @@ export function isDirty(repo: RepoStatus): boolean {
 }
 
 export function isUnpushed(repo: RepoStatus): boolean {
+	if (repo.remote.gone) return false;
 	return repo.remote.ahead > 0 || (!repo.remote.pushed && repo.base !== null && repo.base.ahead > 0);
 }
 
@@ -121,9 +129,9 @@ export async function gatherRepoStatus(
 	// Remote push status
 	let remoteStatus: RepoStatus["remote"];
 	if (!repoHasRemote) {
-		remoteStatus = { pushed: false, ahead: 0, behind: 0, local: true, trackingBranch: null };
+		remoteStatus = { pushed: false, ahead: 0, behind: 0, local: true, gone: false, trackingBranch: null };
 	} else if (detached) {
-		remoteStatus = { pushed: false, ahead: 0, behind: 0, local: false, trackingBranch: null };
+		remoteStatus = { pushed: false, ahead: 0, behind: 0, local: false, gone: false, trackingBranch: null };
 	} else if (trackingBranch) {
 		// Use actual tracking branch for comparison
 		const pushLr = await git(repoDir, "rev-list", "--left-right", "--count", `${trackingBranch}...HEAD`);
@@ -134,7 +142,7 @@ export async function gatherRepoStatus(
 			pushBehind = Number.parseInt(parts[0] ?? "0", 10);
 			pushAhead = Number.parseInt(parts[1] ?? "0", 10);
 		}
-		remoteStatus = { pushed: true, ahead: pushAhead, behind: pushBehind, local: false, trackingBranch };
+		remoteStatus = { pushed: true, ahead: pushAhead, behind: pushBehind, local: false, gone: false, trackingBranch };
 	} else if (await remoteBranchExists(repoDir, actual, publishRemote)) {
 		// No tracking branch set but remote branch exists — compare against it
 		const pushLr = await git(repoDir, "rev-list", "--left-right", "--count", `${publishRemote}/${actual}...HEAD`);
@@ -145,9 +153,20 @@ export async function gatherRepoStatus(
 			pushBehind = Number.parseInt(parts[0] ?? "0", 10);
 			pushAhead = Number.parseInt(parts[1] ?? "0", 10);
 		}
-		remoteStatus = { pushed: true, ahead: pushAhead, behind: pushBehind, local: false, trackingBranch: null };
+		remoteStatus = {
+			pushed: true,
+			ahead: pushAhead,
+			behind: pushBehind,
+			local: false,
+			gone: false,
+			trackingBranch: null,
+		};
 	} else {
-		remoteStatus = { pushed: false, ahead: 0, behind: 0, local: false, trackingBranch: null };
+		const configRemote = await git(repoDir, "config", `branch.${actual}.remote`);
+		const gone = configRemote.exitCode === 0 && configRemote.stdout.trim().length > 0;
+		remoteStatus = gone
+			? { pushed: true, ahead: 0, behind: 0, local: false, gone: true, trackingBranch: null }
+			: { pushed: false, ahead: 0, behind: 0, local: false, gone: false, trackingBranch: null };
 	}
 
 	// Working tree status

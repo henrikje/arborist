@@ -26,7 +26,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 		.option("-y, --yes", "Skip confirmation prompt")
 		.summary("Push the feature branch to the publish remote")
 		.description(
-			"Push the feature branch for all repos, or only the named repos. Pushes to the publish remote (origin by default, or as configured for fork workflows). Shows a plan and asks for confirmation before pushing. Skips repos without a remote and repos where the branch hasn't been set up for tracking yet. Use --force after rebase or amend to force push with lease.",
+			"Push the feature branch for all repos, or only the named repos. Pushes to the publish remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. Skips repos without a remote and repos where the remote branch has been deleted. Use --force after rebase or amend to force push with lease.",
 		)
 		.action(async (repoArgs: string[], options: { force?: boolean; yes?: boolean }) => {
 			const ctx = getCtx();
@@ -104,8 +104,8 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				inlineStart(a.repo, "pushing");
 				const pushArgs =
 					a.outcome === "will-force-push"
-						? ["push", "--force-with-lease", a.publishRemote, a.branch]
-						: ["push", a.publishRemote, a.branch];
+						? ["push", "-u", "--force-with-lease", a.publishRemote, a.branch]
+						: ["push", "-u", a.publishRemote, a.branch];
 				const pushResult = await Bun.$`git -C ${a.repoDir} ${pushArgs}`.quiet().nothrow();
 				if (pushResult.exitCode === 0) {
 					inlineResult(a.repo, `pushed ${a.ahead} commit(s)`);
@@ -152,15 +152,15 @@ async function assessPushRepo(
 		return { ...base, skipReason: `on branch ${bm.actual}, expected ${branch}` };
 	}
 
-	// Check upstream tracking config
-	const trackingRemote = await Bun.$`git -C ${repoDir} config branch.${branch}.remote`.quiet().nothrow();
-	if (trackingRemote.exitCode !== 0 || !trackingRemote.text().trim()) {
-		return { ...base, skipReason: `no upstream (run: git push -u ${publishRemote} ${branch})` };
-	}
-
-	// Check if remote branch exists — if not, this is a first push
+	// Check if remote branch exists
 	if (!(await remoteBranchExists(repoDir, branch, publishRemote))) {
-		// Count commits on the branch for display
+		// Tracking config present means the branch was pushed before (set by git push -u).
+		// If it's gone now, the remote branch was deleted (e.g. merged via PR).
+		const trackingRemote = await Bun.$`git -C ${repoDir} config branch.${branch}.remote`.quiet().nothrow();
+		if (trackingRemote.exitCode === 0 && trackingRemote.text().trim()) {
+			return { ...base, skipReason: "remote branch gone" };
+		}
+		// No tracking config — first push
 		const log = await git(repoDir, "rev-list", "--count", "HEAD");
 		const count = log.exitCode === 0 ? Number.parseInt(log.stdout.trim(), 10) : 1;
 		return { ...base, outcome: "will-push", ahead: count };
