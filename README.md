@@ -188,7 +188,9 @@ arb pull
 arb rebase
 ```
 
-If a rebase conflicts, arb stops and shows instructions. Resolve the conflict with git, then re-run `arb rebase` for the remaining repos. Prefer merge commits? Use `arb merge` instead — same workflow, uses `git merge`.
+If a rebase hits conflicts, arb stops at that repo and prints step-by-step instructions — the commands to resolve or abort, and a reminder to re-run `arb rebase` for remaining repos. Repos are rebased one at a time, so you only deal with one conflict at a time. If you re-run while a repo is still mid-rebase, it is automatically skipped. Prefer merge commits? Use `arb merge` instead — same workflow, uses `git merge`.
+
+Arb auto-detects each repo's default branch, so repos using `main`, `master`, or `develop` coexist without extra configuration.
 
 **Push your work** — push the feature branch to origin for all repos. After rebasing, use `--force` to force push with lease:
 
@@ -300,6 +302,38 @@ cd ~/project-a && arb init
 cd ~/project-b && arb init
 ```
 
+## Scripting & automation
+
+### Non-interactive mode
+
+Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, and `merge`. Without it, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
+
+```bash
+arb rebase --yes && arb push --force --yes
+```
+
+### Machine-readable status
+
+`arb status --json` writes structured JSON to stdout. Each repo includes branch state, base drift, origin drift, local changes, and any in-progress operation:
+
+```bash
+arb status --json | jq '[.repos[] | select(.base.behind > 0) | .name]'
+```
+
+### Exit codes
+
+`0` means success, `1` means failure or issues detected, `130` means the user aborted a confirmation prompt. `arb status` returns `1` when any repo has issues, making it useful as a health check:
+
+```bash
+if arb status --workspace my-feature > /dev/null; then
+  echo "all clean"
+fi
+```
+
+### Output separation
+
+Human-facing output (progress, prompts, summaries) goes to stderr. Machine-parseable data (`--json`, `arb path`) goes to stdout. Colors are stripped automatically in non-TTY environments.
+
 ## How it works
 
 Arb uses marker directories and Git worktrees — no database, no daemon, no config outside the arb root.
@@ -331,6 +365,13 @@ Each workspace has a `.arbws/config` file that records the branch name (and opti
 
 ```ini
 branch = fix-login
+```
+
+Arb auto-detects each repo's default branch by checking `refs/remotes/origin/HEAD` (set automatically during fetch), falling back to the repo's local HEAD. Each repo resolves independently, so `main`, `master`, and `develop` can coexist across repos in the same workspace. To override a workspace's base branch explicitly, add it to the config:
+
+```ini
+branch = fix-login
+base = develop
 ```
 
 Arborist does not record which repos belong to a workspace — it simply looks at which worktree directories exist inside it. If you `rm -rf` a single repo's worktree, arb will stop tracking it for that workspace. Git's internal worktree metadata is cleaned up automatically by `arb remove` or `git worktree prune`.
