@@ -3350,22 +3350,28 @@ push_then_delete_remote() {
     [[ "$output" != *"not pushed"* ]]
 }
 
-@test "arb status exits 0 for gone repos" {
+@test "arb status exits 1 for gone repos with unpushed commits" {
     arb create gone-exit repo-a
     push_then_delete_remote gone-exit repo-a
 
     cd "$TEST_DIR/project/gone-exit"
     run arb status
-    [ "$status" -eq 0 ]
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"gone"* ]]
+    [[ "$output" == *"to push"* ]]
 }
 
-@test "arb push skips gone repos" {
+@test "arb push recreates gone remote branches" {
     arb create gone-push repo-a
     push_then_delete_remote gone-push repo-a
-
     cd "$TEST_DIR/project/gone-push"
     run arb push --yes
-    [[ "$output" == *"remote branch gone"* ]]
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"(recreate)"* ]]
+    [[ "$output" == *"pushed"* ]]
+    # Verify the remote branch was actually recreated
+    run git -C "$TEST_DIR/origin/repo-a.git" branch --list gone-push
+    [[ "$output" == *"gone-push"* ]]
 }
 
 @test "arb pull skips gone repos" {
