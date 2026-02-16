@@ -751,6 +751,48 @@ teardown() {
     [[ "$output" == *"does not exist"* ]]
 }
 
+# ── cd ───────────────────────────────────────────────────────────
+
+@test "arb cd prints correct workspace path" {
+    arb create my-feature --all-repos
+    run arb cd my-feature
+    [ "$status" -eq 0 ]
+    [ "$output" = "$TEST_DIR/project/my-feature" ]
+}
+
+@test "arb cd with subpath prints correct worktree path" {
+    arb create my-feature repo-a
+    run arb cd my-feature/repo-a
+    [ "$status" -eq 0 ]
+    [ "$output" = "$TEST_DIR/project/my-feature/repo-a" ]
+}
+
+@test "arb cd with nonexistent workspace fails" {
+    run arb cd does-not-exist
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"does not exist"* ]]
+}
+
+@test "arb cd with nonexistent subpath fails" {
+    arb create my-feature repo-a
+    run arb cd my-feature/nonexistent
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not found in workspace"* ]]
+}
+
+@test "arb cd with no arg in non-TTY fails" {
+    run arb cd
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Usage: arb cd"* ]]
+}
+
+@test "arb cd rejects non-workspace directory" {
+    mkdir -p "$TEST_DIR/project/not-a-workspace"
+    run arb cd not-a-workspace
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"does not exist"* ]]
+}
+
 # ── status ───────────────────────────────────────────────────────
 
 @test "arb status shows base branch name" {

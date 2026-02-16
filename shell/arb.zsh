@@ -9,6 +9,17 @@ arb() {
         cd "${_arb_recover:-/}" 2>/dev/null || cd "$HOME"
     fi
 
+    if [[ "$1" == "cd" ]]; then
+        # Pass help flags through without capturing
+        case " ${*:2} " in
+            *" --help "*|*" -h "*) command arb cd "${@:2}"; return ;;
+        esac
+        local _arb_dir
+        _arb_dir="$(command arb cd "${@:2}")" || return
+        cd "$_arb_dir"
+        return
+    fi
+
     command arb "$@"
 }
 
@@ -52,6 +63,7 @@ _arb() {
                 'remove:Remove a workspace'
                 'list:List all workspaces'
                 'path:Print the path to the arb root or a workspace'
+                'cd:Change to a workspace directory'
                 'add:Add worktrees to the workspace'
                 'drop:Drop worktrees from the workspace'
                 'status:Show worktree status'
@@ -74,6 +86,22 @@ _arb() {
                     ;;
                 path)
                     _arguments '1:workspace:($ws_names)'
+                    ;;
+                cd)
+                    local input="${words[2]:-}"
+                    if [[ "$input" == */* ]]; then
+                        # After slash: complete worktree names within the workspace
+                        local ws_name="${input%%/*}"
+                        local ws_dir="$base_dir/$ws_name"
+                        if [[ -d "$ws_dir" ]]; then
+                            local -a wt_names=(${ws_dir}/*(N/:t))
+                            wt_names=(${wt_names:#.arbws})
+                            compadd -p "$ws_name/" -a wt_names
+                        fi
+                    else
+                        # Before slash: complete workspace names
+                        _arguments '1:workspace:($ws_names)'
+                    fi
                     ;;
                 create)
                     _arguments \

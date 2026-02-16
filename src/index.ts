@@ -1,5 +1,6 @@
 import { Command, type Help } from "commander";
 import { registerAddCommand } from "./commands/add";
+import { registerCdCommand } from "./commands/cd";
 import { registerCloneCommand } from "./commands/clone";
 import { registerCreateCommand } from "./commands/create";
 import { registerDropCommand } from "./commands/drop";
@@ -178,6 +179,7 @@ registerCreateCommand(program, getCtx);
 registerRemoveCommand(program, getCtx);
 registerListCommand(program, getCtx);
 registerPathCommand(program, getCtx);
+registerCdCommand(program, getCtx);
 registerAddCommand(program, getCtx);
 registerDropCommand(program, getCtx);
 registerStatusCommand(program, getCtx);

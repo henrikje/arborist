@@ -16,6 +16,7 @@
 		"@inquirer/checkbox": "^5.0.4",
 		"@inquirer/confirm": "^6.0.4",
 		"@inquirer/input": "^5.0.4",
+		"@inquirer/select": "^5.0.6",
 		"commander": "^13"
 	},
 	"devDependencies": {
