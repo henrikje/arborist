@@ -21,8 +21,9 @@ export async function workspaceBranch(wsDir: string): Promise<WorkspaceBranchRes
 
 	// Config missing or empty — try to infer from first worktree
 	const repoDirs = workspaceRepoDirs(wsDir);
-	if (repoDirs.length > 0) {
-		const result = await Bun.$`git -C ${repoDirs[0]} branch --show-current`.quiet().nothrow();
+	const firstRepoDir = repoDirs[0];
+	if (firstRepoDir) {
+		const result = await Bun.$`git -C ${firstRepoDir} branch --show-current`.cwd(firstRepoDir).quiet().nothrow();
 		if (result.exitCode === 0) {
 			const branch = result.text().trim();
 			if (branch) {

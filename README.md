@@ -85,11 +85,11 @@ Here's the full lifecycle of a workspace — from creation to cleanup:
 arb create fix-login frontend backend
 
 # Work in individual repos as usual
-cd fix-login/frontend
+arb cd fix-login/frontend
 # hack hack hack
 git add -p && git commit -m "Fix the login page"
 
-cd ../backend
+arb cd fix-login/backend
 # hack hack hack
 git add -p && git commit -m "Fix the login endpoint"
 
@@ -242,7 +242,15 @@ The active workspace (the one you're currently inside) is marked with `*`.
 
 ### Navigate
 
-`arb path` prints the absolute path to the arb root, a workspace, or a worktree from anywhere below the arb root:
+`arb cd` changes into a workspace or worktree directory. It requires the shell integration installed by `install.sh`:
+
+```bash
+arb cd fix-login              # cd into workspace
+arb cd fix-login/frontend     # cd into a specific worktree
+arb cd                        # interactive workspace picker
+```
+
+`arb path` prints the absolute path to the arb root, a workspace, or a worktree — useful in scripts and shell pipelines:
 
 ```bash
 arb path                       # /home/you/my-project (the arb root)

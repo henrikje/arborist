@@ -21,7 +21,7 @@ export function registerOpenCommand(program: Command, getCtx: () => ArbContext):
 			const { wsDir } = requireWorkspace(ctx);
 
 			// Check if command exists in PATH
-			const which = Bun.spawnSync(["which", command]);
+			const which = Bun.spawnSync(["which", command], { cwd: wsDir });
 			if (which.exitCode !== 0) {
 				error(`'${command}' not found in PATH`);
 				process.exit(1);
@@ -48,6 +48,7 @@ export function registerOpenCommand(program: Command, getCtx: () => ArbContext):
 			}
 
 			const proc = Bun.spawn([command, ...extraFlags, ...dirsToOpen], {
+				cwd: wsDir,
 				stdout: "inherit",
 				stderr: "inherit",
 				stdin: "inherit",

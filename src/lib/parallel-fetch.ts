@@ -55,6 +55,7 @@ export async function parallelFetch(
 
 			for (const remote of remotesToFetch) {
 				const proc = Bun.spawn(["git", "-C", repoDir, "fetch", "--prune", remote], {
+					cwd: repoDir,
 					stdout: "pipe",
 					stderr: "pipe",
 				});
@@ -87,7 +88,7 @@ export async function parallelFetch(
 			results.set(repo, { repo, exitCode: lastExitCode, output: allOutput });
 
 			// Auto-detect remote HEAD on the upstream remote
-			await Bun.$`git -C ${repoDir} remote set-head ${upstreamRemote} --auto`.quiet().nothrow();
+			await Bun.$`git -C ${repoDir} remote set-head ${upstreamRemote} --auto`.cwd(repoDir).quiet().nothrow();
 		} catch {
 			results.set(repo, { repo, exitCode: 1, output: "fetch failed" });
 		}

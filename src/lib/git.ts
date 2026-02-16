@@ -15,6 +15,7 @@ export async function detectOperation(repoDir: string): Promise<GitOperation> {
 
 export async function git(repoDir: string, ...args: string[]): Promise<{ exitCode: number; stdout: string }> {
 	const proc = Bun.spawn(["git", "-C", repoDir, ...args], {
+		cwd: repoDir,
 		stdin: "ignore",
 		stdout: "pipe",
 		stderr: "pipe",
