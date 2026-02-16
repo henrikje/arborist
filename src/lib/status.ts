@@ -1,15 +1,7 @@
 import { basename } from "node:path";
 import { configGet } from "./config";
-import {
-	branchExistsLocally,
-	detectOperation,
-	getDefaultBranch,
-	git,
-	hasRemote,
-	parseGitStatus,
-	remoteBranchExists,
-} from "./git";
-import { type RepoRemotes, resolveRemotes } from "./remotes";
+import { branchExistsLocally, detectOperation, getDefaultBranch, git, parseGitStatus, remoteBranchExists } from "./git";
+import { type RepoRemotes, getRemoteNames, resolveRemotes } from "./remotes";
 import { workspaceRepoDirs } from "./repos";
 import { workspaceBranch } from "./workspace-branch";
 
@@ -72,6 +64,7 @@ export async function gatherRepoStatus(
 	expectedBranch: string,
 	configBase: string | null,
 	remotes?: RepoRemotes,
+	knownHasRemote?: boolean,
 ): Promise<RepoStatus> {
 	const repo = basename(repoDir);
 	const repoPath = `${reposDir}/${repo}`;
@@ -82,8 +75,8 @@ export async function gatherRepoStatus(
 	const detached = actual === "";
 	const drifted = detached || actual !== expectedBranch;
 
-	// Remote detection
-	const repoHasRemote = await hasRemote(repoPath);
+	// Remote detection — use pre-resolved value if available
+	const repoHasRemote = knownHasRemote ?? (await getRemoteNames(repoPath)).length > 0;
 
 	// Resolve remote names (upstream for base, publish for tracking)
 	const upstreamRemote = remotes?.upstream ?? "origin";
@@ -186,24 +179,42 @@ export async function gatherRepoStatus(
 	};
 }
 
-export async function gatherWorkspaceSummary(wsDir: string, reposDir: string): Promise<WorkspaceSummary> {
+export async function gatherWorkspaceSummary(
+	wsDir: string,
+	reposDir: string,
+	onProgress?: (scanned: number, total: number) => void,
+): Promise<WorkspaceSummary> {
 	const workspace = basename(wsDir);
 	const wb = await workspaceBranch(wsDir);
 	const branch = wb?.branch ?? workspace.toLowerCase();
 	const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 	const repoDirs = workspaceRepoDirs(wsDir);
+	const total = repoDirs.length;
+	let scanned = 0;
 
-	const repos: RepoStatus[] = [];
-	for (const repoDir of repoDirs) {
-		const repo = basename(repoDir);
-		let remotes: RepoRemotes | undefined;
-		try {
-			remotes = await resolveRemotes(`${reposDir}/${repo}`);
-		} catch {
-			// Local repo or ambiguous remotes — use defaults
-		}
-		repos.push(await gatherRepoStatus(repoDir, reposDir, branch, configBase, remotes));
-	}
+	const repos = await Promise.all(
+		repoDirs.map(async (repoDir) => {
+			const repo = basename(repoDir);
+			const canonicalPath = `${reposDir}/${repo}`;
+
+			const remoteNames = await getRemoteNames(canonicalPath);
+			const repoHasRemote = remoteNames.length > 0;
+
+			let remotes: RepoRemotes | undefined;
+			if (repoHasRemote) {
+				try {
+					remotes = await resolveRemotes(canonicalPath, remoteNames);
+				} catch {
+					// Ambiguous remotes — use defaults
+				}
+			}
+
+			const status = await gatherRepoStatus(repoDir, reposDir, branch, configBase, remotes, repoHasRemote);
+			scanned++;
+			onProgress?.(scanned, total);
+			return status;
+		}),
+	);
 
 	let pushed = 0;
 	let dirty = 0;

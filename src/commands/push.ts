@@ -1,6 +1,7 @@
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
-import { checkBranchMatch, git, hasRemote, remoteBranchExists } from "../lib/git";
+import { configGet } from "../lib/config";
+import { checkBranchMatch, getDefaultBranch, git, hasRemote, remoteBranchExists } from "../lib/git";
 import { error, info, inlineResult, inlineStart, plural, red, success, yellow } from "../lib/output";
 import { type RepoRemotes, resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection } from "../lib/repos";
@@ -17,6 +18,7 @@ interface PushAssessment {
 	behind: number;
 	branch: string;
 	publishRemote: string;
+	newBranch: boolean;
 }
 
 export function registerPushCommand(program: Command, getCtx: () => ArbContext): void {
@@ -35,12 +37,13 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 
 			const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
 			const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
+			const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 
 			// Phase 1: assess each repo
 			const assessments: PushAssessment[] = [];
 			for (const repo of selectedRepos) {
 				const repoDir = `${wsDir}/${repo}`;
-				assessments.push(await assessPushRepo(repo, repoDir, branch, ctx.reposDir, remotesMap.get(repo)));
+				assessments.push(await assessPushRepo(repo, repoDir, branch, ctx.reposDir, configBase, remotesMap.get(repo)));
 			}
 
 			// Reclassify force-push when --force is not set
@@ -61,7 +64,8 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				const remotes = remotesMap.get(a.repo);
 				const forkSuffix = remotes && remotes.upstream !== remotes.publish ? ` → ${a.publishRemote}` : "";
 				if (a.outcome === "will-push") {
-					process.stderr.write(`  ${a.repo}   ${plural(a.ahead, "commit")} to push${forkSuffix}\n`);
+					const newBranchSuffix = a.newBranch ? " (new branch)" : "";
+					process.stderr.write(`  ${a.repo}   ${plural(a.ahead, "commit")} to push${newBranchSuffix}${forkSuffix}\n`);
 				} else if (a.outcome === "will-force-push") {
 					process.stderr.write(
 						`  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.publishRemote})\n`,
@@ -138,10 +142,21 @@ async function assessPushRepo(
 	repoDir: string,
 	branch: string,
 	reposDir: string,
+	configBase: string | null,
 	remotes?: RepoRemotes,
 ): Promise<PushAssessment> {
 	const publishRemote = remotes?.publish ?? "origin";
-	const base: PushAssessment = { repo, repoDir, outcome: "skip", ahead: 0, behind: 0, branch, publishRemote };
+	const upstreamRemote = remotes?.upstream ?? "origin";
+	const base: PushAssessment = {
+		repo,
+		repoDir,
+		outcome: "skip",
+		ahead: 0,
+		behind: 0,
+		branch,
+		publishRemote,
+		newBranch: false,
+	};
 
 	if (!(await hasRemote(`${reposDir}/${repo}`))) {
 		return { ...base, skipReason: "local repo" };
@@ -160,10 +175,31 @@ async function assessPushRepo(
 		if (trackingRemote.exitCode === 0 && trackingRemote.text().trim()) {
 			return { ...base, skipReason: "remote branch gone" };
 		}
-		// No tracking config — first push
-		const log = await git(repoDir, "rev-list", "--count", "HEAD");
-		const count = log.exitCode === 0 ? Number.parseInt(log.stdout.trim(), 10) : 1;
-		return { ...base, outcome: "will-push", ahead: count };
+		// No tracking config — first push. Count commits ahead of base branch.
+		const repoPath = `${reposDir}/${repo}`;
+		let defaultBranch: string | null = null;
+		if (configBase) {
+			const baseExists = await remoteBranchExists(repoPath, configBase, upstreamRemote);
+			if (baseExists) defaultBranch = configBase;
+		}
+		if (!defaultBranch) {
+			defaultBranch = await getDefaultBranch(repoPath, upstreamRemote);
+		}
+		let count = 1;
+		if (defaultBranch) {
+			const log = await git(repoDir, "rev-list", "--count", `${upstreamRemote}/${defaultBranch}..HEAD`);
+			if (log.exitCode === 0) {
+				count = Number.parseInt(log.stdout.trim(), 10);
+			} else {
+				// Fall back to total count if base comparison fails
+				const fallback = await git(repoDir, "rev-list", "--count", "HEAD");
+				if (fallback.exitCode === 0) count = Number.parseInt(fallback.stdout.trim(), 10);
+			}
+		} else {
+			const log = await git(repoDir, "rev-list", "--count", "HEAD");
+			if (log.exitCode === 0) count = Number.parseInt(log.stdout.trim(), 10);
+		}
+		return { ...base, outcome: "will-push", ahead: count, newBranch: true };
 	}
 
 	// Check how many commits ahead/behind the publish remote

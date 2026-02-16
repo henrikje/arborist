@@ -188,7 +188,7 @@ arb pull
 arb rebase
 ```
 
-If a rebase hits conflicts, arb stops at that repo and prints step-by-step instructions — the commands to resolve or abort, and a reminder to re-run `arb rebase` for remaining repos. Repos are rebased one at a time, so you only deal with one conflict at a time. If you re-run while a repo is still mid-rebase, it is automatically skipped. Prefer merge commits? Use `arb merge` instead — same workflow, uses `git merge`.
+If a rebase hits conflicts, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. This way you see the complete state of all repos in one pass instead of re-running for each conflict. If you re-run while a repo is still mid-rebase, it is automatically skipped. Prefer merge commits? Use `arb merge` instead — same workflow, uses `git merge`.
 
 Arb auto-detects each repo's default branch, so repos using `main`, `master`, or `develop` coexist without extra configuration.
 
@@ -285,7 +285,7 @@ When a feature is done:
 arb remove fix-login
 ```
 
-This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. Use `--delete-remote` to also clean up the remote branches, and `--all-ok` to batch-remove every workspace with ok status. See `arb remove --help` for all options.
+This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before removing the workspace. Use `--delete-remote` to also clean up the remote branches, and `--all-ok` to batch-remove every workspace with ok status. See `arb remove --help` for all options.
 
 ## Tips
 
@@ -341,6 +341,7 @@ Template files are only copied when the target doesn't already exist. Existing f
 
 - **`arb create`** — seeds workspace templates + repo templates for all created repos
 - **`arb add`** — seeds repo templates for newly added repos only (workspace already set up)
+- **`arb remove`** — lists any template files that differ from their originals, so you can update templates before the workspace is gone
 - **No templates dir?** — silently skipped, zero noise
 
 ### Version-controlling templates

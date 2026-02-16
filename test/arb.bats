@@ -536,6 +536,23 @@ teardown() {
     [ "$status" -ne 0 ]
 }
 
+@test "arb remove --force --delete-remote reports failed remote delete" {
+    arb create my-feature repo-a repo-b
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
+
+    # Make repo-b's remote unreachable so the push --delete fails
+    mv "$TEST_DIR/origin/repo-b.git" "$TEST_DIR/origin/repo-b.git.bak"
+
+    run arb remove my-feature --force --delete-remote
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/my-feature" ]
+    [[ "$output" == *"failed to delete remote branch"* ]]
+
+    # Restore for teardown
+    mv "$TEST_DIR/origin/repo-b.git.bak" "$TEST_DIR/origin/repo-b.git"
+}
+
 @test "arb remove aborts on non-interactive input" {
     arb create my-feature repo-a
     run bash -c 'echo "" | arb remove my-feature'
@@ -709,6 +726,36 @@ teardown() {
     arb create ws-one repo-a
     run arb list
     [[ "$output" != *"BASE"* ]]
+}
+
+@test "arb list --quick shows workspaces without STATUS column" {
+    arb create ws-one repo-a
+    arb create ws-two repo-b
+    run arb list --quick
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-one"* ]]
+    [[ "$output" == *"ws-two"* ]]
+    [[ "$output" == *"WORKSPACE"* ]]
+    [[ "$output" == *"BRANCH"* ]]
+    [[ "$output" == *"REPOS"* ]]
+    [[ "$output" != *"STATUS"* ]]
+    [[ "$output" != *"ok"* ]]
+}
+
+@test "arb list --quick -q shorthand works" {
+    arb create ws-one repo-a
+    run arb list -q
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-one"* ]]
+    [[ "$output" != *"STATUS"* ]]
+}
+
+@test "arb list piped output has no progress escape sequences" {
+    arb create ws-one repo-a
+    arb create ws-two repo-b
+    result=$(arb list 2>/dev/null)
+    # stdout should not contain cursor movement sequences
+    [[ "$result" != *$'\033['*'A'* ]]
 }
 
 # ── path ─────────────────────────────────────────────────────────
@@ -1684,15 +1731,27 @@ SCRIPT
 
     cd "$TEST_DIR/project/my-feature"
 
-    # Create a conflict in repo-a: modify same file in origin and worktree
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "origin change" > conflict.txt && git add conflict.txt && git commit -m "origin" && git push) >/dev/null 2>&1
+    # Create a conflict in repo-a via a separate clone
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone-a" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone-a" && git checkout my-feature && echo "remote change" > conflict.txt && git add conflict.txt && git commit -m "remote" && git push) >/dev/null 2>&1
+    # Local conflicting commit in worktree
     echo "local change" > "$TEST_DIR/project/my-feature/repo-a/conflict.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add conflict.txt >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "local" >/dev/null 2>&1
 
+    # Push a non-conflicting commit for repo-b so it has something to pull
+    git clone "$TEST_DIR/origin/repo-b.git" "$TEST_DIR/tmp-clone-b" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone-b" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
+
     run arb pull --yes
-    # repo-b should still have been attempted
+    [ "$status" -ne 0 ]
+    # repo-b was still processed successfully
     [[ "$output" == *"repo-b"* ]]
+    # Conflict file details shown
+    [[ "$output" == *"CONFLICT"*"conflict.txt"* ]]
+    # Consolidated conflict report
+    [[ "$output" == *"1 conflicted"* ]]
+    [[ "$output" == *"Pulled 1 repo"* ]]
 }
 
 @test "arb pull skips repo on wrong branch" {
@@ -2331,23 +2390,31 @@ delete_workspace_config() {
     [[ "$output" == *"expected my-feature"* ]]
 }
 
-@test "arb rebase conflict stops and shows instructions" {
+@test "arb rebase continues past conflict and shows consolidated report" {
     arb create my-feature repo-a repo-b
 
-    # Create conflicting changes
+    # Create conflicting changes in repo-a
     echo "feature" > "$TEST_DIR/project/my-feature/repo-a/conflict.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add conflict.txt >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature change" >/dev/null 2>&1
 
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream-conflict" > conflict.txt && git add conflict.txt && git commit -m "upstream conflict" && git push) >/dev/null 2>&1
 
+    # Push an upstream change to repo-b (no conflict)
+    (cd "$TEST_DIR/project/.arb/repos/repo-b" && echo "upstream-ok" > ok.txt && git add ok.txt && git commit -m "upstream ok" && git push) >/dev/null 2>&1
+
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb rebase repo-a repo-b --yes
     [ "$status" -ne 0 ]
+    # Conflict file details shown
+    [[ "$output" == *"CONFLICT"*"conflict.txt"* ]]
+    # Conflict instructions shown
     [[ "$output" == *"conflict"* ]]
     [[ "$output" == *"git rebase --continue"* ]]
     [[ "$output" == *"git rebase --abort"* ]]
+    # repo-b was still processed successfully
+    [[ "$output" == *"Rebased 1 repo, 1 conflicted"* ]]
 }
 
 @test "arb rebase with specific repos only processes those repos" {
@@ -2476,22 +2543,31 @@ delete_workspace_config() {
     [[ "$output" == *"up to date"* ]]
 }
 
-@test "arb merge conflict shows merge instructions" {
-    arb create my-feature repo-a
+@test "arb merge continues past conflict and shows consolidated report" {
+    arb create my-feature repo-a repo-b
 
+    # Create conflicting changes in repo-a
     echo "feature" > "$TEST_DIR/project/my-feature/repo-a/conflict.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add conflict.txt >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature change" >/dev/null 2>&1
 
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream-conflict" > conflict.txt && git add conflict.txt && git commit -m "upstream conflict" && git push) >/dev/null 2>&1
 
+    # Push an upstream change to repo-b (no conflict)
+    (cd "$TEST_DIR/project/.arb/repos/repo-b" && echo "upstream-ok" > ok.txt && git add ok.txt && git commit -m "upstream ok" && git push) >/dev/null 2>&1
+
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
-    run arb merge repo-a --yes
+    run arb merge repo-a repo-b --yes
     [ "$status" -ne 0 ]
+    # Conflict file details shown
+    [[ "$output" == *"CONFLICT"*"conflict.txt"* ]]
+    # Conflict instructions shown
     [[ "$output" == *"conflict"* ]]
     [[ "$output" == *"git merge --continue"* ]]
     [[ "$output" == *"git merge --abort"* ]]
+    # repo-b was still processed successfully
+    [[ "$output" == *"Merged 1 repo, 1 conflicted"* ]]
 }
 
 # ── pull (plan+confirm) ─────────────────────────────────────────
@@ -2550,6 +2626,19 @@ delete_workspace_config() {
     [ "$status" -eq 0 ]
     [[ "$output" == *"1 commit"* ]]
     [[ "$output" == *"Pushed"* ]]
+}
+
+@test "arb push first push shows correct commit count and new branch annotation" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"1 commit"* ]]
+    [[ "$output" == *"new branch"* ]]
+    [[ "$output" != *"2 commit"* ]]
 }
 
 # ── push [repos...] and --force ─────────────────────────────────
@@ -3466,16 +3555,19 @@ push_then_delete_remote() {
     [[ "$output" != *"clean, pushed"* ]]
 }
 
-@test "arb remove multiple names --force produces compact output" {
+@test "arb remove multiple names --force shows unified plan then compact execution" {
     arb create ws-x repo-a
     arb create ws-y repo-b
 
     run arb remove ws-x ws-y --force
     [ "$status" -eq 0 ]
+    # Unified plan: per-workspace status sections
+    [[ "$output" == *"ws-x:"* ]]
+    [[ "$output" == *"ws-y:"* ]]
+    # Compact execution lines
     [[ "$output" == *"[ws-x] removed"* ]]
     [[ "$output" == *"[ws-y] removed"* ]]
     [[ "$output" == *"Removed 2 workspaces"* ]]
-    [[ "$output" != *"clean, pushed"* ]]
 }
 
 @test "arb remove single name --force keeps detailed output" {
@@ -3484,5 +3576,95 @@ push_then_delete_remote() {
     run arb remove ws-solo --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"Removed workspace ws-solo"* ]]
+}
+
+# ── remove: template drift detection ─────────────────────────────
+
+@test "arb remove shows template drift info for modified repo template" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    echo "DB=localhost" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+
+    arb create tpl-drift repo-a
+    # Modify the template-seeded file
+    echo "DB=production" > "$TEST_DIR/project/tpl-drift/repo-a/.env"
+
+    run arb remove tpl-drift --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Template files modified"* ]]
+    [[ "$output" == *"[repo-a] .env"* ]]
+}
+
+@test "arb remove shows template drift info for modified workspace template" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "WS=original" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+
+    arb create tpl-drift-ws repo-a
+    echo "WS=modified" > "$TEST_DIR/project/tpl-drift-ws/.env"
+
+    run arb remove tpl-drift-ws --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Template files modified"* ]]
+    [[ "$output" == *".env"* ]]
+}
+
+@test "arb remove shows no template drift when files are unchanged" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    echo "DB=localhost" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+
+    arb create tpl-nodrift repo-a
+    # Don't modify the file
+
+    run arb remove tpl-nodrift --force
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Template files modified"* ]]
+}
+
+@test "arb remove multi-workspace shows unified plan with template drift" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    echo "DB=localhost" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+
+    arb create tpl-multi-a repo-a
+    arb create tpl-multi-b repo-a
+    echo "DB=custom" > "$TEST_DIR/project/tpl-multi-a/repo-a/.env"
+
+    run arb remove tpl-multi-a tpl-multi-b --force
+    [ "$status" -eq 0 ]
+    # Should show per-workspace sections
+    [[ "$output" == *"tpl-multi-a:"* ]]
+    [[ "$output" == *"tpl-multi-b:"* ]]
+    # Only tpl-multi-a has drift
+    [[ "$output" == *"Template files modified"* ]]
+    [[ "$output" == *"Removed 2 workspaces"* ]]
+}
+
+@test "arb remove multi-workspace refuses all when one is at-risk" {
+    arb create at-risk-a repo-a
+    arb create at-risk-b repo-a
+
+    # Make at-risk-a dirty
+    echo "uncommitted" > "$TEST_DIR/project/at-risk-a/repo-a/dirty.txt"
+
+    run arb remove at-risk-a at-risk-b
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Refusing to remove"* ]]
+    [[ "$output" == *"at-risk-a"* ]]
+    # Both workspaces should still exist
+    [ -d "$TEST_DIR/project/at-risk-a" ]
+    [ -d "$TEST_DIR/project/at-risk-b" ]
+}
+
+@test "arb remove --all-ok shows template drift count in preview" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "WS=original" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+
+    arb create tpl-allok repo-a
+    git -C "$TEST_DIR/project/tpl-allok/repo-a" push -u origin tpl-allok >/dev/null 2>&1
+    # Modify workspace-level template file (outside git repos, doesn't affect dirty status)
+    echo "WS=modified" > "$TEST_DIR/project/tpl-allok/.env"
+
+    run arb remove --all-ok --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"1 template file modified"* ]]
+    [ ! -d "$TEST_DIR/project/tpl-allok" ]
 }
 
