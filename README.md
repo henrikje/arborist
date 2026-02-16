@@ -123,10 +123,10 @@ arb create fix-login frontend backend
 
 This creates a `fix-login` workspace, checks out a `fix-login` branch in `frontend` and `backend`, and creates separate working directories for each under `fix-login/`. The branches are created if they do not exist.
 
-Use `--branch` (`-b`) when the branch name differs from the workspace name, and `--all-repos` (`-a`) to include every cloned repo:
+Use `--branch` (`-b`) when the branch name differs from the workspace name, `--base` when you want to target a specific base branch (instead of each repo's default), and `--all-repos` (`-a`) to include every cloned repo:
 
 ```bash
-arb create dark-mode --branch "feat/dark-mode" --all-repos
+arb create dark-mode --branch "feat/dark-mode" --base develop --all-repos
 ```
 
 Running `arb create` without arguments walks you through it interactively. See `arb create --help` for all options.
@@ -164,7 +164,7 @@ This shows the state of each worktree in a compact table with labeled columns:
   local-lib    my-feature    main  aligned            local                           clean
 ```
 
-This view is designed to give you the full picture in one glance — repo name, current branch, how far you've drifted from the base branch, whether the remote is ahead or behind, and what's uncommitted locally. Yellow highlights things that need attention: unpushed commits, local changes, unexpected branches.
+This view is designed to give you the full picture in one glance — repo name, current branch, how far you've drifted from the base branch, whether the remote is ahead or behind, and what's uncommitted locally. Yellow highlights things that need attention: unpushed commits, local changes, repos on an unexpected branch (like `repo-c` above).
 
 See `arb status --help` for all options.
 
@@ -286,31 +286,6 @@ arb remove fix-login
 ```
 
 This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before removing the workspace. Use `--delete-remote` to also clean up the remote branches, and `--all-ok` to batch-remove every workspace with ok status. See `arb remove --help` for all options.
-
-## Tips
-
-### Browsing the default branch
-
-To view the latest default-branch code across all repos:
-
-```bash
-arb create main --all-repos  # assuming main is the default branch
-```
-
-_Note_: Creating a workspace for the default branch works because Arborist keeps the canonical clones in detached HEAD state. 
-
-### Working with AI agents
-
-When using Claude Code or other AI coding agents, start them from the workspace directory rather than an individual worktree. This gives the agent visibility across all repos in the workspace.
-
-### Multiple arb roots
-
-Each arb root is independent. Commands find the right one by walking up from the current directory looking for the `.arb/` marker. Feel free to create multiple roots for different projects:
-
-```bash
-cd ~/project-a && arb init
-cd ~/project-b && arb init
-```
 
 ## Workspace templates
 
@@ -443,6 +418,31 @@ fi
 ### Output separation
 
 Human-facing output (progress, prompts, summaries) goes to stderr. Machine-parseable data (`--json`, `arb path`) goes to stdout. Colors are stripped automatically in non-TTY environments.
+
+## Tips
+
+### Browsing the default branch
+
+To view the latest default-branch code across all repos:
+
+```bash
+arb create main --all-repos  # assuming main is the default branch
+```
+
+_Note_: Creating a workspace for the default branch works because Arborist keeps the canonical clones in detached HEAD state.
+
+### Working with AI agents
+
+When using Claude Code or other AI coding agents, start them from the workspace directory rather than an individual worktree. This gives the agent visibility across all repos in the workspace.
+
+### Multiple arb roots
+
+Each arb root is independent. Commands find the right one by walking up from the current directory looking for the `.arb/` marker. Feel free to create multiple roots for different projects:
+
+```bash
+cd ~/project-a && arb init
+cd ~/project-b && arb init
+```
 
 ## How it works
 
