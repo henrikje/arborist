@@ -42,7 +42,9 @@ export function isDirty(repo: RepoStatus): boolean {
 }
 
 export function isUnpushed(repo: RepoStatus): boolean {
-	if (repo.remote.gone) return false;
+	if (repo.remote.gone) {
+		return repo.base !== null && repo.base.ahead > 0;
+	}
 	return repo.remote.ahead > 0 || (!repo.remote.pushed && repo.base !== null && repo.base.ahead > 0);
 }
 
