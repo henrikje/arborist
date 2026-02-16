@@ -286,10 +286,13 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 						error("Cannot prompt for confirmation: not a terminal. Use --force to skip prompts.");
 						process.exit(1);
 					}
-					const shouldRemove = await confirm({
-						message: `Remove ${plural(okEntries.length, "workspace")}?`,
-						default: false,
-					});
+					const shouldRemove = await confirm(
+						{
+							message: `Remove ${plural(okEntries.length, "workspace")}?`,
+							default: false,
+						},
+						{ output: process.stderr },
+					);
 					if (!shouldRemove) {
 						process.stderr.write("Aborted.\n");
 						return;
@@ -368,7 +371,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 				const confirmMsg = isSingle
 					? `Remove workspace ${singleName}?`
 					: `Remove ${plural(assessments.length, "workspace")}?`;
-				const shouldRemove = await confirm({ message: confirmMsg, default: false });
+				const shouldRemove = await confirm({ message: confirmMsg, default: false }, { output: process.stderr });
 				if (!shouldRemove) {
 					process.stderr.write("Aborted.\n");
 					return;
@@ -376,7 +379,10 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 
 				const allRemoteRepos = assessments.flatMap((a) => a.remoteRepos);
 				if (allRemoteRepos.length > 0 && !deleteRemote) {
-					deleteRemote = await confirm({ message: "Also delete remote branches?", default: false });
+					deleteRemote = await confirm(
+						{ message: "Also delete remote branches?", default: false },
+						{ output: process.stderr },
+					);
 				}
 			}
 

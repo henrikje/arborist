@@ -39,10 +39,13 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 						error("Usage: arb create <name> [repos...]");
 						process.exit(1);
 					}
-					name = await input({
-						message: "Workspace name:",
-						validate: (v) => validateWorkspaceName(v) ?? true,
-					});
+					name = await input(
+						{
+							message: "Workspace name:",
+							validate: (v) => validateWorkspaceName(v) ?? true,
+						},
+						{ output: process.stderr },
+					);
 				}
 
 				const validationError = validateWorkspaceName(name);
@@ -55,11 +58,14 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				if (!branch) {
 					const defaultBranch = name.toLowerCase();
 					if (!nameArg && process.stdin.isTTY) {
-						branch = await input({
-							message: "Branch name:",
-							default: defaultBranch,
-							validate: (v) => (validateBranchName(v) ? true : "Invalid branch name"),
-						});
+						branch = await input(
+							{
+								message: "Branch name:",
+								default: defaultBranch,
+								validate: (v) => (validateBranchName(v) ? true : "Invalid branch name"),
+							},
+							{ output: process.stderr },
+						);
 					} else {
 						branch = defaultBranch;
 					}
@@ -72,9 +78,12 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 
 				let base = options.base;
 				if (!base && !nameArg && process.stdin.isTTY) {
-					const baseInput = await input({
-						message: "Base branch (leave blank for repo default):",
-					});
+					const baseInput = await input(
+						{
+							message: "Base branch (leave blank for repo default):",
+						},
+						{ output: process.stderr },
+					);
 					if (baseInput.trim()) {
 						base = baseInput.trim();
 					}
