@@ -123,7 +123,7 @@ Key signals in status output:
 CRITICAL: Claude runs without a TTY. Always follow these rules:
 
 - **Always pass `-y` / `--yes`** to `create`, `remove`, `pull`, `push`, `rebase`, and `merge` to skip confirmation prompts. Without `-y`, these commands will hang waiting for input.
-- Use `--json` on `arb status` when you need to parse the output programmatically.
+- Use `--json` on `arb status` or `arb list` when you need to parse the output programmatically.
 - `arb list -q` for fast workspace listing without status computation.
 - Exit codes: 0 = success, 1 = expected failure (conflicts, nothing to do), 2 = unexpected error.
 

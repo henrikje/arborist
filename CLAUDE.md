@@ -66,6 +66,7 @@ After each change, check whether the following need updating:
 
 - **README.md** — If the change affects user-facing behavior, CLI usage, configuration, or workflows, update the relevant README sections.
 - **Command help text** — If the change modifies a command's options, arguments, or behavior, update the command's `.description()` and `.option()` help strings in `src/commands/`.
+- **Claude Code skill** — If the change modifies commands, flags, workflows, or behavioral conventions, update `skill/SKILL.md` (workflows, safety rules, quick reference table) and `skill/references/commands.md` (flag details, argument docs, JSON schemas).
 - **BATS integration tests** — Always add new tests to this suite when making changes that affect CLI behavior.
 
 ## Code Style

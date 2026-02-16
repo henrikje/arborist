@@ -110,7 +110,7 @@ Removes workspaces and their worktrees. Shows status of each worktree before pro
 List all workspaces.
 
 ```
-arb list [-f] [-q]
+arb list [-f] [-q] [--json]
 ```
 
 Lists all workspaces with aggregate status. The active workspace is marked with `*`.
@@ -118,6 +118,27 @@ Lists all workspaces with aggregate status. The active workspace is marked with 
 **Flags:**
 - `-f, --fetch` — Fetch all repos before listing for fresh remote data
 - `-q, --quick` — Skip per-repo status gathering (faster)
+- `--json` — Machine-readable JSON output
+
+**JSON output structure:**
+```json
+[
+  {
+    "workspace": "feature-login",
+    "active": true,
+    "branch": "feature-login",
+    "base": "main",
+    "repoCount": 3,
+    "status": null,
+    "dirty": 1,
+    "unpushed": 0,
+    "behind": 0,
+    "drifted": 0
+  }
+]
+```
+
+Fields `dirty`, `unpushed`, `behind`, and `drifted` are omitted when `--quick` is used. The `status` field is `null` for normal workspaces, `"config-missing"` if `.arbws/config` is absent, or `"empty"` if the workspace has no worktrees.
 
 ---
 
