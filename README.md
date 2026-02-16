@@ -188,7 +188,7 @@ arb pull
 arb rebase
 ```
 
-If a rebase hits conflicts, arb stops at that repo and prints step-by-step instructions — the commands to resolve or abort, and a reminder to re-run `arb rebase` for remaining repos. Repos are rebased one at a time, so you only deal with one conflict at a time. If you re-run while a repo is still mid-rebase, it is automatically skipped. Prefer merge commits? Use `arb merge` instead — same workflow, uses `git merge`.
+If a rebase hits conflicts, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. This way you see the complete state of all repos in one pass instead of re-running for each conflict. If you re-run while a repo is still mid-rebase, it is automatically skipped. Prefer merge commits? Use `arb merge` instead — same workflow, uses `git merge`.
 
 Arb auto-detects each repo's default branch, so repos using `main`, `master`, or `develop` coexist without extra configuration.
 

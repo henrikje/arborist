@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { checkBranchMatch, git, remoteBranchExists } from "../lib/git";
-import { error, info, inlineResult, inlineStart, plural, red, success, yellow } from "../lib/output";
+import { dim, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { type RepoRemotes, resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos, resolveRepoSelection } from "../lib/repos";
@@ -27,7 +27,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 		.option("--merge", "Pull with merge")
 		.summary("Pull the feature branch from the publish remote")
 		.description(
-			"Pull the feature branch for all repos, or only the named repos. Pulls from the publish remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos that haven't been pushed yet or where the remote branch has been deleted are skipped.",
+			"Pull the feature branch for all repos, or only the named repos. Pulls from the publish remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos that haven't been pushed yet or where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end.",
 		)
 		.action(async (repoArgs: string[], options: { rebase?: boolean; merge?: boolean; yes?: boolean }) => {
 			if (options.rebase && options.merge) {
@@ -110,6 +110,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 
 			// Phase 5: execute
 			let pullOk = 0;
+			const conflicted: { assessment: PullAssessment; stdout: string }[] = [];
 
 			for (const a of willPull) {
 				inlineStart(a.repo, `pulling (${a.pullMode})`);
@@ -120,30 +121,38 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					inlineResult(a.repo, `pulled ${plural(a.behind, "commit")} (${a.pullMode})`);
 					pullOk++;
 				} else {
-					inlineResult(a.repo, red("failed"));
-					process.stderr.write("\n");
-					const errText = pullResult.stderr.toString().trim();
-					if (errText) {
-						for (const line of errText.split("\n")) {
-							process.stderr.write(`  ${line}\n`);
-						}
-					}
+					inlineResult(a.repo, yellow("conflict"));
+					conflicted.push({ assessment: a, stdout: pullResult.stdout.toString() });
+				}
+			}
+
+			// Consolidated conflict report
+			if (conflicted.length > 0) {
+				process.stderr.write(`\n  ${conflicted.length} repo(s) have conflicts:\n`);
+				for (const { assessment: a, stdout: gitStdout } of conflicted) {
 					const subcommand = a.pullMode === "rebase" ? "rebase" : "merge";
-					process.stderr.write("\n  To resolve:\n");
-					process.stderr.write(`    cd ${a.repo}\n`);
-					process.stderr.write(`    # fix any conflicts, then: git ${subcommand} --continue\n`);
-					process.stderr.write(`    # or to undo: git ${subcommand} --abort\n`);
-					process.stderr.write("\n  Then re-run 'arb pull' to continue with remaining repos.\n");
-					process.exit(1);
+					process.stderr.write(`\n    ${a.repo}\n`);
+					for (const line of gitStdout.split("\n").filter((l) => l.startsWith("CONFLICT"))) {
+						process.stderr.write(`      ${dim(line)}\n`);
+					}
+					process.stderr.write(`      cd ${a.repo}\n`);
+					process.stderr.write(`      # fix conflicts, then: git ${subcommand} --continue\n`);
+					process.stderr.write(`      # or to undo: git ${subcommand} --abort\n`);
 				}
 			}
 
 			// Phase 6: summary
 			process.stderr.write("\n");
 			const parts = [`Pulled ${plural(pullOk, "repo")}`];
+			if (conflicted.length > 0) parts.push(`${conflicted.length} conflicted`);
 			if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
 			if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
-			success(parts.join(", "));
+			if (conflicted.length > 0) {
+				warn(parts.join(", "));
+				process.exit(1);
+			} else {
+				success(parts.join(", "));
+			}
 		});
 }
 

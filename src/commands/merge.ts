@@ -9,7 +9,7 @@ export function registerMergeCommand(program: Command, getCtx: () => ArbContext)
 		.option("-y, --yes", "Skip confirmation prompt")
 		.summary("Merge the base branch into feature branches")
 		.description(
-			"Merge the base branch (e.g. main) into the feature branch for all repos, or only the named repos. Shows a plan and asks for confirmation before proceeding. Repos with uncommitted changes or that are already up to date are skipped. If a merge conflicts, arb stops and shows resolution instructions.",
+			"Merge the base branch (e.g. main) into the feature branch for all repos, or only the named repos. Shows a plan and asks for confirmation before proceeding. Repos with uncommitted changes or that are already up to date are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions.",
 		)
 		.action(async (repoArgs: string[], options: { fetch?: boolean; yes?: boolean }) => {
 			const ctx = getCtx();
