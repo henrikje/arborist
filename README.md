@@ -277,7 +277,7 @@ When a feature is done:
 arb remove fix-login
 ```
 
-This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. Use `--delete-remote` to also clean up the remote branches. See `arb remove --help` for all options.
+This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. Use `--delete-remote` to also clean up the remote branches, and `--all-ok` to batch-remove every workspace with ok status. See `arb remove --help` for all options.
 
 ## Tips
 

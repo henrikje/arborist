@@ -3157,3 +3157,82 @@ push_then_delete_remote() {
     [ ! -d "$TEST_DIR/project/gone-remove" ]
 }
 
+# ── remove --all-ok ──────────────────────────────────────────────
+
+@test "arb remove --all-ok removes ok workspaces, keeps dirty" {
+    arb create ws-clean repo-a
+    arb create ws-dirty repo-a
+
+    # Push ws-clean so it's "ok"
+    git -C "$TEST_DIR/project/ws-clean/repo-a" push -u origin ws-clean >/dev/null 2>&1
+
+    # Push ws-dirty then dirty it up
+    git -C "$TEST_DIR/project/ws-dirty/repo-a" push -u origin ws-dirty >/dev/null 2>&1
+    echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
+
+    run arb remove --all-ok --force
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/ws-clean" ]
+    [ -d "$TEST_DIR/project/ws-dirty" ]
+}
+
+@test "arb remove --all-ok skips current workspace" {
+    arb create ws-inside repo-a
+    git -C "$TEST_DIR/project/ws-inside/repo-a" push -u origin ws-inside >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/ws-inside"
+    run arb remove --all-ok --force
+    [ "$status" -eq 0 ]
+    [ -d "$TEST_DIR/project/ws-inside" ]
+}
+
+@test "arb remove --all-ok with no ok workspaces exits cleanly" {
+    arb create ws-dirty repo-a
+    git -C "$TEST_DIR/project/ws-dirty/repo-a" push -u origin ws-dirty >/dev/null 2>&1
+    echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
+
+    run arb remove --all-ok --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"No workspaces with ok status"* ]]
+    [ -d "$TEST_DIR/project/ws-dirty" ]
+}
+
+@test "arb remove --all-ok with positional args errors" {
+    run arb remove --all-ok ws-a
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot combine --all-ok with workspace names"* ]]
+}
+
+@test "arb remove --all-ok --force skips confirmation" {
+    arb create ws-ok repo-a
+    git -C "$TEST_DIR/project/ws-ok/repo-a" push -u origin ws-ok >/dev/null 2>&1
+
+    run arb remove --all-ok --force
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/ws-ok" ]
+}
+
+@test "arb remove --all-ok skips config-missing workspaces" {
+    arb create ws-broken repo-a
+    git -C "$TEST_DIR/project/ws-broken/repo-a" push -u origin ws-broken >/dev/null 2>&1
+    # Remove config to simulate config-missing state
+    rm "$TEST_DIR/project/ws-broken/.arbws/config"
+
+    run arb remove --all-ok --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"No workspaces with ok status"* ]]
+    [ -d "$TEST_DIR/project/ws-broken" ]
+}
+
+@test "arb remove --all-ok --delete-remote composes correctly" {
+    arb create ws-rd repo-a
+    git -C "$TEST_DIR/project/ws-rd/repo-a" push -u origin ws-rd >/dev/null 2>&1
+
+    run arb remove --all-ok --force --delete-remote
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/ws-rd" ]
+    # Remote branch should be gone
+    run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/remotes/origin/ws-rd"
+    [ "$status" -ne 0 ]
+}
+

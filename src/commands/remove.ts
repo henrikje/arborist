@@ -11,10 +11,17 @@ import {
 	remoteBranchExists,
 	validateWorkspaceName,
 } from "../lib/git";
-import { error, green, inlineResult, inlineStart, red, success, warn, yellow } from "../lib/output";
+import { error, green, info, inlineResult, inlineStart, red, success, warn, yellow } from "../lib/output";
 import { resolveRemotes } from "../lib/remotes";
 import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
-import { type RepoStatus, gatherRepoStatus, isDirty, isUnpushed } from "../lib/status";
+import {
+	type RepoStatus,
+	type WorkspaceSummary,
+	gatherRepoStatus,
+	gatherWorkspaceSummary,
+	isDirty,
+	isUnpushed,
+} from "../lib/status";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
 
@@ -197,17 +204,96 @@ async function removeWorkspace(
 	success(`Removed workspace ${name}`);
 }
 
+function isWorkspaceOk(summary: WorkspaceSummary): boolean {
+	// Match arb list's "ok" — all four status counts must be zero
+	const unpushedCount = summary.repos.filter((r) => !r.remote.local && isUnpushed(r)).length;
+	const behindCount = summary.repos.filter((r) => (r.base && r.base.behind > 0) || r.remote.behind > 0).length;
+
+	if (summary.dirty > 0 || unpushedCount > 0 || behindCount > 0 || summary.drifted > 0) {
+		return false;
+	}
+
+	// Local repos with commits ahead of base have no remote backup
+	for (const repo of summary.repos) {
+		if (repo.remote.local && repo.base && repo.base.ahead > 0) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 export function registerRemoveCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("remove [names...]")
 		.option("-f, --force", "Force removal without prompts")
 		.option("-d, --delete-remote", "Delete remote branches")
+		.option("-a, --all-ok", "Remove all workspaces with ok status")
 		.summary("Remove one or more workspaces")
 		.description(
-			"Remove one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) before proceeding. Prompts with a workspace picker when run without arguments. Use --force to skip prompts, and --delete-remote to also delete the remote branches.",
+			"Remove one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) before proceeding. Prompts with a workspace picker when run without arguments. Use --force to skip prompts, --delete-remote to also delete the remote branches, and --all-ok to batch-remove all workspaces with ok status.",
 		)
-		.action(async (nameArgs: string[], options: { force?: boolean; deleteRemote?: boolean }) => {
+		.action(async (nameArgs: string[], options: { force?: boolean; deleteRemote?: boolean; allOk?: boolean }) => {
 			const ctx = getCtx();
+
+			if (options.allOk) {
+				if (nameArgs.length > 0) {
+					error("Cannot combine --all-ok with workspace names.");
+					process.exit(1);
+				}
+
+				const allWorkspaces = listWorkspaces(ctx.baseDir);
+				const candidates = allWorkspaces.filter((ws) => ws !== ctx.currentWorkspace);
+
+				if (candidates.length === 0) {
+					info("No workspaces to check.");
+					return;
+				}
+
+				const okNames: string[] = [];
+				for (const ws of candidates) {
+					const wsDir = `${ctx.baseDir}/${ws}`;
+					if (!existsSync(`${wsDir}/.arbws/config`)) continue;
+					const repoDirs = workspaceRepoDirs(wsDir);
+					if (repoDirs.length === 0) continue;
+
+					const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir);
+					if (isWorkspaceOk(summary)) {
+						okNames.push(ws);
+					}
+				}
+
+				if (okNames.length === 0) {
+					info("No workspaces with ok status.");
+					return;
+				}
+
+				process.stderr.write("\nWorkspaces to remove:\n");
+				for (const name of okNames) {
+					process.stderr.write(`  ${name}\n`);
+				}
+				process.stderr.write("\n");
+
+				if (!options.force) {
+					if (!process.stdin.isTTY) {
+						error("Cannot prompt for confirmation: not a terminal. Use --force to skip prompts.");
+						process.exit(1);
+					}
+					const shouldRemove = await confirm({
+						message: `Remove ${okNames.length} workspace(s)?`,
+						default: false,
+					});
+					if (!shouldRemove) {
+						process.stderr.write("Aborted.\n");
+						return;
+					}
+				}
+
+				for (const name of okNames) {
+					await removeWorkspace(name, ctx, { force: true, deleteRemote: options.deleteRemote });
+				}
+				return;
+			}
 
 			let names = nameArgs;
 			if (names.length === 0) {
