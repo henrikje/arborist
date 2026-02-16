@@ -15,8 +15,8 @@ export interface RepoRemotes {
  * 4. Default: only "origin" → { upstream: "origin", publish: "origin" }
  * 5. Ambiguous → error with guidance
  */
-export async function resolveRemotes(repoDir: string): Promise<RepoRemotes> {
-	const remotes = await getRemoteNames(repoDir);
+export async function resolveRemotes(repoDir: string, knownRemoteNames?: string[]): Promise<RepoRemotes> {
+	const remotes = knownRemoteNames ?? (await getRemoteNames(repoDir));
 
 	if (remotes.length === 0) {
 		throw new Error(`No remotes configured for ${repoDir}`);

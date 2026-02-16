@@ -12,6 +12,7 @@ import {
 	isDirty,
 	isUnpushed,
 } from "../lib/status";
+import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireWorkspace } from "../lib/workspace-context";
 
@@ -68,7 +69,14 @@ async function runStatus(
 		if (failed.length > 0) return 1;
 	}
 
-	const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir);
+	const tty = isTTY();
+	let showingProgress = false;
+	const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, (scanned, total) => {
+		if (!tty) return;
+		showingProgress = true;
+		process.stderr.write(`\r  Scanning ${scanned}/${total}`);
+	});
+	if (showingProgress) process.stderr.write(`\r${" ".repeat(40)}\r`);
 
 	// JSON output
 	if (options.json) {

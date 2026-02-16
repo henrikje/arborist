@@ -3,7 +3,8 @@ import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { bold, dim, green, info, red, yellow } from "../lib/output";
 import { listWorkspaces, workspaceRepoDirs } from "../lib/repos";
-import { gatherWorkspaceSummary, isUnpushed } from "../lib/status";
+import { type WorkspaceSummary, gatherWorkspaceSummary, isUnpushed } from "../lib/status";
+import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
 
@@ -13,7 +14,6 @@ interface ListRow {
 	branch: string;
 	base: string;
 	repos: string;
-	status: string;
 	statusColored: string;
 	special: "config-missing" | "empty" | null;
 }
@@ -23,14 +23,16 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		.command("list")
 		.summary("List all workspaces")
 		.description(
-			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, and status for each workspace. The active workspace (the one you're currently inside) is marked with *.",
+			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, and status for each workspace. The active workspace (the one you're currently inside) is marked with *. Use --quick to skip per-repo status gathering for faster output.",
 		)
-		.action(async () => {
+		.option("-q, --quick", "Skip per-repo status (faster for large setups)")
+		.action(async (options: { quick?: boolean }) => {
 			const ctx = getCtx();
 			const workspaces = listWorkspaces(ctx.baseDir);
 
-			// Pass 1: gather data
+			// ── Phase 1: gather lightweight metadata (fast, sequential) ──
 			const rows: ListRow[] = [];
+			const toScan: { index: number; wsDir: string }[] = [];
 			let maxName = 0;
 			let maxBranch = 0;
 			let maxBase = 0;
@@ -51,7 +53,6 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						branch: "",
 						base: "",
 						repos: "",
-						status: "(config missing)",
 						statusColored: red("(config missing)"),
 						special: "config-missing",
 					});
@@ -77,69 +78,26 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						branch,
 						base,
 						repos: reposText,
-						status: "(empty)",
 						statusColored: yellow("(empty)"),
 						special: "empty",
 					});
 					continue;
 				}
 
-				const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir);
-
-				const reposText = `${summary.total}`;
+				const reposText = `${repoDirs.length}`;
 				if (reposText.length > maxRepos) maxRepos = reposText.length;
 
-				// Compute deduplicated counts
-				const dirtyCount = summary.dirty;
-				const unpushedCount = summary.repos.filter((r) => !r.remote.local && isUnpushed(r)).length;
-				const behindCount = summary.repos.filter((r) => (r.base && r.base.behind > 0) || r.remote.behind > 0).length;
-				const driftedCount = summary.drifted;
-
-				// Build status parts
-				const statusParts: string[] = [];
-				const statusColoredParts: string[] = [];
-
-				if (dirtyCount > 0) {
-					const text = `${dirtyCount} dirty`;
-					statusParts.push(text);
-					statusColoredParts.push(yellow(text));
-				}
-				if (unpushedCount > 0) {
-					const text = `${unpushedCount} unpushed`;
-					statusParts.push(text);
-					statusColoredParts.push(yellow(text));
-				}
-				if (behindCount > 0) {
-					const text = `${behindCount} behind`;
-					statusParts.push(text);
-					statusColoredParts.push(text);
-				}
-				if (driftedCount > 0) {
-					const text = `${driftedCount} drifted`;
-					statusParts.push(text);
-					statusColoredParts.push(yellow(text));
-				}
-
-				let status: string;
-				let statusColored: string;
-				if (statusParts.length === 0) {
-					status = "ok";
-					statusColored = "ok";
-				} else {
-					status = statusParts.join(", ");
-					statusColored = statusColoredParts.join(", ");
-				}
-
+				// Placeholder — status will be filled in Phase 2
 				rows.push({
 					name,
 					marker,
 					branch,
 					base,
 					repos: reposText,
-					status,
-					statusColored,
+					statusColored: dim("..."),
 					special: null,
 				});
+				toScan.push({ index: rows.length - 1, wsDir });
 			}
 
 			if (rows.length === 0) {
@@ -147,36 +105,40 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				return;
 			}
 
-			// Ensure minimum widths for header labels
-			if (maxName < 9) maxName = 9; // "WORKSPACE"
-			if (maxBranch < 6) maxBranch = 6; // "BRANCH"
-			if (hasAnyBase && maxBase < 4) maxBase = 4; // "BASE"
-			if (maxRepos < 5) maxRepos = 5; // "REPOS"
+			// Column widths
+			if (maxName < 9) maxName = 9;
+			if (maxBranch < 6) maxBranch = 6;
+			if (hasAnyBase && maxBase < 4) maxBase = 4;
+			if (maxRepos < 5) maxRepos = 5;
 
-			// Header line
-			let header = `  ${dim("WORKSPACE")}${" ".repeat(maxName - 9)}`;
-			header += `    ${dim("BRANCH")}${" ".repeat(maxBranch - 6)}`;
-			if (hasAnyBase) {
-				header += `    ${dim("BASE")}${" ".repeat(maxBase - 4)}`;
-			}
-			header += `    ${dim("REPOS")}${" ".repeat(maxRepos - 5)}`;
-			header += `    ${dim("STATUS")}`;
-			process.stdout.write(`${header}\n`);
+			const showStatus = !options.quick;
+			const tty = isTTY();
 
-			// Pass 2: render with padding
-			for (const row of rows) {
+			// Render helpers
+			const renderHeader = (): string => {
+				let header = `  ${dim("WORKSPACE")}${" ".repeat(maxName - 9)}`;
+				header += `    ${dim("BRANCH")}${" ".repeat(maxBranch - 6)}`;
+				if (hasAnyBase) {
+					header += `    ${dim("BASE")}${" ".repeat(maxBase - 4)}`;
+				}
+				header += `    ${dim("REPOS")}${" ".repeat(maxRepos - 5)}`;
+				if (showStatus) {
+					header += `    ${dim("STATUS")}`;
+				}
+				return header;
+			};
+
+			const renderRow = (row: ListRow): string => {
 				const prefix = row.marker ? `${green("*")} ` : "  ";
 				const paddedName = bold(row.name.padEnd(maxName));
 
 				if (row.special === "config-missing") {
 					let line = `${prefix}${paddedName}`;
-					// Skip branch column, base column, repos column — jump to status area
 					line += `    ${" ".repeat(maxBranch)}`;
 					if (hasAnyBase) line += `    ${" ".repeat(maxBase)}`;
 					line += `    ${" ".repeat(maxRepos)}`;
-					line += `    ${row.statusColored}`;
-					process.stdout.write(`${line}\n`);
-					continue;
+					if (showStatus) line += `    ${row.statusColored}`;
+					return line;
 				}
 
 				let line = `${prefix}${paddedName}`;
@@ -185,8 +147,118 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					line += `    ${row.base.padEnd(maxBase)}`;
 				}
 				line += `    ${row.repos.padEnd(maxRepos)}`;
-				line += `    ${row.statusColored}`;
-				process.stdout.write(`${line}\n`);
+				if (showStatus) line += `    ${row.statusColored}`;
+				return line;
+			};
+
+			const renderTable = () => {
+				process.stdout.write(`${renderHeader()}\n`);
+				for (const row of rows) {
+					process.stdout.write(`${renderRow(row)}\n`);
+				}
+			};
+
+			// ── Quick mode: skip Phase 2, render immediately ──
+			if (!showStatus) {
+				renderTable();
+				return;
+			}
+
+			// ── Phase 2: gather status in parallel ──
+			if (tty && toScan.length > 0) {
+				// Render initial table with placeholder status
+				const rowCount = 1 + rows.length; // header + data rows
+				renderTable();
+
+				// Progress counter on stderr
+				let totalRepos = 0;
+				let scannedRepos = 0;
+				const updateProgress = () => {
+					process.stderr.write(`\r  Scanning ${scannedRepos}/${totalRepos}`);
+				};
+
+				// Run all workspace scans in parallel
+				const results = await Promise.all(
+					toScan.map(async (entry) => {
+						const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir, (scanned, total) => {
+							// On first callback from this workspace, add its total to the aggregate
+							if (scanned === 1) totalRepos += total;
+							scannedRepos++;
+							updateProgress();
+						});
+						return { index: entry.index, summary };
+					}),
+				);
+
+				// Clear progress line
+				process.stderr.write(`\r${" ".repeat(40)}\r`);
+
+				// Apply results to rows
+				for (const { index, summary } of results) {
+					const row = rows[index];
+					if (row) applySummaryToRow(row, summary);
+				}
+
+				// Re-render table in place: move cursor up, overwrite each line
+				process.stdout.write(`\x1b[${rowCount}A`);
+				for (let i = 0; i < rowCount; i++) {
+					process.stdout.write("\r\x1b[2K");
+					if (i < rowCount - 1) process.stdout.write("\x1b[1B");
+				}
+				process.stdout.write(`\x1b[${rowCount - 1}A`);
+				renderTable();
+			} else {
+				// Non-TTY or nothing to scan: gather all data, output once
+				const results = await Promise.all(
+					toScan.map(async (entry) => {
+						const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir);
+						return { index: entry.index, summary };
+					}),
+				);
+
+				for (const { index, summary } of results) {
+					const row = rows[index];
+					if (row) applySummaryToRow(row, summary);
+				}
+
+				renderTable();
 			}
 		});
+}
+
+function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
+	const dirtyCount = summary.dirty;
+	const unpushedCount = summary.repos.filter((r) => !r.remote.local && isUnpushed(r)).length;
+	const behindCount = summary.repos.filter((r) => (r.base && r.base.behind > 0) || r.remote.behind > 0).length;
+	const driftedCount = summary.drifted;
+
+	const statusParts: string[] = [];
+	const statusColoredParts: string[] = [];
+
+	if (dirtyCount > 0) {
+		const text = `${dirtyCount} dirty`;
+		statusParts.push(text);
+		statusColoredParts.push(yellow(text));
+	}
+	if (unpushedCount > 0) {
+		const text = `${unpushedCount} unpushed`;
+		statusParts.push(text);
+		statusColoredParts.push(yellow(text));
+	}
+	if (behindCount > 0) {
+		const text = `${behindCount} behind`;
+		statusParts.push(text);
+		statusColoredParts.push(text);
+	}
+	if (driftedCount > 0) {
+		const text = `${driftedCount} drifted`;
+		statusParts.push(text);
+		statusColoredParts.push(yellow(text));
+	}
+
+	if (statusParts.length === 0) {
+		row.statusColored = "ok";
+	} else {
+		row.statusColored = statusColoredParts.join(", ");
+	}
 }
