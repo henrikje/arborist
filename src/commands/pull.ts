@@ -116,7 +116,10 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				inlineStart(a.repo, `pulling (${a.pullMode})`);
 				const pullRemote = remotesMap.get(a.repo)?.publish ?? "origin";
 				const pullFlag = a.pullMode === "rebase" ? "--rebase" : "--no-rebase";
-				const pullResult = await Bun.$`git -C ${a.repoDir} pull ${pullFlag} ${pullRemote} ${branch}`.quiet().nothrow();
+				const pullResult = await Bun.$`git -C ${a.repoDir} pull ${pullFlag} ${pullRemote} ${branch}`
+					.cwd(a.repoDir)
+					.quiet()
+					.nothrow();
 				if (pullResult.exitCode === 0) {
 					inlineResult(a.repo, `pulled ${plural(a.behind, "commit")} (${a.pullMode})`);
 					pullOk++;
@@ -182,7 +185,7 @@ async function assessPullRepo(
 	}
 
 	if (!(await remoteBranchExists(repoDir, branch, publishRemote))) {
-		const configRemote = await Bun.$`git -C ${repoDir} config branch.${branch}.remote`.quiet().nothrow();
+		const configRemote = await Bun.$`git -C ${repoDir} config branch.${branch}.remote`.cwd(repoDir).quiet().nothrow();
 		if (configRemote.exitCode === 0 && configRemote.text().trim().length > 0) {
 			return { ...base, skipReason: "remote branch gone" };
 		}
@@ -208,11 +211,14 @@ async function assessPullRepo(
 }
 
 async function detectPullMode(repoDir: string, branch: string): Promise<"rebase" | "merge"> {
-	const branchRebase = await Bun.$`git -C ${repoDir} config --get branch.${branch}.rebase`.quiet().nothrow();
+	const branchRebase = await Bun.$`git -C ${repoDir} config --get branch.${branch}.rebase`
+		.cwd(repoDir)
+		.quiet()
+		.nothrow();
 	if (branchRebase.exitCode === 0) {
 		return branchRebase.text().trim() !== "false" ? "rebase" : "merge";
 	}
-	const pullRebase = await Bun.$`git -C ${repoDir} config --get pull.rebase`.quiet().nothrow();
+	const pullRebase = await Bun.$`git -C ${repoDir} config --get pull.rebase`.cwd(repoDir).quiet().nothrow();
 	if (pullRebase.exitCode === 0) {
 		return pullRebase.text().trim() !== "false" ? "rebase" : "merge";
 	}

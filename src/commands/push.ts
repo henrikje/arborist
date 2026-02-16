@@ -110,7 +110,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 					a.outcome === "will-force-push"
 						? ["push", "-u", "--force-with-lease", a.publishRemote, a.branch]
 						: ["push", "-u", a.publishRemote, a.branch];
-				const pushResult = await Bun.$`git -C ${a.repoDir} ${pushArgs}`.quiet().nothrow();
+				const pushResult = await Bun.$`git -C ${a.repoDir} ${pushArgs}`.cwd(a.repoDir).quiet().nothrow();
 				if (pushResult.exitCode === 0) {
 					inlineResult(a.repo, `pushed ${plural(a.ahead, "commit")}`);
 					pushOk++;
@@ -171,7 +171,7 @@ async function assessPushRepo(
 	if (!(await remoteBranchExists(repoDir, branch, publishRemote))) {
 		// Tracking config present means the branch was pushed before (set by git push -u).
 		// If it's gone now, the remote branch was deleted (e.g. merged via PR).
-		const trackingRemote = await Bun.$`git -C ${repoDir} config branch.${branch}.remote`.quiet().nothrow();
+		const trackingRemote = await Bun.$`git -C ${repoDir} config branch.${branch}.remote`.cwd(repoDir).quiet().nothrow();
 		if (trackingRemote.exitCode === 0 && trackingRemote.text().trim()) {
 			return { ...base, skipReason: "remote branch gone" };
 		}

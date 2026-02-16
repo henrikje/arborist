@@ -27,32 +27,35 @@ export function registerCloneCommand(program: Command, getCtx: () => ArbContext)
 				process.exit(1);
 			}
 
-			const result = await Bun.$`git clone ${url} ${target}`.quiet().nothrow();
+			const result = await Bun.$`git clone ${url} ${target}`.cwd(ctx.reposDir).quiet().nothrow();
 			if (result.exitCode !== 0) {
 				error(`Clone failed: ${result.stderr.toString().trim()}`);
 				process.exit(1);
 			}
 
-			await Bun.$`git -C ${target} checkout --detach`.quiet().nothrow();
+			await Bun.$`git -C ${target} checkout --detach`.cwd(target).quiet().nothrow();
 
 			if (options.upstream) {
 				// Add upstream remote
-				const addResult = await Bun.$`git -C ${target} remote add upstream ${options.upstream}`.quiet().nothrow();
+				const addResult = await Bun.$`git -C ${target} remote add upstream ${options.upstream}`
+					.cwd(target)
+					.quiet()
+					.nothrow();
 				if (addResult.exitCode !== 0) {
 					error(`Failed to add upstream remote: ${addResult.stderr.toString().trim()}`);
 					process.exit(1);
 				}
 
 				// Set remote.pushDefault so resolveRemotes() detects the fork layout
-				await Bun.$`git -C ${target} config remote.pushDefault origin`.quiet().nothrow();
+				await Bun.$`git -C ${target} config remote.pushDefault origin`.cwd(target).quiet().nothrow();
 
 				// Fetch upstream and auto-detect HEAD
-				const fetchResult = await Bun.$`git -C ${target} fetch upstream`.quiet().nothrow();
+				const fetchResult = await Bun.$`git -C ${target} fetch upstream`.cwd(target).quiet().nothrow();
 				if (fetchResult.exitCode !== 0) {
 					error(`Failed to fetch upstream: ${fetchResult.stderr.toString().trim()}`);
 					process.exit(1);
 				}
-				await Bun.$`git -C ${target} remote set-head upstream --auto`.quiet().nothrow();
+				await Bun.$`git -C ${target} remote set-head upstream --auto`.cwd(target).quiet().nothrow();
 
 				info(`  publish:  origin (${url})`);
 				info(`  upstream: upstream (${options.upstream})`);
