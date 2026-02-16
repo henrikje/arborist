@@ -19,6 +19,7 @@ interface PushAssessment {
 	branch: string;
 	publishRemote: string;
 	newBranch: boolean;
+	recreate: boolean;
 }
 
 export function registerPushCommand(program: Command, getCtx: () => ArbContext): void {
@@ -28,7 +29,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 		.option("-y, --yes", "Skip confirmation prompt")
 		.summary("Push the feature branch to the publish remote")
 		.description(
-			"Push the feature branch for all repos, or only the named repos. Pushes to the publish remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. Skips repos without a remote and repos where the remote branch has been deleted. Use --force after rebase or amend to force push with lease.",
+			"Push the feature branch for all repos, or only the named repos. Pushes to the publish remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. If a remote branch was deleted (e.g. after merging a PR), the push recreates it. Skips repos without a remote. Use --force after rebase or amend to force push with lease.",
 		)
 		.action(async (repoArgs: string[], options: { force?: boolean; yes?: boolean }) => {
 			const ctx = getCtx();
@@ -64,7 +65,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				const remotes = remotesMap.get(a.repo);
 				const forkSuffix = remotes && remotes.upstream !== remotes.publish ? ` → ${a.publishRemote}` : "";
 				if (a.outcome === "will-push") {
-					const newBranchSuffix = a.newBranch ? " (new branch)" : "";
+					const newBranchSuffix = a.recreate ? " (recreate)" : a.newBranch ? " (new branch)" : "";
 					process.stderr.write(`  ${a.repo}   ${plural(a.ahead, "commit")} to push${newBranchSuffix}${forkSuffix}\n`);
 				} else if (a.outcome === "will-force-push") {
 					process.stderr.write(
@@ -156,6 +157,7 @@ async function assessPushRepo(
 		branch,
 		publishRemote,
 		newBranch: false,
+		recreate: false,
 	};
 
 	if (!(await hasRemote(`${reposDir}/${repo}`))) {
@@ -172,10 +174,9 @@ async function assessPushRepo(
 		// Tracking config present means the branch was pushed before (set by git push -u).
 		// If it's gone now, the remote branch was deleted (e.g. merged via PR).
 		const trackingRemote = await Bun.$`git -C ${repoDir} config branch.${branch}.remote`.cwd(repoDir).quiet().nothrow();
-		if (trackingRemote.exitCode === 0 && trackingRemote.text().trim()) {
-			return { ...base, skipReason: "remote branch gone" };
-		}
-		// No tracking config — first push. Count commits ahead of base branch.
+		const isGone = trackingRemote.exitCode === 0 && trackingRemote.text().trim().length > 0;
+
+		// Count commits ahead of base branch.
 		const repoPath = `${reposDir}/${repo}`;
 		let defaultBranch: string | null = null;
 		if (configBase) {
@@ -199,7 +200,7 @@ async function assessPushRepo(
 			const log = await git(repoDir, "rev-list", "--count", "HEAD");
 			if (log.exitCode === 0) count = Number.parseInt(log.stdout.trim(), 10);
 		}
-		return { ...base, outcome: "will-push", ahead: count, newBranch: true };
+		return { ...base, outcome: "will-push", ahead: count, newBranch: !isGone, recreate: isGone };
 	}
 
 	// Check how many commits ahead/behind the publish remote

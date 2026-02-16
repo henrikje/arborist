@@ -367,7 +367,12 @@ function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
 }
 
 function plainRemoteDiff(repo: RepoStatus): string {
-	if (repo.remote.gone) return "gone";
+	if (repo.remote.gone) {
+		if (repo.base !== null && repo.base.ahead > 0) {
+			return `gone, ${repo.base.ahead} to push`;
+		}
+		return "gone";
+	}
 	if (!repo.remote.pushed) {
 		if (repo.base !== null && repo.base.ahead > 0) {
 			return `${repo.base.ahead} to push`;

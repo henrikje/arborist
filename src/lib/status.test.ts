@@ -92,7 +92,7 @@ describe("isUnpushed", () => {
 		).toBe(false);
 	});
 
-	test("returns false when gone even with base.ahead > 0", () => {
+	test("returns true when gone with base.ahead > 0", () => {
 		expect(
 			isUnpushed(
 				makeRepo({
@@ -100,18 +100,41 @@ describe("isUnpushed", () => {
 					base: { name: "main", ahead: 3, behind: 0 },
 				}),
 			),
+		).toBe(true);
+	});
+
+	test("returns false when gone with base.ahead === 0", () => {
+		expect(
+			isUnpushed(
+				makeRepo({
+					remote: { pushed: true, ahead: 0, behind: 0, local: false, gone: true, trackingBranch: null },
+					base: { name: "main", ahead: 0, behind: 0 },
+				}),
+			),
 		).toBe(false);
 	});
 });
 
 describe("getVerdict", () => {
-	test("returns ok when gone and clean", () => {
+	test("returns ok when gone with base.ahead === 0", () => {
 		expect(
 			getVerdict(
 				makeRepo({
 					remote: { pushed: true, ahead: 0, behind: 0, local: false, gone: true, trackingBranch: null },
+					base: { name: "main", ahead: 0, behind: 0 },
 				}),
 			),
 		).toBe("ok");
+	});
+
+	test("returns unpushed when gone with base.ahead > 0", () => {
+		expect(
+			getVerdict(
+				makeRepo({
+					remote: { pushed: true, ahead: 0, behind: 0, local: false, gone: true, trackingBranch: null },
+					base: { name: "main", ahead: 3, behind: 0 },
+				}),
+			),
+		).toBe("unpushed");
 	});
 });
