@@ -1,7 +1,7 @@
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { checkBranchMatch, git, hasRemote, remoteBranchExists } from "../lib/git";
-import { error, info, inlineResult, inlineStart, red, success, yellow } from "../lib/output";
+import { error, info, inlineResult, inlineStart, plural, red, success, yellow } from "../lib/output";
 import { type RepoRemotes, resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection } from "../lib/repos";
 import { isTTY } from "../lib/tty";
@@ -61,10 +61,10 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				const remotes = remotesMap.get(a.repo);
 				const forkSuffix = remotes && remotes.upstream !== remotes.publish ? ` → ${a.publishRemote}` : "";
 				if (a.outcome === "will-push") {
-					process.stderr.write(`  ${a.repo}   ${a.ahead} commit${a.ahead === 1 ? "" : "s"} to push${forkSuffix}\n`);
+					process.stderr.write(`  ${a.repo}   ${plural(a.ahead, "commit")} to push${forkSuffix}\n`);
 				} else if (a.outcome === "will-force-push") {
 					process.stderr.write(
-						`  ${a.repo}   ${a.ahead} commit${a.ahead === 1 ? "" : "s"} to push (force — ${a.behind} behind ${a.publishRemote})\n`,
+						`  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.publishRemote})\n`,
 					);
 				} else if (a.outcome === "up-to-date") {
 					process.stderr.write(`  ${a.repo}   up to date\n`);
@@ -86,7 +86,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 					process.exit(1);
 				}
 				const ok = await confirm({
-					message: `Push ${willPush.length} repo(s)?`,
+					message: `Push ${plural(willPush.length, "repo")}?`,
 					default: false,
 				});
 				if (!ok) {
@@ -108,7 +108,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 						: ["push", "-u", a.publishRemote, a.branch];
 				const pushResult = await Bun.$`git -C ${a.repoDir} ${pushArgs}`.quiet().nothrow();
 				if (pushResult.exitCode === 0) {
-					inlineResult(a.repo, `pushed ${a.ahead} commit(s)`);
+					inlineResult(a.repo, `pushed ${plural(a.ahead, "commit")}`);
 					pushOk++;
 				} else {
 					inlineResult(a.repo, red("failed"));
@@ -126,7 +126,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 
 			// Phase 5: summary
 			process.stderr.write("\n");
-			const parts = [`Pushed ${pushOk} repo(s)`];
+			const parts = [`Pushed ${plural(pushOk, "repo")}`];
 			if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
 			if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
 			success(parts.join(", "));

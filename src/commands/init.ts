@@ -33,7 +33,8 @@ export function registerInitCommand(program: Command): void {
 			mkdirSync(`${target}/.arb/repos`, { recursive: true });
 			writeFileSync(`${target}/.arb/.gitignore`, "repos/\n");
 
-			success(`Initialized arb in ${target}`);
+			success("Initialized arb root");
+			info(`  ${dim(target)}`);
 			info("");
 			info("Next steps:");
 			info(`  arb clone <url>    ${dim("Clone repos into the project")}`);

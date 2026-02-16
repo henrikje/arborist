@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { checkBranchMatch, git, remoteBranchExists } from "../lib/git";
-import { error, info, inlineResult, inlineStart, red, success, yellow } from "../lib/output";
+import { error, info, inlineResult, inlineStart, plural, red, success, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { type RepoRemotes, resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos, resolveRepoSelection } from "../lib/repos";
@@ -51,7 +51,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 
 			let fetchResults = new Map<string, { exitCode: number; output: string }>();
 			if (fetchDirs.length > 0) {
-				process.stderr.write(`Fetching ${fetchDirs.length} repo(s)...\n`);
+				process.stderr.write(`Fetching ${plural(fetchDirs.length, "repo")}...\n`);
 				fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
 			}
 
@@ -76,9 +76,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				const remotes = remotesMap.get(a.repo);
 				const forkSuffix = remotes && remotes.upstream !== remotes.publish ? ` ← ${remotes.publish}` : "";
 				if (a.outcome === "will-pull") {
-					process.stderr.write(
-						`  ${a.repo}   ${a.behind} commit${a.behind === 1 ? "" : "s"} to pull (${a.pullMode})${forkSuffix}\n`,
-					);
+					process.stderr.write(`  ${a.repo}   ${plural(a.behind, "commit")} to pull (${a.pullMode})${forkSuffix}\n`);
 				} else if (a.outcome === "up-to-date") {
 					process.stderr.write(`  ${a.repo}   up to date\n`);
 				} else {
@@ -99,7 +97,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					process.exit(1);
 				}
 				const ok = await confirm({
-					message: `Pull ${willPull.length} repo(s)?`,
+					message: `Pull ${plural(willPull.length, "repo")}?`,
 					default: false,
 				});
 				if (!ok) {
@@ -119,7 +117,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				const pullFlag = a.pullMode === "rebase" ? "--rebase" : "--no-rebase";
 				const pullResult = await Bun.$`git -C ${a.repoDir} pull ${pullFlag} ${pullRemote} ${branch}`.quiet().nothrow();
 				if (pullResult.exitCode === 0) {
-					inlineResult(a.repo, `pulled ${a.behind} commit(s) (${a.pullMode})`);
+					inlineResult(a.repo, `pulled ${plural(a.behind, "commit")} (${a.pullMode})`);
 					pullOk++;
 				} else {
 					inlineResult(a.repo, red("failed"));
@@ -142,7 +140,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 
 			// Phase 6: summary
 			process.stderr.write("\n");
-			const parts = [`Pulled ${pullOk} repo(s)`];
+			const parts = [`Pulled ${plural(pullOk, "repo")}`];
 			if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
 			if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
 			success(parts.join(", "));

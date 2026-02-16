@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { error, success, warn } from "../lib/output";
+import { error, plural, success, warn } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos } from "../lib/repos";
@@ -29,7 +29,7 @@ export function registerFetchCommand(program: Command, getCtx: () => ArbContext)
 			const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
 			let results = new Map<string, { exitCode: number; output: string }>();
 			if (fetchDirs.length > 0) {
-				process.stderr.write(`Fetching ${fetchDirs.length} repo(s)...\n`);
+				process.stderr.write(`Fetching ${plural(fetchDirs.length, "repo")}...\n`);
 				results = await parallelFetch(fetchDirs, undefined, remotesMap);
 			}
 
@@ -43,14 +43,14 @@ export function registerFetchCommand(program: Command, getCtx: () => ArbContext)
 				if (!fr) continue;
 				const refUpdates = fr.output.split("\n").filter((line) => line.includes("->")).length;
 				if (refUpdates > 0) {
-					process.stderr.write(`  [${repo}] ${refUpdates} ref(s) updated\n`);
+					process.stderr.write(`  [${repo}] ${plural(refUpdates, "ref")} updated\n`);
 				} else {
 					process.stderr.write(`  [${repo}] up to date\n`);
 				}
 			}
 
 			if (fetchFailed.length === 0) {
-				success(`Fetched ${fetchOk.length} repo(s)`);
+				success(`Fetched ${plural(fetchOk.length, "repo")}`);
 			} else {
 				error(`Failed: ${fetchFailed.join(" ")}`);
 			}

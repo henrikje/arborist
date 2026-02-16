@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { isRepoDirty } from "../lib/git";
-import { boldLine, error, success } from "../lib/output";
+import { boldLine, error, plural, success } from "../lib/output";
 import { workspaceRepoDirs } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
 import { requireWorkspace } from "../lib/workspace-context";
@@ -50,7 +50,7 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 			}
 
 			const parts: string[] = [];
-			if (execOk.length > 0) parts.push(`Ran in ${execOk.length} repo(s)`);
+			if (execOk.length > 0) parts.push(`Ran in ${plural(execOk.length, "repo")}`);
 			if (skipped.length > 0) parts.push(`${skipped.length} clean`);
 			if (parts.length > 0) success(parts.join(", "));
 			if (execFailed.length > 0) error(`Failed: ${execFailed.join(" ")}`);

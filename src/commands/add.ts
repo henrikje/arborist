@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
-import { error, info, success, warn } from "../lib/output";
+import { error, info, plural, success, warn } from "../lib/output";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import { applyRepoTemplates } from "../lib/templates";
@@ -55,7 +55,7 @@ export function registerAddCommand(program: Command, getCtx: () => ArbContext): 
 
 			const repoTemplates = applyRepoTemplates(ctx.baseDir, wsDir, result.created);
 			if (repoTemplates.seeded.length > 0) {
-				info(`Seeded ${repoTemplates.seeded.length} template file(s)`);
+				info(`Seeded ${plural(repoTemplates.seeded.length, "template file")}`);
 			}
 			for (const f of repoTemplates.failed) {
 				warn(`Failed to copy template ${f.path}: ${f.error}`);
@@ -63,7 +63,7 @@ export function registerAddCommand(program: Command, getCtx: () => ArbContext): 
 
 			process.stderr.write("\n");
 			if (result.failed.length === 0 && result.skipped.length === 0) {
-				success(`Added ${result.created.length} repo(s) to ${ctx.currentWorkspace}`);
+				success(`Added ${plural(result.created.length, "repo")} to ${ctx.currentWorkspace}`);
 			} else {
 				if (result.created.length > 0) info(`  added:   ${result.created.join(" ")}`);
 				if (result.skipped.length > 0) warn(`  skipped: ${result.skipped.join(" ")}`);

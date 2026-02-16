@@ -9,7 +9,7 @@ import {
 	isRepoDirty,
 	remoteBranchExists,
 } from "./git";
-import { error, info, inlineResult, inlineStart, red, success, yellow } from "./output";
+import { error, info, inlineResult, inlineStart, plural, red, success, yellow } from "./output";
 import { parallelFetch, reportFetchFailures } from "./parallel-fetch";
 import { type RepoRemotes, resolveRemotesMap } from "./remotes";
 import { classifyRepos, resolveRepoSelection } from "./repos";
@@ -53,7 +53,7 @@ export async function integrate(
 	if (options.fetch) {
 		const { repos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
 		if (fetchDirs.length > 0) {
-			process.stderr.write(`Fetching ${fetchDirs.length} repo(s)...\n`);
+			process.stderr.write(`Fetching ${plural(fetchDirs.length, "repo")}...\n`);
 			const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
 			reportFetchFailures(repos, localRepos, fetchResults);
 		}
@@ -99,7 +99,7 @@ export async function integrate(
 			process.exit(1);
 		}
 		const ok = await confirm({
-			message: `${verb} ${willOperate.length} repo(s)?`,
+			message: `${verb} ${plural(willOperate.length, "repo")}?`,
 			default: false,
 		});
 		if (!ok) {
@@ -137,7 +137,7 @@ export async function integrate(
 
 	// Phase 6: summary
 	process.stderr.write("\n");
-	const parts = [`${verbed} ${succeeded} repo(s)`];
+	const parts = [`${verbed} ${plural(succeeded, "repo")}`];
 	if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
 	if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
 	success(parts.join(", "));

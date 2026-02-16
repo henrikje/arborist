@@ -28,22 +28,22 @@ Arborist uses marker directories (`.arb/`, `.arbws/`) and filesystem scanning in
 
 ### Color semantics
 
-- **Green**: success confirmation only — the final summary line ("Pushed 3 repo(s)"), staged changes in status. Used very sparingly.
+- **Green**: success confirmation only — the final summary line ("Pushed 3 repos"), staged changes in status. Used very sparingly.
 - **Yellow**: noteworthy or mildly risky — things that need attention or action. Unpushed commits, local changes, unexpected branches, skipped repos, unstaged/untracked files, operations with caveats.
 - **Red**: errors or immediate risks — failed operations, at-risk workspaces, fatal messages.
 - **Dim (gray)**: de-emphasized, supplementary information — column headings, commit hashes, section labels in expanded views.
 - **Bold**: structural emphasis — section separators in `exec` (`==> repo <==`).
-- **Default (no color)**: normal, expected content. Repo names, branch names, inline progress results, informational counts ("up to date", "3 ref(s) updated"). The baseline.
+- **Default (no color)**: normal, expected content. Repo names, branch names, inline progress results, informational counts ("up to date", "3 refs updated"). The baseline.
 
 ### Descriptive outcomes, not just status
 
 Tell the user *what happened*, not just *that it happened*. Instead of a generic "ok", describe the practical outcome so the user understands the result without investigating further.
 
-- Push/pull: include the commit count from the assessment — "pushed 3 commit(s)", "pulled 2 commit(s)".
+- Push/pull: include the commit count from the assessment — "pushed 3 commits", "pulled 2 commits".
 - Rebase/merge: past-tense of the action — "rebased onto origin/main", "merged onto origin/main".
 - Add/create (worktrees): past-tense — "created".
 - Drop: past-tense — "removed", "branch deleted".
-- Fetch: describe what changed — "3 ref(s) updated" or "up to date".
+- Fetch: describe what changed — "3 refs updated" or "up to date".
 
 ### Membership-changing commands
 
@@ -75,7 +75,7 @@ In TTY mode: write `  [repo] verb...` as a progress indicator, then on completio
 
 ### Summary line after operations
 
-Every multi-repo command ends with a single green line on stderr that aggregates counts, like "Pushed 3 repo(s), 1 up to date, 2 skipped". This gives instant confirmation of what happened without scrolling.
+Every multi-repo command ends with a single green line on stderr that aggregates counts, like "Pushed 3 repos, 1 up to date, 2 skipped". This gives instant confirmation of what happened without scrolling.
 
 ### Helpful skip reasons
 

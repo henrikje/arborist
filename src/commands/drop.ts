@@ -2,7 +2,7 @@ import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { branchExistsLocally, git, isRepoDirty } from "../lib/git";
-import { error, inlineResult, inlineStart, success, warn } from "../lib/output";
+import { error, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
 import { selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -100,7 +100,7 @@ export function registerDropCommand(program: Command, getCtx: () => ArbContext):
 			}
 
 			process.stderr.write("\n");
-			if (dropped.length > 0) success(`Dropped ${dropped.length} repo(s) from ${ctx.currentWorkspace}`);
+			if (dropped.length > 0) success(`Dropped ${plural(dropped.length, "repo")} from ${ctx.currentWorkspace}`);
 			if (skipped.length > 0) warn(`Skipped: ${skipped.join(" ")}`);
 		});
 }

@@ -11,7 +11,7 @@ import {
 	remoteBranchExists,
 	validateWorkspaceName,
 } from "../lib/git";
-import { error, green, info, inlineResult, inlineStart, red, success, warn, yellow } from "../lib/output";
+import { error, green, info, inlineResult, inlineStart, plural, red, success, warn, yellow } from "../lib/output";
 import { resolveRemotes } from "../lib/remotes";
 import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import {
@@ -137,7 +137,7 @@ async function removeWorkspace(
 		process.stderr.write("\n");
 
 		if (hasAtRisk) {
-			warn(`  \u26A0 ${atRiskCount} repo(s) have changes that will be lost.`);
+			warn(`  \u26A0 ${plural(atRiskCount, "repo")} ${atRiskCount === 1 ? "has" : "have"} changes that will be lost.`);
 			process.stderr.write("\n");
 		}
 	}
@@ -150,7 +150,9 @@ async function removeWorkspace(
 		}
 
 		if (hasAtRisk) {
-			error(`Refusing to remove: ${atRiskCount} repo(s) have work that would be lost. Use --force to override.`);
+			error(
+				`Refusing to remove: ${plural(atRiskCount, "repo")} ${atRiskCount === 1 ? "has" : "have"} work that would be lost. Use --force to override.`,
+			);
 			process.exit(1);
 		}
 
@@ -287,7 +289,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 						process.exit(1);
 					}
 					const shouldRemove = await confirm({
-						message: `Remove ${okEntries.length} workspace(s)?`,
+						message: `Remove ${plural(okEntries.length, "workspace")}?`,
 						default: false,
 					});
 					if (!shouldRemove) {
@@ -307,7 +309,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 				}
 
 				process.stderr.write("\n");
-				success(`Removed ${okEntries.length} workspace(s)`);
+				success(`Removed ${plural(okEntries.length, "workspace")}`);
 				return;
 			}
 
@@ -336,7 +338,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 					inlineResult(name, "removed");
 				}
 				process.stderr.write("\n");
-				success(`Removed ${names.length} workspace(s)`);
+				success(`Removed ${plural(names.length, "workspace")}`);
 			} else {
 				const [name] = names;
 				if (name) await removeWorkspace(name, ctx, options);
