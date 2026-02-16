@@ -3408,3 +3408,39 @@ push_then_delete_remote() {
     [[ "$output" == *"Seeded 2 template file(s)"* ]]
 }
 
+@test "arb remove --all-ok --force produces compact output" {
+    arb create ws-one repo-a
+    arb create ws-two repo-a
+    git -C "$TEST_DIR/project/ws-one/repo-a" push -u origin ws-one >/dev/null 2>&1
+    git -C "$TEST_DIR/project/ws-two/repo-a" push -u origin ws-two >/dev/null 2>&1
+
+    run arb remove --all-ok --force
+    [ "$status" -eq 0 ]
+    # Should have compact inline results, not per-workspace status tables
+    [[ "$output" == *"[ws-one] removed"* ]]
+    [[ "$output" == *"[ws-two] removed"* ]]
+    [[ "$output" == *"Removed 2 workspace(s)"* ]]
+    # Should NOT contain per-workspace status tables (clean, pushed appears in status tables)
+    [[ "$output" != *"clean, pushed"* ]]
+}
+
+@test "arb remove multiple names --force produces compact output" {
+    arb create ws-x repo-a
+    arb create ws-y repo-b
+
+    run arb remove ws-x ws-y --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"[ws-x] removed"* ]]
+    [[ "$output" == *"[ws-y] removed"* ]]
+    [[ "$output" == *"Removed 2 workspace(s)"* ]]
+    [[ "$output" != *"clean, pushed"* ]]
+}
+
+@test "arb remove single name --force keeps detailed output" {
+    arb create ws-solo repo-a
+
+    run arb remove ws-solo --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Removed workspace ws-solo"* ]]
+}
+

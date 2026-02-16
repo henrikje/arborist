@@ -28,7 +28,7 @@ import { workspaceBranch } from "../lib/workspace-branch";
 async function removeWorkspace(
 	name: string,
 	ctx: ArbContext,
-	options: { force?: boolean; deleteRemote?: boolean },
+	options: { force?: boolean; deleteRemote?: boolean; quiet?: boolean },
 ): Promise<void> {
 	const validationError = validateWorkspaceName(name);
 	if (validationError) {
@@ -109,34 +109,37 @@ async function removeWorkspace(
 	}
 
 	// Display status table
-	const maxRepoLen = Math.max(...repos.map((r) => r.length));
-	process.stderr.write("\n");
-	for (const status of repoStatuses) {
-		const canonicalDirty = canonicalDirtyMap.get(status.name) ?? false;
-		const notPushedWithCommits = !status.remote.local && !status.remote.pushed && status.base && status.base.ahead > 0;
-
-		const parts = [
-			status.local.staged > 0 && green(`${status.local.staged} staged`),
-			status.local.modified > 0 && yellow(`${status.local.modified} modified`),
-			status.local.untracked > 0 && yellow(`${status.local.untracked} untracked`),
-			canonicalDirty && yellow("canonical repo dirty"),
-			notPushedWithCommits
-				? red("not pushed at all")
-				: status.remote.pushed && status.remote.ahead > 0
-					? yellow(`${status.remote.ahead} commits not pushed`)
-					: !status.remote.local && !status.remote.pushed && false,
-		]
-			.filter(Boolean)
-			.join(", ");
-
-		const display = parts || green("\u2714 clean, pushed");
-		process.stderr.write(`  ${status.name.padEnd(maxRepoLen)} ${display}\n`);
-	}
-	process.stderr.write("\n");
-
-	if (hasAtRisk) {
-		warn(`  \u26A0 ${atRiskCount} repo(s) have changes that will be lost.`);
+	if (!options.quiet) {
+		const maxRepoLen = Math.max(...repos.map((r) => r.length));
 		process.stderr.write("\n");
+		for (const status of repoStatuses) {
+			const canonicalDirty = canonicalDirtyMap.get(status.name) ?? false;
+			const notPushedWithCommits =
+				!status.remote.local && !status.remote.pushed && status.base && status.base.ahead > 0;
+
+			const parts = [
+				status.local.staged > 0 && green(`${status.local.staged} staged`),
+				status.local.modified > 0 && yellow(`${status.local.modified} modified`),
+				status.local.untracked > 0 && yellow(`${status.local.untracked} untracked`),
+				canonicalDirty && yellow("canonical repo dirty"),
+				notPushedWithCommits
+					? red("not pushed at all")
+					: status.remote.pushed && status.remote.ahead > 0
+						? yellow(`${status.remote.ahead} commits not pushed`)
+						: !status.remote.local && !status.remote.pushed && false,
+			]
+				.filter(Boolean)
+				.join(", ");
+
+			const display = parts || green("\u2714 clean, pushed");
+			process.stderr.write(`  ${status.name.padEnd(maxRepoLen)} ${display}\n`);
+		}
+		process.stderr.write("\n");
+
+		if (hasAtRisk) {
+			warn(`  \u26A0 ${atRiskCount} repo(s) have changes that will be lost.`);
+			process.stderr.write("\n");
+		}
 	}
 
 	// Confirmation behavior
@@ -164,7 +167,7 @@ async function removeWorkspace(
 
 	// Remove worktrees and branches
 	for (const repo of repos) {
-		inlineStart(repo, "removing");
+		if (!options.quiet) inlineStart(repo, "removing");
 
 		await git(`${ctx.reposDir}/${repo}`, "worktree", "remove", "--force", `${wsDir}/${repo}`);
 
@@ -183,13 +186,13 @@ async function removeWorkspace(
 			if (await remoteBranchExists(`${ctx.reposDir}/${repo}`, branch, publishRemote)) {
 				const pushResult = await git(`${ctx.reposDir}/${repo}`, "push", publishRemote, "--delete", branch);
 				if (pushResult.exitCode !== 0) {
-					inlineResult(repo, "removed (failed to delete remote)");
+					if (!options.quiet) inlineResult(repo, "removed (failed to delete remote)");
 					continue;
 				}
 			}
 		}
 
-		inlineResult(repo, "removed");
+		if (!options.quiet) inlineResult(repo, "removed");
 	}
 
 	// Clean up workspace directory
@@ -200,8 +203,10 @@ async function removeWorkspace(
 		await git(`${ctx.reposDir}/${repo}`, "worktree", "prune");
 	}
 
-	process.stderr.write("\n");
-	success(`Removed workspace ${name}`);
+	if (!options.quiet) {
+		process.stderr.write("\n");
+		success(`Removed workspace ${name}`);
+	}
 }
 
 function isWorkspaceOk(summary: WorkspaceSummary): boolean {
@@ -292,8 +297,17 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 				}
 
 				for (const entry of okEntries) {
-					await removeWorkspace(entry.name, ctx, { force: true, deleteRemote: options.deleteRemote });
+					inlineStart(entry.name, "removing");
+					await removeWorkspace(entry.name, ctx, {
+						force: true,
+						deleteRemote: options.deleteRemote,
+						quiet: true,
+					});
+					inlineResult(entry.name, "removed");
 				}
+
+				process.stderr.write("\n");
+				success(`Removed ${okEntries.length} workspace(s)`);
 				return;
 			}
 
@@ -315,8 +329,17 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 				}
 			}
 
-			for (const name of names) {
-				await removeWorkspace(name, ctx, options);
+			if (names.length > 1) {
+				for (const name of names) {
+					inlineStart(name, "removing");
+					await removeWorkspace(name, ctx, { ...options, quiet: true });
+					inlineResult(name, "removed");
+				}
+				process.stderr.write("\n");
+				success(`Removed ${names.length} workspace(s)`);
+			} else {
+				const [name] = names;
+				if (name) await removeWorkspace(name, ctx, options);
 			}
 		});
 }
