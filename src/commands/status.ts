@@ -244,8 +244,7 @@ async function runStatus(
 		}
 	}
 
-	// Summary line
-	const behindBase = repos.filter((r) => r.base !== null && r.base.behind > 0).length;
+	// Summary line — each repo must appear in exactly one bucket
 	const verdicts = repos.map((r) => getVerdict(r));
 	const clean = verdicts.filter((v, i) => {
 		if (v !== "ok" && v !== "local") return false;
@@ -255,6 +254,9 @@ async function runStatus(
 	const dirty = verdicts.filter((v) => v === "dirty").length;
 	const unpushed = verdicts.filter((v) => v === "unpushed").length;
 	const atRisk = verdicts.filter((v) => v === "at-risk").length;
+	const behindBase = repos.filter(
+		(r, i) => r.base !== null && r.base.behind > 0 && (verdicts[i] === "ok" || verdicts[i] === "local"),
+	).length;
 
 	const parts: string[] = [];
 	if (clean > 0) parts.push(`${clean} clean`);

@@ -1487,6 +1487,25 @@ assert 'operation' in r
     [[ "$summary_line" != *"clean"* ]]
 }
 
+@test "arb status summary does not double-count behind-base repo as unpushed" {
+    arb create my-feature repo-a
+    echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
+    # Do NOT push — repo-a has an unpushed commit
+    # Add a commit to origin's default branch so repo-a is also behind base
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    # Summary should show "1 unpushed" but NOT "behind base" —
+    # a single repo must not appear in both counts
+    local summary_line
+    summary_line=$(echo "$output" | tail -1)
+    [[ "$summary_line" == *"1 unpushed"* ]]
+    [[ "$summary_line" != *"behind base"* ]]
+}
+
 @test "arb status summary shows mixed counts" {
     arb create my-feature repo-a repo-b
     # repo-a: pushed and clean (ok verdict)
