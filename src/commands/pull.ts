@@ -17,6 +17,7 @@ interface PullAssessment {
 	skipReason?: string;
 	behind: number;
 	pullMode: "rebase" | "merge";
+	headSha: string;
 }
 
 export function registerPullCommand(program: Command, getCtx: () => ArbContext): void {
@@ -75,8 +76,11 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 			for (const a of assessments) {
 				const remotes = remotesMap.get(a.repo);
 				const forkSuffix = remotes && remotes.upstream !== remotes.publish ? ` ← ${remotes.publish}` : "";
+				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 				if (a.outcome === "will-pull") {
-					process.stderr.write(`  ${a.repo}   ${plural(a.behind, "commit")} to pull (${a.pullMode})${forkSuffix}\n`);
+					process.stderr.write(
+						`  ${a.repo}   ${plural(a.behind, "commit")} to pull (${a.pullMode})${forkSuffix}${headStr}\n`,
+					);
 				} else if (a.outcome === "up-to-date") {
 					process.stderr.write(`  ${a.repo}   up to date\n`);
 				} else {
@@ -169,7 +173,12 @@ async function assessPullRepo(
 	remotes?: RepoRemotes,
 ): Promise<PullAssessment> {
 	const publishRemote = remotes?.publish ?? "origin";
-	const base: PullAssessment = { repo, repoDir, outcome: "skip", behind: 0, pullMode: "merge" };
+
+	// Capture HEAD SHA for recovery info
+	const headResult = await git(repoDir, "rev-parse", "--short", "HEAD");
+	const headSha = headResult.exitCode === 0 ? headResult.stdout.trim() : "";
+
+	const base: PullAssessment = { repo, repoDir, outcome: "skip", behind: 0, pullMode: "merge", headSha };
 
 	if (localRepos.includes(repo)) {
 		return { ...base, skipReason: "local repo" };

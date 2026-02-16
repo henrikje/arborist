@@ -1249,6 +1249,21 @@ assert 'operation' in r
 "
 }
 
+@test "arb status --json includes head SHA" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    # Get the actual HEAD SHA
+    expected_sha=$(git -C "$TEST_DIR/project/my-feature/repo-a" rev-parse --short HEAD)
+    run arb status --json
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+r = d['repos'][0]
+assert 'head' in r, 'head field missing'
+assert r['head'] == '$expected_sha', f'expected $expected_sha, got {r[\"head\"]}'
+"
+}
+
 @test "arb status shows pushed and synced repo as aligned" {
     arb create my-feature repo-a
     echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
@@ -1716,6 +1731,20 @@ SCRIPT
     [[ "$output" == *"repo-b"* ]]
 }
 
+@test "arb pull plan shows HEAD SHA" {
+    arb create my-feature repo-a
+    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "change" > file.txt && git add file.txt && git commit -m "change" && git push -u origin my-feature) >/dev/null 2>&1
+
+    # Push a new commit from a separate clone so pull has work to do
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-pull-sha" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-pull-sha" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    expected_sha=$(git -C "$TEST_DIR/project/my-feature/repo-a" rev-parse --short HEAD)
+    run arb pull --yes
+    [[ "$output" == *"HEAD $expected_sha"* ]]
+}
+
 @test "arb pull without push shows not pushed" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
@@ -1788,6 +1817,17 @@ SCRIPT
     # Verify the branch exists on the remote
     run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/remotes/origin/my-feature"
     [ "$status" -eq 0 ]
+}
+
+@test "arb push plan shows HEAD SHA" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    expected_sha=$(git -C "$TEST_DIR/project/my-feature/repo-a" rev-parse --short HEAD)
+    run arb push --yes
+    [[ "$output" == *"HEAD $expected_sha"* ]]
 }
 
 @test "arb push skips local repos" {
@@ -2353,6 +2393,19 @@ delete_workspace_config() {
     [[ "$output" == *"upstream change"* ]]
 }
 
+@test "arb rebase plan shows HEAD SHA" {
+    arb create my-feature repo-a
+
+    # Push upstream change so rebase has work to do
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    expected_sha=$(git -C "$TEST_DIR/project/my-feature/repo-a" rev-parse --short HEAD)
+    run arb rebase --yes
+    [[ "$output" == *"HEAD $expected_sha"* ]]
+}
+
 @test "arb rebase shows up to date when nothing to do" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
@@ -2532,6 +2585,18 @@ delete_workspace_config() {
     # Verify merge commit exists
     run git -C "$TEST_DIR/project/my-feature/repo-a" log --oneline
     [[ "$output" == *"upstream change"* ]]
+}
+
+@test "arb merge plan shows HEAD SHA" {
+    arb create my-feature repo-a
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    expected_sha=$(git -C "$TEST_DIR/project/my-feature/repo-a" rev-parse --short HEAD)
+    run arb merge --yes
+    [[ "$output" == *"HEAD $expected_sha"* ]]
 }
 
 @test "arb merge shows up to date when nothing to do" {

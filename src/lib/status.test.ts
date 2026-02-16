@@ -5,6 +5,7 @@ import { getVerdict, isDirty, isUnpushed } from "./status";
 function makeRepo(overrides: Partial<RepoStatus> = {}): RepoStatus {
 	return {
 		name: "test-repo",
+		head: "abc1234",
 		branch: { expected: "feature", actual: "feature", drifted: false, detached: false },
 		base: { name: "main", ahead: 0, behind: 0 },
 		remote: { pushed: true, ahead: 0, behind: 0, local: false, gone: false, trackingBranch: "origin/feature" },
