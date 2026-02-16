@@ -2539,6 +2539,19 @@ delete_workspace_config() {
     [[ "$output" == *"Pushed"* ]]
 }
 
+@test "arb push first push shows correct commit count and new branch annotation" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"1 commit"* ]]
+    [[ "$output" == *"new branch"* ]]
+    [[ "$output" != *"2 commit"* ]]
+}
+
 # ── push [repos...] and --force ─────────────────────────────────
 
 @test "arb push repo-a --yes only pushes named repo" {
