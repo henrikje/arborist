@@ -80,7 +80,9 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 				if (a.outcome === "will-push") {
 					const newBranchSuffix = a.recreate ? " (recreate)" : a.newBranch ? " (new branch)" : "";
-					process.stderr.write(`  ${a.repo}   ${plural(a.ahead, "commit")} to push${newBranchSuffix}${forkSuffix}${headStr}\n`);
+					process.stderr.write(
+						`  ${a.repo}   ${plural(a.ahead, "commit")} to push${newBranchSuffix}${forkSuffix}${headStr}\n`,
+					);
 				} else if (a.outcome === "will-force-push") {
 					process.stderr.write(
 						`  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.publishRemote})${headStr}\n`,
