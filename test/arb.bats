@@ -767,6 +767,123 @@ teardown() {
     [[ "$output" == *"ws-one"* ]]
 }
 
+@test "arb list --json outputs valid JSON" {
+    arb create my-feature repo-a
+    run arb list --json
+    [ "$status" -eq 0 ]
+    echo "$output" | python3 -c "import sys, json; json.load(sys.stdin)"
+}
+
+@test "arb list --json includes workspace fields" {
+    arb create my-feature repo-a repo-b
+    run arb list --json
+    echo "$output" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+ws = data[0]
+assert ws['workspace'] == 'my-feature'
+assert ws['branch'] == 'my-feature'
+assert ws['repoCount'] == 2
+assert ws['status'] is None
+assert 'dirty' in ws
+assert 'unpushed' in ws
+assert 'behind' in ws
+assert 'drifted' in ws
+"
+}
+
+@test "arb list --json marks active workspace" {
+    arb create ws-one repo-a
+    arb create ws-two repo-b
+    cd "$TEST_DIR/project/ws-one"
+    run arb list --json
+    echo "$output" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+by_name = {ws['workspace']: ws for ws in data}
+assert by_name['ws-one']['active'] is True
+assert by_name['ws-two']['active'] is False
+"
+}
+
+@test "arb list --json handles config-missing workspace" {
+    arb create my-feature repo-a
+    delete_workspace_config my-feature
+    run arb list --json
+    echo "$output" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+ws = data[0]
+assert ws['status'] == 'config-missing'
+assert ws['branch'] is None
+assert ws['base'] is None
+assert ws['repoCount'] is None
+"
+}
+
+@test "arb list --json handles empty workspace" {
+    mkdir -p "$TEST_DIR/project/empty-ws/.arbws"
+    echo "branch = empty-ws" > "$TEST_DIR/project/empty-ws/.arbws/config"
+    run arb list --json
+    echo "$output" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+ws = [w for w in data if w['workspace'] == 'empty-ws'][0]
+assert ws['status'] == 'empty'
+assert ws['repoCount'] == 0
+assert ws['branch'] == 'empty-ws'
+"
+}
+
+@test "arb list --json --quick omits aggregate fields" {
+    arb create my-feature repo-a
+    run arb list --json --quick
+    echo "$output" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+ws = data[0]
+assert ws['workspace'] == 'my-feature'
+assert ws['branch'] == 'my-feature'
+assert ws['repoCount'] == 1
+assert 'dirty' not in ws
+assert 'unpushed' not in ws
+assert 'behind' not in ws
+assert 'drifted' not in ws
+"
+}
+
+@test "arb list --json --quick includes basic metadata" {
+    arb create my-feature repo-a
+    run arb list --json --quick
+    echo "$output" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+ws = data[0]
+assert 'workspace' in ws
+assert 'active' in ws
+assert 'branch' in ws
+assert 'base' in ws
+assert 'repoCount' in ws
+assert 'status' in ws
+"
+}
+
+@test "arb list --json contains no ANSI escape codes" {
+    arb create ws-one repo-a
+    result=$(arb list --json 2>/dev/null)
+    [[ "$result" != *$'\033'* ]]
+}
+
+@test "arb list --json with no workspaces outputs empty array" {
+    run arb list --json
+    [ "$status" -eq 0 ]
+    echo "$output" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+assert data == []
+"
+}
+
 # ── path ─────────────────────────────────────────────────────────
 
 @test "arb path returns correct path" {

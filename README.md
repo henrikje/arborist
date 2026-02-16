@@ -399,7 +399,14 @@ Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, an
 arb rebase --yes && arb push --force --yes
 ```
 
-### Machine-readable status
+### Machine-readable output
+
+`arb list --json` writes a JSON array of workspace objects to stdout with aggregate status (dirty, unpushed, behind, drifted counts). Combine with `--quick` to skip status gathering:
+
+```bash
+arb list --json | jq '[.[] | select(.active)]'
+arb list --json --quick | jq '.[].workspace'
+```
 
 `arb status --json` writes structured JSON to stdout. Each repo includes HEAD commit SHA, branch state, base drift, remote drift, local changes, and any in-progress operation:
 
