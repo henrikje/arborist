@@ -14,22 +14,25 @@ import {
 import { error, green, info, inlineResult, inlineStart, plural, red, success, warn, yellow } from "../lib/output";
 import { resolveRemotes } from "../lib/remotes";
 import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
-import {
-	type RepoStatus,
-	type WorkspaceSummary,
-	gatherRepoStatus,
-	gatherWorkspaceSummary,
-	isDirty,
-	isUnpushed,
-} from "../lib/status";
+import { type RepoStatus, gatherRepoStatus, isDirty, isUnpushed } from "../lib/status";
+import { type TemplateDiff, diffTemplates } from "../lib/templates";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
 
-async function removeWorkspace(
-	name: string,
-	ctx: ArbContext,
-	options: { force?: boolean; deleteRemote?: boolean; quiet?: boolean },
-): Promise<void> {
+interface WorkspaceAssessment {
+	name: string;
+	wsDir: string;
+	branch: string;
+	repos: string[];
+	repoStatuses: RepoStatus[];
+	canonicalDirtyMap: Map<string, boolean>;
+	remoteRepos: string[];
+	atRiskCount: number;
+	hasAtRisk: boolean;
+	templateDiffs: TemplateDiff[];
+}
+
+async function assessWorkspace(name: string, ctx: ArbContext): Promise<WorkspaceAssessment | null> {
 	const validationError = validateWorkspaceName(name);
 	if (validationError) {
 		error(validationError);
@@ -60,10 +63,10 @@ async function removeWorkspace(
 	if (repos.length === 0) {
 		warn(`No worktrees found in ${wsDir} — cleaning up directory`);
 		rmSync(wsDir, { recursive: true, force: true });
-		return;
+		return null;
 	}
 
-	// Per-repo status gathering using shared logic
+	// Per-repo status gathering
 	const repoStatuses: RepoStatus[] = [];
 	for (const repo of repos) {
 		const wtPath = `${wsDir}/${repo}`;
@@ -81,7 +84,6 @@ async function removeWorkspace(
 	let hasAtRisk = false;
 	let atRiskCount = 0;
 	const remoteRepos: string[] = [];
-	let deleteRemote = options.deleteRemote ?? false;
 
 	for (const status of repoStatuses) {
 		const repoPath = `${ctx.reposDir}/${status.name}`;
@@ -95,7 +97,6 @@ async function removeWorkspace(
 		const repoIsUnpushed = !status.remote.local && isUnpushed(status);
 		const canonicalDirty = canonicalDirtyMap.get(status.name) ?? false;
 
-		// Check if branch has unique commits but was never pushed
 		let notPushedWithCommits = false;
 		if (!status.remote.local && !status.remote.pushed && status.base && status.base.ahead > 0) {
 			notPushedWithCommits = true;
@@ -108,69 +109,74 @@ async function removeWorkspace(
 		}
 	}
 
-	// Display status table
-	if (!options.quiet) {
-		const maxRepoLen = Math.max(...repos.map((r) => r.length));
+	// Template drift detection
+	const templateDiffs = diffTemplates(ctx.baseDir, wsDir, repos);
+
+	return {
+		name,
+		wsDir,
+		branch,
+		repos,
+		repoStatuses,
+		canonicalDirtyMap,
+		remoteRepos,
+		atRiskCount,
+		hasAtRisk,
+		templateDiffs,
+	};
+}
+
+function displayStatusTable(assessment: WorkspaceAssessment): void {
+	const { repos, repoStatuses, canonicalDirtyMap, atRiskCount, hasAtRisk, templateDiffs } = assessment;
+
+	const maxRepoLen = Math.max(...repos.map((r) => r.length));
+	for (const status of repoStatuses) {
+		const canonicalDirty = canonicalDirtyMap.get(status.name) ?? false;
+		const notPushedWithCommits = !status.remote.local && !status.remote.pushed && status.base && status.base.ahead > 0;
+
+		const parts = [
+			status.local.staged > 0 && green(`${status.local.staged} staged`),
+			status.local.modified > 0 && yellow(`${status.local.modified} modified`),
+			status.local.untracked > 0 && yellow(`${status.local.untracked} untracked`),
+			canonicalDirty && yellow("canonical repo dirty"),
+			notPushedWithCommits
+				? red("not pushed at all")
+				: status.remote.pushed && status.remote.ahead > 0
+					? yellow(`${status.remote.ahead} commits not pushed`)
+					: !status.remote.local && !status.remote.pushed && false,
+		]
+			.filter(Boolean)
+			.join(", ");
+
+		const display = parts || green("\u2714 clean, pushed");
+		process.stderr.write(`  ${status.name.padEnd(maxRepoLen)} ${display}\n`);
+	}
+	process.stderr.write("\n");
+
+	if (hasAtRisk) {
+		warn(`  \u26A0 ${plural(atRiskCount, "repo")} ${atRiskCount === 1 ? "has" : "have"} changes that will be lost.`);
 		process.stderr.write("\n");
-		for (const status of repoStatuses) {
-			const canonicalDirty = canonicalDirtyMap.get(status.name) ?? false;
-			const notPushedWithCommits =
-				!status.remote.local && !status.remote.pushed && status.base && status.base.ahead > 0;
-
-			const parts = [
-				status.local.staged > 0 && green(`${status.local.staged} staged`),
-				status.local.modified > 0 && yellow(`${status.local.modified} modified`),
-				status.local.untracked > 0 && yellow(`${status.local.untracked} untracked`),
-				canonicalDirty && yellow("canonical repo dirty"),
-				notPushedWithCommits
-					? red("not pushed at all")
-					: status.remote.pushed && status.remote.ahead > 0
-						? yellow(`${status.remote.ahead} commits not pushed`)
-						: !status.remote.local && !status.remote.pushed && false,
-			]
-				.filter(Boolean)
-				.join(", ");
-
-			const display = parts || green("\u2714 clean, pushed");
-			process.stderr.write(`  ${status.name.padEnd(maxRepoLen)} ${display}\n`);
-		}
-		process.stderr.write("\n");
-
-		if (hasAtRisk) {
-			warn(`  \u26A0 ${plural(atRiskCount, "repo")} ${atRiskCount === 1 ? "has" : "have"} changes that will be lost.`);
-			process.stderr.write("\n");
-		}
 	}
 
-	// Confirmation behavior
-	if (!options.force) {
-		if (!process.stdin.isTTY) {
-			error("Cannot prompt for confirmation: not a terminal. Use --force to skip prompts.");
-			process.exit(1);
+	if (templateDiffs.length > 0) {
+		warn("  Template files modified:");
+		for (const diff of templateDiffs) {
+			const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
+			process.stderr.write(`    ${prefix}${diff.relPath}\n`);
 		}
-
-		if (hasAtRisk) {
-			error(
-				`Refusing to remove: ${plural(atRiskCount, "repo")} ${atRiskCount === 1 ? "has" : "have"} work that would be lost. Use --force to override.`,
-			);
-			process.exit(1);
-		}
-
-		const shouldRemove = await confirm({ message: `Remove workspace ${name}?`, default: false });
-		if (!shouldRemove) {
-			process.stderr.write("Aborted.\n");
-			return;
-		}
-
-		if (remoteRepos.length > 0 && !deleteRemote) {
-			deleteRemote = await confirm({ message: "Also delete remote branches?", default: false });
-		}
+		process.stderr.write("\n");
 	}
+}
 
-	// Remove worktrees and branches
+async function executeRemoval(
+	assessment: WorkspaceAssessment,
+	ctx: ArbContext,
+	deleteRemote: boolean,
+): Promise<string[]> {
+	const { wsDir, branch, repos } = assessment;
+	const failedRemoteDeletes: string[] = [];
+
 	for (const repo of repos) {
-		if (!options.quiet) inlineStart(repo, "removing");
-
 		await git(`${ctx.reposDir}/${repo}`, "worktree", "remove", "--force", `${wsDir}/${repo}`);
 
 		if (await branchExistsLocally(`${ctx.reposDir}/${repo}`, branch)) {
@@ -188,43 +194,28 @@ async function removeWorkspace(
 			if (await remoteBranchExists(`${ctx.reposDir}/${repo}`, branch, publishRemote)) {
 				const pushResult = await git(`${ctx.reposDir}/${repo}`, "push", publishRemote, "--delete", branch);
 				if (pushResult.exitCode !== 0) {
-					if (!options.quiet) inlineResult(repo, "removed (failed to delete remote)");
-					continue;
+					failedRemoteDeletes.push(repo);
 				}
 			}
 		}
-
-		if (!options.quiet) inlineResult(repo, "removed");
 	}
 
-	// Clean up workspace directory
 	rmSync(wsDir, { recursive: true, force: true });
 
-	// Prune worktree metadata
 	for (const repo of repos) {
 		await git(`${ctx.reposDir}/${repo}`, "worktree", "prune");
 	}
 
-	if (!options.quiet) {
-		process.stderr.write("\n");
-		success(`Removed workspace ${name}`);
-	}
+	return failedRemoteDeletes;
 }
 
-function isWorkspaceOk(summary: WorkspaceSummary): boolean {
-	const unpushedCount = summary.repos.filter((r) => !r.remote.local && isUnpushed(r)).length;
-
-	if (summary.dirty > 0 || unpushedCount > 0 || summary.drifted > 0) {
-		return false;
+function isAssessmentOk(assessment: WorkspaceAssessment): boolean {
+	for (const repo of assessment.repoStatuses) {
+		if (isDirty(repo)) return false;
+		if (!repo.remote.local && isUnpushed(repo)) return false;
+		if (repo.branch.drifted) return false;
+		if (repo.remote.local && repo.base && repo.base.ahead > 0) return false;
 	}
-
-	// Local repos with commits ahead of base have no remote backup
-	for (const repo of summary.repos) {
-		if (repo.remote.local && repo.base && repo.base.ahead > 0) {
-			return false;
-		}
-	}
-
 	return true;
 }
 
@@ -239,7 +230,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 		)
 		.summary("Remove one or more workspaces")
 		.description(
-			"Remove one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) before proceeding. Prompts with a workspace picker when run without arguments. Use --force to skip prompts, --delete-remote to also delete the remote branches, and --all-ok to batch-remove all workspaces with ok status.",
+			"Remove one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments. Use --force to skip prompts, --delete-remote to also delete the remote branches, and --all-ok to batch-remove all workspaces with ok status.",
 		)
 		.action(async (nameArgs: string[], options: { force?: boolean; deleteRemote?: boolean; allOk?: boolean }) => {
 			const ctx = getCtx();
@@ -258,16 +249,19 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 					return;
 				}
 
-				const okEntries: { name: string; behind: number }[] = [];
+				const okEntries: { assessment: WorkspaceAssessment; behind: number }[] = [];
 				for (const ws of candidates) {
 					const wsDir = `${ctx.baseDir}/${ws}`;
 					if (!existsSync(`${wsDir}/.arbws/config`)) continue;
-					const repoDirs = workspaceRepoDirs(wsDir);
-					if (repoDirs.length === 0) continue;
 
-					const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir);
-					if (isWorkspaceOk(summary)) {
-						okEntries.push({ name: ws, behind: summary.behind });
+					const assessment = await assessWorkspace(ws, ctx);
+					if (assessment && isAssessmentOk(assessment)) {
+						let behind = 0;
+						for (const repo of assessment.repoStatuses) {
+							if (repo.base && repo.base.behind > 0) behind++;
+							if (repo.remote.behind > 0) behind++;
+						}
+						okEntries.push({ assessment, behind });
 					}
 				}
 
@@ -278,8 +272,12 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 
 				process.stderr.write("\nWorkspaces to remove:\n");
 				for (const entry of okEntries) {
-					const annotation = entry.behind > 0 ? ` ${yellow(`(${entry.behind} behind)`)}` : "";
-					process.stderr.write(`  ${entry.name}${annotation}\n`);
+					const annotations: string[] = [];
+					if (entry.behind > 0) annotations.push(yellow(`${entry.behind} behind`));
+					if (entry.assessment.templateDiffs.length > 0)
+						annotations.push(yellow(`${plural(entry.assessment.templateDiffs.length, "template file")} modified`));
+					const suffix = annotations.length > 0 ? ` (${annotations.join(", ")})` : "";
+					process.stderr.write(`  ${entry.assessment.name}${suffix}\n`);
 				}
 				process.stderr.write("\n");
 
@@ -299,13 +297,10 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 				}
 
 				for (const entry of okEntries) {
-					inlineStart(entry.name, "removing");
-					await removeWorkspace(entry.name, ctx, {
-						force: true,
-						deleteRemote: options.deleteRemote,
-						quiet: true,
-					});
-					inlineResult(entry.name, "removed");
+					inlineStart(entry.assessment.name, "removing");
+					const failedRemoteDeletes = await executeRemoval(entry.assessment, ctx, options.deleteRemote ?? false);
+					const remoteSuffix = failedRemoteDeletes.length > 0 ? " (failed to delete remote branch)" : "";
+					inlineResult(entry.assessment.name, `removed${remoteSuffix}`);
 				}
 
 				process.stderr.write("\n");
@@ -331,17 +326,78 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 				}
 			}
 
-			if (names.length > 1) {
-				for (const name of names) {
-					inlineStart(name, "removing");
-					await removeWorkspace(name, ctx, { ...options, quiet: true });
-					inlineResult(name, "removed");
+			// Assess all workspaces
+			const assessments: WorkspaceAssessment[] = [];
+			for (const name of names) {
+				const assessment = await assessWorkspace(name, ctx);
+				if (assessment) assessments.push(assessment);
+			}
+
+			if (assessments.length === 0) return;
+
+			// Plan: display status for all workspaces
+			const isSingle = assessments.length === 1;
+			process.stderr.write("\n");
+			for (const assessment of assessments) {
+				if (!isSingle) {
+					process.stderr.write(`${assessment.name}:\n`);
 				}
-				process.stderr.write("\n");
-				success(`Removed ${plural(names.length, "workspace")}`);
+				displayStatusTable(assessment);
+			}
+
+			// Check for at-risk across all workspaces
+			const atRiskWorkspaces = assessments.filter((a) => a.hasAtRisk);
+			let deleteRemote = options.deleteRemote ?? false;
+
+			// Confirm
+			if (!options.force) {
+				if (atRiskWorkspaces.length > 0) {
+					const atRiskNames = atRiskWorkspaces.map((a) => a.name).join(", ");
+					error(
+						`Refusing to remove: ${atRiskNames} ${atRiskWorkspaces.length === 1 ? "has" : "have"} work that would be lost. Use --force to override.`,
+					);
+					process.exit(1);
+				}
+
+				if (!process.stdin.isTTY) {
+					error("Cannot prompt for confirmation: not a terminal. Use --force to skip prompts.");
+					process.exit(1);
+				}
+
+				const singleName = assessments[0]?.name;
+				const confirmMsg = isSingle
+					? `Remove workspace ${singleName}?`
+					: `Remove ${plural(assessments.length, "workspace")}?`;
+				const shouldRemove = await confirm({ message: confirmMsg, default: false });
+				if (!shouldRemove) {
+					process.stderr.write("Aborted.\n");
+					return;
+				}
+
+				const allRemoteRepos = assessments.flatMap((a) => a.remoteRepos);
+				if (allRemoteRepos.length > 0 && !deleteRemote) {
+					deleteRemote = await confirm({ message: "Also delete remote branches?", default: false });
+				}
+			}
+
+			// Execute
+			for (const assessment of assessments) {
+				if (!isSingle) inlineStart(assessment.name, "removing");
+				const failedRemoteDeletes = await executeRemoval(assessment, ctx, deleteRemote);
+				if (!isSingle) {
+					const suffix = failedRemoteDeletes.length > 0 ? " (failed to delete remote branch)" : "";
+					inlineResult(assessment.name, `removed${suffix}`);
+				} else if (failedRemoteDeletes.length > 0) {
+					warn("removed (failed to delete remote branch)");
+				}
+			}
+
+			// Summarize
+			if (isSingle) {
+				success(`Removed workspace ${assessments[0]?.name}`);
 			} else {
-				const [name] = names;
-				if (name) await removeWorkspace(name, ctx, options);
+				process.stderr.write("\n");
+				success(`Removed ${plural(assessments.length, "workspace")}`);
 			}
 		});
 }

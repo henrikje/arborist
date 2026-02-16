@@ -277,7 +277,7 @@ When a feature is done:
 arb remove fix-login
 ```
 
-This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. Use `--delete-remote` to also clean up the remote branches, and `--all-ok` to batch-remove every workspace with ok status. See `arb remove --help` for all options.
+This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before removing the workspace. Use `--delete-remote` to also clean up the remote branches, and `--all-ok` to batch-remove every workspace with ok status. See `arb remove --help` for all options.
 
 ## Tips
 
@@ -333,6 +333,7 @@ Template files are only copied when the target doesn't already exist. Existing f
 
 - **`arb create`** — seeds workspace templates + repo templates for all created repos
 - **`arb add`** — seeds repo templates for newly added repos only (workspace already set up)
+- **`arb remove`** — lists any template files that differ from their originals, so you can update templates before the workspace is gone
 - **No templates dir?** — silently skipped, zero noise
 
 ### Version-controlling templates
