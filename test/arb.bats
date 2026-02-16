@@ -3933,3 +3933,124 @@ push_then_delete_remote() {
     [ ! -d "$TEST_DIR/project/doomed" ]
 }
 
+# ── --dry-run flag ───────────────────────────────────────────────
+
+@test "arb push --dry-run shows plan without pushing" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"1 commit"* ]]
+    [[ "$output" == *"to push"* ]]
+    # Must NOT contain the execution summary
+    [[ "$output" != *"Pushed"* ]]
+    # Verify nothing was actually pushed
+    run git -C "$TEST_DIR/origin/repo-a.git" branch
+    [[ "$output" != *"my-feature"* ]]
+}
+
+@test "arb push -n short flag works" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push -n
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"to push"* ]]
+    [[ "$output" != *"Pushed"* ]]
+}
+
+@test "arb push --dry-run when up to date shows up to date" {
+    arb create my-feature repo-a
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"up to date"* ]]
+}
+
+@test "arb pull --dry-run shows plan without pulling" {
+    arb create my-feature repo-a
+    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "change" > file.txt && git add file.txt && git commit -m "change" && git push -u origin my-feature) >/dev/null 2>&1
+
+    # Push a new commit from another clone
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"to pull"* ]]
+    # Must NOT contain the execution summary
+    [[ "$output" != *"Pulled"* ]]
+    # Verify nothing was actually pulled
+    [ ! -f "$TEST_DIR/project/my-feature/repo-a/r.txt" ]
+}
+
+@test "arb rebase --dry-run shows plan without rebasing" {
+    arb create my-feature repo-a
+
+    # Push upstream change so rebase has work to do
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb rebase --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"rebase my-feature onto"* ]]
+    # Must NOT contain the execution summary
+    [[ "$output" != *"Rebased"* ]]
+    # Verify the upstream commit is NOT reachable (rebase didn't happen)
+    run git -C "$TEST_DIR/project/my-feature/repo-a" log --oneline
+    [[ "$output" != *"upstream"* ]]
+}
+
+@test "arb merge --dry-run shows plan without merging" {
+    arb create my-feature repo-a
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb merge --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merge"*"into my-feature"* ]]
+    # Must NOT contain the execution summary
+    [[ "$output" != *"Merged"* ]]
+    # Verify the upstream commit is NOT reachable (merge didn't happen)
+    run git -C "$TEST_DIR/project/my-feature/repo-a" log --oneline
+    [[ "$output" != *"upstream"* ]]
+}
+
+@test "arb remove --dry-run shows status without removing" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project"
+    run arb remove my-feature --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"repo-b"* ]]
+    # Must NOT contain the execution summary
+    [[ "$output" != *"Removed"* ]]
+    # Verify the workspace still exists
+    [ -d "$TEST_DIR/project/my-feature" ]
+}
+
+@test "arb remove --all-ok --dry-run shows workspaces without removing" {
+    arb create ws-one repo-a
+    git -C "$TEST_DIR/project/ws-one/repo-a" push -u origin ws-one >/dev/null 2>&1
+    arb create ws-two repo-b
+    git -C "$TEST_DIR/project/ws-two/repo-b" push -u origin ws-two >/dev/null 2>&1
+    cd "$TEST_DIR/project"
+    run arb remove --all-ok --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-one"* ]]
+    [[ "$output" == *"ws-two"* ]]
+    # Must NOT contain the execution summary
+    [[ "$output" != *"Removed"* ]]
+    # Verify both workspaces still exist
+    [ -d "$TEST_DIR/project/ws-one" ]
+    [ -d "$TEST_DIR/project/ws-two" ]
+}
+

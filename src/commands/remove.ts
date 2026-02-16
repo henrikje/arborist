@@ -228,182 +228,192 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 			"-a, --all-ok",
 			"Remove all safe workspaces (no uncommitted changes, unpushed commits, or branch drift; behind base is fine)",
 		)
+		.option("-n, --dry-run", "Show what would happen without executing")
 		.summary("Remove one or more workspaces")
 		.description(
 			"Remove one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments. Use --force to skip prompts, --delete-remote to also delete the remote branches, and --all-ok to batch-remove all workspaces with ok status.",
 		)
-		.action(async (nameArgs: string[], options: { force?: boolean; deleteRemote?: boolean; allOk?: boolean }) => {
-			const ctx = getCtx();
+		.action(
+			async (
+				nameArgs: string[],
+				options: { force?: boolean; deleteRemote?: boolean; allOk?: boolean; dryRun?: boolean },
+			) => {
+				const ctx = getCtx();
 
-			if (options.allOk) {
-				if (nameArgs.length > 0) {
-					error("Cannot combine --all-ok with workspace names.");
-					process.exit(1);
-				}
+				if (options.allOk) {
+					if (nameArgs.length > 0) {
+						error("Cannot combine --all-ok with workspace names.");
+						process.exit(1);
+					}
 
-				const allWorkspaces = listWorkspaces(ctx.baseDir);
-				const candidates = allWorkspaces.filter((ws) => ws !== ctx.currentWorkspace);
+					const allWorkspaces = listWorkspaces(ctx.baseDir);
+					const candidates = allWorkspaces.filter((ws) => ws !== ctx.currentWorkspace);
 
-				if (candidates.length === 0) {
-					info("No workspaces to check.");
+					if (candidates.length === 0) {
+						info("No workspaces to check.");
+						return;
+					}
+
+					const okEntries: { assessment: WorkspaceAssessment; behind: number }[] = [];
+					for (const ws of candidates) {
+						const wsDir = `${ctx.baseDir}/${ws}`;
+						if (!existsSync(`${wsDir}/.arbws/config`)) continue;
+
+						const assessment = await assessWorkspace(ws, ctx);
+						if (assessment && isAssessmentOk(assessment)) {
+							let behind = 0;
+							for (const repo of assessment.repoStatuses) {
+								if (repo.base && repo.base.behind > 0) behind++;
+								if (repo.remote.behind > 0) behind++;
+							}
+							okEntries.push({ assessment, behind });
+						}
+					}
+
+					if (okEntries.length === 0) {
+						info("No workspaces with ok status.");
+						return;
+					}
+
+					process.stderr.write("\nWorkspaces to remove:\n");
+					for (const entry of okEntries) {
+						const annotations: string[] = [];
+						if (entry.behind > 0) annotations.push(yellow(`${entry.behind} behind`));
+						if (entry.assessment.templateDiffs.length > 0)
+							annotations.push(yellow(`${plural(entry.assessment.templateDiffs.length, "template file")} modified`));
+						const suffix = annotations.length > 0 ? ` (${annotations.join(", ")})` : "";
+						process.stderr.write(`  ${entry.assessment.name}${suffix}\n`);
+					}
+					process.stderr.write("\n");
+
+					if (options.dryRun) return;
+
+					if (!options.force) {
+						if (!process.stdin.isTTY) {
+							error("Cannot prompt for confirmation: not a terminal. Use --force to skip prompts.");
+							process.exit(1);
+						}
+						const shouldRemove = await confirm(
+							{
+								message: `Remove ${plural(okEntries.length, "workspace")}?`,
+								default: false,
+							},
+							{ output: process.stderr },
+						);
+						if (!shouldRemove) {
+							process.stderr.write("Aborted.\n");
+							return;
+						}
+					}
+
+					for (const entry of okEntries) {
+						inlineStart(entry.assessment.name, "removing");
+						const failedRemoteDeletes = await executeRemoval(entry.assessment, ctx, options.deleteRemote ?? false);
+						const remoteSuffix = failedRemoteDeletes.length > 0 ? " (failed to delete remote branch)" : "";
+						inlineResult(entry.assessment.name, `removed${remoteSuffix}`);
+					}
+
+					process.stderr.write("\n");
+					success(`Removed ${plural(okEntries.length, "workspace")}`);
 					return;
 				}
 
-				const okEntries: { assessment: WorkspaceAssessment; behind: number }[] = [];
-				for (const ws of candidates) {
-					const wsDir = `${ctx.baseDir}/${ws}`;
-					if (!existsSync(`${wsDir}/.arbws/config`)) continue;
-
-					const assessment = await assessWorkspace(ws, ctx);
-					if (assessment && isAssessmentOk(assessment)) {
-						let behind = 0;
-						for (const repo of assessment.repoStatuses) {
-							if (repo.base && repo.base.behind > 0) behind++;
-							if (repo.remote.behind > 0) behind++;
-						}
-						okEntries.push({ assessment, behind });
+				let names = nameArgs;
+				if (names.length === 0) {
+					if (!process.stdin.isTTY) {
+						error("No workspace specified.");
+						process.exit(1);
+					}
+					const workspaces = listWorkspaces(ctx.baseDir);
+					if (workspaces.length === 0) {
+						error("No workspaces found.");
+						process.exit(1);
+					}
+					names = await selectInteractive(workspaces, "Select workspaces to remove");
+					if (names.length === 0) {
+						error("No workspaces selected.");
+						process.exit(1);
 					}
 				}
 
-				if (okEntries.length === 0) {
-					info("No workspaces with ok status.");
-					return;
+				// Assess all workspaces
+				const assessments: WorkspaceAssessment[] = [];
+				for (const name of names) {
+					const assessment = await assessWorkspace(name, ctx);
+					if (assessment) assessments.push(assessment);
 				}
 
-				process.stderr.write("\nWorkspaces to remove:\n");
-				for (const entry of okEntries) {
-					const annotations: string[] = [];
-					if (entry.behind > 0) annotations.push(yellow(`${entry.behind} behind`));
-					if (entry.assessment.templateDiffs.length > 0)
-						annotations.push(yellow(`${plural(entry.assessment.templateDiffs.length, "template file")} modified`));
-					const suffix = annotations.length > 0 ? ` (${annotations.join(", ")})` : "";
-					process.stderr.write(`  ${entry.assessment.name}${suffix}\n`);
-				}
+				if (assessments.length === 0) return;
+
+				// Plan: display status for all workspaces
+				const isSingle = assessments.length === 1;
 				process.stderr.write("\n");
+				for (const assessment of assessments) {
+					if (!isSingle) {
+						process.stderr.write(`${assessment.name}:\n`);
+					}
+					displayStatusTable(assessment);
+				}
 
+				if (options.dryRun) return;
+
+				// Check for at-risk across all workspaces
+				const atRiskWorkspaces = assessments.filter((a) => a.hasAtRisk);
+				let deleteRemote = options.deleteRemote ?? false;
+
+				// Confirm
 				if (!options.force) {
+					if (atRiskWorkspaces.length > 0) {
+						const atRiskNames = atRiskWorkspaces.map((a) => a.name).join(", ");
+						error(
+							`Refusing to remove: ${atRiskNames} ${atRiskWorkspaces.length === 1 ? "has" : "have"} work that would be lost. Use --force to override.`,
+						);
+						process.exit(1);
+					}
+
 					if (!process.stdin.isTTY) {
 						error("Cannot prompt for confirmation: not a terminal. Use --force to skip prompts.");
 						process.exit(1);
 					}
-					const shouldRemove = await confirm(
-						{
-							message: `Remove ${plural(okEntries.length, "workspace")}?`,
-							default: false,
-						},
-						{ output: process.stderr },
-					);
+
+					const singleName = assessments[0]?.name;
+					const confirmMsg = isSingle
+						? `Remove workspace ${singleName}?`
+						: `Remove ${plural(assessments.length, "workspace")}?`;
+					const shouldRemove = await confirm({ message: confirmMsg, default: false }, { output: process.stderr });
 					if (!shouldRemove) {
 						process.stderr.write("Aborted.\n");
 						return;
 					}
+
+					const allRemoteRepos = assessments.flatMap((a) => a.remoteRepos);
+					if (allRemoteRepos.length > 0 && !deleteRemote) {
+						deleteRemote = await confirm(
+							{ message: "Also delete remote branches?", default: false },
+							{ output: process.stderr },
+						);
+					}
 				}
 
-				for (const entry of okEntries) {
-					inlineStart(entry.assessment.name, "removing");
-					const failedRemoteDeletes = await executeRemoval(entry.assessment, ctx, options.deleteRemote ?? false);
-					const remoteSuffix = failedRemoteDeletes.length > 0 ? " (failed to delete remote branch)" : "";
-					inlineResult(entry.assessment.name, `removed${remoteSuffix}`);
+				// Execute
+				for (const assessment of assessments) {
+					if (!isSingle) inlineStart(assessment.name, "removing");
+					const failedRemoteDeletes = await executeRemoval(assessment, ctx, deleteRemote);
+					if (!isSingle) {
+						const suffix = failedRemoteDeletes.length > 0 ? " (failed to delete remote branch)" : "";
+						inlineResult(assessment.name, `removed${suffix}`);
+					} else if (failedRemoteDeletes.length > 0) {
+						warn("removed (failed to delete remote branch)");
+					}
 				}
 
-				process.stderr.write("\n");
-				success(`Removed ${plural(okEntries.length, "workspace")}`);
-				return;
-			}
-
-			let names = nameArgs;
-			if (names.length === 0) {
-				if (!process.stdin.isTTY) {
-					error("No workspace specified.");
-					process.exit(1);
+				// Summarize
+				if (isSingle) {
+					success(`Removed workspace ${assessments[0]?.name}`);
+				} else {
+					process.stderr.write("\n");
+					success(`Removed ${plural(assessments.length, "workspace")}`);
 				}
-				const workspaces = listWorkspaces(ctx.baseDir);
-				if (workspaces.length === 0) {
-					error("No workspaces found.");
-					process.exit(1);
-				}
-				names = await selectInteractive(workspaces, "Select workspaces to remove");
-				if (names.length === 0) {
-					error("No workspaces selected.");
-					process.exit(1);
-				}
-			}
-
-			// Assess all workspaces
-			const assessments: WorkspaceAssessment[] = [];
-			for (const name of names) {
-				const assessment = await assessWorkspace(name, ctx);
-				if (assessment) assessments.push(assessment);
-			}
-
-			if (assessments.length === 0) return;
-
-			// Plan: display status for all workspaces
-			const isSingle = assessments.length === 1;
-			process.stderr.write("\n");
-			for (const assessment of assessments) {
-				if (!isSingle) {
-					process.stderr.write(`${assessment.name}:\n`);
-				}
-				displayStatusTable(assessment);
-			}
-
-			// Check for at-risk across all workspaces
-			const atRiskWorkspaces = assessments.filter((a) => a.hasAtRisk);
-			let deleteRemote = options.deleteRemote ?? false;
-
-			// Confirm
-			if (!options.force) {
-				if (atRiskWorkspaces.length > 0) {
-					const atRiskNames = atRiskWorkspaces.map((a) => a.name).join(", ");
-					error(
-						`Refusing to remove: ${atRiskNames} ${atRiskWorkspaces.length === 1 ? "has" : "have"} work that would be lost. Use --force to override.`,
-					);
-					process.exit(1);
-				}
-
-				if (!process.stdin.isTTY) {
-					error("Cannot prompt for confirmation: not a terminal. Use --force to skip prompts.");
-					process.exit(1);
-				}
-
-				const singleName = assessments[0]?.name;
-				const confirmMsg = isSingle
-					? `Remove workspace ${singleName}?`
-					: `Remove ${plural(assessments.length, "workspace")}?`;
-				const shouldRemove = await confirm({ message: confirmMsg, default: false }, { output: process.stderr });
-				if (!shouldRemove) {
-					process.stderr.write("Aborted.\n");
-					return;
-				}
-
-				const allRemoteRepos = assessments.flatMap((a) => a.remoteRepos);
-				if (allRemoteRepos.length > 0 && !deleteRemote) {
-					deleteRemote = await confirm(
-						{ message: "Also delete remote branches?", default: false },
-						{ output: process.stderr },
-					);
-				}
-			}
-
-			// Execute
-			for (const assessment of assessments) {
-				if (!isSingle) inlineStart(assessment.name, "removing");
-				const failedRemoteDeletes = await executeRemoval(assessment, ctx, deleteRemote);
-				if (!isSingle) {
-					const suffix = failedRemoteDeletes.length > 0 ? " (failed to delete remote branch)" : "";
-					inlineResult(assessment.name, `removed${suffix}`);
-				} else if (failedRemoteDeletes.length > 0) {
-					warn("removed (failed to delete remote branch)");
-				}
-			}
-
-			// Summarize
-			if (isSingle) {
-				success(`Removed workspace ${assessments[0]?.name}`);
-			} else {
-				process.stderr.write("\n");
-				success(`Removed ${plural(assessments.length, "workspace")}`);
-			}
-		});
+			},
+		);
 }

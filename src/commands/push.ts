@@ -30,131 +30,136 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 		.option("-f, --force", "Force push with lease (after rebase or amend)")
 		.option("--no-fetch", "Skip fetching before push")
 		.option("-y, --yes", "Skip confirmation prompt")
+		.option("-n, --dry-run", "Show what would happen without executing")
 		.summary("Push the feature branch to the publish remote")
 		.description(
 			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the publish remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. If a remote branch was deleted (e.g. after merging a PR), the push recreates it. Skips repos without a remote and repos where the remote branch has been deleted. Use --force after rebase or amend to force push with lease. Use --no-fetch to skip fetching when refs are known to be fresh.",
 		)
-		.action(async (repoArgs: string[], options: { force?: boolean; fetch?: boolean; yes?: boolean }) => {
-			const ctx = getCtx();
-			const { wsDir, workspace } = requireWorkspace(ctx);
-			const branch = await requireBranch(wsDir, workspace);
+		.action(
+			async (repoArgs: string[], options: { force?: boolean; fetch?: boolean; yes?: boolean; dryRun?: boolean }) => {
+				const ctx = getCtx();
+				const { wsDir, workspace } = requireWorkspace(ctx);
+				const branch = await requireBranch(wsDir, workspace);
 
-			const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
-			const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
-			const configBase = configGet(`${wsDir}/.arbws/config`, "base");
+				const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
+				const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
+				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 
-			// Phase 0: fetch (unless --no-fetch)
-			if (options.fetch !== false) {
-				const { repos: allRepos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
-				if (fetchDirs.length > 0) {
-					process.stderr.write(`Fetching ${plural(fetchDirs.length, "repo")}...\n`);
-					const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
-					reportFetchFailures(allRepos, localRepos, fetchResults);
-				}
-			}
-
-			// Phase 1: assess each repo
-			const assessments: PushAssessment[] = [];
-			for (const repo of selectedRepos) {
-				const repoDir = `${wsDir}/${repo}`;
-				assessments.push(await assessPushRepo(repo, repoDir, branch, ctx.reposDir, configBase, remotesMap.get(repo)));
-			}
-
-			// Reclassify force-push when --force is not set
-			for (const a of assessments) {
-				if (a.outcome === "will-force-push" && !options.force) {
-					a.outcome = "skip";
-					a.skipReason = `diverged from ${a.publishRemote} (use --force)`;
-				}
-			}
-
-			// Phase 2: display plan
-			const willPush = assessments.filter((a) => a.outcome === "will-push" || a.outcome === "will-force-push");
-			const upToDate = assessments.filter((a) => a.outcome === "up-to-date");
-			const skipped = assessments.filter((a) => a.outcome === "skip");
-
-			process.stderr.write("\n");
-			for (const a of assessments) {
-				const remotes = remotesMap.get(a.repo);
-				const forkSuffix = remotes && remotes.upstream !== remotes.publish ? ` → ${a.publishRemote}` : "";
-				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
-				if (a.outcome === "will-push") {
-					const newBranchSuffix = a.recreate ? " (recreate)" : a.newBranch ? " (new branch)" : "";
-					process.stderr.write(
-						`  ${a.repo}   ${plural(a.ahead, "commit")} to push${newBranchSuffix}${forkSuffix}${headStr}\n`,
-					);
-				} else if (a.outcome === "will-force-push") {
-					process.stderr.write(
-						`  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.publishRemote})${headStr}\n`,
-					);
-				} else if (a.outcome === "up-to-date") {
-					process.stderr.write(`  ${a.repo}   up to date\n`);
-				} else {
-					process.stderr.write(`  ${yellow(`${a.repo}   skipped — ${a.skipReason}`)}\n`);
-				}
-			}
-			process.stderr.write("\n");
-
-			if (willPush.length === 0) {
-				info(upToDate.length > 0 ? "All repos up to date" : "Nothing to do");
-				return;
-			}
-
-			// Phase 3: confirm
-			if (!options.yes) {
-				if (!isTTY()) {
-					error("Not a terminal. Use --yes to skip confirmation.");
-					process.exit(1);
-				}
-				const ok = await confirm(
-					{
-						message: `Push ${plural(willPush.length, "repo")}?`,
-						default: false,
-					},
-					{ output: process.stderr },
-				);
-				if (!ok) {
-					process.stderr.write("Aborted.\n");
-					process.exit(130);
-				}
-			}
-
-			process.stderr.write("\n");
-
-			// Phase 4: execute
-			let pushOk = 0;
-
-			for (const a of willPush) {
-				inlineStart(a.repo, "pushing");
-				const pushArgs =
-					a.outcome === "will-force-push"
-						? ["push", "-u", "--force-with-lease", a.publishRemote, a.branch]
-						: ["push", "-u", a.publishRemote, a.branch];
-				const pushResult = await Bun.$`git -C ${a.repoDir} ${pushArgs}`.cwd(a.repoDir).quiet().nothrow();
-				if (pushResult.exitCode === 0) {
-					inlineResult(a.repo, `pushed ${plural(a.ahead, "commit")}`);
-					pushOk++;
-				} else {
-					inlineResult(a.repo, red("failed"));
-					process.stderr.write("\n");
-					const errText = pushResult.stderr.toString().trim();
-					if (errText) {
-						for (const line of errText.split("\n")) {
-							process.stderr.write(`  ${line}\n`);
-						}
+				// Phase 0: fetch (unless --no-fetch)
+				if (options.fetch !== false) {
+					const { repos: allRepos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
+					if (fetchDirs.length > 0) {
+						process.stderr.write(`Fetching ${plural(fetchDirs.length, "repo")}...\n`);
+						const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
+						reportFetchFailures(allRepos, localRepos, fetchResults);
 					}
-					process.stderr.write("\n  To resolve, check the error above, then re-run 'arb push' to continue.\n");
-					process.exit(1);
 				}
-			}
 
-			// Phase 5: summary
-			process.stderr.write("\n");
-			const parts = [`Pushed ${plural(pushOk, "repo")}`];
-			if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
-			if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
-			success(parts.join(", "));
-		});
+				// Phase 1: assess each repo
+				const assessments: PushAssessment[] = [];
+				for (const repo of selectedRepos) {
+					const repoDir = `${wsDir}/${repo}`;
+					assessments.push(await assessPushRepo(repo, repoDir, branch, ctx.reposDir, configBase, remotesMap.get(repo)));
+				}
+
+				// Reclassify force-push when --force is not set
+				for (const a of assessments) {
+					if (a.outcome === "will-force-push" && !options.force) {
+						a.outcome = "skip";
+						a.skipReason = `diverged from ${a.publishRemote} (use --force)`;
+					}
+				}
+
+				// Phase 2: display plan
+				const willPush = assessments.filter((a) => a.outcome === "will-push" || a.outcome === "will-force-push");
+				const upToDate = assessments.filter((a) => a.outcome === "up-to-date");
+				const skipped = assessments.filter((a) => a.outcome === "skip");
+
+				process.stderr.write("\n");
+				for (const a of assessments) {
+					const remotes = remotesMap.get(a.repo);
+					const forkSuffix = remotes && remotes.upstream !== remotes.publish ? ` → ${a.publishRemote}` : "";
+					const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
+					if (a.outcome === "will-push") {
+						const newBranchSuffix = a.recreate ? " (recreate)" : a.newBranch ? " (new branch)" : "";
+						process.stderr.write(
+							`  ${a.repo}   ${plural(a.ahead, "commit")} to push${newBranchSuffix}${forkSuffix}${headStr}\n`,
+						);
+					} else if (a.outcome === "will-force-push") {
+						process.stderr.write(
+							`  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.publishRemote})${headStr}\n`,
+						);
+					} else if (a.outcome === "up-to-date") {
+						process.stderr.write(`  ${a.repo}   up to date\n`);
+					} else {
+						process.stderr.write(`  ${yellow(`${a.repo}   skipped — ${a.skipReason}`)}\n`);
+					}
+				}
+				process.stderr.write("\n");
+
+				if (willPush.length === 0) {
+					info(upToDate.length > 0 ? "All repos up to date" : "Nothing to do");
+					return;
+				}
+
+				if (options.dryRun) return;
+
+				// Phase 3: confirm
+				if (!options.yes) {
+					if (!isTTY()) {
+						error("Not a terminal. Use --yes to skip confirmation.");
+						process.exit(1);
+					}
+					const ok = await confirm(
+						{
+							message: `Push ${plural(willPush.length, "repo")}?`,
+							default: false,
+						},
+						{ output: process.stderr },
+					);
+					if (!ok) {
+						process.stderr.write("Aborted.\n");
+						process.exit(130);
+					}
+				}
+
+				process.stderr.write("\n");
+
+				// Phase 4: execute
+				let pushOk = 0;
+
+				for (const a of willPush) {
+					inlineStart(a.repo, "pushing");
+					const pushArgs =
+						a.outcome === "will-force-push"
+							? ["push", "-u", "--force-with-lease", a.publishRemote, a.branch]
+							: ["push", "-u", a.publishRemote, a.branch];
+					const pushResult = await Bun.$`git -C ${a.repoDir} ${pushArgs}`.cwd(a.repoDir).quiet().nothrow();
+					if (pushResult.exitCode === 0) {
+						inlineResult(a.repo, `pushed ${plural(a.ahead, "commit")}`);
+						pushOk++;
+					} else {
+						inlineResult(a.repo, red("failed"));
+						process.stderr.write("\n");
+						const errText = pushResult.stderr.toString().trim();
+						if (errText) {
+							for (const line of errText.split("\n")) {
+								process.stderr.write(`  ${line}\n`);
+							}
+						}
+						process.stderr.write("\n  To resolve, check the error above, then re-run 'arb push' to continue.\n");
+						process.exit(1);
+					}
+				}
+
+				// Phase 5: summary
+				process.stderr.write("\n");
+				const parts = [`Pushed ${plural(pushOk, "repo")}`];
+				if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
+				if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
+				success(parts.join(", "));
+			},
+		);
 }
 
 async function assessPushRepo(
