@@ -536,6 +536,23 @@ teardown() {
     [ "$status" -ne 0 ]
 }
 
+@test "arb remove --force --delete-remote reports failed remote delete" {
+    arb create my-feature repo-a repo-b
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
+
+    # Make repo-b's remote unreachable so the push --delete fails
+    mv "$TEST_DIR/origin/repo-b.git" "$TEST_DIR/origin/repo-b.git.bak"
+
+    run arb remove my-feature --force --delete-remote
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/my-feature" ]
+    [[ "$output" == *"failed to delete remote branch"* ]]
+
+    # Restore for teardown
+    mv "$TEST_DIR/origin/repo-b.git.bak" "$TEST_DIR/origin/repo-b.git"
+}
+
 @test "arb remove aborts on non-interactive input" {
     arb create my-feature repo-a
     run bash -c 'echo "" | arb remove my-feature'
@@ -1662,7 +1679,7 @@ SCRIPT
     [[ "$output" == *"CONFLICT"*"conflict.txt"* ]]
     # Consolidated conflict report
     [[ "$output" == *"1 conflicted"* ]]
-    [[ "$output" == *"Pulled 1 repo(s)"* ]]
+    [[ "$output" == *"Pulled 1 repo"* ]]
 }
 
 @test "arb pull skips repo on wrong branch" {
@@ -2325,7 +2342,7 @@ delete_workspace_config() {
     [[ "$output" == *"git rebase --continue"* ]]
     [[ "$output" == *"git rebase --abort"* ]]
     # repo-b was still processed successfully
-    [[ "$output" == *"Rebased 1 repo(s), 1 conflicted"* ]]
+    [[ "$output" == *"Rebased 1 repo, 1 conflicted"* ]]
 }
 
 @test "arb rebase with specific repos only processes those repos" {
@@ -2478,7 +2495,7 @@ delete_workspace_config() {
     [[ "$output" == *"git merge --continue"* ]]
     [[ "$output" == *"git merge --abort"* ]]
     # repo-b was still processed successfully
-    [[ "$output" == *"Merged 1 repo(s), 1 conflicted"* ]]
+    [[ "$output" == *"Merged 1 repo, 1 conflicted"* ]]
 }
 
 # ── pull (plan+confirm) ─────────────────────────────────────────
@@ -3453,16 +3470,19 @@ push_then_delete_remote() {
     [[ "$output" != *"clean, pushed"* ]]
 }
 
-@test "arb remove multiple names --force produces compact output" {
+@test "arb remove multiple names --force shows unified plan then compact execution" {
     arb create ws-x repo-a
     arb create ws-y repo-b
 
     run arb remove ws-x ws-y --force
     [ "$status" -eq 0 ]
+    # Unified plan: per-workspace status sections
+    [[ "$output" == *"ws-x:"* ]]
+    [[ "$output" == *"ws-y:"* ]]
+    # Compact execution lines
     [[ "$output" == *"[ws-x] removed"* ]]
     [[ "$output" == *"[ws-y] removed"* ]]
     [[ "$output" == *"Removed 2 workspaces"* ]]
-    [[ "$output" != *"clean, pushed"* ]]
 }
 
 @test "arb remove single name --force keeps detailed output" {
@@ -3471,5 +3491,95 @@ push_then_delete_remote() {
     run arb remove ws-solo --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"Removed workspace ws-solo"* ]]
+}
+
+# ── remove: template drift detection ─────────────────────────────
+
+@test "arb remove shows template drift info for modified repo template" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    echo "DB=localhost" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+
+    arb create tpl-drift repo-a
+    # Modify the template-seeded file
+    echo "DB=production" > "$TEST_DIR/project/tpl-drift/repo-a/.env"
+
+    run arb remove tpl-drift --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Template files modified"* ]]
+    [[ "$output" == *"[repo-a] .env"* ]]
+}
+
+@test "arb remove shows template drift info for modified workspace template" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "WS=original" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+
+    arb create tpl-drift-ws repo-a
+    echo "WS=modified" > "$TEST_DIR/project/tpl-drift-ws/.env"
+
+    run arb remove tpl-drift-ws --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Template files modified"* ]]
+    [[ "$output" == *".env"* ]]
+}
+
+@test "arb remove shows no template drift when files are unchanged" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    echo "DB=localhost" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+
+    arb create tpl-nodrift repo-a
+    # Don't modify the file
+
+    run arb remove tpl-nodrift --force
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Template files modified"* ]]
+}
+
+@test "arb remove multi-workspace shows unified plan with template drift" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    echo "DB=localhost" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+
+    arb create tpl-multi-a repo-a
+    arb create tpl-multi-b repo-a
+    echo "DB=custom" > "$TEST_DIR/project/tpl-multi-a/repo-a/.env"
+
+    run arb remove tpl-multi-a tpl-multi-b --force
+    [ "$status" -eq 0 ]
+    # Should show per-workspace sections
+    [[ "$output" == *"tpl-multi-a:"* ]]
+    [[ "$output" == *"tpl-multi-b:"* ]]
+    # Only tpl-multi-a has drift
+    [[ "$output" == *"Template files modified"* ]]
+    [[ "$output" == *"Removed 2 workspaces"* ]]
+}
+
+@test "arb remove multi-workspace refuses all when one is at-risk" {
+    arb create at-risk-a repo-a
+    arb create at-risk-b repo-a
+
+    # Make at-risk-a dirty
+    echo "uncommitted" > "$TEST_DIR/project/at-risk-a/repo-a/dirty.txt"
+
+    run arb remove at-risk-a at-risk-b
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Refusing to remove"* ]]
+    [[ "$output" == *"at-risk-a"* ]]
+    # Both workspaces should still exist
+    [ -d "$TEST_DIR/project/at-risk-a" ]
+    [ -d "$TEST_DIR/project/at-risk-b" ]
+}
+
+@test "arb remove --all-ok shows template drift count in preview" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "WS=original" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+
+    arb create tpl-allok repo-a
+    git -C "$TEST_DIR/project/tpl-allok/repo-a" push -u origin tpl-allok >/dev/null 2>&1
+    # Modify workspace-level template file (outside git repos, doesn't affect dirty status)
+    echo "WS=modified" > "$TEST_DIR/project/tpl-allok/.env"
+
+    run arb remove --all-ok --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"1 template file modified"* ]]
+    [ ! -d "$TEST_DIR/project/tpl-allok" ]
 }
 
