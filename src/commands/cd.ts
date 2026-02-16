@@ -16,7 +16,7 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 			const ctx = getCtx();
 
 			if (!input) {
-				if (!process.stdin.isTTY) {
+				if (!process.stdin.isTTY || !process.stderr.isTTY) {
 					error("Usage: arb cd <workspace>");
 					process.exit(1);
 				}
@@ -27,11 +27,14 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 					process.exit(1);
 				}
 
-				const selected = await select({
-					message: "Select a workspace",
-					choices: workspaces.map((name) => ({ name, value: name })),
-					pageSize: 20,
-				});
+				const selected = await select(
+					{
+						message: "Select a workspace",
+						choices: workspaces.map((name) => ({ name, value: name })),
+						pageSize: 20,
+					},
+					{ output: process.stderr },
+				);
 
 				process.stdout.write(`${ctx.baseDir}/${selected}\n`);
 				printHintIfNeeded();

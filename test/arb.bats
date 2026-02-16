@@ -840,6 +840,20 @@ teardown() {
     [[ "$output" == *"does not exist"* ]]
 }
 
+@test "arb cd path output is clean when stdout is captured (shell wrapper pattern)" {
+    arb create my-feature --all-repos
+    # Simulate the shell wrapper: capture stdout via $(), which makes stdout a pipe.
+    # Verify only the workspace path appears on stdout (no UI, no hint).
+    _arb_dir="$(arb cd my-feature 2>/dev/null)"
+    [ "$_arb_dir" = "$TEST_DIR/project/my-feature" ]
+}
+
+@test "arb cd subpath output is clean when stdout is captured" {
+    arb create my-feature repo-a
+    _arb_dir="$(arb cd my-feature/repo-a 2>/dev/null)"
+    [ "$_arb_dir" = "$TEST_DIR/project/my-feature/repo-a" ]
+}
+
 # ── status ───────────────────────────────────────────────────────
 
 @test "arb status shows base branch name" {

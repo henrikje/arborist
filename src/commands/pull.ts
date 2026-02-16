@@ -96,10 +96,13 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					error("Not a terminal. Use --yes to skip confirmation.");
 					process.exit(1);
 				}
-				const ok = await confirm({
-					message: `Pull ${plural(willPull.length, "repo")}?`,
-					default: false,
-				});
+				const ok = await confirm(
+					{
+						message: `Pull ${plural(willPull.length, "repo")}?`,
+						default: false,
+					},
+					{ output: process.stderr },
+				);
 				if (!ok) {
 					process.stderr.write("Aborted.\n");
 					process.exit(130);
