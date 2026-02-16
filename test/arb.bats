@@ -3626,3 +3626,13 @@ push_then_delete_remote() {
     [ ! -d "$TEST_DIR/project/tpl-allok" ]
 }
 
+@test "arb remove --force succeeds when cwd is inside the workspace being removed" {
+    arb create doomed repo-a repo-b
+
+    cd "$TEST_DIR/project/doomed"
+    run arb remove doomed --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Removed workspace doomed"* ]]
+    [ ! -d "$TEST_DIR/project/doomed" ]
+}
+

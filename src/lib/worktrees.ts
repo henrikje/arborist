@@ -120,11 +120,14 @@ export async function addWorktrees(
 		const branchExists = await branchExistsLocally(repoPath, branch);
 
 		// Prune stale worktrees
-		await Bun.$`git -C ${repoPath} worktree prune`.quiet().nothrow();
+		await Bun.$`git -C ${repoPath} worktree prune`.cwd(repoPath).quiet().nothrow();
 
 		if (branchExists) {
 			inlineStart(repo, `attaching branch ${branch}`);
-			const wt = await Bun.$`git -C ${repoPath} worktree add ${wsDir}/${repo} ${branch}`.quiet().nothrow();
+			const wt = await Bun.$`git -C ${repoPath} worktree add ${wsDir}/${repo} ${branch}`
+				.cwd(repoPath)
+				.quiet()
+				.nothrow();
 			if (wt.exitCode !== 0) {
 				inlineResult(repo, "failed");
 				const errText = wt.stderr.toString().trim();
@@ -142,6 +145,7 @@ export async function addWorktrees(
 			// (pushed, merged, remote branch deleted) vs never-pushed branches.
 			const noTrack = repoHasRemote ? ["--no-track"] : [];
 			const wt = await Bun.$`git -C ${repoPath} worktree add ${noTrack} -b ${branch} ${wsDir}/${repo} ${startPoint}`
+				.cwd(repoPath)
 				.quiet()
 				.nothrow();
 			if (wt.exitCode !== 0) {
