@@ -4,6 +4,12 @@ This file contains a prioritized list of planned or potential improvements to Ar
 
 ## Priority 1 – Must-haves
 
+- **Set up PR-based development flow for Arborist itself.**
+Arborist is designed for push-based workflows with feature branches and pull requests, but the project itself isn't using that flow yet. Dogfooding this would exercise the real workflow arb is built for. Actions:
+  - Enable branch protection on `main` (require PR, no direct push)
+  - Set up CI checks (lint, typecheck, tests) as required status checks on PRs
+  - Use `arb` itself to manage development (create workspaces, push branches)
+
 - **Versioned GitHub releases with precompiled binaries.**
 The reviewer correctly identifies this as the biggest practical weakness. Source-build requiring Bun is friction. Actions:
   - CI pipeline that cross-compiles for macOS arm64/x64 and Linux arm64/x64 via `bun build --target`
