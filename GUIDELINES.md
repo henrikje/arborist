@@ -85,7 +85,13 @@ When a repo is skipped during the plan phase, the reason is always stated. Examp
 
 Scope: all state-changing commands (push, pull, rebase, merge).
 
-When a repo fails mid-execution, stop, print the git error output and step-by-step instructions for resolving the issue, and tell the user to re-run for remaining repos. The developer is never left stranded.
+The recovery pattern depends on whether failures are **independent and mechanical** or **systemic and investigative**.
+
+**Conflicts (rebase, merge, pull):** Repos are fully independent — a conflict in repo-a has no effect on repo-b. Recovery is always the same mechanical process: resolve conflicts, then `--continue` or `--abort`. So arb continues processing all repos, then prints a consolidated conflict report with per-repo resolution instructions. The summary line uses yellow (needs attention, not an error). Exit 1.
+
+**Unexpected failures (push):** Post-assessment push failures are genuinely unexpected (auth errors, server errors, branch protection). They are often systemic — if one repo fails due to auth, the rest likely will too. Recovery depends on the specific error, not a fixed procedure. So arb stops at the first failure, prints git's error output for diagnosis, and tells the user to investigate and re-run.
+
+In both cases, the developer is never left stranded — arb always shows what happened and what to do next.
 
 ### Documentation: help is reference, README is tutorial
 

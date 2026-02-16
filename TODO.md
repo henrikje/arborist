@@ -20,29 +20,7 @@ The reviewer correctly identifies this as the biggest practical weakness. Source
 - **Bash shell integration**
 The installer currently only auto-configures zsh. The shell helper (`arb.zsh`) provides the `arb` wrapper function for `cd` behavior. A `arb.bash` equivalent would widen adoption. Fish is lower priority but worth considering.
 
-## Priority 2 – Solid enhancements
-
-- **Multiple remotes (fork + upstream workflows)**
-Currently hardcoded to `origin` throughout. This is the most significant functional gap for teams using fork-based workflows (common in open source and many orgs). This would need:
-  - A way to configure which remote to push to vs fetch from
-  - Probably project-level config (`.arb/config`) to set remote preferences per repo
-
-  This is a significant architectural change. Worth designing carefully rather than rushing. Could start with just documenting that arb assumes `origin` as a known limitation.
-
-- **Per-repo base branch overrides**
-Currently `base` in `.arbws/config` applies to all repos in a workspace. In practice, repos within the same project sometimes have different default branches (e.g. one uses `main`, another uses `develop`). The auto-detection via `getDefaultBranch()` handles most cases, but explicit per-repo overrides in project config would be more robust.
-
-- **Continue past conflicts in `rebase` / `merge`**
-Currently `arb rebase` and `arb merge` stop at the first repo that conflicts, forcing the user to resolve before remaining repos can be processed. A `--continue` or `--skip-conflicts` flag would attempt all repos, skip those that conflict, report which ones need attention at the end, and let the user resolve them after.
-
-- **Workspace setup automation**
-New workspaces often require repetitive manual setup: installing dependencies, copying `.env` files, configuring IDE settings, re-approving tool permissions. Two complementary approaches could address this:
-  - *Declarative file sharing* — a way to specify files (or symlinks) that should be copied/linked into every new worktree (e.g. `.env`, `.vscode/settings.json`). Could live in `.arb/shared/` or be configured in project config.
-  - *Lifecycle hooks* — `post-create` scripts that run after `arb create` adds worktrees (e.g. `npm install`, `docker compose up`). Per-repo or workspace-level, configured in `.arb/config` or `.arbws/config`.
-
-  Either approach reduces the gap between "workspace created" and "workspace ready to use." Start with whichever covers the most common friction points.
-
-## Priority 3 — Nice-to-have enhancements
+## Priority 2 — Nice-to-have enhancements
 
 - **Repo groups**
 The reviewer suggests "frontend-set" style grouping. This would be useful for projects with 10+ repos where you commonly operate on subsets. A natural special case is a "default" group — repos that are always included when creating a new workspace, so you don't have to select them every time. Could be configured in `.arb/config` (e.g. `[groups "default"]` with a list of repos). Lower priority until arb sees usage at that scale.

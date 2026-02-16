@@ -9,7 +9,7 @@ import {
 	isRepoDirty,
 	remoteBranchExists,
 } from "./git";
-import { error, info, inlineResult, inlineStart, plural, red, success, yellow } from "./output";
+import { dim, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "./output";
 import { parallelFetch, reportFetchFailures } from "./parallel-fetch";
 import { type RepoRemotes, resolveRemotesMap } from "./remotes";
 import { classifyRepos, resolveRepoSelection } from "./repos";
@@ -112,6 +112,7 @@ export async function integrate(
 
 	// Phase 5: execute sequentially
 	let succeeded = 0;
+	const conflicted: { assessment: RepoAssessment; stdout: string }[] = [];
 	for (const a of willOperate) {
 		const ref = `${a.upstreamRemote}/${a.baseBranch}`;
 		const progressMsg = mode === "rebase" ? `rebasing ${branch} onto ${ref}` : `merging ${ref} into ${branch}`;
@@ -123,24 +124,38 @@ export async function integrate(
 			inlineResult(a.repo, doneMsg);
 			succeeded++;
 		} else {
-			inlineResult(a.repo, red("conflict"));
-			process.stderr.write("\n");
-			const subcommand = mode === "rebase" ? "rebase" : "merge";
-			process.stderr.write(`  ${a.repo} has conflicts. To resolve:\n`);
-			process.stderr.write(`    cd ${a.repo}\n`);
-			process.stderr.write(`    # fix conflicts, then: git ${subcommand} --continue\n`);
-			process.stderr.write(`    # or to undo: git ${subcommand} --abort\n`);
-			process.stderr.write(`\n  Then re-run 'arb ${mode}' to continue with remaining repos.\n`);
-			process.exit(1);
+			inlineResult(a.repo, yellow("conflict"));
+			conflicted.push({ assessment: a, stdout: result.stdout });
+		}
+	}
+
+	// Consolidated conflict report
+	if (conflicted.length > 0) {
+		const subcommand = mode === "rebase" ? "rebase" : "merge";
+		process.stderr.write(`\n  ${conflicted.length} repo(s) have conflicts:\n`);
+		for (const { assessment: a, stdout: gitStdout } of conflicted) {
+			process.stderr.write(`\n    ${a.repo}\n`);
+			for (const line of gitStdout.split("\n").filter((l) => l.startsWith("CONFLICT"))) {
+				process.stderr.write(`      ${dim(line)}\n`);
+			}
+			process.stderr.write(`      cd ${a.repo}\n`);
+			process.stderr.write(`      # fix conflicts, then: git ${subcommand} --continue\n`);
+			process.stderr.write(`      # or to undo: git ${subcommand} --abort\n`);
 		}
 	}
 
 	// Phase 6: summary
 	process.stderr.write("\n");
 	const parts = [`${verbed} ${plural(succeeded, "repo")}`];
+	if (conflicted.length > 0) parts.push(`${conflicted.length} conflicted`);
 	if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
 	if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
-	success(parts.join(", "));
+	if (conflicted.length > 0) {
+		warn(parts.join(", "));
+		process.exit(1);
+	} else {
+		success(parts.join(", "));
+	}
 }
 
 async function assessRepo(

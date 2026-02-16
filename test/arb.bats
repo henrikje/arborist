@@ -1642,15 +1642,27 @@ SCRIPT
 
     cd "$TEST_DIR/project/my-feature"
 
-    # Create a conflict in repo-a: modify same file in origin and worktree
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "origin change" > conflict.txt && git add conflict.txt && git commit -m "origin" && git push) >/dev/null 2>&1
+    # Create a conflict in repo-a via a separate clone
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone-a" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone-a" && git checkout my-feature && echo "remote change" > conflict.txt && git add conflict.txt && git commit -m "remote" && git push) >/dev/null 2>&1
+    # Local conflicting commit in worktree
     echo "local change" > "$TEST_DIR/project/my-feature/repo-a/conflict.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add conflict.txt >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "local" >/dev/null 2>&1
 
+    # Push a non-conflicting commit for repo-b so it has something to pull
+    git clone "$TEST_DIR/origin/repo-b.git" "$TEST_DIR/tmp-clone-b" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone-b" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
+
     run arb pull --yes
-    # repo-b should still have been attempted
+    [ "$status" -ne 0 ]
+    # repo-b was still processed successfully
     [[ "$output" == *"repo-b"* ]]
+    # Conflict file details shown
+    [[ "$output" == *"CONFLICT"*"conflict.txt"* ]]
+    # Consolidated conflict report
+    [[ "$output" == *"1 conflicted"* ]]
+    [[ "$output" == *"Pulled 1 repo(s)"* ]]
 }
 
 @test "arb pull skips repo on wrong branch" {
@@ -2289,23 +2301,31 @@ delete_workspace_config() {
     [[ "$output" == *"expected my-feature"* ]]
 }
 
-@test "arb rebase conflict stops and shows instructions" {
+@test "arb rebase continues past conflict and shows consolidated report" {
     arb create my-feature repo-a repo-b
 
-    # Create conflicting changes
+    # Create conflicting changes in repo-a
     echo "feature" > "$TEST_DIR/project/my-feature/repo-a/conflict.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add conflict.txt >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature change" >/dev/null 2>&1
 
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream-conflict" > conflict.txt && git add conflict.txt && git commit -m "upstream conflict" && git push) >/dev/null 2>&1
 
+    # Push an upstream change to repo-b (no conflict)
+    (cd "$TEST_DIR/project/.arb/repos/repo-b" && echo "upstream-ok" > ok.txt && git add ok.txt && git commit -m "upstream ok" && git push) >/dev/null 2>&1
+
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb rebase repo-a repo-b --yes
     [ "$status" -ne 0 ]
+    # Conflict file details shown
+    [[ "$output" == *"CONFLICT"*"conflict.txt"* ]]
+    # Conflict instructions shown
     [[ "$output" == *"conflict"* ]]
     [[ "$output" == *"git rebase --continue"* ]]
     [[ "$output" == *"git rebase --abort"* ]]
+    # repo-b was still processed successfully
+    [[ "$output" == *"Rebased 1 repo(s), 1 conflicted"* ]]
 }
 
 @test "arb rebase with specific repos only processes those repos" {
@@ -2434,22 +2454,31 @@ delete_workspace_config() {
     [[ "$output" == *"up to date"* ]]
 }
 
-@test "arb merge conflict shows merge instructions" {
-    arb create my-feature repo-a
+@test "arb merge continues past conflict and shows consolidated report" {
+    arb create my-feature repo-a repo-b
 
+    # Create conflicting changes in repo-a
     echo "feature" > "$TEST_DIR/project/my-feature/repo-a/conflict.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add conflict.txt >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature change" >/dev/null 2>&1
 
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream-conflict" > conflict.txt && git add conflict.txt && git commit -m "upstream conflict" && git push) >/dev/null 2>&1
 
+    # Push an upstream change to repo-b (no conflict)
+    (cd "$TEST_DIR/project/.arb/repos/repo-b" && echo "upstream-ok" > ok.txt && git add ok.txt && git commit -m "upstream ok" && git push) >/dev/null 2>&1
+
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
-    run arb merge repo-a --yes
+    run arb merge repo-a repo-b --yes
     [ "$status" -ne 0 ]
+    # Conflict file details shown
+    [[ "$output" == *"CONFLICT"*"conflict.txt"* ]]
+    # Conflict instructions shown
     [[ "$output" == *"conflict"* ]]
     [[ "$output" == *"git merge --continue"* ]]
     [[ "$output" == *"git merge --abort"* ]]
+    # repo-b was still processed successfully
+    [[ "$output" == *"Merged 1 repo(s), 1 conflicted"* ]]
 }
 
 # ── pull (plan+confirm) ─────────────────────────────────────────
