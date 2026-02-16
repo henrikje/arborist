@@ -1,8 +1,11 @@
 import { existsSync } from "node:fs";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
-import { bold, dim, green, info, red, yellow } from "../lib/output";
-import { listWorkspaces, workspaceRepoDirs } from "../lib/repos";
+import { hasRemote } from "../lib/git";
+import { bold, dim, green, info, plural, red, yellow } from "../lib/output";
+import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
+import { resolveRemotesMap } from "../lib/remotes";
+import { listRepos, listWorkspaces, workspaceRepoDirs } from "../lib/repos";
 import { type WorkspaceSummary, gatherWorkspaceSummary, isUnpushed } from "../lib/status";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
@@ -23,11 +26,35 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		.command("list")
 		.summary("List all workspaces")
 		.description(
-			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, and status for each workspace. The active workspace (the one you're currently inside) is marked with *. Use --quick to skip per-repo status gathering for faster output.",
+			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, and status for each workspace. The active workspace (the one you're currently inside) is marked with *. Use --quick to skip per-repo status gathering for faster output. Use --fetch to fetch all repos before listing for fresh remote data.",
 		)
+		.option("-f, --fetch", "Fetch all repos before listing")
 		.option("-q, --quick", "Skip per-repo status (faster for large setups)")
-		.action(async (options: { quick?: boolean }) => {
+		.action(async (options: { fetch?: boolean; quick?: boolean }) => {
 			const ctx = getCtx();
+
+			// Fetch all canonical repos (benefits all workspaces)
+			if (options.fetch) {
+				const allRepoNames = listRepos(ctx.reposDir);
+				const fetchDirs: string[] = [];
+				const localRepos: string[] = [];
+				for (const repo of allRepoNames) {
+					const repoDir = `${ctx.reposDir}/${repo}`;
+					if (await hasRemote(repoDir)) {
+						fetchDirs.push(repoDir);
+					} else {
+						localRepos.push(repo);
+					}
+				}
+				if (fetchDirs.length > 0) {
+					const remoteRepoNames = allRepoNames.filter((r) => !localRepos.includes(r));
+					const remotesMap = await resolveRemotesMap(remoteRepoNames, ctx.reposDir);
+					process.stderr.write(`Fetching ${plural(fetchDirs.length, "repo")}...\n`);
+					const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
+					reportFetchFailures(allRepoNames, localRepos, fetchResults);
+				}
+			}
+
 			const workspaces = listWorkspaces(ctx.baseDir);
 
 			// ── Phase 1: gather lightweight metadata (fast, sequential) ──
