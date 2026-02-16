@@ -63,7 +63,7 @@ Lists all repositories in `.arb/repos/`. No flags.
 Create a new workspace.
 
 ```
-arb create [name] [repos...] [-a] [-b <branch>] [--base <branch>] [-y]
+arb create [name] [repos...] [-a] [-b <branch>] [--base <branch>]
 ```
 
 Creates a workspace with worktrees for selected repos on a shared feature branch. Automatically seeds files from `.arb/templates/` if configured. Prompts interactively for name, branch, and repos when run without arguments.
