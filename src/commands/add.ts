@@ -4,6 +4,7 @@ import { configGet } from "../lib/config";
 import { error, info, success, warn } from "../lib/output";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
+import { applyRepoTemplates } from "../lib/templates";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 import { addWorktrees } from "../lib/worktrees";
@@ -14,7 +15,7 @@ export function registerAddCommand(program: Command, getCtx: () => ArbContext): 
 		.option("-a, --all-repos", "Add all remaining repos")
 		.summary("Add worktrees to the workspace")
 		.description(
-			"Add worktrees for one or more repos to the current workspace on the workspace's feature branch. If the workspace has a configured base branch, new worktrees branch from it. Prompts with a repo picker when run without arguments. Use --all-repos to add all repos not yet in the workspace.",
+			"Add worktrees for one or more repos to the current workspace on the workspace's feature branch. If the workspace has a configured base branch, new worktrees branch from it. Automatically seeds files from .arb/templates/repos/ into newly added worktrees. Prompts with a repo picker when run without arguments. Use --all-repos to add all repos not yet in the workspace.",
 		)
 		.action(async (repoArgs: string[], options: { allRepos?: boolean }) => {
 			const ctx = getCtx();
@@ -51,6 +52,14 @@ export function registerAddCommand(program: Command, getCtx: () => ArbContext): 
 
 			const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
 			const result = await addWorktrees(workspace, branch, repos, ctx.reposDir, ctx.baseDir, base, remotesMap);
+
+			const repoTemplates = applyRepoTemplates(ctx.baseDir, wsDir, result.created);
+			if (repoTemplates.seeded.length > 0) {
+				info(`Seeded ${repoTemplates.seeded.length} template file(s)`);
+			}
+			for (const f of repoTemplates.failed) {
+				warn(`Failed to copy template ${f.path}: ${f.error}`);
+			}
 
 			process.stderr.write("\n");
 			if (result.failed.length === 0 && result.skipped.length === 0) {

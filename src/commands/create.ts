@@ -6,6 +6,7 @@ import { validateBranchName, validateWorkspaceName } from "../lib/git";
 import { error, info, success, warn } from "../lib/output";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, selectReposInteractive } from "../lib/repos";
+import { applyRepoTemplates, applyWorkspaceTemplates } from "../lib/templates";
 import type { ArbContext } from "../lib/types";
 import { addWorktrees } from "../lib/worktrees";
 
@@ -17,7 +18,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 		.option("-a, --all-repos", "Include all repos")
 		.summary("Create a new workspace")
 		.description(
-			"Create a workspace for a feature or issue. Sets up worktrees for selected repos on a shared feature branch, with isolated working directories. Prompts interactively for name, branch, and repos when run without arguments.",
+			"Create a workspace for a feature or issue. Sets up worktrees for selected repos on a shared feature branch, with isolated working directories. Automatically seeds files from .arb/templates/ into the new workspace. Prompts interactively for name, branch, and repos when run without arguments.",
 		)
 		.action(
 			async (
@@ -112,6 +113,16 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				if (repos.length > 0) {
 					const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
 					result = await addWorktrees(name, branch, repos, ctx.reposDir, ctx.baseDir, base, remotesMap);
+				}
+
+				const wsTemplates = applyWorkspaceTemplates(ctx.baseDir, wsDir);
+				const repoTemplates = applyRepoTemplates(ctx.baseDir, wsDir, result.created);
+				const totalSeeded = wsTemplates.seeded.length + repoTemplates.seeded.length;
+				if (totalSeeded > 0) {
+					info(`Seeded ${totalSeeded} template file(s)`);
+				}
+				for (const f of [...wsTemplates.failed, ...repoTemplates.failed]) {
+					warn(`Failed to copy template ${f.path}: ${f.error}`);
 				}
 
 				process.stderr.write("\n");

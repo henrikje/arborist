@@ -3282,3 +3282,129 @@ push_then_delete_remote() {
     [ ! -d "$TEST_DIR/project/ws-behind" ]
 }
 
+# ── templates ─────────────────────────────────────────────────────
+
+@test "arb init creates .arb/.gitignore with repos/ entry" {
+    local dir="$TEST_DIR/init-gitignore"
+    mkdir -p "$dir"
+    cd "$dir"
+    arb init
+    [ -f "$dir/.arb/.gitignore" ]
+    run cat "$dir/.arb/.gitignore"
+    [[ "$output" == *"repos/"* ]]
+}
+
+@test "arb create applies workspace templates" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "ws-file" > "$TEST_DIR/project/.arb/templates/workspace/setup.txt"
+
+    arb create tpl-ws-test repo-a
+    [ -f "$TEST_DIR/project/tpl-ws-test/setup.txt" ]
+    run cat "$TEST_DIR/project/tpl-ws-test/setup.txt"
+    [[ "$output" == "ws-file" ]]
+}
+
+@test "arb create applies repo templates" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    echo "DB=localhost" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+
+    arb create tpl-repo-test repo-a
+    [ -f "$TEST_DIR/project/tpl-repo-test/repo-a/.env" ]
+    run cat "$TEST_DIR/project/tpl-repo-test/repo-a/.env"
+    [[ "$output" == "DB=localhost" ]]
+}
+
+@test "arb create applies nested template directory structure" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace/.claude"
+    echo '{"key":"val"}' > "$TEST_DIR/project/.arb/templates/workspace/.claude/settings.local.json"
+
+    arb create tpl-nested-test repo-a
+    [ -f "$TEST_DIR/project/tpl-nested-test/.claude/settings.local.json" ]
+    run cat "$TEST_DIR/project/tpl-nested-test/.claude/settings.local.json"
+    [[ "$output" == '{"key":"val"}' ]]
+}
+
+@test "template files are not overwritten if they already exist" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    echo "template-content" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+
+    arb create tpl-nooverwrite repo-a
+    # Overwrite the seeded file
+    echo "custom-content" > "$TEST_DIR/project/tpl-nooverwrite/repo-a/.env"
+
+    # Add repo-b to trigger template application again (repo-a already has the file)
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-b"
+    echo "b-env" > "$TEST_DIR/project/.arb/templates/repos/repo-b/.env"
+    cd "$TEST_DIR/project/tpl-nooverwrite"
+    arb add repo-b
+
+    # repo-a's file should still have the custom content
+    run cat "$TEST_DIR/project/tpl-nooverwrite/repo-a/.env"
+    [[ "$output" == "custom-content" ]]
+}
+
+@test "arb create works without templates directory" {
+    # No templates dir exists — should succeed silently
+    run arb create tpl-none-test repo-a
+    [ "$status" -eq 0 ]
+    [ -d "$TEST_DIR/project/tpl-none-test/repo-a" ]
+}
+
+@test "arb add applies repo templates for newly added repos" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-b"
+    echo "ADDED=true" > "$TEST_DIR/project/.arb/templates/repos/repo-b/.env"
+
+    arb create tpl-add-test repo-a
+    cd "$TEST_DIR/project/tpl-add-test"
+    arb add repo-b
+
+    [ -f "$TEST_DIR/project/tpl-add-test/repo-b/.env" ]
+    run cat "$TEST_DIR/project/tpl-add-test/repo-b/.env"
+    [[ "$output" == "ADDED=true" ]]
+}
+
+@test "arb add does not reapply workspace templates" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "ws-only" > "$TEST_DIR/project/.arb/templates/workspace/marker.txt"
+
+    arb create tpl-add-nows repo-a
+    # Remove the workspace template file that was seeded during create
+    rm "$TEST_DIR/project/tpl-add-nows/marker.txt"
+
+    cd "$TEST_DIR/project/tpl-add-nows"
+    arb add repo-b
+
+    # The file should NOT be re-seeded by arb add
+    [ ! -f "$TEST_DIR/project/tpl-add-nows/marker.txt" ]
+}
+
+@test "template for a repo not in the workspace is silently ignored" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/nonexistent-repo"
+    echo "ignored" > "$TEST_DIR/project/.arb/templates/repos/nonexistent-repo/.env"
+
+    run arb create tpl-ignore-test repo-a
+    [ "$status" -eq 0 ]
+    [ ! -f "$TEST_DIR/project/tpl-ignore-test/nonexistent-repo/.env" ]
+}
+
+@test "workspace templates applied when creating workspace with zero repos" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "empty-ws" > "$TEST_DIR/project/.arb/templates/workspace/config.txt"
+
+    arb create tpl-empty-ws
+    [ -f "$TEST_DIR/project/tpl-empty-ws/config.txt" ]
+    run cat "$TEST_DIR/project/tpl-empty-ws/config.txt"
+    [[ "$output" == "empty-ws" ]]
+}
+
+@test "arb create reports seeded template count" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    echo "a" > "$TEST_DIR/project/.arb/templates/workspace/ws.txt"
+    echo "b" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+
+    run arb create tpl-count-test repo-a
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Seeded 2 template file(s)"* ]]
+}
+

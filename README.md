@@ -304,6 +304,57 @@ cd ~/project-a && arb init
 cd ~/project-b && arb init
 ```
 
+## Workspace templates
+
+Arborist can automatically seed files into new workspaces — `.env` files, Claude Code settings, IDE config, anything you want pre-provisioned. Put your templates in `.arb/templates/` and they are copied into every new workspace.
+
+### Template directory structure
+
+```
+.arb/
+  templates/
+    workspace/         # overlaid onto workspace root
+      .claude/
+        settings.local.json
+    repos/
+      api/             # overlaid onto api/ worktree
+        .env
+      web/             # overlaid onto web/ worktree
+        .env
+```
+
+The template tree mirrors the workspace structure. `workspace/` files land at the workspace root, `repos/<name>/` files land inside the corresponding worktree.
+
+### Copy-if-missing semantics
+
+Template files are only copied when the target doesn't already exist. Existing files are never overwritten — your customizations are always preserved. This makes templates safe to evolve over time: update the template and new workspaces get the latest version, while existing workspaces keep their current files.
+
+### When templates are applied
+
+- **`arb create`** — seeds workspace templates + repo templates for all created repos
+- **`arb add`** — seeds repo templates for newly added repos only (workspace already set up)
+- **No templates dir?** — silently skipped, zero noise
+
+### Version-controlling templates
+
+`arb init` creates `.arb/.gitignore` with a `repos/` entry, which means everything else in `.arb/` — including `templates/` — is version-controllable. You can commit your templates to a dotfiles repo, a team bootstrap repo, or just keep them local.
+
+### Example: setting up `.env` templates
+
+```bash
+# Create template directories
+mkdir -p .arb/templates/repos/api
+mkdir -p .arb/templates/repos/web
+
+# Add your .env templates
+cp api/.env.example .arb/templates/repos/api/.env
+cp web/.env.example .arb/templates/repos/web/.env
+
+# Every new workspace gets these automatically
+arb create my-feature --all-repos
+# → Seeded 2 template file(s)
+```
+
 ## Fork workflows
 
 Arborist has built-in support for fork-based development, where you push feature branches to your fork and rebase onto the canonical (upstream) repository.

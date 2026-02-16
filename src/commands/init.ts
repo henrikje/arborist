@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Command } from "commander";
 import { detectBaseDir } from "../lib/base-dir";
@@ -31,6 +31,7 @@ export function registerInitCommand(program: Command): void {
 			}
 
 			mkdirSync(`${target}/.arb/repos`, { recursive: true });
+			writeFileSync(`${target}/.arb/.gitignore`, "repos/\n");
 
 			success(`Initialized arb in ${target}`);
 			info("");
