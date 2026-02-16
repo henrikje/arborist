@@ -16,6 +16,7 @@ import { resolveRemotes } from "../lib/remotes";
 import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import { type RepoStatus, gatherRepoStatus, isDirty, isUnpushed } from "../lib/status";
 import { type TemplateDiff, diffTemplates } from "../lib/templates";
+import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
 
@@ -219,10 +220,17 @@ function isAssessmentOk(assessment: WorkspaceAssessment): boolean {
 	return true;
 }
 
+function buildConfirmMessage(count: number, singleName: string | undefined, deleteRemote: boolean): string {
+	const subject = count === 1 && singleName ? `workspace ${singleName}` : plural(count, "workspace");
+	const remoteSuffix = deleteRemote ? " and delete remote branches" : "";
+	return `Remove ${subject}${remoteSuffix}?`;
+}
+
 export function registerRemoveCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("remove [names...]")
-		.option("-f, --force", "Force removal without prompts")
+		.option("-y, --yes", "Skip confirmation prompt")
+		.option("-f, --force", "Force removal of at-risk workspaces (implies --yes)")
 		.option("-d, --delete-remote", "Delete remote branches")
 		.option(
 			"-a, --all-ok",
@@ -231,14 +239,17 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.summary("Remove one or more workspaces")
 		.description(
-			"Remove one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments. Use --force to skip prompts, --delete-remote to also delete the remote branches, and --all-ok to batch-remove all workspaces with ok status.",
+			"Remove one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments. Use --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches, and --all-ok to batch-remove all workspaces with ok status.",
 		)
 		.action(
 			async (
 				nameArgs: string[],
-				options: { force?: boolean; deleteRemote?: boolean; allOk?: boolean; dryRun?: boolean },
+				options: { yes?: boolean; force?: boolean; deleteRemote?: boolean; allOk?: boolean; dryRun?: boolean },
 			) => {
 				const ctx = getCtx();
+				const skipPrompts = options.yes || options.force;
+				const forceAtRisk = options.force ?? false;
+				const deleteRemote = options.deleteRemote ?? false;
 
 				if (options.allOk) {
 					if (nameArgs.length > 0) {
@@ -254,19 +265,14 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 						return;
 					}
 
-					const okEntries: { assessment: WorkspaceAssessment; behind: number }[] = [];
+					const okEntries: WorkspaceAssessment[] = [];
 					for (const ws of candidates) {
 						const wsDir = `${ctx.baseDir}/${ws}`;
 						if (!existsSync(`${wsDir}/.arbws/config`)) continue;
 
 						const assessment = await assessWorkspace(ws, ctx);
 						if (assessment && isAssessmentOk(assessment)) {
-							let behind = 0;
-							for (const repo of assessment.repoStatuses) {
-								if (repo.base && repo.base.behind > 0) behind++;
-								if (repo.remote.behind > 0) behind++;
-							}
-							okEntries.push({ assessment, behind });
+							okEntries.push(assessment);
 						}
 					}
 
@@ -275,42 +281,41 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 						return;
 					}
 
-					process.stderr.write("\nWorkspaces to remove:\n");
-					for (const entry of okEntries) {
-						const annotations: string[] = [];
-						if (entry.behind > 0) annotations.push(yellow(`${entry.behind} behind`));
-						if (entry.assessment.templateDiffs.length > 0)
-							annotations.push(yellow(`${plural(entry.assessment.templateDiffs.length, "template file")} modified`));
-						const suffix = annotations.length > 0 ? ` (${annotations.join(", ")})` : "";
-						process.stderr.write(`  ${entry.assessment.name}${suffix}\n`);
-					}
 					process.stderr.write("\n");
+					for (const entry of okEntries) {
+						process.stderr.write(`${entry.name}:\n`);
+						displayStatusTable(entry);
+					}
+
+					if (deleteRemote) {
+						process.stderr.write("  Remote branches will also be deleted.\n\n");
+					}
 
 					if (options.dryRun) return;
 
-					if (!options.force) {
-						if (!process.stdin.isTTY) {
-							error("Cannot prompt for confirmation: not a terminal. Use --force to skip prompts.");
+					if (!skipPrompts) {
+						if (!isTTY()) {
+							error("Not a terminal. Use --yes to skip confirmation.");
 							process.exit(1);
 						}
 						const shouldRemove = await confirm(
 							{
-								message: `Remove ${plural(okEntries.length, "workspace")}?`,
+								message: buildConfirmMessage(okEntries.length, undefined, deleteRemote),
 								default: false,
 							},
 							{ output: process.stderr },
 						);
 						if (!shouldRemove) {
 							process.stderr.write("Aborted.\n");
-							return;
+							process.exit(130);
 						}
 					}
 
 					for (const entry of okEntries) {
-						inlineStart(entry.assessment.name, "removing");
-						const failedRemoteDeletes = await executeRemoval(entry.assessment, ctx, options.deleteRemote ?? false);
+						inlineStart(entry.name, "removing");
+						const failedRemoteDeletes = await executeRemoval(entry, ctx, deleteRemote);
 						const remoteSuffix = failedRemoteDeletes.length > 0 ? " (failed to delete remote branch)" : "";
-						inlineResult(entry.assessment.name, `removed${remoteSuffix}`);
+						inlineResult(entry.name, `removed${remoteSuffix}`);
 					}
 
 					process.stderr.write("\n");
@@ -320,7 +325,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 
 				let names = nameArgs;
 				if (names.length === 0) {
-					if (!process.stdin.isTTY) {
+					if (!isTTY()) {
 						error("No workspace specified.");
 						process.exit(1);
 					}
@@ -355,43 +360,40 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 					displayStatusTable(assessment);
 				}
 
-				if (options.dryRun) return;
-
 				// Check for at-risk across all workspaces
 				const atRiskWorkspaces = assessments.filter((a) => a.hasAtRisk);
-				let deleteRemote = options.deleteRemote ?? false;
+
+				if (atRiskWorkspaces.length > 0 && !forceAtRisk) {
+					const atRiskNames = atRiskWorkspaces.map((a) => a.name).join(", ");
+					error(
+						`Refusing to remove: ${atRiskNames} ${atRiskWorkspaces.length === 1 ? "has" : "have"} work that would be lost. Use --force to override.`,
+					);
+					process.exit(1);
+				}
+
+				if (deleteRemote) {
+					process.stderr.write("  Remote branches will also be deleted.\n\n");
+				}
+
+				if (options.dryRun) return;
 
 				// Confirm
-				if (!options.force) {
-					if (atRiskWorkspaces.length > 0) {
-						const atRiskNames = atRiskWorkspaces.map((a) => a.name).join(", ");
-						error(
-							`Refusing to remove: ${atRiskNames} ${atRiskWorkspaces.length === 1 ? "has" : "have"} work that would be lost. Use --force to override.`,
-						);
+				if (!skipPrompts) {
+					if (!isTTY()) {
+						error("Not a terminal. Use --yes to skip confirmation.");
 						process.exit(1);
 					}
 
-					if (!process.stdin.isTTY) {
-						error("Cannot prompt for confirmation: not a terminal. Use --force to skip prompts.");
-						process.exit(1);
-					}
-
-					const singleName = assessments[0]?.name;
-					const confirmMsg = isSingle
-						? `Remove workspace ${singleName}?`
-						: `Remove ${plural(assessments.length, "workspace")}?`;
-					const shouldRemove = await confirm({ message: confirmMsg, default: false }, { output: process.stderr });
+					const shouldRemove = await confirm(
+						{
+							message: buildConfirmMessage(assessments.length, assessments[0]?.name, deleteRemote),
+							default: false,
+						},
+						{ output: process.stderr },
+					);
 					if (!shouldRemove) {
 						process.stderr.write("Aborted.\n");
-						return;
-					}
-
-					const allRemoteRepos = assessments.flatMap((a) => a.remoteRepos);
-					if (allRemoteRepos.length > 0 && !deleteRemote) {
-						deleteRemote = await confirm(
-							{ message: "Also delete remote branches?", default: false },
-							{ output: process.stderr },
-						);
+						process.exit(130);
 					}
 				}
 

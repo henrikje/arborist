@@ -287,7 +287,7 @@ When a feature is done:
 arb remove fix-login
 ```
 
-This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before removing the workspace. Use `--delete-remote` to also clean up the remote branches, and `--all-ok` to batch-remove every workspace with ok status. See `arb remove --help` for all options.
+This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before removing the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-ok` to batch-remove every workspace with ok status. See `arb remove --help` for all options.
 
 ## Workspace templates
 
@@ -393,7 +393,7 @@ Here `api` is a fork (base is `upstream/main`) while `web` uses a single origin 
 
 ### Non-interactive mode
 
-Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, and `merge`. For `remove`, use `--force` (`-f`) instead. Without these flags, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
+Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, `merge`, and `remove`. For `remove`, use `--force` (`-f`) instead. Without these flags, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
 
 ```bash
 arb rebase --yes && arb push --force --yes

@@ -557,7 +557,8 @@ teardown() {
     arb create my-feature repo-a
     run bash -c 'echo "" | arb remove my-feature'
     [ "$status" -ne 0 ]
-    [[ "$output" == *"not a terminal"* ]]
+    [[ "$output" == *"Not a terminal"* ]]
+    [[ "$output" == *"--yes"* ]]
 }
 
 @test "arb remove nonexistent workspace fails" {
@@ -3794,7 +3795,7 @@ push_then_delete_remote() {
     [[ "$output" == *"Seeded 2 template files"* ]]
 }
 
-@test "arb remove --all-ok --force produces compact output" {
+@test "arb remove --all-ok --force produces per-workspace output" {
     arb create ws-one repo-a
     arb create ws-two repo-a
     git -C "$TEST_DIR/project/ws-one/repo-a" push -u origin ws-one >/dev/null 2>&1
@@ -3802,12 +3803,14 @@ push_then_delete_remote() {
 
     run arb remove --all-ok --force
     [ "$status" -eq 0 ]
-    # Should have compact inline results, not per-workspace status tables
+    # Should have per-workspace status tables
+    [[ "$output" == *"ws-one:"* ]]
+    [[ "$output" == *"ws-two:"* ]]
+    [[ "$output" == *"clean, pushed"* ]]
+    # Should have compact inline results during execution
     [[ "$output" == *"[ws-one] removed"* ]]
     [[ "$output" == *"[ws-two] removed"* ]]
     [[ "$output" == *"Removed 2 workspaces"* ]]
-    # Should NOT contain per-workspace status tables (clean, pushed appears in status tables)
-    [[ "$output" != *"clean, pushed"* ]]
 }
 
 @test "arb remove multiple names --force shows unified plan then compact execution" {
@@ -3908,7 +3911,7 @@ push_then_delete_remote() {
     [ -d "$TEST_DIR/project/at-risk-b" ]
 }
 
-@test "arb remove --all-ok shows template drift count in preview" {
+@test "arb remove --all-ok shows template drift in status table" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
     echo "WS=original" > "$TEST_DIR/project/.arb/templates/workspace/.env"
 
@@ -3919,7 +3922,7 @@ push_then_delete_remote() {
 
     run arb remove --all-ok --force
     [ "$status" -eq 0 ]
-    [[ "$output" == *"1 template file modified"* ]]
+    [[ "$output" == *"Template files modified"* ]]
     [ ! -d "$TEST_DIR/project/tpl-allok" ]
 }
 
@@ -3931,6 +3934,76 @@ push_then_delete_remote() {
     [ "$status" -eq 0 ]
     [[ "$output" == *"Removed workspace doomed"* ]]
     [ ! -d "$TEST_DIR/project/doomed" ]
+}
+
+@test "arb remove --yes skips confirmation for clean workspace" {
+    arb create ws-yes repo-a
+    git -C "$TEST_DIR/project/ws-yes/repo-a" push -u origin ws-yes >/dev/null 2>&1
+
+    run arb remove ws-yes --yes
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/ws-yes" ]
+    [[ "$output" == *"Removed workspace ws-yes"* ]]
+}
+
+@test "arb remove -y skips confirmation for clean workspace" {
+    arb create ws-yshort repo-a
+    git -C "$TEST_DIR/project/ws-yshort/repo-a" push -u origin ws-yshort >/dev/null 2>&1
+
+    run arb remove ws-yshort -y
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/ws-yshort" ]
+}
+
+@test "arb remove --yes still refuses at-risk workspace" {
+    arb create ws-atrisk repo-a
+    echo "uncommitted" > "$TEST_DIR/project/ws-atrisk/repo-a/dirty.txt"
+
+    run arb remove ws-atrisk --yes
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Refusing to remove"* ]]
+    [ -d "$TEST_DIR/project/ws-atrisk" ]
+}
+
+@test "arb remove --force implies --yes" {
+    arb create ws-fy repo-a
+    echo "uncommitted" > "$TEST_DIR/project/ws-fy/repo-a/dirty.txt"
+
+    run arb remove ws-fy --force
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/ws-fy" ]
+}
+
+@test "arb remove -d shows remote deletion notice in plan" {
+    arb create ws-dnotice repo-a
+    git -C "$TEST_DIR/project/ws-dnotice/repo-a" push -u origin ws-dnotice >/dev/null 2>&1
+
+    run arb remove ws-dnotice -y -d
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Remote branches will also be deleted"* ]]
+    [ ! -d "$TEST_DIR/project/ws-dnotice" ]
+    # Remote branch should be gone
+    run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/remotes/origin/ws-dnotice"
+    [ "$status" -ne 0 ]
+}
+
+@test "arb remove --all-ok --yes skips confirmation" {
+    arb create ws-allok-y repo-a
+    git -C "$TEST_DIR/project/ws-allok-y/repo-a" push -u origin ws-allok-y >/dev/null 2>&1
+
+    run arb remove --all-ok --yes
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/ws-allok-y" ]
+}
+
+@test "arb remove --all-ok -d shows remote deletion notice" {
+    arb create ws-allok-d repo-a
+    git -C "$TEST_DIR/project/ws-allok-d/repo-a" push -u origin ws-allok-d >/dev/null 2>&1
+
+    run arb remove --all-ok --yes -d
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Remote branches will also be deleted"* ]]
+    [ ! -d "$TEST_DIR/project/ws-allok-d" ]
 }
 
 # ── --dry-run flag ───────────────────────────────────────────────

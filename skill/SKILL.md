@@ -104,8 +104,9 @@ Key signals in status output:
 1. Always confirm with the user before removing a workspace — this is destructive
 2. `arb remove <workspace>` — Remove workspace and its worktrees
 3. `-d` flag also deletes remote branches
-4. `-f` flag skips safety checks (uncommitted changes, unpushed commits)
-5. `--all-ok` removes all workspaces that have clean status
+4. `-y` flag skips the confirmation prompt
+5. `-f` flag overrides at-risk safety checks (implies `-y`)
+6. `--all-ok` removes all workspaces that have clean status
 
 ## Working with Code Across Repos
 
@@ -128,12 +129,12 @@ The global `-w, --workspace` option exists but it is a **global option** that mu
 
 CRITICAL: Claude runs without a TTY. Always follow these rules:
 
-- **Preview before executing** — Use `--dry-run` (`-n`) on `push`, `pull`, `rebase`, `merge`, and `remove` to see what would happen before committing. Then execute with `--yes` (or `--force` for `remove`):
+- **Preview before executing** — Use `--dry-run` (`-n`) on `push`, `pull`, `rebase`, `merge`, and `remove` to see what would happen before committing. Then execute with `--yes`:
   ```
   arb push --dry-run        # preview the plan
   arb push --yes            # execute it
   ```
-- **Always pass `-y` / `--yes`** to `create`, `pull`, `push`, `rebase`, and `merge` when you are ready to execute. For `remove`, use `--force` instead. Without these flags, commands will hang waiting for input.
+- **Always pass `-y` / `--yes`** to `create`, `remove`, `push`, `pull`, `rebase`, and `merge` when you are ready to execute. Without `-y`, these commands will hang waiting for input.
 - Use `--json` on `arb status` or `arb list` when you need to parse the output programmatically.
 - `arb list -q` for fast workspace listing without status computation.
 - Exit codes: 0 = success, 1 = expected failure (conflicts, nothing to do), 2 = unexpected error.
@@ -142,7 +143,7 @@ Commands that do NOT need `-y`: `init`, `clone`, `repos`, `list`, `path`, `cd`, 
 
 ## Safety Rules
 
-1. **Preview before executing** — Use `--dry-run` on `push`, `pull`, `rebase`, `merge`, and `remove` to see what would happen before committing with `--yes` (or `--force` for `remove`).
+1. **Preview before executing** — Use `--dry-run` on `push`, `pull`, `rebase`, `merge`, and `remove` to see what would happen before committing with `--yes`.
 2. **Always use `arb` commands instead of raw `git` when inside a workspace** — Use `arb push` instead of `git push`, `arb pull` instead of `git pull`, `arb rebase` instead of `git rebase`, etc. Arb commands handle worktree-specific concerns (tracking, remote resolution, multi-repo coordination) that raw git does not. Only fall back to raw git for operations arb doesn't cover (e.g., `git add`, `git commit`, `git diff`).
 3. **Never `arb remove` without user confirmation** — This deletes worktrees and cannot be undone. Always ask first.
 4. **Never use `--force` on remove** without user consent — Bypasses dirty/unpushed safety checks.

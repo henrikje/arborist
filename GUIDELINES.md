@@ -59,7 +59,7 @@ Accept optional `[repos...]` to narrow scope; default to all repos in the worksp
 
 ### Safety gates for destructive operations
 
-When an operation would cause data loss, Arborist refuses and explains why. The `remove` command detects at-risk workspaces (unpushed commits, uncommitted changes) and will not delete them without `--force`. The plan display always shows what's at risk and why, so the developer can make an informed decision.
+When an operation would cause data loss, Arborist refuses and explains why. The `remove` command detects at-risk workspaces (unpushed commits, uncommitted changes) and will not delete them without `--force`. Use `--yes` to skip the confirmation prompt without overriding safety checks. The plan display always shows what's at risk and why, so the developer can make an informed decision.
 
 ### TTY-aware behavior
 
