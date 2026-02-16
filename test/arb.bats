@@ -11,11 +11,11 @@ setup() {
     arb init >/dev/null 2>&1
 
     # Create bare origin repos and clone into .arb/repos/
-    git init --bare "$TEST_DIR/origin/repo-a.git" >/dev/null 2>&1
+    git init --bare "$TEST_DIR/origin/repo-a.git" -b main >/dev/null 2>&1
     git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/project/.arb/repos/repo-a" >/dev/null 2>&1
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && git commit --allow-empty -m "init" && git push) >/dev/null 2>&1
 
-    git init --bare "$TEST_DIR/origin/repo-b.git" >/dev/null 2>&1
+    git init --bare "$TEST_DIR/origin/repo-b.git" -b main >/dev/null 2>&1
     git clone "$TEST_DIR/origin/repo-b.git" "$TEST_DIR/project/.arb/repos/repo-b" >/dev/null 2>&1
     (cd "$TEST_DIR/project/.arb/repos/repo-b" && git commit --allow-empty -m "init" && git push) >/dev/null 2>&1
 }
@@ -153,7 +153,7 @@ teardown() {
 }
 
 @test "arb clone derives name from URL" {
-    git init --bare "$TEST_DIR/origin/derived-name.git" >/dev/null 2>&1
+    git init --bare "$TEST_DIR/origin/derived-name.git" -b main >/dev/null 2>&1
     run arb clone "$TEST_DIR/origin/derived-name.git"
     [ "$status" -eq 0 ]
     [ -d "$TEST_DIR/project/.arb/repos/derived-name/.git" ]
@@ -253,7 +253,7 @@ teardown() {
     echo "branch-content" > "$TEST_DIR/project/.arb/repos/repo-a/marker.txt"
     git -C "$TEST_DIR/project/.arb/repos/repo-a" add marker.txt >/dev/null 2>&1
     git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "marker" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout main >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout - >/dev/null 2>&1
 
     # Create a workspace that reuses the existing branch
     arb create reuse-ws --branch reuse-me repo-a
@@ -2873,7 +2873,7 @@ setup_fork_repo() {
     local repo_dir="$TEST_DIR/project/.arb/repos/${name}"
 
     # Create upstream bare repo with initial commit
-    git init --bare "$upstream_dir" >/dev/null 2>&1
+    git init --bare "$upstream_dir" -b main >/dev/null 2>&1
     local tmp_clone="$TEST_DIR/tmp-${name}"
     git clone "$upstream_dir" "$tmp_clone" >/dev/null 2>&1
     (cd "$tmp_clone" && git commit --allow-empty -m "init" && git push) >/dev/null 2>&1
@@ -2896,7 +2896,7 @@ setup_fork_repo() {
 }
 
 @test "arb clone --upstream sets up fork layout" {
-    git init --bare "$TEST_DIR/upstream/clone-fork.git" >/dev/null 2>&1
+    git init --bare "$TEST_DIR/upstream/clone-fork.git" -b main >/dev/null 2>&1
     local tmp_clone="$TEST_DIR/tmp-clone-fork"
     git clone "$TEST_DIR/upstream/clone-fork.git" "$tmp_clone" >/dev/null 2>&1
     (cd "$tmp_clone" && git commit --allow-empty -m "init" && git push) >/dev/null 2>&1
@@ -3047,7 +3047,7 @@ setup_fork_repo() {
     local upstream_dir="$TEST_DIR/upstream/conv-test.git"
     local fork_dir="$TEST_DIR/fork/conv-test.git"
 
-    git init --bare "$upstream_dir" >/dev/null 2>&1
+    git init --bare "$upstream_dir" -b main >/dev/null 2>&1
     local tmp_clone="$TEST_DIR/tmp-conv"
     git clone "$upstream_dir" "$tmp_clone" >/dev/null 2>&1
     (cd "$tmp_clone" && git commit --allow-empty -m "init" && git push) >/dev/null 2>&1
@@ -3072,7 +3072,7 @@ setup_fork_repo() {
     local canonical_dir="$TEST_DIR/upstream/custom-names.git"
     local fork_dir="$TEST_DIR/fork/custom-names.git"
 
-    git init --bare "$canonical_dir" >/dev/null 2>&1
+    git init --bare "$canonical_dir" -b main >/dev/null 2>&1
     local tmp_clone="$TEST_DIR/tmp-custom"
     git clone "$canonical_dir" "$tmp_clone" >/dev/null 2>&1
     (cd "$tmp_clone" && git commit --allow-empty -m "init" && git push) >/dev/null 2>&1
@@ -3132,7 +3132,7 @@ setup_fork_repo() {
     local bare_b="$TEST_DIR/fork/ambig.git"
     local bare_c="$TEST_DIR/staging/ambig.git"
 
-    git init --bare "$bare_a" >/dev/null 2>&1
+    git init --bare "$bare_a" -b main >/dev/null 2>&1
     local tmp_clone="$TEST_DIR/tmp-ambig"
     git clone "$bare_a" "$tmp_clone" >/dev/null 2>&1
     (cd "$tmp_clone" && git commit --allow-empty -m "init" && git push) >/dev/null 2>&1
@@ -3188,7 +3188,7 @@ setup_fork_repo() {
     local upstream_b="$TEST_DIR/upstream/repo-b-fork.git"
     local fork_b="$TEST_DIR/fork/repo-b-fork.git"
 
-    git init --bare "$upstream_b" >/dev/null 2>&1
+    git init --bare "$upstream_b" -b main >/dev/null 2>&1
     local tmp_clone="$TEST_DIR/tmp-repo-b-fork"
     git clone "$upstream_b" "$tmp_clone" >/dev/null 2>&1
     (cd "$tmp_clone" && echo "upstream content" > file.txt && git add file.txt && git commit -m "upstream init" && git push) >/dev/null 2>&1
@@ -3217,7 +3217,7 @@ setup_fork_repo() {
 }
 
 @test "fork: clone --upstream fails gracefully with bad upstream URL" {
-    git init --bare "$TEST_DIR/fork/bad-upstream.git" >/dev/null 2>&1
+    git init --bare "$TEST_DIR/fork/bad-upstream.git" -b main >/dev/null 2>&1
     local tmp_clone="$TEST_DIR/tmp-bad-upstream"
     git clone "$TEST_DIR/fork/bad-upstream.git" "$tmp_clone" >/dev/null 2>&1
     (cd "$tmp_clone" && git commit --allow-empty -m "init" && git push) >/dev/null 2>&1
@@ -3397,13 +3397,7 @@ push_then_delete_remote() {
     git -C "$TEST_DIR/project/ws-behind/repo-a" push -u origin ws-behind >/dev/null 2>&1
 
     # Advance the remote's default branch so ws-behind is behind base
-    git -C "$TEST_DIR/remotes/repo-a.git" checkout -b temp-advance >/dev/null 2>&1 || true
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout main >/dev/null 2>&1
-    echo "advance" > "$TEST_DIR/project/.arb/repos/repo-a/advance.txt"
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" add advance.txt
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "advance main" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" push origin main >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "advance" > advance.txt && git add advance.txt && git commit -m "advance main" && git push) >/dev/null 2>&1
 
     # Fetch so the workspace sees the new remote state
     git -C "$TEST_DIR/project/ws-behind/repo-a" fetch origin >/dev/null 2>&1
