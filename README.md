@@ -188,7 +188,7 @@ arb pull
 arb rebase
 ```
 
-If a rebase hits conflicts, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. This way you see the complete state of all repos in one pass instead of re-running for each conflict. If you re-run while a repo is still mid-rebase, it is automatically skipped. Prefer merge commits? Use `arb merge` instead — same workflow, uses `git merge`.
+Arb automatically fetches all repos before rebasing, so you always rebase onto the latest remote state. If a rebase hits conflicts, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. This way you see the complete state of all repos in one pass instead of re-running for each conflict. If you re-run while a repo is still mid-rebase, it is automatically skipped. Prefer merge commits? Use `arb merge` instead — same workflow, uses `git merge`.
 
 Arb auto-detects each repo's default branch, so repos using `main`, `master`, or `develop` coexist without extra configuration.
 
@@ -198,6 +198,8 @@ Arb auto-detects each repo's default branch, so repos using `main`, `master`, or
 arb push
 arb push --force
 ```
+
+All state-changing commands (`rebase`, `merge`, `push`, `pull`) automatically fetch before operating, ensuring they work with the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh. Read-only commands (`status`, `list`) do not fetch by default — use `--fetch` to opt in. If fetching fails (e.g. offline), the command warns and continues with stale data.
 
 All commands show a plan before proceeding. See `arb help <command>` for options.
 

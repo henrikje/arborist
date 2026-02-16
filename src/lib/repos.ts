@@ -37,18 +37,24 @@ export async function selectInteractive(items: string[], message: string): Promi
 	}
 
 	if (items.length === 1) {
-		const yes = await confirm({
-			message: `Only option: ${items[0]}. Include it?`,
-			default: true,
-		});
+		const yes = await confirm(
+			{
+				message: `Only option: ${items[0]}. Include it?`,
+				default: true,
+			},
+			{ output: process.stderr },
+		);
 		return yes ? items : [];
 	}
 
-	return checkbox({
-		message,
-		choices: items.map((name) => ({ name, value: name })),
-		pageSize: 20,
-	});
+	return checkbox(
+		{
+			message,
+			choices: items.map((name) => ({ name, value: name })),
+			pageSize: 20,
+		},
+		{ output: process.stderr },
+	);
 }
 
 export async function selectReposInteractive(reposDir: string): Promise<string[]> {

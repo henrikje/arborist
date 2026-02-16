@@ -50,8 +50,8 @@ export async function integrate(
 	// Resolve remotes for all repos
 	const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
 
-	// Phase 2: optional fetch
-	if (options.fetch) {
+	// Phase 2: fetch (unless --no-fetch)
+	if (options.fetch !== false) {
 		const { repos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
 		if (fetchDirs.length > 0) {
 			process.stderr.write(`Fetching ${plural(fetchDirs.length, "repo")}...\n`);
@@ -100,10 +100,13 @@ export async function integrate(
 			error("Not a terminal. Use --yes to skip confirmation.");
 			process.exit(1);
 		}
-		const ok = await confirm({
-			message: `${verb} ${plural(willOperate.length, "repo")}?`,
-			default: false,
-		});
+		const ok = await confirm(
+			{
+				message: `${verb} ${plural(willOperate.length, "repo")}?`,
+				default: false,
+			},
+			{ output: process.stderr },
+		);
 		if (!ok) {
 			process.stderr.write("Aborted.\n");
 			process.exit(130);
