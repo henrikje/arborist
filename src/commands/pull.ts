@@ -45,6 +45,11 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 			const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
 
 			// Phase 1: parallel fetch (only selected repos)
+			// Two reasons for a separate pre-fetch before git pull:
+			// 1. Accurate plan display — updates tracking refs before the assessment phase
+			// 2. Performance — parallelFetch() fetches all repos concurrently, while the
+			//    subsequent git pull commands run sequentially. Batching network I/O upfront
+			//    avoids per-repo fetch latency.
 			const { repos: allRepos, fetchDirs: allFetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
 			const repos = allRepos.filter((r) => selectedSet.has(r));
 			const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
