@@ -3242,3 +3242,24 @@ push_then_delete_remote() {
     [ "$status" -ne 0 ]
 }
 
+@test "arb remove --all-ok includes workspaces that are behind base" {
+    arb create ws-behind repo-a
+    git -C "$TEST_DIR/project/ws-behind/repo-a" push -u origin ws-behind >/dev/null 2>&1
+
+    # Advance the remote's default branch so ws-behind is behind base
+    git -C "$TEST_DIR/remotes/repo-a.git" checkout -b temp-advance >/dev/null 2>&1 || true
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout main >/dev/null 2>&1
+    echo "advance" > "$TEST_DIR/project/.arb/repos/repo-a/advance.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add advance.txt
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "advance main" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push origin main >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    # Fetch so the workspace sees the new remote state
+    git -C "$TEST_DIR/project/ws-behind/repo-a" fetch origin >/dev/null 2>&1
+
+    run arb remove --all-ok --force
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/ws-behind" ]
+}
+

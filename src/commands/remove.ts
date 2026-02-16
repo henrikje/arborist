@@ -205,11 +205,9 @@ async function removeWorkspace(
 }
 
 function isWorkspaceOk(summary: WorkspaceSummary): boolean {
-	// Match arb list's "ok" — all four status counts must be zero
 	const unpushedCount = summary.repos.filter((r) => !r.remote.local && isUnpushed(r)).length;
-	const behindCount = summary.repos.filter((r) => (r.base && r.base.behind > 0) || r.remote.behind > 0).length;
 
-	if (summary.dirty > 0 || unpushedCount > 0 || behindCount > 0 || summary.drifted > 0) {
+	if (summary.dirty > 0 || unpushedCount > 0 || summary.drifted > 0) {
 		return false;
 	}
 
@@ -228,7 +226,10 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 		.command("remove [names...]")
 		.option("-f, --force", "Force removal without prompts")
 		.option("-d, --delete-remote", "Delete remote branches")
-		.option("-a, --all-ok", "Remove all workspaces with ok status")
+		.option(
+			"-a, --all-ok",
+			"Remove all safe workspaces (no uncommitted changes, unpushed commits, or branch drift; behind base is fine)",
+		)
 		.summary("Remove one or more workspaces")
 		.description(
 			"Remove one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) before proceeding. Prompts with a workspace picker when run without arguments. Use --force to skip prompts, --delete-remote to also delete the remote branches, and --all-ok to batch-remove all workspaces with ok status.",
@@ -250,7 +251,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 					return;
 				}
 
-				const okNames: string[] = [];
+				const okEntries: { name: string; behind: number }[] = [];
 				for (const ws of candidates) {
 					const wsDir = `${ctx.baseDir}/${ws}`;
 					if (!existsSync(`${wsDir}/.arbws/config`)) continue;
@@ -259,18 +260,19 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 
 					const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir);
 					if (isWorkspaceOk(summary)) {
-						okNames.push(ws);
+						okEntries.push({ name: ws, behind: summary.behind });
 					}
 				}
 
-				if (okNames.length === 0) {
+				if (okEntries.length === 0) {
 					info("No workspaces with ok status.");
 					return;
 				}
 
 				process.stderr.write("\nWorkspaces to remove:\n");
-				for (const name of okNames) {
-					process.stderr.write(`  ${name}\n`);
+				for (const entry of okEntries) {
+					const annotation = entry.behind > 0 ? ` ${yellow(`(${entry.behind} behind)`)}` : "";
+					process.stderr.write(`  ${entry.name}${annotation}\n`);
 				}
 				process.stderr.write("\n");
 
@@ -280,7 +282,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 						process.exit(1);
 					}
 					const shouldRemove = await confirm({
-						message: `Remove ${okNames.length} workspace(s)?`,
+						message: `Remove ${okEntries.length} workspace(s)?`,
 						default: false,
 					});
 					if (!shouldRemove) {
@@ -289,8 +291,8 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 					}
 				}
 
-				for (const name of okNames) {
-					await removeWorkspace(name, ctx, { force: true, deleteRemote: options.deleteRemote });
+				for (const entry of okEntries) {
+					await removeWorkspace(entry.name, ctx, { force: true, deleteRemote: options.deleteRemote });
 				}
 				return;
 			}
