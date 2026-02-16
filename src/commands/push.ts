@@ -3,8 +3,9 @@ import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { checkBranchMatch, getDefaultBranch, git, hasRemote, remoteBranchExists } from "../lib/git";
 import { error, info, inlineResult, inlineStart, plural, red, success, yellow } from "../lib/output";
+import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { type RepoRemotes, resolveRemotesMap } from "../lib/remotes";
-import { resolveRepoSelection } from "../lib/repos";
+import { classifyRepos, resolveRepoSelection } from "../lib/repos";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -26,12 +27,13 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 	program
 		.command("push [repos...]")
 		.option("-f, --force", "Force push with lease (after rebase or amend)")
+		.option("--no-fetch", "Skip fetching before push")
 		.option("-y, --yes", "Skip confirmation prompt")
 		.summary("Push the feature branch to the publish remote")
 		.description(
-			"Push the feature branch for all repos, or only the named repos. Pushes to the publish remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. If a remote branch was deleted (e.g. after merging a PR), the push recreates it. Skips repos without a remote. Use --force after rebase or amend to force push with lease.",
+			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the publish remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. If a remote branch was deleted (e.g. after merging a PR), the push recreates it. Skips repos without a remote and repos where the remote branch has been deleted. Use --force after rebase or amend to force push with lease. Use --no-fetch to skip fetching when refs are known to be fresh.",
 		)
-		.action(async (repoArgs: string[], options: { force?: boolean; yes?: boolean }) => {
+		.action(async (repoArgs: string[], options: { force?: boolean; fetch?: boolean; yes?: boolean }) => {
 			const ctx = getCtx();
 			const { wsDir, workspace } = requireWorkspace(ctx);
 			const branch = await requireBranch(wsDir, workspace);
@@ -39,6 +41,16 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 			const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
 			const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
 			const configBase = configGet(`${wsDir}/.arbws/config`, "base");
+
+			// Phase 0: fetch (unless --no-fetch)
+			if (options.fetch !== false) {
+				const { repos: allRepos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
+				if (fetchDirs.length > 0) {
+					process.stderr.write(`Fetching ${plural(fetchDirs.length, "repo")}...\n`);
+					const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
+					reportFetchFailures(allRepos, localRepos, fetchResults);
+				}
+			}
 
 			// Phase 1: assess each repo
 			const assessments: PushAssessment[] = [];
@@ -90,10 +102,13 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 					error("Not a terminal. Use --yes to skip confirmation.");
 					process.exit(1);
 				}
-				const ok = await confirm({
-					message: `Push ${plural(willPush.length, "repo")}?`,
-					default: false,
-				});
+				const ok = await confirm(
+					{
+						message: `Push ${plural(willPush.length, "repo")}?`,
+						default: false,
+					},
+					{ output: process.stderr },
+				);
 				if (!ok) {
 					process.stderr.write("Aborted.\n");
 					process.exit(130);

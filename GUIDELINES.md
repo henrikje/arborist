@@ -127,6 +127,14 @@ All human-facing output (progress lines, prompts, summaries, errors) goes to std
 
 Arborist maintains no state files beyond the `.arb/` marker directory, `.arbws/config` in each workspace, and git's own metadata. Workspaces are discovered by scanning for directories containing `.arbws`. Repos are discovered by scanning `.arb/repos/` for directories containing `.git`. This makes the state inspectable, debuggable, and impossible to corrupt through arb bugs alone.
 
+### Mutating commands fetch by default, read-only commands do not
+
+State-changing commands (`pull`, `push`, `rebase`, `merge`) automatically fetch from all remotes before assessing the workspace. This ensures operations are based on the latest remote state, preventing mistakes like rebasing onto a stale base branch. Use `--no-fetch` to skip when refs are known to be fresh.
+
+Read-only commands (`status`, `list`) do not fetch by default to stay fast for frequent use. Both support `--fetch` to opt in when fresh remote data is needed.
+
+The parallel pre-fetch also serves a performance purpose: `parallelFetch()` fetches all repos concurrently, while the subsequent mutation operations (pull, push, rebase, merge) run sequentially one repo at a time. Batching the network I/O upfront avoids per-repo fetch latency during the sequential phase.
+
 ### Repo classification: local vs remote
 
 `classifyRepos()` separates repos into those with remotes and local-only repos. Commands that interact with remotes (fetch, pull, integrate) use this to gracefully skip local repos with a reason. This allows mixed local/remote workspaces.

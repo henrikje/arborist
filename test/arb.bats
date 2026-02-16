@@ -758,6 +758,15 @@ teardown() {
     [[ "$result" != *$'\033['*'A'* ]]
 }
 
+@test "arb list --fetch fetches before listing" {
+    arb create ws-one repo-a
+    cd "$TEST_DIR/project/ws-one"
+    run arb list --fetch
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Fetching"* ]]
+    [[ "$output" == *"ws-one"* ]]
+}
+
 # ── path ─────────────────────────────────────────────────────────
 
 @test "arb path returns correct path" {
@@ -838,6 +847,20 @@ teardown() {
     run arb cd not-a-workspace
     [ "$status" -ne 0 ]
     [[ "$output" == *"does not exist"* ]]
+}
+
+@test "arb cd path output is clean when stdout is captured (shell wrapper pattern)" {
+    arb create my-feature --all-repos
+    # Simulate the shell wrapper: capture stdout via $(), which makes stdout a pipe.
+    # Verify only the workspace path appears on stdout (no UI, no hint).
+    _arb_dir="$(arb cd my-feature 2>/dev/null)"
+    [ "$_arb_dir" = "$TEST_DIR/project/my-feature" ]
+}
+
+@test "arb cd subpath output is clean when stdout is captured" {
+    arb create my-feature repo-a
+    _arb_dir="$(arb cd my-feature/repo-a 2>/dev/null)"
+    [ "$_arb_dir" = "$TEST_DIR/project/my-feature/repo-a" ]
 }
 
 # ── status ───────────────────────────────────────────────────────
@@ -2343,9 +2366,9 @@ delete_workspace_config() {
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream change" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     run arb rebase --yes
     [ "$status" -eq 0 ]
+    [[ "$output" == *"Fetching"* ]]
     [[ "$output" == *"Rebased"* ]]
 
     # Verify the upstream commit is now reachable from the feature branch
@@ -2356,7 +2379,6 @@ delete_workspace_config() {
 @test "arb rebase shows up to date when nothing to do" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     run arb rebase --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"up to date"* ]]
@@ -2371,7 +2393,6 @@ delete_workspace_config() {
     # Make worktree dirty
     echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     run arb rebase --yes
     [[ "$output" == *"skipped"* ]]
     [[ "$output" == *"uncommitted changes"* ]]
@@ -2384,7 +2405,6 @@ delete_workspace_config() {
 
     git -C "$TEST_DIR/project/my-feature/repo-a" checkout -b experiment >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     run arb rebase --yes
     [[ "$output" == *"skipped"* ]]
     [[ "$output" == *"expected my-feature"* ]]
@@ -2404,7 +2424,6 @@ delete_workspace_config() {
     (cd "$TEST_DIR/project/.arb/repos/repo-b" && echo "upstream-ok" > ok.txt && git add ok.txt && git commit -m "upstream ok" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     run arb rebase repo-a repo-b --yes
     [ "$status" -ne 0 ]
     # Conflict file details shown
@@ -2423,7 +2442,6 @@ delete_workspace_config() {
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     run arb rebase repo-a --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"Rebased 1 repo"* ]]
@@ -2437,7 +2455,6 @@ delete_workspace_config() {
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     run arb rebase --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"Rebased"* ]]
@@ -2449,23 +2466,36 @@ delete_workspace_config() {
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     # Pipe to force non-TTY
     run bash -c 'echo "" | arb rebase'
     [ "$status" -ne 0 ]
     [[ "$output" == *"Not a terminal"* ]] || [[ "$output" == *"--yes"* ]]
 }
 
-@test "arb rebase with --fetch fetches before rebasing" {
+@test "arb rebase --no-fetch skips fetching" {
     arb create my-feature repo-a
 
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    # Don't fetch manually — let --fetch do it
-    run arb rebase --fetch --yes
+    # Fetch manually so rebase has fresh refs, then test --no-fetch skips fetching
+    arb fetch >/dev/null 2>&1
+    run arb rebase --no-fetch --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Fetching"* ]]
+    [[ "$output" != *"Fetching"* ]]
+    [[ "$output" == *"Rebased"* ]]
+}
+
+@test "arb rebase -F skips fetching" {
+    arb create my-feature repo-a
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb rebase -F --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Fetching"* ]]
     [[ "$output" == *"Rebased"* ]]
 }
 
@@ -2485,7 +2515,6 @@ delete_workspace_config() {
     (cd "$TEST_DIR/tmp-clone" && git checkout feat/auth && echo "new-auth" > new-auth.txt && git add new-auth.txt && git commit -m "new auth commit" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/stacked"
-    arb fetch >/dev/null 2>&1
     run arb rebase --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"rebase feat/auth-ui onto"*"feat/auth"* ]]
@@ -2508,7 +2537,7 @@ delete_workspace_config() {
 
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
-    # Start a rebase that will conflict
+    # Start a rebase that will conflict (need fresh refs for manual git rebase)
     git -C "$TEST_DIR/project/my-feature/repo-a" rebase origin/main >/dev/null 2>&1 || true
 
     run arb rebase --yes
@@ -2524,9 +2553,9 @@ delete_workspace_config() {
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream change" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     run arb merge --yes
     [ "$status" -eq 0 ]
+    [[ "$output" == *"Fetching"* ]]
     [[ "$output" == *"Merged"* ]]
 
     # Verify merge commit exists
@@ -2537,7 +2566,6 @@ delete_workspace_config() {
 @test "arb merge shows up to date when nothing to do" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     run arb merge --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"up to date"* ]]
@@ -2557,7 +2585,6 @@ delete_workspace_config() {
     (cd "$TEST_DIR/project/.arb/repos/repo-b" && echo "upstream-ok" > ok.txt && git add ok.txt && git commit -m "upstream ok" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     run arb merge repo-a repo-b --yes
     [ "$status" -ne 0 ]
     # Conflict file details shown
@@ -2568,6 +2595,32 @@ delete_workspace_config() {
     [[ "$output" == *"git merge --abort"* ]]
     # repo-b was still processed successfully
     [[ "$output" == *"Merged 1 repo, 1 conflicted"* ]]
+}
+
+@test "arb merge -F skips fetching" {
+    arb create my-feature repo-a
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb merge -F --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Fetching"* ]]
+    [[ "$output" == *"Merged"* ]]
+}
+
+@test "arb merge --no-fetch skips fetching" {
+    arb create my-feature repo-a
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb merge --no-fetch --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Fetching"* ]]
+    [[ "$output" == *"Merged"* ]]
 }
 
 # ── pull (plan+confirm) ─────────────────────────────────────────
@@ -2641,6 +2694,30 @@ delete_workspace_config() {
     [[ "$output" != *"2 commit"* ]]
 }
 
+@test "arb push fetches by default" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Fetching"* ]]
+    [[ "$output" == *"Pushed"* ]]
+}
+
+@test "arb push --no-fetch skips fetching" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push --no-fetch --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Fetching"* ]]
+    [[ "$output" == *"Pushed"* ]]
+}
+
 # ── push [repos...] and --force ─────────────────────────────────
 
 @test "arb push repo-a --yes only pushes named repo" {
@@ -2668,9 +2745,8 @@ delete_workspace_config() {
     # Push an upstream change to main
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
-    # Rebase the feature branch
+    # Rebase the feature branch (auto-fetches)
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     arb rebase --yes >/dev/null 2>&1
 
     # Now push with --force
@@ -2687,10 +2763,9 @@ delete_workspace_config() {
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature" >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
 
-    # Push upstream change and rebase
+    # Push upstream change and rebase (auto-fetches)
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     arb rebase --yes >/dev/null 2>&1
 
     # Push without --force should skip
@@ -2709,7 +2784,6 @@ delete_workspace_config() {
 
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     arb rebase --yes >/dev/null 2>&1
 
     run arb push -f --yes
@@ -2774,7 +2848,6 @@ delete_workspace_config() {
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     run arb rebase --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"Rebased"* ]]
@@ -2966,7 +3039,7 @@ setup_fork_repo() {
     rm -rf "$tmp_clone"
 
     cd "$TEST_DIR/project/fork-rebase"
-    run arb rebase --fetch --yes
+    run arb rebase --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"rebased fork-rebase onto upstream/main"* ]] || [[ "$output" == *"Rebased"* ]]
 
@@ -3118,7 +3191,7 @@ setup_fork_repo() {
     rm -rf "$tmp_clone"
 
     cd "$TEST_DIR/project/fork-merge"
-    run arb merge --fetch --yes
+    run arb merge --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"merged upstream/main into fork-merge"* ]] || [[ "$output" == *"Merged"* ]]
 
