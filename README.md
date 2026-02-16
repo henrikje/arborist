@@ -401,7 +401,7 @@ arb rebase --yes && arb push --force --yes
 
 ### Machine-readable status
 
-`arb status --json` writes structured JSON to stdout. Each repo includes branch state, base drift, remote drift, local changes, and any in-progress operation:
+`arb status --json` writes structured JSON to stdout. Each repo includes HEAD commit SHA, branch state, base drift, remote drift, local changes, and any in-progress operation:
 
 ```bash
 arb status --json | jq '[.repos[] | select(.base.behind > 0) | .name]'

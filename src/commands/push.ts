@@ -2,7 +2,7 @@ import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { checkBranchMatch, getDefaultBranch, git, hasRemote, remoteBranchExists } from "../lib/git";
-import { error, info, inlineResult, inlineStart, plural, red, success, yellow } from "../lib/output";
+import { dim, error, info, inlineResult, inlineStart, plural, red, success, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { type RepoRemotes, resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos, resolveRepoSelection } from "../lib/repos";
@@ -20,6 +20,7 @@ interface PushAssessment {
 	branch: string;
 	publishRemote: string;
 	newBranch: boolean;
+	headSha: string;
 	recreate: boolean;
 }
 
@@ -76,12 +77,15 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 			for (const a of assessments) {
 				const remotes = remotesMap.get(a.repo);
 				const forkSuffix = remotes && remotes.upstream !== remotes.publish ? ` → ${a.publishRemote}` : "";
+				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 				if (a.outcome === "will-push") {
 					const newBranchSuffix = a.recreate ? " (recreate)" : a.newBranch ? " (new branch)" : "";
-					process.stderr.write(`  ${a.repo}   ${plural(a.ahead, "commit")} to push${newBranchSuffix}${forkSuffix}\n`);
+					process.stderr.write(
+						`  ${a.repo}   ${plural(a.ahead, "commit")} to push${newBranchSuffix}${forkSuffix}${headStr}\n`,
+					);
 				} else if (a.outcome === "will-force-push") {
 					process.stderr.write(
-						`  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.publishRemote})\n`,
+						`  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.publishRemote})${headStr}\n`,
 					);
 				} else if (a.outcome === "up-to-date") {
 					process.stderr.write(`  ${a.repo}   up to date\n`);
@@ -163,6 +167,11 @@ async function assessPushRepo(
 ): Promise<PushAssessment> {
 	const publishRemote = remotes?.publish ?? "origin";
 	const upstreamRemote = remotes?.upstream ?? "origin";
+
+	// Capture HEAD SHA for recovery info
+	const headResult = await git(repoDir, "rev-parse", "--short", "HEAD");
+	const headSha = headResult.exitCode === 0 ? headResult.stdout.trim() : "";
+
 	const base: PushAssessment = {
 		repo,
 		repoDir,
@@ -172,6 +181,7 @@ async function assessPushRepo(
 		branch,
 		publishRemote,
 		newBranch: false,
+		headSha,
 		recreate: false,
 	};
 

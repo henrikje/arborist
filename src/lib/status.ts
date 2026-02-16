@@ -7,6 +7,7 @@ import { workspaceBranch } from "./workspace-branch";
 
 export interface RepoStatus {
 	name: string;
+	head: string;
 	branch: { expected: string; actual: string; drifted: boolean; detached: boolean };
 	base: { name: string; ahead: number; behind: number } | null;
 	remote: {
@@ -70,6 +71,10 @@ export async function gatherRepoStatus(
 ): Promise<RepoStatus> {
 	const repo = basename(repoDir);
 	const repoPath = `${reposDir}/${repo}`;
+
+	// HEAD SHA (short)
+	const headResult = await git(repoDir, "rev-parse", "--short", "HEAD");
+	const head = headResult.exitCode === 0 ? headResult.stdout.trim() : "";
 
 	// Current branch (empty string when detached)
 	const branchResult = await git(repoDir, "branch", "--show-current");
@@ -172,6 +177,7 @@ export async function gatherRepoStatus(
 
 	return {
 		name: repo,
+		head,
 		branch: { expected: expectedBranch, actual, drifted, detached },
 		base: baseStatus,
 		remote: remoteStatus,

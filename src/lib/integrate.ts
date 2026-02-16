@@ -28,6 +28,7 @@ interface RepoAssessment {
 	upstreamRemote: string;
 	behind: number;
 	ahead: number;
+	headSha: string;
 }
 
 export async function integrate(
@@ -79,7 +80,8 @@ export async function integrate(
 			const diffStr = diffParts ? ` \u2014 ${diffParts}` : "";
 			const baseRef = `${a.upstreamRemote}/${a.baseBranch}`;
 			const action = mode === "rebase" ? `rebase ${branch} onto ${baseRef}` : `merge ${baseRef} into ${branch}`;
-			process.stderr.write(`  ${a.repo}   ${action}${diffStr}\n`);
+			const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
+			process.stderr.write(`  ${a.repo}   ${action}${diffStr}${headStr}\n`);
 		} else if (a.outcome === "up-to-date") {
 			process.stderr.write(`  ${a.repo}   up to date\n`);
 		} else {
@@ -172,7 +174,12 @@ async function assessRepo(
 	const repoDir = `${wsDir}/${repo}`;
 	const repoPath = `${reposDir}/${repo}`;
 	const upstreamRemote = remotes?.upstream ?? "origin";
-	const base: RepoAssessment = { repo, repoDir, outcome: "skip", behind: 0, ahead: 0, upstreamRemote };
+
+	// Capture HEAD SHA for recovery info
+	const headResult = await git(repoDir, "rev-parse", "--short", "HEAD");
+	const headSha = headResult.exitCode === 0 ? headResult.stdout.trim() : "";
+
+	const base: RepoAssessment = { repo, repoDir, outcome: "skip", behind: 0, ahead: 0, upstreamRemote, headSha };
 
 	// Check remote
 	if (!(await hasRemote(repoPath))) {
