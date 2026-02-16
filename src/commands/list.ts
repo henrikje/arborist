@@ -21,16 +21,30 @@ interface ListRow {
 	special: "config-missing" | "empty" | null;
 }
 
+interface ListJsonWorkspace {
+	workspace: string;
+	active: boolean;
+	branch: string | null;
+	base: string | null;
+	repoCount: number | null;
+	status: "config-missing" | "empty" | null;
+	dirty?: number;
+	unpushed?: number;
+	behind?: number;
+	drifted?: number;
+}
+
 export function registerListCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("list")
 		.summary("List all workspaces")
 		.description(
-			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, and status for each workspace. The active workspace (the one you're currently inside) is marked with *. Use --quick to skip per-repo status gathering for faster output. Use --fetch to fetch all repos before listing for fresh remote data.",
+			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, and status for each workspace. The active workspace (the one you're currently inside) is marked with *. Use --quick to skip per-repo status gathering for faster output. Use --fetch to fetch all repos before listing for fresh remote data. Use --json for machine-readable output.",
 		)
 		.option("-f, --fetch", "Fetch all repos before listing")
 		.option("-q, --quick", "Skip per-repo status (faster for large setups)")
-		.action(async (options: { fetch?: boolean; quick?: boolean }) => {
+		.option("--json", "Output structured JSON")
+		.action(async (options: { fetch?: boolean; quick?: boolean; json?: boolean }) => {
 			const ctx = getCtx();
 
 			// Fetch all canonical repos (benefits all workspaces)
@@ -128,9 +142,53 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 			}
 
 			if (rows.length === 0) {
+				if (options.json) {
+					process.stdout.write("[]\n");
+					return;
+				}
 				info("No workspaces yet. Create one with: arb create <name>");
 				return;
 			}
+
+			const showStatus = !options.quick;
+
+			// ── JSON output path ──
+			if (options.json) {
+				const jsonEntries: ListJsonWorkspace[] = rows.map((row) => ({
+					workspace: row.name,
+					active: row.marker,
+					branch: row.special === "config-missing" ? null : row.branch || null,
+					base: row.special === "config-missing" ? null : row.base || null,
+					repoCount: row.special === "config-missing" ? null : Number.parseInt(row.repos, 10) || 0,
+					status: row.special,
+				}));
+
+				if (!showStatus) {
+					process.stdout.write(`${JSON.stringify(jsonEntries, null, 2)}\n`);
+					return;
+				}
+
+				// Gather all workspace summaries (no progress display in JSON mode)
+				const results = await Promise.all(
+					toScan.map(async (entry) => {
+						const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir);
+						return { index: entry.index, summary };
+					}),
+				);
+
+				for (const { index, summary } of results) {
+					const entry = jsonEntries[index];
+					if (entry && entry.status === null) {
+						const agg = computeAggregates(summary);
+						Object.assign(entry, agg);
+					}
+				}
+
+				process.stdout.write(`${JSON.stringify(jsonEntries, null, 2)}\n`);
+				return;
+			}
+
+			// ── Table output path ──
 
 			// Column widths
 			if (maxName < 9) maxName = 9;
@@ -138,7 +196,6 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 			if (hasAnyBase && maxBase < 4) maxBase = 4;
 			if (maxRepos < 5) maxRepos = 5;
 
-			const showStatus = !options.quick;
 			const tty = isTTY();
 
 			// Render helpers
@@ -253,37 +310,31 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		});
 }
 
-function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
-	const dirtyCount = summary.dirty;
-	const unpushedCount = summary.repos.filter((r) => !r.remote.local && isUnpushed(r)).length;
-	const behindCount = summary.repos.filter((r) => (r.base && r.base.behind > 0) || r.remote.behind > 0).length;
-	const driftedCount = summary.drifted;
+function computeAggregates(summary: WorkspaceSummary): {
+	dirty: number;
+	unpushed: number;
+	behind: number;
+	drifted: number;
+} {
+	return {
+		dirty: summary.dirty,
+		unpushed: summary.repos.filter((r) => !r.remote.local && isUnpushed(r)).length,
+		behind: summary.repos.filter((r) => (r.base && r.base.behind > 0) || r.remote.behind > 0).length,
+		drifted: summary.drifted,
+	};
+}
 
-	const statusParts: string[] = [];
+function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
+	const agg = computeAggregates(summary);
+
 	const statusColoredParts: string[] = [];
 
-	if (dirtyCount > 0) {
-		const text = `${dirtyCount} dirty`;
-		statusParts.push(text);
-		statusColoredParts.push(yellow(text));
-	}
-	if (unpushedCount > 0) {
-		const text = `${unpushedCount} unpushed`;
-		statusParts.push(text);
-		statusColoredParts.push(yellow(text));
-	}
-	if (behindCount > 0) {
-		const text = `${behindCount} behind`;
-		statusParts.push(text);
-		statusColoredParts.push(text);
-	}
-	if (driftedCount > 0) {
-		const text = `${driftedCount} drifted`;
-		statusParts.push(text);
-		statusColoredParts.push(yellow(text));
-	}
+	if (agg.dirty > 0) statusColoredParts.push(yellow(`${agg.dirty} dirty`));
+	if (agg.unpushed > 0) statusColoredParts.push(yellow(`${agg.unpushed} unpushed`));
+	if (agg.behind > 0) statusColoredParts.push(`${agg.behind} behind`);
+	if (agg.drifted > 0) statusColoredParts.push(yellow(`${agg.drifted} drifted`));
 
-	if (statusParts.length === 0) {
+	if (statusColoredParts.length === 0) {
 		row.statusColored = "ok";
 	} else {
 		row.statusColored = statusColoredParts.join(", ");
