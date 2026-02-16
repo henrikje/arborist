@@ -98,7 +98,7 @@ Removes workspaces and their worktrees. Shows status of each worktree before pro
 - `[names...]` — Workspace names to remove (prompted if not provided)
 
 **Flags:**
-- `-f, --force` — Skip safety checks (uncommitted changes, unpushed commits)
+- `-f, --force` — Force removal of at-risk workspaces (implies `--yes`)
 - `-d, --delete-remote` — Also delete remote branches
 - `-a, --all-ok` — Remove all workspaces with clean status
 - `-n, --dry-run` — Show what would be removed without executing
