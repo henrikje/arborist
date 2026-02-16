@@ -66,6 +66,10 @@ export function inlineResult(repo: string, text: string): void {
 	}
 }
 
+export function plural(count: number, singular: string, pluralForm?: string): string {
+	return `${count} ${count === 1 ? singular : (pluralForm ?? `${singular}s`)}`;
+}
+
 export function stderr(text: string): void {
 	process.stderr.write(text);
 }

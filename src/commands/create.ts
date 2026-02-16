@@ -3,7 +3,7 @@ import input from "@inquirer/input";
 import type { Command } from "commander";
 import { writeConfig } from "../lib/config";
 import { validateBranchName, validateWorkspaceName } from "../lib/git";
-import { error, info, success, warn } from "../lib/output";
+import { dim, error, info, plural, success, warn } from "../lib/output";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, selectReposInteractive } from "../lib/repos";
 import { applyRepoTemplates, applyWorkspaceTemplates } from "../lib/templates";
@@ -119,25 +119,27 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				const repoTemplates = applyRepoTemplates(ctx.baseDir, wsDir, result.created);
 				const totalSeeded = wsTemplates.seeded.length + repoTemplates.seeded.length;
 				if (totalSeeded > 0) {
-					info(`Seeded ${totalSeeded} template file(s)`);
+					info(`Seeded ${plural(totalSeeded, "template file")}`);
 				}
 				for (const f of [...wsTemplates.failed, ...repoTemplates.failed]) {
 					warn(`Failed to copy template ${f.path}: ${f.error}`);
 				}
 
 				process.stderr.write("\n");
+				const branchSuffix = branch === name.toLowerCase() ? "" : ` on branch ${branch}`;
 				if (repos.length === 0) {
-					success(`Created workspace ${name} on branch ${branch} at ${wsDir}`);
+					success(`Created workspace ${name}`);
+					info(`  ${dim(wsDir)}`);
 					warn("No repos added. Use 'arb add' to add repos to this workspace.");
 				} else if (result.failed.length === 0 && result.skipped.length === 0) {
-					success(
-						`Created workspace ${name} with ${result.created.length} worktree(s) on branch ${branch} at ${wsDir}`,
-					);
+					success(`Created workspace ${name} (${plural(result.created.length, "repo")})${branchSuffix}`);
+					info(`  ${dim(wsDir)}`);
 				} else {
-					success(`Created workspace ${name} on branch ${branch} at ${wsDir}`);
+					success(`Created workspace ${name}${branchSuffix}`);
 					if (result.created.length > 0) info(`  added:   ${result.created.join(" ")}`);
 					if (result.skipped.length > 0) warn(`  skipped: ${result.skipped.join(" ")}`);
 					if (result.failed.length > 0) error(`  failed:  ${result.failed.join(" ")}`);
+					info(`  ${dim(wsDir)}`);
 				}
 			},
 		);

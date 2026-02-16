@@ -2317,7 +2317,7 @@ delete_workspace_config() {
     arb fetch >/dev/null 2>&1
     run arb rebase repo-a --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Rebased 1 repo(s)"* ]]
+    [[ "$output" == *"Rebased 1 repo"* ]]
     # repo-b should not appear in output
     [[ "$output" != *"repo-b"* ]]
 }
@@ -2523,7 +2523,7 @@ delete_workspace_config() {
     cd "$TEST_DIR/project/my-feature"
     run arb push repo-a --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Pushed 1 repo(s)"* ]]
+    [[ "$output" == *"Pushed 1 repo"* ]]
     [[ "$output" != *"repo-b"* ]]
 }
 
@@ -2619,7 +2619,7 @@ delete_workspace_config() {
     cd "$TEST_DIR/project/my-feature"
     run arb pull repo-a --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Pulled 1 repo(s)"* ]]
+    [[ "$output" == *"Pulled 1 repo"* ]]
     [[ "$output" != *"repo-b"* ]]
 }
 
@@ -3405,7 +3405,7 @@ push_then_delete_remote() {
 
     run arb create tpl-count-test repo-a
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Seeded 2 template file(s)"* ]]
+    [[ "$output" == *"Seeded 2 template files"* ]]
 }
 
 @test "arb remove --all-ok --force produces compact output" {
@@ -3419,7 +3419,7 @@ push_then_delete_remote() {
     # Should have compact inline results, not per-workspace status tables
     [[ "$output" == *"[ws-one] removed"* ]]
     [[ "$output" == *"[ws-two] removed"* ]]
-    [[ "$output" == *"Removed 2 workspace(s)"* ]]
+    [[ "$output" == *"Removed 2 workspaces"* ]]
     # Should NOT contain per-workspace status tables (clean, pushed appears in status tables)
     [[ "$output" != *"clean, pushed"* ]]
 }
@@ -3432,7 +3432,7 @@ push_then_delete_remote() {
     [ "$status" -eq 0 ]
     [[ "$output" == *"[ws-x] removed"* ]]
     [[ "$output" == *"[ws-y] removed"* ]]
-    [[ "$output" == *"Removed 2 workspace(s)"* ]]
+    [[ "$output" == *"Removed 2 workspaces"* ]]
     [[ "$output" != *"clean, pushed"* ]]
 }
 
