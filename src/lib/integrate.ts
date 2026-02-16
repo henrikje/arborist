@@ -34,7 +34,7 @@ interface RepoAssessment {
 export async function integrate(
 	ctx: ArbContext,
 	mode: IntegrateMode,
-	options: { fetch?: boolean; yes?: boolean },
+	options: { fetch?: boolean; yes?: boolean; dryRun?: boolean },
 	repoArgs: string[],
 ): Promise<void> {
 	const verb = mode === "rebase" ? "Rebase" : "Merge";
@@ -94,6 +94,8 @@ export async function integrate(
 		info(upToDate.length > 0 ? "All repos up to date" : "Nothing to do");
 		return;
 	}
+
+	if (options.dryRun) return;
 
 	if (!options.yes) {
 		if (!isTTY()) {

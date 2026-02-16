@@ -393,11 +393,22 @@ Here `api` is a fork (base is `upstream/main`) while `web` uses a single origin 
 
 ### Non-interactive mode
 
-Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, and `merge`. Without it, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
+Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, and `merge`. For `remove`, use `--force` (`-f`) instead. Without these flags, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
 
 ```bash
 arb rebase --yes && arb push --force --yes
 ```
+
+### Dry run
+
+Use `--dry-run` (`-n`) to preview what a command would do without executing it. The command runs its normal fetch and assessment phases, displays the plan, then exits cleanly:
+
+```bash
+arb push --dry-run        # see what would be pushed
+arb push --yes            # looks good — go ahead
+```
+
+This is especially useful in scripted or AI-driven workflows where you want to inspect the plan before committing to it. The flag works on `push`, `pull`, `rebase`, `merge`, and `remove`.
 
 ### Machine-readable output
 

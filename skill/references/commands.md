@@ -6,6 +6,8 @@ Complete reference for all 18 `arb` commands. Global options available on every 
 - `-v, --version` — Show version
 - `-h, --help` — Show help
 
+**Important:** Global options must come **before** the command name (e.g., `arb -w my-ws push`, NOT `arb push -w my-ws`).
+
 ---
 
 ## Setup Commands
@@ -87,7 +89,7 @@ Creates a workspace with worktrees for selected repos on a shared feature branch
 Remove one or more workspaces.
 
 ```
-arb remove [names...] [-f] [-d] [-a] [-y]
+arb remove [names...] [-f] [-d] [-a] [-n]
 ```
 
 Removes workspaces and their worktrees. Shows status of each worktree before proceeding. Prompts with a picker when run without arguments.
@@ -99,9 +101,9 @@ Removes workspaces and their worktrees. Shows status of each worktree before pro
 - `-f, --force` — Skip safety checks (uncommitted changes, unpushed commits)
 - `-d, --delete-remote` — Also delete remote branches
 - `-a, --all-ok` — Remove all workspaces with clean status
-- `-y, --yes` — Skip confirmation prompt
+- `-n, --dry-run` — Show what would be removed without executing
 
-**Non-interactive usage:** Always pass `-y` and provide workspace name(s). NEVER use without user confirmation.
+**Non-interactive usage:** Use `--dry-run` first to preview, then `--force` to execute. NEVER use without user confirmation.
 
 ---
 
@@ -298,7 +300,7 @@ Fetches from all configured remotes for every repo in the workspace, in parallel
 Pull the feature branch from the publish remote.
 
 ```
-arb pull [repos...] [-y] [--rebase] [--merge]
+arb pull [repos...] [-n] [-y] [--rebase] [--merge]
 ```
 
 Pulls the feature branch for all or specified repos. Fetches first, shows a plan, then pulls. Skips repos that haven't been pushed or where the remote branch is gone. Reports conflicts at the end.
@@ -307,11 +309,12 @@ Pulls the feature branch for all or specified repos. Fetches first, shows a plan
 - `[repos...]` — Repos to pull (all if not specified)
 
 **Flags:**
+- `-n, --dry-run` — Show what would be pulled without executing
 - `-y, --yes` — Skip confirmation prompt
 - `--rebase` — Pull with rebase
 - `--merge` — Pull with merge
 
-**Non-interactive usage:** Always pass `-y`.
+**Non-interactive usage:** Use `--dry-run` first to preview, then `--yes` to execute.
 
 ---
 
@@ -320,7 +323,7 @@ Pulls the feature branch for all or specified repos. Fetches first, shows a plan
 Push the feature branch to the publish remote.
 
 ```
-arb push [repos...] [-f] [--no-fetch] [-y]
+arb push [repos...] [-f] [--no-fetch] [-n] [-y]
 ```
 
 Fetches all repos, then pushes the feature branch. Sets up tracking on first push. Shows a plan before pushing. Skips repos without a remote.
@@ -331,9 +334,10 @@ Fetches all repos, then pushes the feature branch. Sets up tracking on first pus
 **Flags:**
 - `-f, --force` — Force push with lease (use after rebase)
 - `--no-fetch` — Skip fetching before push
+- `-n, --dry-run` — Show what would be pushed without executing
 - `-y, --yes` — Skip confirmation prompt
 
-**Non-interactive usage:** Always pass `-y`. Use `-f` only after rebase.
+**Non-interactive usage:** Use `--dry-run` first to preview, then `--yes` to execute. Use `-f` only after rebase.
 
 ---
 
@@ -342,7 +346,7 @@ Fetches all repos, then pushes the feature branch. Sets up tracking on first pus
 Rebase feature branches onto the base branch.
 
 ```
-arb rebase [repos...] [-F] [-y]
+arb rebase [repos...] [-F] [-n] [-y]
 ```
 
 Fetches all repos, then rebases the feature branch onto the updated base branch. Skips repos with uncommitted changes or already up to date. Reports conflicts at the end with per-repo resolution instructions.
@@ -352,9 +356,10 @@ Fetches all repos, then rebases the feature branch onto the updated base branch.
 
 **Flags:**
 - `-F, --no-fetch` — Skip fetching before rebase
+- `-n, --dry-run` — Show what would be rebased without executing
 - `-y, --yes` — Skip confirmation prompt
 
-**Non-interactive usage:** Always pass `-y`.
+**Non-interactive usage:** Use `--dry-run` first to preview, then `--yes` to execute.
 
 ---
 
@@ -363,7 +368,7 @@ Fetches all repos, then rebases the feature branch onto the updated base branch.
 Merge the base branch into feature branches.
 
 ```
-arb merge [repos...] [-F] [-y]
+arb merge [repos...] [-F] [-n] [-y]
 ```
 
 Fetches all repos, then merges the base branch into the feature branch. Same behavior as rebase for skip logic and conflict reporting.
@@ -373,9 +378,10 @@ Fetches all repos, then merges the base branch into the feature branch. Same beh
 
 **Flags:**
 - `-F, --no-fetch` — Skip fetching before merge
+- `-n, --dry-run` — Show what would be merged without executing
 - `-y, --yes` — Skip confirmation prompt
 
-**Non-interactive usage:** Always pass `-y`.
+**Non-interactive usage:** Use `--dry-run` first to preview, then `--yes` to execute.
 
 ---
 

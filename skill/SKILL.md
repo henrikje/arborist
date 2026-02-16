@@ -118,11 +118,22 @@ Key signals in status output:
 - Use `arb add <repo>` to add more repos to an existing workspace
 - Use `arb drop <repo>` to remove repos you no longer need in the workspace
 
+## Working Directory
+
+CRITICAL: Arb commands detect the workspace from the current working directory. You MUST `cd` into the workspace directory before running workspace-scoped commands (`status`, `push`, `pull`, `rebase`, `merge`, `remove`, etc.). Running from the wrong directory will silently operate on the wrong workspace — or fail with a confusing error.
+
+The global `-w, --workspace` option exists but it is a **global option** that must come **before** the subcommand name (e.g., `arb -w my-ws push --dry-run`, NOT `arb push -w my-ws`). Due to this ordering restriction, `cd`-ing into the workspace is the safer and recommended approach.
+
 ## Non-Interactive Mode
 
 CRITICAL: Claude runs without a TTY. Always follow these rules:
 
-- **Always pass `-y` / `--yes`** to `create`, `remove`, `pull`, `push`, `rebase`, and `merge` to skip confirmation prompts. Without `-y`, these commands will hang waiting for input.
+- **Preview before executing** — Use `--dry-run` (`-n`) on `push`, `pull`, `rebase`, `merge`, and `remove` to see what would happen before committing. Then execute with `--yes` (or `--force` for `remove`):
+  ```
+  arb push --dry-run        # preview the plan
+  arb push --yes            # execute it
+  ```
+- **Always pass `-y` / `--yes`** to `create`, `pull`, `push`, `rebase`, and `merge` when you are ready to execute. For `remove`, use `--force` instead. Without these flags, commands will hang waiting for input.
 - Use `--json` on `arb status` or `arb list` when you need to parse the output programmatically.
 - `arb list -q` for fast workspace listing without status computation.
 - Exit codes: 0 = success, 1 = expected failure (conflicts, nothing to do), 2 = unexpected error.
@@ -131,13 +142,14 @@ Commands that do NOT need `-y`: `init`, `clone`, `repos`, `list`, `path`, `cd`, 
 
 ## Safety Rules
 
-1. **Always use `arb` commands instead of raw `git` when inside a workspace** — Use `arb push` instead of `git push`, `arb pull` instead of `git pull`, `arb rebase` instead of `git rebase`, etc. Arb commands handle worktree-specific concerns (tracking, remote resolution, multi-repo coordination) that raw git does not. Only fall back to raw git for operations arb doesn't cover (e.g., `git add`, `git commit`, `git diff`).
-2. **Never `arb remove` without user confirmation** — This deletes worktrees and cannot be undone. Always ask first.
-3. **Never use `--force` on remove** without user consent — Bypasses dirty/unpushed safety checks.
-4. **Prefer rebase over merge** unless the user explicitly asks for merge.
-5. **Run `arb status` before sync operations** to understand current state before rebasing, merging, pushing, or pulling.
-6. **Guide through conflicts** — When conflicts occur, walk the user through resolution repo by repo. Do NOT force-skip or abort without asking.
-7. **Force push only after rebase** — `arb push -f -y` uses `--force-with-lease` internally, but only use it when branches have been rebased.
+1. **Preview before executing** — Use `--dry-run` on `push`, `pull`, `rebase`, `merge`, and `remove` to see what would happen before committing with `--yes` (or `--force` for `remove`).
+2. **Always use `arb` commands instead of raw `git` when inside a workspace** — Use `arb push` instead of `git push`, `arb pull` instead of `git pull`, `arb rebase` instead of `git rebase`, etc. Arb commands handle worktree-specific concerns (tracking, remote resolution, multi-repo coordination) that raw git does not. Only fall back to raw git for operations arb doesn't cover (e.g., `git add`, `git commit`, `git diff`).
+3. **Never `arb remove` without user confirmation** — This deletes worktrees and cannot be undone. Always ask first.
+4. **Never use `--force` on remove** without user consent — Bypasses dirty/unpushed safety checks.
+5. **Prefer rebase over merge** unless the user explicitly asks for merge.
+6. **Run `arb status` before sync operations** to understand current state before rebasing, merging, pushing, or pulling.
+7. **Guide through conflicts** — When conflicts occur, walk the user through resolution repo by repo. Do NOT force-skip or abort without asking.
+8. **Force push only after rebase** — `arb push -f -y` uses `--force-with-lease` internally, but only use it when branches have been rebased.
 
 ## Command Quick Reference
 
