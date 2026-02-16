@@ -711,6 +711,36 @@ teardown() {
     [[ "$output" != *"BASE"* ]]
 }
 
+@test "arb list --quick shows workspaces without STATUS column" {
+    arb create ws-one repo-a
+    arb create ws-two repo-b
+    run arb list --quick
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-one"* ]]
+    [[ "$output" == *"ws-two"* ]]
+    [[ "$output" == *"WORKSPACE"* ]]
+    [[ "$output" == *"BRANCH"* ]]
+    [[ "$output" == *"REPOS"* ]]
+    [[ "$output" != *"STATUS"* ]]
+    [[ "$output" != *"ok"* ]]
+}
+
+@test "arb list --quick -q shorthand works" {
+    arb create ws-one repo-a
+    run arb list -q
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-one"* ]]
+    [[ "$output" != *"STATUS"* ]]
+}
+
+@test "arb list piped output has no progress escape sequences" {
+    arb create ws-one repo-a
+    arb create ws-two repo-b
+    result=$(arb list 2>/dev/null)
+    # stdout should not contain cursor movement sequences
+    [[ "$result" != *$'\033['*'A'* ]]
+}
+
 # ── path ─────────────────────────────────────────────────────────
 
 @test "arb path returns correct path" {
