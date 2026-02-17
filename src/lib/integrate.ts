@@ -1,18 +1,11 @@
 import confirm from "@inquirer/confirm";
 import { configGet } from "./config";
-import {
-	checkBranchMatch,
-	detectOperation,
-	getDefaultBranch,
-	git,
-	hasRemote,
-	isRepoDirty,
-	remoteBranchExists,
-} from "./git";
+import { getShortHead, git } from "./git";
 import { dim, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "./output";
 import { parallelFetch, reportFetchFailures } from "./parallel-fetch";
-import { type RepoRemotes, resolveRemotesMap } from "./remotes";
+import { resolveRemotesMap } from "./remotes";
 import { classifyRepos, resolveRepoSelection } from "./repos";
+import { type RepoStatus, computeFlags, gatherRepoStatus } from "./status";
 import { isTTY } from "./tty";
 import type { ArbContext } from "./types";
 import { requireBranch, requireWorkspace } from "./workspace-context";
@@ -29,6 +22,7 @@ interface RepoAssessment {
 	behind: number;
 	ahead: number;
 	headSha: string;
+	shallow: boolean;
 }
 
 export async function integrate(
@@ -63,7 +57,9 @@ export async function integrate(
 	// Phase 3: assess each repo
 	const assessments: RepoAssessment[] = [];
 	for (const repo of selectedRepos) {
-		assessments.push(await assessRepo(repo, wsDir, ctx.reposDir, branch, configBase, remotesMap.get(repo)));
+		const repoDir = `${wsDir}/${repo}`;
+		const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
+		assessments.push(await assessRepo(status, repoDir, branch));
 	}
 
 	// Phase 4: display plan & confirm
@@ -88,6 +84,18 @@ export async function integrate(
 			process.stderr.write(`  ${yellow(`${a.repo}   skipped \u2014 ${a.skipReason}`)}\n`);
 		}
 	}
+
+	// Shallow clone warning
+	const shallowRepos = assessments.filter((a) => a.shallow);
+	if (shallowRepos.length > 0) {
+		process.stderr.write("\n");
+		for (const a of shallowRepos) {
+			warn(
+				`  ${a.repo} is a shallow clone; ahead/behind counts may be inaccurate and ${mode} may fail if the merge base is beyond the shallow boundary`,
+			);
+		}
+	}
+
 	process.stderr.write("\n");
 
 	if (willOperate.length === 0) {
@@ -165,73 +173,61 @@ export async function integrate(
 	}
 }
 
-async function assessRepo(
-	repo: string,
-	wsDir: string,
-	reposDir: string,
-	branch: string,
-	configBase: string | null,
-	remotes?: RepoRemotes,
-): Promise<RepoAssessment> {
-	const repoDir = `${wsDir}/${repo}`;
-	const repoPath = `${reposDir}/${repo}`;
-	const upstreamRemote = remotes?.upstream ?? "origin";
+async function assessRepo(status: RepoStatus, repoDir: string, branch: string): Promise<RepoAssessment> {
+	const upstreamRemote = status.base?.remote ?? "origin";
 
-	// Capture HEAD SHA for recovery info
-	const headResult = await git(repoDir, "rev-parse", "--short", "HEAD");
-	const headSha = headResult.exitCode === 0 ? headResult.stdout.trim() : "";
+	const headSha = await getShortHead(repoDir);
 
-	const base: RepoAssessment = { repo, repoDir, outcome: "skip", behind: 0, ahead: 0, upstreamRemote, headSha };
+	const base: RepoAssessment = {
+		repo: status.name,
+		repoDir,
+		outcome: "skip",
+		behind: 0,
+		ahead: 0,
+		upstreamRemote,
+		headSha,
+		shallow: status.identity.shallow,
+	};
 
-	// Check remote
-	if (!(await hasRemote(repoPath))) {
+	// Local repo — no remote
+	if (status.publish === null) {
 		return { ...base, skipReason: "local repo" };
 	}
 
-	// Detect in-progress operation (before branch check — during rebase/merge HEAD may be detached)
-	const operation = await detectOperation(repoDir);
-	if (operation) {
-		return { ...base, skipReason: `${operation} in progress` };
+	// Operation in progress
+	if (status.operation !== null) {
+		return { ...base, skipReason: `${status.operation} in progress` };
 	}
 
-	// Check branch match
-	const bm = await checkBranchMatch(repoDir, branch);
-	if (!bm.matches) {
-		return { ...base, skipReason: `on branch ${bm.actual}, expected ${branch}` };
+	// Branch check — detached or drifted
+	if (status.identity.headMode.kind === "detached") {
+		return { ...base, skipReason: "HEAD is detached" };
+	}
+	if (status.identity.headMode.branch !== branch) {
+		return { ...base, skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}` };
 	}
 
-	// Check dirty
-	if (await isRepoDirty(repoDir)) {
+	// Dirty check
+	const flags = computeFlags(status, branch);
+	if (flags.isDirty) {
 		return { ...base, skipReason: "uncommitted changes" };
 	}
 
-	// Resolve base branch
-	let baseBranch: string | null = null;
-	if (configBase) {
-		if (await remoteBranchExists(repoPath, configBase, upstreamRemote)) {
-			baseBranch = configBase;
-		}
-	}
-	if (!baseBranch) {
-		baseBranch = await getDefaultBranch(repoPath, upstreamRemote);
-	}
-	if (!baseBranch) {
+	// No base branch resolved
+	if (status.base === null) {
 		return { ...base, skipReason: "no base branch" };
 	}
 
-	// Ahead/behind base
-	const lr = await git(repoDir, "rev-list", "--left-right", "--count", `${upstreamRemote}/${baseBranch}...HEAD`);
-	if (lr.exitCode !== 0) {
-		return { ...base, skipReason: "cannot compare with base" };
+	// Up-to-date or will-operate
+	if (status.base.behind === 0) {
+		return { ...base, outcome: "up-to-date", baseBranch: status.base.ref, behind: 0, ahead: status.base.ahead };
 	}
 
-	const parts = lr.stdout.trim().split(/\s+/);
-	const behind = Number.parseInt(parts[0] ?? "0", 10);
-	const ahead = Number.parseInt(parts[1] ?? "0", 10);
-
-	if (behind === 0) {
-		return { ...base, outcome: "up-to-date", baseBranch, behind: 0, ahead };
-	}
-
-	return { ...base, outcome: "will-operate", baseBranch, behind, ahead };
+	return {
+		...base,
+		outcome: "will-operate",
+		baseBranch: status.base.ref,
+		behind: status.base.behind,
+		ahead: status.base.ahead,
+	};
 }

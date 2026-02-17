@@ -133,15 +133,13 @@ Lists all workspaces with aggregate status. The active workspace is marked with 
     "base": "main",
     "repoCount": 3,
     "status": null,
-    "dirty": 1,
-    "unpushed": 0,
-    "behind": 0,
-    "drifted": 0
+    "withIssues": 1,
+    "issueLabels": ["dirty", "unpushed"]
   }
 ]
 ```
 
-Fields `dirty`, `unpushed`, `behind`, and `drifted` are omitted when `--quick` is used. The `status` field is `null` for normal workspaces, `"config-missing"` if `.arbws/config` is absent, or `"empty"` if the workspace has no worktrees.
+Fields `withIssues` and `issueLabels` are omitted when `--quick` is used. The `status` field is `null` for normal workspaces, `"config-missing"` if `.arbws/config` is absent, or `"empty"` if the workspace has no worktrees.
 
 ---
 
@@ -241,29 +239,10 @@ Shows each worktree's position relative to the base branch, push status, and loc
   "repos": [
     {
       "name": "frontend",
-      "head": "abc1234",
-      "branch": {
-        "expected": "feature-login",
-        "actual": "feature-login",
-        "drifted": false,
-        "detached": false
-      },
-      "base": {
-        "name": "main",
-        "ahead": 3,
-        "behind": 0
-      },
-      "remote": {
-        "pushed": true,
-        "ahead": 0,
-        "behind": 0,
-        "local": false,
-        "gone": false,
-        "trackingBranch": "origin/feature-login"
-      },
-      "remotes": {
-        "upstream": "origin",
-        "publish": "origin"
+      "identity": {
+        "worktreeKind": "linked",
+        "headMode": { "kind": "attached", "branch": "feature-login" },
+        "shallow": false
       },
       "local": {
         "staged": 0,
@@ -271,14 +250,25 @@ Shows each worktree's position relative to the base branch, push status, and loc
         "untracked": 1,
         "conflicts": 0
       },
+      "base": {
+        "remote": "origin",
+        "ref": "main",
+        "ahead": 3,
+        "behind": 0
+      },
+      "publish": {
+        "remote": "origin",
+        "ref": "origin/feature-login",
+        "refMode": "configured",
+        "toPush": 0,
+        "toPull": 0
+      },
       "operation": null
     }
   ],
   "total": 2,
-  "pushed": 2,
-  "dirty": 1,
-  "behind": 0,
-  "drifted": 0
+  "withIssues": 1,
+  "issueLabels": ["dirty"]
 }
 ```
 

@@ -3,18 +3,11 @@ import { basename } from "node:path";
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
-import {
-	branchExistsLocally,
-	git,
-	hasRemote,
-	isRepoDirty,
-	remoteBranchExists,
-	validateWorkspaceName,
-} from "../lib/git";
+import { branchExistsLocally, git, hasRemote, remoteBranchExists, validateWorkspaceName } from "../lib/git";
 import { error, green, info, inlineResult, inlineStart, plural, red, success, warn, yellow } from "../lib/output";
 import { resolveRemotes } from "../lib/remotes";
 import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
-import { type RepoStatus, gatherRepoStatus, isDirty, isUnpushed } from "../lib/status";
+import { type RepoStatus, computeFlags, gatherRepoStatus, wouldLoseWork } from "../lib/status";
 import { type TemplateDiff, diffTemplates } from "../lib/templates";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
@@ -26,7 +19,6 @@ interface WorkspaceAssessment {
 	branch: string;
 	repos: string[];
 	repoStatuses: RepoStatus[];
-	canonicalDirtyMap: Map<string, boolean>;
 	remoteRepos: string[];
 	atRiskCount: number;
 	hasAtRisk: boolean;
@@ -71,14 +63,7 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 	const repoStatuses: RepoStatus[] = [];
 	for (const repo of repos) {
 		const wtPath = `${wsDir}/${repo}`;
-		repoStatuses.push(await gatherRepoStatus(wtPath, ctx.reposDir, branch, configBase));
-	}
-
-	// Check canonical repos for dirt
-	const canonicalDirtyMap = new Map<string, boolean>();
-	for (const repo of repos) {
-		const repoPath = `${ctx.reposDir}/${repo}`;
-		canonicalDirtyMap.set(repo, await isRepoDirty(repoPath));
+		repoStatuses.push(await gatherRepoStatus(wtPath, ctx.reposDir, configBase));
 	}
 
 	// Determine at-risk repos and collect remote repos
@@ -87,23 +72,15 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 	const remoteRepos: string[] = [];
 
 	for (const status of repoStatuses) {
-		const repoPath = `${ctx.reposDir}/${status.name}`;
-		if (await hasRemote(repoPath)) {
-			if (status.remote.pushed) {
+		if (status.publish !== null) {
+			if (status.publish.refMode === "configured" || status.publish.refMode === "implicit") {
 				remoteRepos.push(status.name);
 			}
 		}
 
-		const repoIsDirty = isDirty(status);
-		const repoIsUnpushed = !status.remote.local && isUnpushed(status);
-		const canonicalDirty = canonicalDirtyMap.get(status.name) ?? false;
-
-		let notPushedWithCommits = false;
-		if (!status.remote.local && !status.remote.pushed && status.base && status.base.ahead > 0) {
-			notPushedWithCommits = true;
-		}
-
-		const atRisk = repoIsDirty || repoIsUnpushed || notPushedWithCommits || canonicalDirty;
+		const flags = computeFlags(status, branch);
+		const localWithCommits = status.publish === null && status.base !== null && status.base.ahead > 0;
+		const atRisk = wouldLoseWork(flags) || localWithCommits;
 		if (atRisk) {
 			hasAtRisk = true;
 			atRiskCount++;
@@ -119,7 +96,6 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 		branch,
 		repos,
 		repoStatuses,
-		canonicalDirtyMap,
 		remoteRepos,
 		atRiskCount,
 		hasAtRisk,
@@ -128,23 +104,20 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 }
 
 function displayStatusTable(assessment: WorkspaceAssessment): void {
-	const { repos, repoStatuses, canonicalDirtyMap, atRiskCount, hasAtRisk, templateDiffs } = assessment;
+	const { repos, repoStatuses, atRiskCount, hasAtRisk, templateDiffs } = assessment;
 
 	const maxRepoLen = Math.max(...repos.map((r) => r.length));
 	for (const status of repoStatuses) {
-		const canonicalDirty = canonicalDirtyMap.get(status.name) ?? false;
-		const notPushedWithCommits = !status.remote.local && !status.remote.pushed && status.base && status.base.ahead > 0;
+		const notPushedWithCommits =
+			status.publish !== null && status.publish.refMode === "noRef" && status.base && status.base.ahead > 0;
+
+		const toPush = status.publish !== null ? (status.publish.toPush ?? 0) : 0;
 
 		const parts = [
 			status.local.staged > 0 && green(`${status.local.staged} staged`),
 			status.local.modified > 0 && yellow(`${status.local.modified} modified`),
 			status.local.untracked > 0 && yellow(`${status.local.untracked} untracked`),
-			canonicalDirty && yellow("canonical repo dirty"),
-			notPushedWithCommits
-				? red("not pushed at all")
-				: status.remote.pushed && status.remote.ahead > 0
-					? yellow(`${status.remote.ahead} commits not pushed`)
-					: !status.remote.local && !status.remote.pushed && false,
+			notPushedWithCommits ? red("not pushed at all") : toPush > 0 ? yellow(`${toPush} commits not pushed`) : false,
 		]
 			.filter(Boolean)
 			.join(", ");
@@ -211,11 +184,10 @@ async function executeRemoval(
 }
 
 function isAssessmentOk(assessment: WorkspaceAssessment): boolean {
-	for (const repo of assessment.repoStatuses) {
-		if (isDirty(repo)) return false;
-		if (!repo.remote.local && isUnpushed(repo)) return false;
-		if (repo.branch.drifted) return false;
-		if (repo.remote.local && repo.base && repo.base.ahead > 0) return false;
+	for (const status of assessment.repoStatuses) {
+		const flags = computeFlags(status, assessment.branch);
+		if (wouldLoseWork(flags)) return false;
+		if (status.publish === null && status.base !== null && status.base.ahead > 0) return false;
 	}
 	return true;
 }

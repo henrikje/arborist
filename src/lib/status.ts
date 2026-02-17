@@ -1,27 +1,143 @@
 import { basename } from "node:path";
 import { configGet } from "./config";
-import { branchExistsLocally, detectOperation, getDefaultBranch, git, parseGitStatus, remoteBranchExists } from "./git";
+import {
+	type GitOperation,
+	branchExistsLocally,
+	detectOperation,
+	getDefaultBranch,
+	git,
+	isLinkedWorktree,
+	isShallowRepo,
+	parseGitStatus,
+	remoteBranchExists,
+} from "./git";
 import { type RepoRemotes, getRemoteNames, resolveRemotes } from "./remotes";
 import { workspaceRepoDirs } from "./repos";
 import { workspaceBranch } from "./workspace-branch";
 
+// ── 5-Section Model Types ──
+
 export interface RepoStatus {
 	name: string;
-	head: string;
-	branch: { expected: string; actual: string; drifted: boolean; detached: boolean };
-	base: { name: string; ahead: number; behind: number } | null;
-	remote: {
-		pushed: boolean;
+	identity: {
+		worktreeKind: "full" | "linked";
+		headMode: { kind: "attached"; branch: string } | { kind: "detached" };
+		shallow: boolean;
+	};
+	local: { staged: number; modified: number; untracked: number; conflicts: number };
+	base: {
+		remote: string;
+		ref: string;
 		ahead: number;
 		behind: number;
-		local: boolean;
-		gone: boolean;
-		trackingBranch: string | null;
-	};
-	remotes: RepoRemotes;
-	local: { staged: number; modified: number; untracked: number; conflicts: number };
-	operation: "rebase" | "merge" | "cherry-pick" | null;
+	} | null;
+	publish: {
+		remote: string;
+		ref: string | null;
+		refMode: "noRef" | "implicit" | "configured" | "gone";
+		toPush: number | null; // null = unknown
+		toPull: number | null; // null = unknown
+	} | null; // null when no remote
+	operation: GitOperation;
 }
+
+export interface RepoFlags {
+	isDirty: boolean;
+	isUnpushed: boolean;
+	needsPull: boolean;
+	needsRebase: boolean;
+	isDrifted: boolean;
+	isDetached: boolean;
+	hasOperation: boolean;
+	isLocal: boolean;
+	isGone: boolean;
+	isShallow: boolean;
+}
+
+export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlags {
+	const localDirty =
+		repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0;
+
+	const isDetached = repo.identity.headMode.kind === "detached";
+
+	const isLocal = repo.publish === null;
+
+	const isGone = repo.publish !== null && repo.publish.refMode === "gone";
+
+	// isUnpushed: has commits to push to publish remote, or never pushed with commits ahead of base
+	// Note: "gone" branches are excluded — the remote deleted the branch (typically after PR merge),
+	// so "unpushed" would be misleading. The "gone" flag alone signals the state.
+	let isUnpushed = false;
+	if (repo.publish !== null) {
+		if (repo.publish.toPush !== null && repo.publish.toPush > 0) {
+			isUnpushed = true;
+		} else if (repo.publish.refMode === "noRef" && repo.base !== null && repo.base.ahead > 0) {
+			isUnpushed = true;
+		}
+	}
+
+	// needsPull: publish remote has commits to pull
+	const needsPull = repo.publish !== null && repo.publish.toPull !== null && repo.publish.toPull > 0;
+
+	// needsRebase: behind base branch
+	const needsRebase = repo.base !== null && repo.base.behind > 0;
+
+	// isDrifted: on the wrong branch (not detached, but branch doesn't match expected)
+	let isDrifted = false;
+	if (repo.identity.headMode.kind === "attached") {
+		isDrifted = repo.identity.headMode.branch !== expectedBranch;
+	}
+
+	return {
+		isDirty: localDirty,
+		isUnpushed,
+		needsPull,
+		needsRebase,
+		isDrifted,
+		isDetached,
+		hasOperation: repo.operation !== null,
+		isLocal,
+		isGone,
+		isShallow: repo.identity.shallow,
+	};
+}
+
+export function needsAttention(flags: RepoFlags): boolean {
+	return (
+		flags.isDetached ||
+		flags.isDrifted ||
+		flags.hasOperation ||
+		flags.isDirty ||
+		flags.isUnpushed ||
+		flags.isGone ||
+		flags.needsPull ||
+		flags.needsRebase ||
+		flags.isShallow
+	);
+}
+
+const FLAG_LABELS: { key: keyof RepoFlags; label: string }[] = [
+	{ key: "isDirty", label: "dirty" },
+	{ key: "isUnpushed", label: "unpushed" },
+	{ key: "needsPull", label: "behind remote" },
+	{ key: "needsRebase", label: "behind base" },
+	{ key: "isDrifted", label: "drifted" },
+	{ key: "isDetached", label: "detached" },
+	{ key: "hasOperation", label: "operation" },
+	{ key: "isLocal", label: "local" },
+	{ key: "isGone", label: "gone" },
+	{ key: "isShallow", label: "shallow" },
+];
+
+export function flagLabels(flags: RepoFlags): string[] {
+	return FLAG_LABELS.filter(({ key }) => flags[key]).map(({ label }) => label);
+}
+
+export function wouldLoseWork(flags: RepoFlags): boolean {
+	return flags.isDirty || flags.isUnpushed || flags.isDetached || flags.isDrifted || flags.hasOperation;
+}
+
+// ── Workspace Summary ──
 
 export interface WorkspaceSummary {
 	workspace: string;
@@ -29,42 +145,15 @@ export interface WorkspaceSummary {
 	base: string | null;
 	repos: RepoStatus[];
 	total: number;
-	pushed: number;
-	dirty: number;
-	behind: number;
-	drifted: number;
+	withIssues: number;
+	issueLabels: string[];
 }
 
-export type Verdict = "ok" | "dirty" | "unpushed" | "at-risk" | "local";
-
-export function isDirty(repo: RepoStatus): boolean {
-	return repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0;
-}
-
-export function isUnpushed(repo: RepoStatus): boolean {
-	if (repo.remote.gone) {
-		return repo.base !== null && repo.base.ahead > 0;
-	}
-	return repo.remote.ahead > 0 || (!repo.remote.pushed && repo.base !== null && repo.base.ahead > 0);
-}
-
-export function getVerdict(repo: RepoStatus): Verdict {
-	if (repo.remote.local) return "local";
-	if (repo.branch.drifted || repo.branch.detached || repo.operation !== null || (isDirty(repo) && isUnpushed(repo)))
-		return "at-risk";
-	if (isDirty(repo)) return "dirty";
-	if (isUnpushed(repo)) return "unpushed";
-	return "ok";
-}
-
-export function isClean(repo: RepoStatus): boolean {
-	return getVerdict(repo) === "ok";
-}
+// ── Status Gathering ──
 
 export async function gatherRepoStatus(
 	repoDir: string,
 	reposDir: string,
-	expectedBranch: string,
 	configBase: string | null,
 	remotes?: RepoRemotes,
 	knownHasRemote?: boolean,
@@ -72,15 +161,24 @@ export async function gatherRepoStatus(
 	const repo = basename(repoDir);
 	const repoPath = `${reposDir}/${repo}`;
 
-	// HEAD SHA (short)
-	const headResult = await git(repoDir, "rev-parse", "--short", "HEAD");
-	const head = headResult.exitCode === 0 ? headResult.stdout.trim() : "";
+	// ── Section 1: Identity ──
 
-	// Current branch (empty string when detached)
-	const branchResult = await git(repoDir, "branch", "--show-current");
-	const actual = branchResult.exitCode === 0 ? branchResult.stdout.trim() : "";
-	const detached = actual === "";
-	const drifted = detached || actual !== expectedBranch;
+	// Worktree kind check
+	const worktreeKind: "full" | "linked" = isLinkedWorktree(repoDir) ? "linked" : "full";
+
+	// Parallel group: branch, porcelain status, shallow check, git-dir for operations
+	const [branchResult, local, shallow, gitDirResult] = await Promise.all([
+		git(repoDir, "branch", "--show-current"),
+		parseGitStatus(repoDir),
+		isShallowRepo(repoDir),
+		detectOperation(repoDir),
+	]);
+
+	const actualBranch = branchResult.exitCode === 0 ? branchResult.stdout.trim() : "";
+	const detached = actualBranch === "";
+	const headMode: RepoStatus["identity"]["headMode"] = detached
+		? { kind: "detached" }
+		: { kind: "attached", branch: actualBranch };
 
 	// Remote detection — use pre-resolved value if available
 	const repoHasRemote = knownHasRemote ?? (await getRemoteNames(repoPath)).length > 0;
@@ -88,102 +186,120 @@ export async function gatherRepoStatus(
 	// Resolve remote names (upstream for base, publish for tracking)
 	const upstreamRemote = remotes?.upstream ?? "origin";
 	const publishRemote = remotes?.publish ?? "origin";
-	const effectiveRemotes: RepoRemotes = remotes ?? { upstream: "origin", publish: "origin" };
 
-	// Base branch resolution
-	let defaultBranch: string | null = null;
-	if (configBase) {
-		const baseExists = repoHasRemote
-			? await remoteBranchExists(repoPath, configBase, upstreamRemote)
-			: await branchExistsLocally(repoPath, configBase);
-		if (baseExists) {
-			defaultBranch = configBase;
-		}
-	}
-	if (!defaultBranch) {
-		defaultBranch = await getDefaultBranch(repoPath, upstreamRemote);
-	}
+	// ── Section 2: Local (working tree status) ──
+	// Gathered above in the parallel group (parseGitStatus → local).
 
-	// Ahead/behind base branch
+	// ── Section 3: Base (integration status vs upstream default branch) ──
+
 	let baseStatus: RepoStatus["base"] = null;
-	if (defaultBranch && !detached) {
-		const compareRef = repoHasRemote ? `${upstreamRemote}/${defaultBranch}` : defaultBranch;
-		const lr = await git(repoDir, "rev-list", "--left-right", "--count", `${compareRef}...HEAD`);
-		if (lr.exitCode === 0) {
-			const parts = lr.stdout.trim().split(/\s+/);
-			const behind = Number.parseInt(parts[0] ?? "0", 10);
-			const ahead = Number.parseInt(parts[1] ?? "0", 10);
-			baseStatus = { name: defaultBranch, ahead, behind };
+	if (!detached) {
+		// Base branch resolution
+		let defaultBranch: string | null = null;
+		if (configBase) {
+			const baseExists = repoHasRemote
+				? await remoteBranchExists(repoPath, configBase, upstreamRemote)
+				: await branchExistsLocally(repoPath, configBase);
+			if (baseExists) {
+				defaultBranch = configBase;
+			}
+		}
+		if (!defaultBranch && repoHasRemote) {
+			defaultBranch = await getDefaultBranch(repoPath, upstreamRemote);
+		}
+
+		if (defaultBranch) {
+			const compareRef = repoHasRemote ? `${upstreamRemote}/${defaultBranch}` : defaultBranch;
+			const lr = await git(repoDir, "rev-list", "--left-right", "--count", `${compareRef}...HEAD`);
+			if (lr.exitCode === 0) {
+				const parts = lr.stdout.trim().split(/\s+/);
+				const behind = Number.parseInt(parts[0] ?? "0", 10);
+				const ahead = Number.parseInt(parts[1] ?? "0", 10);
+				baseStatus = { remote: upstreamRemote, ref: defaultBranch, ahead, behind };
+			}
 		}
 	}
 
-	// Actual upstream tracking branch
-	let trackingBranch: string | null = null;
+	// ── Section 4: Publish (push/pull status vs publish remote) ──
+
+	let publishStatus: RepoStatus["publish"] = null;
 	if (repoHasRemote && !detached) {
+		// Step 1: Try configured tracking branch
 		const upstreamResult = await git(repoDir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}");
 		if (upstreamResult.exitCode === 0) {
-			trackingBranch = upstreamResult.stdout.trim();
+			const trackingRef = upstreamResult.stdout.trim();
+			// refMode = configured
+			const pushLr = await git(repoDir, "rev-list", "--left-right", "--count", `${trackingRef}...HEAD`);
+			let toPush: number | null = null;
+			let toPull: number | null = null;
+			if (pushLr.exitCode === 0) {
+				const parts = pushLr.stdout.trim().split(/\s+/);
+				toPull = Number.parseInt(parts[0] ?? "0", 10);
+				toPush = Number.parseInt(parts[1] ?? "0", 10);
+			}
+			publishStatus = {
+				remote: publishRemote,
+				ref: trackingRef,
+				refMode: "configured",
+				toPush,
+				toPull,
+			};
+		} else if (await remoteBranchExists(repoDir, actualBranch, publishRemote)) {
+			// Step 2: No tracking config but remote ref exists → implicit
+			const pushLr = await git(
+				repoDir,
+				"rev-list",
+				"--left-right",
+				"--count",
+				`${publishRemote}/${actualBranch}...HEAD`,
+			);
+			let toPush: number | null = null;
+			let toPull: number | null = null;
+			if (pushLr.exitCode === 0) {
+				const parts = pushLr.stdout.trim().split(/\s+/);
+				toPull = Number.parseInt(parts[0] ?? "0", 10);
+				toPush = Number.parseInt(parts[1] ?? "0", 10);
+			}
+			publishStatus = {
+				remote: publishRemote,
+				ref: `${publishRemote}/${actualBranch}`,
+				refMode: "implicit",
+				toPush,
+				toPull,
+			};
+		} else {
+			// Step 3: Check if tracking config exists (→ gone) or not (→ noRef)
+			const configRemote = await git(repoDir, "config", `branch.${actualBranch}.remote`);
+			const isGone = configRemote.exitCode === 0 && configRemote.stdout.trim().length > 0;
+			publishStatus = {
+				remote: publishRemote,
+				ref: null,
+				refMode: isGone ? "gone" : "noRef",
+				toPush: null,
+				toPull: null,
+			};
 		}
-	}
-
-	// Remote push status
-	let remoteStatus: RepoStatus["remote"];
-	if (!repoHasRemote) {
-		remoteStatus = { pushed: false, ahead: 0, behind: 0, local: true, gone: false, trackingBranch: null };
-	} else if (detached) {
-		remoteStatus = { pushed: false, ahead: 0, behind: 0, local: false, gone: false, trackingBranch: null };
-	} else if (trackingBranch) {
-		// Use actual tracking branch for comparison
-		const pushLr = await git(repoDir, "rev-list", "--left-right", "--count", `${trackingBranch}...HEAD`);
-		let pushAhead = 0;
-		let pushBehind = 0;
-		if (pushLr.exitCode === 0) {
-			const parts = pushLr.stdout.trim().split(/\s+/);
-			pushBehind = Number.parseInt(parts[0] ?? "0", 10);
-			pushAhead = Number.parseInt(parts[1] ?? "0", 10);
-		}
-		remoteStatus = { pushed: true, ahead: pushAhead, behind: pushBehind, local: false, gone: false, trackingBranch };
-	} else if (await remoteBranchExists(repoDir, actual, publishRemote)) {
-		// No tracking branch set but remote branch exists — compare against it
-		const pushLr = await git(repoDir, "rev-list", "--left-right", "--count", `${publishRemote}/${actual}...HEAD`);
-		let pushAhead = 0;
-		let pushBehind = 0;
-		if (pushLr.exitCode === 0) {
-			const parts = pushLr.stdout.trim().split(/\s+/);
-			pushBehind = Number.parseInt(parts[0] ?? "0", 10);
-			pushAhead = Number.parseInt(parts[1] ?? "0", 10);
-		}
-		remoteStatus = {
-			pushed: true,
-			ahead: pushAhead,
-			behind: pushBehind,
-			local: false,
-			gone: false,
-			trackingBranch: null,
-		};
+	} else if (!repoHasRemote) {
+		// No remote at all — publish is null (local repo)
+		publishStatus = null;
 	} else {
-		const configRemote = await git(repoDir, "config", `branch.${actual}.remote`);
-		const gone = configRemote.exitCode === 0 && configRemote.stdout.trim().length > 0;
-		remoteStatus = gone
-			? { pushed: true, ahead: 0, behind: 0, local: false, gone: true, trackingBranch: null }
-			: { pushed: false, ahead: 0, behind: 0, local: false, gone: false, trackingBranch: null };
+		// Detached — publish is present but no ref comparison possible
+		publishStatus = {
+			remote: publishRemote,
+			ref: null,
+			refMode: "noRef",
+			toPush: null,
+			toPull: null,
+		};
 	}
-
-	// Working tree status
-	const local = await parseGitStatus(repoDir);
-
-	// Detect in-progress operations via git dir sentinel files
-	const operation = await detectOperation(repoDir);
 
 	return {
 		name: repo,
-		head,
-		branch: { expected: expectedBranch, actual, drifted, detached },
-		base: baseStatus,
-		remote: remoteStatus,
-		remotes: effectiveRemotes,
+		identity: { worktreeKind, headMode, shallow },
 		local,
-		operation,
+		base: baseStatus,
+		publish: publishStatus,
+		operation: gitDirResult,
 	};
 }
 
@@ -197,7 +313,6 @@ export async function gatherWorkspaceSummary(
 	const branch = wb?.branch ?? workspace.toLowerCase();
 	const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 	const repoDirs = workspaceRepoDirs(wsDir);
-	const total = repoDirs.length;
 	let scanned = 0;
 
 	const repos = await Promise.all(
@@ -217,24 +332,25 @@ export async function gatherWorkspaceSummary(
 				}
 			}
 
-			const status = await gatherRepoStatus(repoDir, reposDir, branch, configBase, remotes, repoHasRemote);
+			const status = await gatherRepoStatus(repoDir, reposDir, configBase, remotes, repoHasRemote);
 			scanned++;
-			onProgress?.(scanned, total);
+			onProgress?.(scanned, repoDirs.length);
 			return status;
 		}),
 	);
 
-	let pushed = 0;
-	let dirty = 0;
-	let behind = 0;
-	let drifted = 0;
+	// Compute aggregate flags
+	let withIssues = 0;
+	const allLabels = new Set<string>();
 
 	for (const repo of repos) {
-		if (repo.remote.local || !isUnpushed(repo)) pushed++;
-		if (isDirty(repo)) dirty++;
-		if (repo.base && repo.base.behind > 0) behind++;
-		if (repo.remote.behind > 0) behind++;
-		if (repo.branch.drifted) drifted++;
+		const flags = computeFlags(repo, branch);
+		if (needsAttention(flags)) {
+			withIssues++;
+			for (const label of flagLabels(flags)) {
+				allLabels.add(label);
+			}
+		}
 	}
 
 	return {
@@ -243,9 +359,7 @@ export async function gatherWorkspaceSummary(
 		base: configBase,
 		repos,
 		total: repos.length,
-		pushed,
-		dirty,
-		behind,
-		drifted,
+		withIssues,
+		issueLabels: [...allLabels],
 	};
 }
