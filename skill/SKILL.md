@@ -121,9 +121,22 @@ Key signals in status output:
 
 ## Working Directory
 
-CRITICAL: Arb commands detect the workspace from the current working directory. You MUST `cd` into the workspace directory before running workspace-scoped commands (`status`, `push`, `pull`, `rebase`, `merge`, `remove`, etc.). Running from the wrong directory will silently operate on the wrong workspace — or fail with a confusing error.
+Arb commands detect the workspace from the current working directory. Use the `-C` flag to specify the directory context explicitly — this is the recommended approach for agents and scripts:
 
-The global `-w, --workspace` option exists but it is a **global option** that must come **before** the subcommand name (e.g., `arb -w my-ws push --dry-run`, NOT `arb push -w my-ws`). Due to this ordering restriction, `cd`-ing into the workspace is the safer and recommended approach.
+```
+arb -C /path/to/project status          # run from the arb root
+arb -C /path/to/project/my-ws status    # run from inside a workspace
+```
+
+`-C` works like `git -C`: it changes the working directory before any command runs. It accepts both absolute and relative paths. This is more reliable than `cd`-ing first, because it makes the directory context explicit and avoids mistakes from stale shell state.
+
+The `-w, --workspace` option can be combined with `-C` to target a specific workspace from anywhere:
+
+```
+arb -C /path/to/project -w my-ws push --dry-run
+```
+
+Both `-C` and `-w` are **global options** that must come **before** the subcommand name.
 
 ## Non-Interactive Mode
 

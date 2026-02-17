@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { Command, type Help } from "commander";
 import { registerAddCommand } from "./commands/add";
 import { registerCdCommand } from "./commands/cd";
@@ -161,6 +163,7 @@ program
 	.enablePositionalOptions()
 	.description("Arborist is a workspace manager that makes multi-repo development safe and simple.")
 	.version(`Arborist ${ARB_VERSION}`, "-v, --version")
+	.option("-C <directory>", "Run as if arb was started in <directory>")
 	.option("-w, --workspace <name>", "Target workspace (overrides auto-detect)")
 	.usage("[options] [command]")
 	.configureHelp({ formatHelp: arbFormatHelp, styleTitle: (str) => helpBold(str) })
@@ -170,6 +173,18 @@ program
 		},
 	})
 	.showSuggestionAfterError();
+
+program.hook("preAction", () => {
+	const cwdOpt = program.opts().C;
+	if (cwdOpt) {
+		const resolved = resolve(cwdOpt);
+		if (!existsSync(resolved)) {
+			error(`Cannot change to '${cwdOpt}': no such directory`);
+			process.exit(1);
+		}
+		process.chdir(resolved);
+	}
+});
 
 // Register all commands
 registerInitCommand(program);
