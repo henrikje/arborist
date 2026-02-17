@@ -3,7 +3,7 @@ import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { hasRemote } from "../lib/git";
 import type { ListJsonEntry } from "../lib/json-types";
-import { bold, dim, green, info, plural, red, yellow } from "../lib/output";
+import { dim, green, info, plural, red, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, listWorkspaces, workspaceRepoDirs } from "../lib/repos";
@@ -169,6 +169,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					if (entry && entry.status === null) {
 						entry.withIssues = summary.withIssues;
 						entry.issueLabels = summary.issueLabels;
+						entry.issueCounts = summary.issueCounts.map(({ label, count }) => ({ label, count }));
 					}
 				}
 
@@ -202,7 +203,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 			const renderRow = (row: ListRow): string => {
 				const prefix = row.marker ? `${green("*")} ` : "  ";
-				const paddedName = bold(row.name.padEnd(maxName));
+				const paddedName = row.name.padEnd(maxName);
 
 				if (row.special === "config-missing") {
 					let line = `${prefix}${paddedName}`;
@@ -298,11 +299,28 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		});
 }
 
+const YELLOW_FLAGS = new Set([
+	"isDirty",
+	"isUnpushed",
+	"isDrifted",
+	"isDetached",
+	"hasOperation",
+	"isLocal",
+	"isShallow",
+]);
+
+function formatIssueCounts(issueCounts: WorkspaceSummary["issueCounts"]): string {
+	return issueCounts
+		.map(({ label, key }) => {
+			return YELLOW_FLAGS.has(key) ? yellow(label) : label;
+		})
+		.join(", ");
+}
+
 function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
 	if (summary.withIssues === 0) {
 		row.statusColored = "no issues";
 	} else {
-		const labels = summary.issueLabels.join(", ");
-		row.statusColored = yellow(`${summary.withIssues} with issues (${labels})`);
+		row.statusColored = formatIssueCounts(summary.issueCounts);
 	}
 }

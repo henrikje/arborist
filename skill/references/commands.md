@@ -134,12 +134,16 @@ Lists all workspaces with aggregate status. The active workspace is marked with 
     "repoCount": 3,
     "status": null,
     "withIssues": 1,
-    "issueLabels": ["dirty", "unpushed"]
+    "issueLabels": ["dirty", "unpushed"],
+    "issueCounts": [
+      { "label": "dirty", "count": 1 },
+      { "label": "unpushed", "count": 1 }
+    ]
   }
 ]
 ```
 
-Fields `withIssues` and `issueLabels` are omitted when `--quick` is used. The `status` field is `null` for normal workspaces, `"config-missing"` if `.arbws/config` is absent, or `"empty"` if the workspace has no worktrees.
+Fields `withIssues`, `issueLabels`, and `issueCounts` are omitted when `--quick` is used. The `issueCounts` array provides per-flag counts in display order. The `status` field is `null` for normal workspaces, `"config-missing"` if `.arbws/config` is absent, or `"empty"` if the workspace has no worktrees.
 
 ---
 

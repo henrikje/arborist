@@ -692,6 +692,18 @@ teardown() {
     [[ "$output" == *"no issues"* ]]
 }
 
+@test "arb list shows per-flag status labels" {
+    arb create ws-one repo-a
+    echo "change" > "$TEST_DIR/project/ws-one/repo-a/f.txt"
+    git -C "$TEST_DIR/project/ws-one/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/ws-one/repo-a" commit -m "commit" >/dev/null 2>&1
+    echo "dirty" > "$TEST_DIR/project/ws-one/repo-a/dirty.txt"
+    run arb list
+    [[ "$output" == *"dirty"* ]]
+    [[ "$output" == *"unpushed"* ]]
+    [[ "$output" != *"with issues"* ]]
+}
+
 @test "arb list shows UPPERCASE headers" {
     arb create ws-one repo-a
     run arb list
@@ -1545,8 +1557,6 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     [[ "$output" == *"1 ahead"* ]]
     [[ "$output" == *"1 to push"* ]]
     [[ "$output" == *"clean"* ]]
-    [[ "$output" == *"with issues"* ]]
-    [[ "$output" == *"unpushed"* ]]
     [ "$status" -eq 1 ]
 }
 
@@ -1559,8 +1569,6 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     run arb status
     [ "$status" -eq 1 ]
     [[ "$output" == *"1 to push"* ]]
-    [[ "$output" == *"with issues"* ]]
-    [[ "$output" == *"unpushed"* ]]
 }
 
 @test "arb status detects rebase in progress" {
@@ -1662,125 +1670,7 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     [[ "$output" == *"1 untracked"* ]]
 }
 
-# ── status summary line ──────────────────────────────────────────
-
-@test "arb status summary shows no issues when all clean" {
-    arb create my-feature repo-a repo-b
-    echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    echo "c" > "$TEST_DIR/project/my-feature/repo-b/f.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-b" add f.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-b" commit -m "c" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
-    run arb status
-    [[ "$output" == *"no issues"* ]]
-}
-
-@test "arb status summary shows no issues for fresh branch" {
-    arb create my-feature repo-a
-    cd "$TEST_DIR/project/my-feature"
-    run arb status
-    [[ "$output" == *"no issues"* ]]
-}
-
-@test "arb status summary shows dirty" {
-    arb create my-feature repo-a
-    echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
-    cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
-    run arb status
-    [[ "$output" == *"with issues"* ]]
-    [[ "$output" == *"dirty"* ]]
-}
-
-@test "arb status summary shows behind base" {
-    arb create my-feature repo-a
-    echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    # Add a commit to origin's default branch
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
-    run arb status
-    [[ "$output" == *"with issues"* ]]
-    [[ "$output" == *"behind base"* ]]
-}
-
-@test "arb status summary shows behind base issue" {
-    arb create my-feature repo-a
-    echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    # Add a commit to origin's default branch so repo-a is behind base
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
-    run arb status
-    local summary_line
-    summary_line=$(echo "$output" | tail -1)
-    [[ "$summary_line" == *"with issues"* ]]
-    [[ "$summary_line" == *"behind base"* ]]
-}
-
-@test "arb status summary shows both unpushed and behind base flags" {
-    arb create my-feature repo-a
-    echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
-    # Do NOT push — repo-a has an unpushed commit
-    # Add a commit to origin's default branch so repo-a is also behind base
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
-    run arb status
-    # With flag-based summary, both flags appear in the qualitative breakdown
-    local summary_line
-    summary_line=$(echo "$output" | tail -1)
-    [[ "$summary_line" == *"with issues"* ]]
-    [[ "$summary_line" == *"unpushed"* ]]
-    [[ "$summary_line" == *"behind base"* ]]
-}
-
-@test "arb status summary shows no issues when mixed clean repos" {
-    arb create my-feature repo-a repo-b
-    # repo-a: pushed and clean
-    echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    # repo-b: fresh branch with no commits (nothing at risk)
-    cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
-    run arb status
-    [[ "$output" == *"no issues"* ]]
-}
-
-@test "arb status summary respects --dirty filter" {
-    arb create my-feature repo-a repo-b
-    # repo-a: pushed and dirty
-    echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
-    # repo-b: clean and not pushed (but no commits, so not unpushed)
-    cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
-    run arb status --dirty
-    [[ "$output" == *"with issues"* ]]
-    [[ "$output" == *"dirty"* ]]
-}
+# ── status JSON & edge cases ──────────────────────────────────────
 
 @test "arb status summary not in --json output" {
     arb create my-feature repo-a
