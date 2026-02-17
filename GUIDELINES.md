@@ -135,6 +135,20 @@ Read-only commands (`status`, `list`) do not fetch by default to stay fast for f
 
 The parallel pre-fetch also serves a performance purpose: `parallelFetch()` fetches all repos concurrently, while the subsequent mutation operations (pull, push, rebase, merge) run sequentially one repo at a time. Batching the network I/O upfront avoids per-repo fetch latency during the sequential phase.
 
+### Canonical status model
+
+`status.ts` defines Arborist's view of reality for repository state. The `RepoStatus` type is a 5-section model (identity, local, base, publish, operation) that captures everything git tells us about a repo. `RepoFlags` computes 10 independent boolean flags from that model. Shared functions (`computeFlags`, `needsAttention`, `flagLabels`) derive decisions and display text from those flags.
+
+**This model is the single source of truth.** Every command that needs to understand repo state — whether for display, filtering, safety checks, or operational decisions — must work from `RepoStatus` and `RepoFlags`. Do not invent local status representations, ad-hoc dirty checks, or one-off git queries that duplicate what the model already captures. If a command needs information that the model doesn't provide, extend the model in `status.ts` so every consumer benefits.
+
+**Extend, don't fork.** When adding a new concept (e.g. a new kind of issue, a new git state to detect):
+1. Add the observation to `RepoStatus` if it's raw git state.
+2. Add a flag to `RepoFlags` if it represents a condition that needs attention.
+3. Add the flag to `computeFlags()` and the label to `FLAG_LABELS`.
+4. All existing consumers (status display, list aggregation, remove safety checks, etc.) automatically pick it up through `needsAttention()` and `flagLabels()`.
+
+**Rendering and derived decisions should be centralized.** Functions like `needsAttention()` (used for row coloring, filtering, and aggregate counts) and `flagLabels()` (used for summary lines in both `status` and `list`) exist so that the same logic governs every place a repo's state is evaluated. Commands should call these shared functions rather than re-deriving the same conclusions from raw fields.
+
 ### Repo classification: local vs remote
 
 `classifyRepos()` separates repos into those with remotes and local-only repos. Commands that interact with remotes (fetch, pull, integrate) use this to gracefully skip local repos with a reason. This allows mixed local/remote workspaces.

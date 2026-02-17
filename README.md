@@ -30,7 +30,6 @@ Here's what that looks like on disk:
 
 You work in the workspaces. Each workspace represents one feature or issue. It contains a separate worktree for each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete. The canonical clones under `.arb/` are managed by arb — you never touch them directly.
 
-
 ## Getting started
 
 ### Install
@@ -237,8 +236,8 @@ Shows all workspaces with their branch, repo count, and aggregate status:
 
 ```
   WORKSPACE    BRANCH         REPOS  STATUS
-* ws-one       my-feature     2      ok
-  ws-two       feat/payments  1      1 dirty, 1 unpushed
+* ws-one       my-feature     2      no issues
+  ws-two       feat/payments  1      1 with issues (dirty, unpushed)
 ```
 
 The active workspace (the one you're currently inside) is marked with `*`.
@@ -413,14 +412,14 @@ This is especially useful in scripted or AI-driven workflows where you want to i
 
 ### Machine-readable output
 
-`arb list --json` writes a JSON array of workspace objects to stdout with aggregate status (dirty, unpushed, behind, drifted counts). Combine with `--quick` to skip status gathering:
+`arb list --json` writes a JSON array of workspace objects to stdout with aggregate issue counts and labels (`withIssues`, `issueLabels`). Combine with `--quick` to skip status gathering:
 
 ```bash
 arb list --json | jq '[.[] | select(.active)]'
 arb list --json --quick | jq '.[].workspace'
 ```
 
-`arb status --json` writes structured JSON to stdout. Each repo includes HEAD commit SHA, branch state, base drift, remote drift, local changes, and any in-progress operation:
+`arb status --json` writes structured JSON to stdout. Each repo includes branch state, base branch drift, remote push/pull status, local changes, and any in-progress operation:
 
 ```bash
 arb status --json | jq '[.repos[] | select(.base.behind > 0) | .name]'
