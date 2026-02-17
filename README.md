@@ -158,10 +158,10 @@ This shows the state of each worktree in a compact table with labeled columns:
 
 ```
   REPO         BRANCH        BASE                     REMOTE                          LOCAL
-  repo-a       my-feature    main  aligned            origin/my-feature  aligned      clean
+  repo-a       my-feature    main  equal              origin/my-feature  up to date   clean
   repo-b       my-feature    main  2 ahead            origin/my-feature  2 to push    1 staged, 1 modified
   repo-c       experiment    main  2 ahead, 1 behind  origin/experiment  1 to pull    clean
-  local-lib    my-feature    main  aligned            local                           clean
+  local-lib    my-feature    main  equal              local                           clean
 ```
 
 This view is designed to give you the full picture in one glance — repo name, current branch, how far you've drifted from the base branch, whether the remote is ahead or behind, and what's uncommitted locally. Yellow highlights things that need attention: unpushed commits, local changes, repos on an unexpected branch (like `repo-c` above).
@@ -384,7 +384,7 @@ In fork setups, `arb status` shows the upstream remote prefix in the BASE column
 ```
   REPO      BRANCH        BASE                          REMOTE                          LOCAL
   api       my-feature    upstream/main  2 ahead        origin/my-feature  2 to push    clean
-  web       my-feature    main           aligned        origin/my-feature  aligned      clean
+  web       my-feature    main           equal          origin/my-feature  up to date   clean
 ```
 
 Here `api` is a fork (base is `upstream/main`) while `web` uses a single origin (base is just `main`).

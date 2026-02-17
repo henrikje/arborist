@@ -985,11 +985,11 @@ assert data == []
     [[ "$output" == *"main"* ]]
 }
 
-@test "arb status shows aligned when on same commit as default branch" {
+@test "arb status shows equal when on same commit as default branch" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb status
-    [[ "$output" == *"aligned"* ]]
+    [[ "$output" == *"equal"* ]]
 }
 
 @test "arb status shows current branch name" {
@@ -1042,7 +1042,7 @@ assert data == []
     [[ "$output" == *"not pushed"* ]]
 }
 
-@test "arb status shows aligned after push with no new commits" {
+@test "arb status shows up to date after push with no new commits" {
     arb create my-feature repo-a
 
     echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
@@ -1053,7 +1053,7 @@ assert data == []
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb status
-    [[ "$output" == *"aligned"* ]]
+    [[ "$output" == *"up to date"* ]]
 }
 
 @test "arb status shows staged count" {
@@ -1208,7 +1208,7 @@ assert data == []
     arb fetch >/dev/null 2>&1
     run arb status
     [ "$status" -eq 0 ]
-    [[ "$output" == *"aligned"* ]]
+    [[ "$output" == *"up to date"* ]]
 }
 
 @test "arb status exits 0 when fresh branch has no commits" {
@@ -1405,7 +1405,7 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
 "
 }
 
-@test "arb status shows pushed and synced repo as aligned" {
+@test "arb status shows pushed and synced repo as up to date" {
     arb create my-feature repo-a
     echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
@@ -1415,11 +1415,11 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     arb fetch >/dev/null 2>&1
     run arb status
     [ "$status" -eq 0 ]
-    [[ "$output" == *"aligned"* ]]
+    [[ "$output" == *"up to date"* ]]
     [[ "$output" == *"clean"* ]]
 }
 
-@test "arb status shows ahead of base and pushed as aligned remote" {
+@test "arb status shows ahead of base and pushed as up to date remote" {
     arb create my-feature repo-a
     echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
@@ -1432,7 +1432,7 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     arb fetch >/dev/null 2>&1
     run arb status
     [[ "$output" == *"2 ahead"* ]]
-    [[ "$output" == *"origin/my-feature"*"aligned"* ]]
+    [[ "$output" == *"origin/my-feature"*"up to date"* ]]
 }
 
 @test "arb status shows diverged base counts" {

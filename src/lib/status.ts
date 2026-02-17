@@ -65,13 +65,13 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 	const isGone = repo.publish !== null && repo.publish.refMode === "gone";
 
 	// isUnpushed: has commits to push to publish remote, or never pushed with commits ahead of base
+	// Note: "gone" branches are excluded — the remote deleted the branch (typically after PR merge),
+	// so "unpushed" would be misleading. The "gone" flag alone signals the state.
 	let isUnpushed = false;
 	if (repo.publish !== null) {
 		if (repo.publish.toPush !== null && repo.publish.toPush > 0) {
 			isUnpushed = true;
 		} else if (repo.publish.refMode === "noRef" && repo.base !== null && repo.base.ahead > 0) {
-			isUnpushed = true;
-		} else if (repo.publish.refMode === "gone" && repo.base !== null && repo.base.ahead > 0) {
 			isUnpushed = true;
 		}
 	}

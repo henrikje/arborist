@@ -25,7 +25,7 @@ function makeRepo(overrides: Partial<RepoStatus> = {}): RepoStatus {
 }
 
 describe("computeFlags", () => {
-	test("all false for clean, aligned, on-branch repo", () => {
+	test("all false for clean, equal, on-branch repo", () => {
 		const flags = computeFlags(makeRepo(), "feature");
 		expect(flags).toEqual({
 			isDirty: false,
@@ -82,7 +82,7 @@ describe("computeFlags", () => {
 		expect(flags.isUnpushed).toBe(true);
 	});
 
-	test("isUnpushed when gone with base.ahead > 0", () => {
+	test("not isUnpushed when gone even with base.ahead > 0", () => {
 		const flags = computeFlags(
 			makeRepo({
 				publish: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
@@ -90,21 +90,11 @@ describe("computeFlags", () => {
 			}),
 			"feature",
 		);
-		expect(flags.isUnpushed).toBe(true);
-	});
-
-	test("not isUnpushed when gone with base.ahead === 0", () => {
-		const flags = computeFlags(
-			makeRepo({
-				publish: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
-				base: { remote: "origin", ref: "main", ahead: 0, behind: 0 },
-			}),
-			"feature",
-		);
 		expect(flags.isUnpushed).toBe(false);
+		expect(flags.isGone).toBe(true);
 	});
 
-	test("not isUnpushed when aligned with remote", () => {
+	test("not isUnpushed when up to date with remote", () => {
 		const flags = computeFlags(makeRepo(), "feature");
 		expect(flags.isUnpushed).toBe(false);
 	});
@@ -244,7 +234,7 @@ describe("flagLabels", () => {
 });
 
 describe("wouldLoseWork", () => {
-	test("returns false for clean, aligned repo", () => {
+	test("returns false for clean, equal repo", () => {
 		const flags = computeFlags(makeRepo(), "feature");
 		expect(wouldLoseWork(flags)).toBe(false);
 	});

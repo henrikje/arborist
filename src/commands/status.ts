@@ -210,7 +210,7 @@ async function runStatus(
 
 		// Col 6: Remote diff
 		let remoteDiffColored: string;
-		if (cell.remoteDiff === "aligned" || cell.remoteDiff === "gone") {
+		if (cell.remoteDiff === "up to date" || cell.remoteDiff === "gone") {
 			remoteDiffColored = cell.remoteDiff;
 		} else if (
 			cell.remoteDiff === "not pushed" ||
@@ -360,7 +360,7 @@ function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
 	const parts = [base.ahead > 0 && `${base.ahead} ahead`, base.behind > 0 && `${base.behind} behind`]
 		.filter(Boolean)
 		.join(", ");
-	return parts || "aligned";
+	return parts || "equal";
 }
 
 function plainRemoteDiff(repo: RepoStatus): string {
@@ -381,7 +381,7 @@ function plainRemoteDiff(repo: RepoStatus): string {
 	// configured or implicit — use toPush/toPull
 	const toPush = repo.publish.toPush ?? 0;
 	const toPull = repo.publish.toPull ?? 0;
-	if (toPush === 0 && toPull === 0) return "aligned";
+	if (toPush === 0 && toPull === 0) return "up to date";
 	const parts = [toPush > 0 && `${toPush} to push`, toPull > 0 && `${toPull} to pull`].filter(Boolean).join(", ");
 	return parts;
 }
