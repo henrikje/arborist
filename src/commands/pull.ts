@@ -1,11 +1,13 @@
 import { basename } from "node:path";
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
-import { checkBranchMatch, git, remoteBranchExists } from "../lib/git";
+import { configGet } from "../lib/config";
+import { getShortHead } from "../lib/git";
 import { dim, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
-import { type RepoRemotes, resolveRemotesMap } from "../lib/remotes";
+import { resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos, resolveRepoSelection } from "../lib/repos";
+import { type RepoStatus, gatherRepoStatus } from "../lib/status";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -50,13 +52,9 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
 				const selectedSet = new Set(selectedRepos);
 				const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
+				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 
 				// Phase 1: parallel fetch (only selected repos)
-				// Two reasons for a separate pre-fetch before git pull:
-				// 1. Accurate plan display — updates tracking refs before the assessment phase
-				// 2. Performance — parallelFetch() fetches all repos concurrently, while the
-				//    subsequent git pull commands run sequentially. Batching network I/O upfront
-				//    avoids per-repo fetch latency.
 				const { repos: allRepos, fetchDirs: allFetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
 				const repos = allRepos.filter((r) => selectedSet.has(r));
 				const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
@@ -73,9 +71,8 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				const assessments: PullAssessment[] = [];
 				for (const repo of repos) {
 					const repoDir = `${wsDir}/${repo}`;
-					assessments.push(
-						await assessPullRepo(repo, repoDir, branch, localRepos, fetchFailed, flagMode, remotesMap.get(repo)),
-					);
+					const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
+					assessments.push(await assessPullRepo(status, repoDir, branch, fetchFailed, flagMode));
 				}
 
 				// Phase 3: display plan
@@ -181,59 +178,54 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 }
 
 async function assessPullRepo(
-	repo: string,
+	status: RepoStatus,
 	repoDir: string,
 	branch: string,
-	localRepos: string[],
 	fetchFailed: string[],
 	flagMode: "rebase" | "merge" | undefined,
-	remotes?: RepoRemotes,
 ): Promise<PullAssessment> {
-	const publishRemote = remotes?.publish ?? "origin";
+	const headSha = await getShortHead(repoDir);
 
-	// Capture HEAD SHA for recovery info
-	const headResult = await git(repoDir, "rev-parse", "--short", "HEAD");
-	const headSha = headResult.exitCode === 0 ? headResult.stdout.trim() : "";
+	const base: PullAssessment = { repo: status.name, repoDir, outcome: "skip", behind: 0, pullMode: "merge", headSha };
 
-	const base: PullAssessment = { repo, repoDir, outcome: "skip", behind: 0, pullMode: "merge", headSha };
-
-	if (localRepos.includes(repo)) {
+	// Local repo — no publish remote
+	if (status.publish === null) {
 		return { ...base, skipReason: "local repo" };
 	}
 
-	if (fetchFailed.includes(repo)) {
+	// Fetch failed for this repo
+	if (fetchFailed.includes(status.name)) {
 		return { ...base, skipReason: "fetch failed" };
 	}
 
-	const bm = await checkBranchMatch(repoDir, branch);
-	if (!bm.matches) {
-		return { ...base, skipReason: `on branch ${bm.actual}, expected ${branch}` };
+	// Branch check — detached or drifted
+	if (status.identity.headMode.kind === "detached") {
+		return { ...base, skipReason: "HEAD is detached" };
+	}
+	if (status.identity.headMode.branch !== branch) {
+		return { ...base, skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}` };
 	}
 
-	if (!(await remoteBranchExists(repoDir, branch, publishRemote))) {
-		const configRemote = await Bun.$`git -C ${repoDir} config branch.${branch}.remote`.cwd(repoDir).quiet().nothrow();
-		if (configRemote.exitCode === 0 && configRemote.text().trim().length > 0) {
-			return { ...base, skipReason: "remote branch gone" };
-		}
+	// Not pushed yet
+	if (status.publish.refMode === "noRef") {
 		return { ...base, skipReason: "not pushed yet" };
 	}
 
-	// Check how many commits behind the publish remote
-	const lr = await git(repoDir, "rev-list", "--left-right", "--count", `${publishRemote}/${branch}...HEAD`);
-	if (lr.exitCode !== 0) {
-		return { ...base, skipReason: `cannot compare with ${publishRemote}` };
+	// Remote branch gone
+	if (status.publish.refMode === "gone") {
+		return { ...base, skipReason: "remote branch gone" };
 	}
 
-	const parts = lr.stdout.trim().split(/\s+/);
-	const behind = Number.parseInt(parts[0] ?? "0", 10);
-
+	// Determine pull mode
 	const pullMode = flagMode ?? (await detectPullMode(repoDir, branch));
 
-	if (behind === 0) {
+	// Check toPull count
+	const toPull = status.publish.toPull ?? 0;
+	if (toPull === 0) {
 		return { ...base, outcome: "up-to-date", pullMode };
 	}
 
-	return { ...base, outcome: "will-pull", behind, pullMode };
+	return { ...base, outcome: "will-pull", behind: toPull, pullMode };
 }
 
 async function detectPullMode(repoDir: string, branch: string): Promise<"rebase" | "merge"> {

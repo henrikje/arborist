@@ -1,11 +1,12 @@
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
-import { checkBranchMatch, getDefaultBranch, git, hasRemote, remoteBranchExists } from "../lib/git";
+import { getShortHead } from "../lib/git";
 import { dim, error, info, inlineResult, inlineStart, plural, red, success, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
-import { type RepoRemotes, resolveRemotesMap } from "../lib/remotes";
+import { resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos, resolveRepoSelection } from "../lib/repos";
+import { type RepoStatus, gatherRepoStatus } from "../lib/status";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -59,7 +60,8 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				const assessments: PushAssessment[] = [];
 				for (const repo of selectedRepos) {
 					const repoDir = `${wsDir}/${repo}`;
-					assessments.push(await assessPushRepo(repo, repoDir, branch, ctx.reposDir, configBase, remotesMap.get(repo)));
+					const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
+					assessments.push(await assessPushRepo(status, repoDir, branch));
 				}
 
 				// Reclassify force-push when --force is not set
@@ -162,23 +164,13 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 		);
 }
 
-async function assessPushRepo(
-	repo: string,
-	repoDir: string,
-	branch: string,
-	reposDir: string,
-	configBase: string | null,
-	remotes?: RepoRemotes,
-): Promise<PushAssessment> {
-	const publishRemote = remotes?.publish ?? "origin";
-	const upstreamRemote = remotes?.upstream ?? "origin";
+async function assessPushRepo(status: RepoStatus, repoDir: string, branch: string): Promise<PushAssessment> {
+	const publishRemote = status.publish?.remote ?? "origin";
 
-	// Capture HEAD SHA for recovery info
-	const headResult = await git(repoDir, "rev-parse", "--short", "HEAD");
-	const headSha = headResult.exitCode === 0 ? headResult.stdout.trim() : "";
+	const headSha = await getShortHead(repoDir);
 
 	const base: PushAssessment = {
-		repo,
+		repo: status.name,
 		repoDir,
 		outcome: "skip",
 		ahead: 0,
@@ -190,70 +182,46 @@ async function assessPushRepo(
 		recreate: false,
 	};
 
-	if (!(await hasRemote(`${reposDir}/${repo}`))) {
+	// Local repo — no publish remote
+	if (status.publish === null) {
 		return { ...base, skipReason: "local repo" };
 	}
 
-	const bm = await checkBranchMatch(repoDir, branch);
-	if (!bm.matches) {
-		return { ...base, skipReason: `on branch ${bm.actual}, expected ${branch}` };
+	// Branch check — detached or drifted
+	if (status.identity.headMode.kind === "detached") {
+		return { ...base, skipReason: "HEAD is detached" };
+	}
+	if (status.identity.headMode.branch !== branch) {
+		return { ...base, skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}` };
 	}
 
-	// Check if remote branch exists
-	if (!(await remoteBranchExists(repoDir, branch, publishRemote))) {
-		// Tracking config present means the branch was pushed before (set by git push -u).
-		// If it's gone now, the remote branch was deleted (e.g. merged via PR).
-		const trackingRemote = await Bun.$`git -C ${repoDir} config branch.${branch}.remote`.cwd(repoDir).quiet().nothrow();
-		const isGone = trackingRemote.exitCode === 0 && trackingRemote.text().trim().length > 0;
-
-		// Count commits ahead of base branch.
-		const repoPath = `${reposDir}/${repo}`;
-		let defaultBranch: string | null = null;
-		if (configBase) {
-			const baseExists = await remoteBranchExists(repoPath, configBase, upstreamRemote);
-			if (baseExists) defaultBranch = configBase;
-		}
-		if (!defaultBranch) {
-			defaultBranch = await getDefaultBranch(repoPath, upstreamRemote);
-		}
-		let count = 1;
-		if (defaultBranch) {
-			const log = await git(repoDir, "rev-list", "--count", `${upstreamRemote}/${defaultBranch}..HEAD`);
-			if (log.exitCode === 0) {
-				count = Number.parseInt(log.stdout.trim(), 10);
-			} else {
-				// Fall back to total count if base comparison fails
-				const fallback = await git(repoDir, "rev-list", "--count", "HEAD");
-				if (fallback.exitCode === 0) count = Number.parseInt(fallback.stdout.trim(), 10);
-			}
-		} else {
-			const log = await git(repoDir, "rev-list", "--count", "HEAD");
-			if (log.exitCode === 0) count = Number.parseInt(log.stdout.trim(), 10);
-		}
-		return { ...base, outcome: "will-push", ahead: count, newBranch: !isGone, recreate: isGone };
+	// Remote branch was deleted (gone) — recreate
+	if (status.publish.refMode === "gone") {
+		const ahead = status.base?.ahead ?? 1;
+		return { ...base, outcome: "will-push", ahead, recreate: true };
 	}
 
-	// Check how many commits ahead/behind the publish remote
-	const lr = await git(repoDir, "rev-list", "--left-right", "--count", `${publishRemote}/${branch}...HEAD`);
-	if (lr.exitCode !== 0) {
-		return { ...base, skipReason: `cannot compare with ${publishRemote}` };
+	// Never pushed (noRef) — new branch
+	if (status.publish.refMode === "noRef") {
+		const ahead = status.base?.ahead ?? 1;
+		return { ...base, outcome: "will-push", ahead, newBranch: true };
 	}
 
-	const parts = lr.stdout.trim().split(/\s+/);
-	const behind = Number.parseInt(parts[0] ?? "0", 10);
-	const ahead = Number.parseInt(parts[1] ?? "0", 10);
+	// Has push/pull counts — compare
+	const toPush = status.publish.toPush ?? 0;
+	const toPull = status.publish.toPull ?? 0;
 
-	if (ahead === 0 && behind === 0) {
+	if (toPush === 0 && toPull === 0) {
 		return { ...base, outcome: "up-to-date" };
 	}
 
-	if (ahead === 0 && behind > 0) {
-		return { ...base, outcome: "skip", skipReason: `behind ${publishRemote} (pull first?)`, behind };
+	if (toPush === 0 && toPull > 0) {
+		return { ...base, outcome: "skip", skipReason: `behind ${publishRemote} (pull first?)`, behind: toPull };
 	}
 
-	if (ahead > 0 && behind > 0) {
-		return { ...base, outcome: "will-force-push", ahead, behind };
+	if (toPush > 0 && toPull > 0) {
+		return { ...base, outcome: "will-force-push", ahead: toPush, behind: toPull };
 	}
 
-	return { ...base, outcome: "will-push", ahead };
+	return { ...base, outcome: "will-push", ahead: toPush };
 }

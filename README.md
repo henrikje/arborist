@@ -30,7 +30,6 @@ Here's what that looks like on disk:
 
 You work in the workspaces. Each workspace represents one feature or issue. It contains a separate worktree for each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete. The canonical clones under `.arb/` are managed by arb — you never touch them directly.
 
-
 ## Getting started
 
 ### Install
@@ -159,10 +158,10 @@ This shows the state of each worktree in a compact table with labeled columns:
 
 ```
   REPO         BRANCH        BASE                     REMOTE                          LOCAL
-  repo-a       my-feature    main  aligned            origin/my-feature  aligned      clean
+  repo-a       my-feature    main  equal              origin/my-feature  up to date   clean
   repo-b       my-feature    main  2 ahead            origin/my-feature  2 to push    1 staged, 1 modified
   repo-c       experiment    main  2 ahead, 1 behind  origin/experiment  1 to pull    clean
-  local-lib    my-feature    main  aligned            local                           clean
+  local-lib    my-feature    main  equal              local                           clean
 ```
 
 This view is designed to give you the full picture in one glance — repo name, current branch, how far you've drifted from the base branch, whether the remote is ahead or behind, and what's uncommitted locally. Yellow highlights things that need attention: unpushed commits, local changes, repos on an unexpected branch (like `repo-c` above).
@@ -237,8 +236,8 @@ Shows all workspaces with their branch, repo count, and aggregate status:
 
 ```
   WORKSPACE    BRANCH         REPOS  STATUS
-* ws-one       my-feature     2      ok
-  ws-two       feat/payments  1      1 dirty, 1 unpushed
+* ws-one       my-feature     2      no issues
+  ws-two       feat/payments  1      1 with issues (dirty, unpushed)
 ```
 
 The active workspace (the one you're currently inside) is marked with `*`.
@@ -385,7 +384,7 @@ In fork setups, `arb status` shows the upstream remote prefix in the BASE column
 ```
   REPO      BRANCH        BASE                          REMOTE                          LOCAL
   api       my-feature    upstream/main  2 ahead        origin/my-feature  2 to push    clean
-  web       my-feature    main           aligned        origin/my-feature  aligned      clean
+  web       my-feature    main           equal          origin/my-feature  up to date   clean
 ```
 
 Here `api` is a fork (base is `upstream/main`) while `web` uses a single origin (base is just `main`).
@@ -413,14 +412,14 @@ This is especially useful in scripted or AI-driven workflows where you want to i
 
 ### Machine-readable output
 
-`arb list --json` writes a JSON array of workspace objects to stdout with aggregate status (dirty, unpushed, behind, drifted counts). Combine with `--quick` to skip status gathering:
+`arb list --json` writes a JSON array of workspace objects to stdout with aggregate issue counts and labels (`withIssues`, `issueLabels`). Combine with `--quick` to skip status gathering:
 
 ```bash
 arb list --json | jq '[.[] | select(.active)]'
 arb list --json --quick | jq '.[].workspace'
 ```
 
-`arb status --json` writes structured JSON to stdout. Each repo includes HEAD commit SHA, branch state, base drift, remote drift, local changes, and any in-progress operation:
+`arb status --json` writes structured JSON to stdout. Each repo includes branch state, base branch drift, remote push/pull status, local changes, and any in-progress operation:
 
 ```bash
 arb status --json | jq '[.repos[] | select(.base.behind > 0) | .name]'

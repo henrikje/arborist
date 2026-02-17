@@ -675,14 +675,13 @@ teardown() {
     [[ "$output" == *"2"* ]]
 }
 
-@test "arb list shows ok status for fresh branch with no commits" {
+@test "arb list shows no issues status for fresh branch with no commits" {
     arb create ws-one repo-a
     run arb list
-    [[ "$output" == *"ok"* ]]
-    [[ "$output" != *"unpushed"* ]]
+    [[ "$output" == *"no issues"* ]]
 }
 
-@test "arb list shows ok status when pushed" {
+@test "arb list shows no issues status when pushed" {
     arb create ws-one repo-a
     echo "change" > "$TEST_DIR/project/ws-one/repo-a/f.txt"
     git -C "$TEST_DIR/project/ws-one/repo-a" add f.txt >/dev/null 2>&1
@@ -690,7 +689,7 @@ teardown() {
     git -C "$TEST_DIR/project/ws-one/repo-a" push -u origin ws-one >/dev/null 2>&1
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && git fetch origin) >/dev/null 2>&1
     run arb list
-    [[ "$output" == *"ok"* ]]
+    [[ "$output" == *"no issues"* ]]
 }
 
 @test "arb list shows UPPERCASE headers" {
@@ -740,7 +739,7 @@ teardown() {
     [[ "$output" == *"BRANCH"* ]]
     [[ "$output" == *"REPOS"* ]]
     [[ "$output" != *"STATUS"* ]]
-    [[ "$output" != *"ok"* ]]
+    [[ "$output" != *"no issues"* ]]
 }
 
 @test "arb list --quick -q shorthand works" {
@@ -786,10 +785,8 @@ assert ws['workspace'] == 'my-feature'
 assert ws['branch'] == 'my-feature'
 assert ws['repoCount'] == 2
 assert ws['status'] is None
-assert 'dirty' in ws
-assert 'unpushed' in ws
-assert 'behind' in ws
-assert 'drifted' in ws
+assert 'withIssues' in ws
+assert 'issueLabels' in ws
 "
 }
 
@@ -846,10 +843,8 @@ ws = data[0]
 assert ws['workspace'] == 'my-feature'
 assert ws['branch'] == 'my-feature'
 assert ws['repoCount'] == 1
-assert 'dirty' not in ws
-assert 'unpushed' not in ws
-assert 'behind' not in ws
-assert 'drifted' not in ws
+assert 'withIssues' not in ws
+assert 'issueLabels' not in ws
 "
 }
 
@@ -990,11 +985,11 @@ assert data == []
     [[ "$output" == *"main"* ]]
 }
 
-@test "arb status shows aligned when on same commit as default branch" {
+@test "arb status shows equal when on same commit as default branch" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb status
-    [[ "$output" == *"aligned"* ]]
+    [[ "$output" == *"equal"* ]]
 }
 
 @test "arb status shows current branch name" {
@@ -1047,7 +1042,7 @@ assert data == []
     [[ "$output" == *"not pushed"* ]]
 }
 
-@test "arb status shows aligned after push with no new commits" {
+@test "arb status shows up to date after push with no new commits" {
     arb create my-feature repo-a
 
     echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
@@ -1058,7 +1053,7 @@ assert data == []
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb status
-    [[ "$output" == *"aligned"* ]]
+    [[ "$output" == *"up to date"* ]]
 }
 
 @test "arb status shows staged count" {
@@ -1213,7 +1208,7 @@ assert data == []
     arb fetch >/dev/null 2>&1
     run arb status
     [ "$status" -eq 0 ]
-    [[ "$output" == *"aligned"* ]]
+    [[ "$output" == *"up to date"* ]]
 }
 
 @test "arb status exits 0 when fresh branch has no commits" {
@@ -1374,38 +1369,43 @@ assert data == []
     echo "$output" | python3 -c "import sys, json; d = json.load(sys.stdin); assert d['total'] == 2; assert len(d['repos']) == 2"
 }
 
-@test "arb status --json includes new fields" {
+@test "arb status --json includes repo detail fields" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb status --json
-    # Verify new fields exist in JSON output
+    # Verify repo detail fields exist in JSON output
     echo "$output" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 r = d['repos'][0]
-assert 'detached' in r['branch']
-assert 'trackingBranch' in r['remote']
+assert 'identity' in r
+assert 'headMode' in r['identity']
+assert 'worktreeKind' in r['identity']
+assert 'shallow' in r['identity']
 assert 'conflicts' in r['local']
 assert 'operation' in r
+assert 'remotes' not in r, 'remotes field should not be in JSON output'
+assert 'withIssues' in d
+assert 'issueLabels' in d
 "
 }
 
-@test "arb status --json includes head SHA" {
+@test "arb status --json includes identity section" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
-    # Get the actual HEAD SHA
-    expected_sha=$(git -C "$TEST_DIR/project/my-feature/repo-a" rev-parse --short HEAD)
     run arb status --json
     echo "$output" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 r = d['repos'][0]
-assert 'head' in r, 'head field missing'
-assert r['head'] == '$expected_sha', f'expected $expected_sha, got {r[\"head\"]}'
+assert r['identity']['worktreeKind'] == 'linked', 'expected linked worktree'
+assert r['identity']['headMode']['kind'] == 'attached', 'expected attached HEAD'
+assert r['identity']['headMode']['branch'] == 'my-feature', 'expected my-feature branch'
+assert r['identity']['shallow'] == False, 'expected not shallow'
 "
 }
 
-@test "arb status shows pushed and synced repo as aligned" {
+@test "arb status shows pushed and synced repo as up to date" {
     arb create my-feature repo-a
     echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
@@ -1415,11 +1415,11 @@ assert r['head'] == '$expected_sha', f'expected $expected_sha, got {r[\"head\"]}
     arb fetch >/dev/null 2>&1
     run arb status
     [ "$status" -eq 0 ]
-    [[ "$output" == *"aligned"* ]]
+    [[ "$output" == *"up to date"* ]]
     [[ "$output" == *"clean"* ]]
 }
 
-@test "arb status shows ahead of base and pushed as aligned remote" {
+@test "arb status shows ahead of base and pushed as up to date remote" {
     arb create my-feature repo-a
     echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
@@ -1432,7 +1432,7 @@ assert r['head'] == '$expected_sha', f'expected $expected_sha, got {r[\"head\"]}
     arb fetch >/dev/null 2>&1
     run arb status
     [[ "$output" == *"2 ahead"* ]]
-    [[ "$output" == *"origin/my-feature"*"aligned"* ]]
+    [[ "$output" == *"origin/my-feature"*"up to date"* ]]
 }
 
 @test "arb status shows diverged base counts" {
@@ -1545,7 +1545,8 @@ assert r['head'] == '$expected_sha', f'expected $expected_sha, got {r[\"head\"]}
     [[ "$output" == *"1 ahead"* ]]
     [[ "$output" == *"1 to push"* ]]
     [[ "$output" == *"clean"* ]]
-    [[ "$output" == *"1 unpushed"* ]]
+    [[ "$output" == *"with issues"* ]]
+    [[ "$output" == *"unpushed"* ]]
     [ "$status" -eq 1 ]
 }
 
@@ -1558,7 +1559,8 @@ assert r['head'] == '$expected_sha', f'expected $expected_sha, got {r[\"head\"]}
     run arb status
     [ "$status" -eq 1 ]
     [[ "$output" == *"1 to push"* ]]
-    [[ "$output" == *"1 unpushed"* ]]
+    [[ "$output" == *"with issues"* ]]
+    [[ "$output" == *"unpushed"* ]]
 }
 
 @test "arb status detects rebase in progress" {
@@ -1662,7 +1664,7 @@ assert r['head'] == '$expected_sha', f'expected $expected_sha, got {r[\"head\"]}
 
 # ── status summary line ──────────────────────────────────────────
 
-@test "arb status summary shows all clean" {
+@test "arb status summary shows no issues when all clean" {
     arb create my-feature repo-a repo-b
     echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
@@ -1675,15 +1677,14 @@ assert r['head'] == '$expected_sha', f'expected $expected_sha, got {r[\"head\"]}
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb status
-    [[ "$output" == *"2 clean"* ]]
+    [[ "$output" == *"no issues"* ]]
 }
 
-@test "arb status summary shows clean for fresh branch" {
+@test "arb status summary shows no issues for fresh branch" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb status
-    [[ "$output" == *"1 clean"* ]]
-    [[ "$output" != *"unpushed"* ]]
+    [[ "$output" == *"no issues"* ]]
 }
 
 @test "arb status summary shows dirty" {
@@ -1696,7 +1697,8 @@ assert r['head'] == '$expected_sha', f'expected $expected_sha, got {r[\"head\"]}
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb status
-    [[ "$output" == *"1 dirty"* ]]
+    [[ "$output" == *"with issues"* ]]
+    [[ "$output" == *"dirty"* ]]
 }
 
 @test "arb status summary shows behind base" {
@@ -1710,10 +1712,11 @@ assert r['head'] == '$expected_sha', f'expected $expected_sha, got {r[\"head\"]}
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb status
-    [[ "$output" == *"1 behind base"* ]]
+    [[ "$output" == *"with issues"* ]]
+    [[ "$output" == *"behind base"* ]]
 }
 
-@test "arb status summary does not double-count behind-base repo as clean" {
+@test "arb status summary shows behind base issue" {
     arb create my-feature repo-a
     echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
@@ -1724,15 +1727,13 @@ assert r['head'] == '$expected_sha', f'expected $expected_sha, got {r[\"head\"]}
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb status
-    # Summary line (last line) should show "behind base" but NOT "clean" —
-    # a single repo must not appear in both counts
     local summary_line
     summary_line=$(echo "$output" | tail -1)
-    [[ "$summary_line" == *"1 behind base"* ]]
-    [[ "$summary_line" != *"clean"* ]]
+    [[ "$summary_line" == *"with issues"* ]]
+    [[ "$summary_line" == *"behind base"* ]]
 }
 
-@test "arb status summary does not double-count behind-base repo as unpushed" {
+@test "arb status summary shows both unpushed and behind base flags" {
     arb create my-feature repo-a
     echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
@@ -1743,27 +1744,26 @@ assert r['head'] == '$expected_sha', f'expected $expected_sha, got {r[\"head\"]}
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb status
-    # Summary should show "1 unpushed" but NOT "behind base" —
-    # a single repo must not appear in both counts
+    # With flag-based summary, both flags appear in the qualitative breakdown
     local summary_line
     summary_line=$(echo "$output" | tail -1)
-    [[ "$summary_line" == *"1 unpushed"* ]]
-    [[ "$summary_line" != *"behind base"* ]]
+    [[ "$summary_line" == *"with issues"* ]]
+    [[ "$summary_line" == *"unpushed"* ]]
+    [[ "$summary_line" == *"behind base"* ]]
 }
 
-@test "arb status summary shows mixed counts" {
+@test "arb status summary shows no issues when mixed clean repos" {
     arb create my-feature repo-a repo-b
-    # repo-a: pushed and clean (ok verdict)
+    # repo-a: pushed and clean
     echo "c" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "c" >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    # repo-b: fresh branch with no commits (ok verdict — nothing at risk)
+    # repo-b: fresh branch with no commits (nothing at risk)
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb status
-    [[ "$output" == *"2 clean"* ]]
-    [[ "$output" != *"unpushed"* ]]
+    [[ "$output" == *"no issues"* ]]
 }
 
 @test "arb status summary respects --dirty filter" {
@@ -1778,8 +1778,8 @@ assert r['head'] == '$expected_sha', f'expected $expected_sha, got {r[\"head\"]}
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb status --dirty
-    [[ "$output" == *"1 dirty"* ]]
-    [[ "$output" != *"unpushed"* ]]
+    [[ "$output" == *"with issues"* ]]
+    [[ "$output" == *"dirty"* ]]
 }
 
 @test "arb status summary not in --json output" {
@@ -3806,7 +3806,7 @@ push_then_delete_remote() {
     # Should have per-workspace status tables
     [[ "$output" == *"ws-one:"* ]]
     [[ "$output" == *"ws-two:"* ]]
-    [[ "$output" == *"clean, pushed"* ]]
+    [[ "$output" == *"clean"* ]]
     # Should have compact inline results during execution
     [[ "$output" == *"[ws-one] removed"* ]]
     [[ "$output" == *"[ws-two] removed"* ]]

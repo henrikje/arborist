@@ -1,16 +1,16 @@
 import { resolve } from "node:path";
 import type { Command } from "commander";
 import { type FileChange, getCommitsBetween, parseGitStatusFiles } from "../lib/git";
+import type { StatusJsonOutput } from "../lib/json-types";
 import { dim, green, success, warn, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { classifyRepos } from "../lib/repos";
 import {
 	type RepoStatus,
 	type WorkspaceSummary,
+	computeFlags,
 	gatherWorkspaceSummary,
-	getVerdict,
-	isDirty,
-	isUnpushed,
+	needsAttention,
 } from "../lib/status";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
@@ -80,17 +80,21 @@ async function runStatus(
 
 	// JSON output
 	if (options.json) {
-		process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
-		return hasIssues(summary) ? 1 : 0;
+		const output: StatusJsonOutput = summary;
+		process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+		return summary.withIssues > 0 ? 1 : 0;
 	}
 
 	// Filter dirty if requested
 	let repos = summary.repos;
 	if (options.dirty) {
-		repos = repos.filter((r) => isDirty(r));
+		repos = repos.filter((r) => {
+			const flags = computeFlags(r, summary.branch);
+			return flags.isDirty;
+		});
 	}
 	if (options.atRisk) {
-		repos = repos.filter((r) => isAtRisk(r, summary));
+		repos = repos.filter((r) => repoNeedsAttention(r, summary));
 	}
 
 	if (repos.length === 0) {
@@ -154,7 +158,8 @@ async function runStatus(
 		if (!repo || !cell) continue;
 
 		const isActive = repo.name === currentRepo;
-		const risk = isAtRisk(repo, summary);
+		const risk = repoNeedsAttention(repo, summary);
+		const flags = computeFlags(repo, summary.branch);
 
 		// Col 1: Repo name
 		const marker = isActive ? `${green("*")} ` : "  ";
@@ -162,14 +167,17 @@ async function runStatus(
 		const repoPad = maxRepo - cell.repo.length;
 
 		// Col 2: Current branch
-		const branchText = repo.branch.detached ? "(detached)" : repo.branch.actual;
-		const branchColored = repo.branch.drifted ? yellow(branchText) : branchText;
+		const isDetached = repo.identity.headMode.kind === "detached";
+		const actualBranch = repo.identity.headMode.kind === "attached" ? repo.identity.headMode.branch : "";
+		const branchText = isDetached ? "(detached)" : actualBranch;
+		const isDrifted = repo.identity.headMode.kind === "attached" && actualBranch !== summary.branch;
+		const branchColored = isDrifted || isDetached ? yellow(branchText) : branchText;
 		const branchPad = maxBranch - cell.branch.length;
 
 		// Col 3: Base name
 		let baseNameColored: string;
 		if (cell.baseName) {
-			const baseFellBack = summary.base !== null && repo.base !== null && repo.base.name !== summary.base;
+			const baseFellBack = summary.base !== null && repo.base !== null && repo.base.ref !== summary.base;
 			baseNameColored = baseFellBack ? yellow(cell.baseName) : cell.baseName;
 		} else {
 			baseNameColored = "";
@@ -182,14 +190,19 @@ async function runStatus(
 
 		// Col 5: Remote name
 		let remoteNameColored: string;
-		if (repo.remote.local) {
+		const isLocal = repo.publish === null;
+		if (isLocal) {
 			remoteNameColored = cell.remoteName;
-		} else if (repo.branch.detached) {
+		} else if (isDetached) {
 			remoteNameColored = yellow(cell.remoteName);
 		} else if (cell.remoteName) {
-			const expectedTracking = `${repo.remotes.publish}/${repo.branch.actual}`;
-			const isUnexpected = repo.remote.trackingBranch !== null && repo.remote.trackingBranch !== expectedTracking;
-			remoteNameColored = isUnexpected || repo.branch.drifted ? yellow(cell.remoteName) : cell.remoteName;
+			const expectedTracking = `${repo.publish?.remote}/${repo.identity.headMode.kind === "attached" ? repo.identity.headMode.branch : ""}`;
+			const isUnexpected =
+				repo.publish !== null &&
+				repo.publish.refMode === "configured" &&
+				repo.publish.ref !== null &&
+				repo.publish.ref !== expectedTracking;
+			remoteNameColored = isUnexpected || isDrifted ? yellow(cell.remoteName) : cell.remoteName;
 		} else {
 			remoteNameColored = "";
 		}
@@ -197,11 +210,14 @@ async function runStatus(
 
 		// Col 6: Remote diff
 		let remoteDiffColored: string;
-		if (cell.remoteDiff === "aligned" || cell.remoteDiff === "gone") {
+		if (cell.remoteDiff === "up to date" || cell.remoteDiff === "gone") {
 			remoteDiffColored = cell.remoteDiff;
-		} else if (cell.remoteDiff === "not pushed" || (repo.remote.ahead === 0 && repo.remote.behind > 0)) {
+		} else if (
+			cell.remoteDiff === "not pushed" ||
+			(repo.publish !== null && repo.publish.toPush === 0 && repo.publish.toPull !== null && repo.publish.toPull > 0)
+		) {
 			remoteDiffColored = cell.remoteDiff;
-		} else if (isUnpushed(repo)) {
+		} else if (flags.isUnpushed) {
 			remoteDiffColored = yellow(cell.remoteDiff);
 		} else {
 			remoteDiffColored = cell.remoteDiff;
@@ -223,10 +239,10 @@ async function runStatus(
 		}
 
 		// Remote group (name + diff)
-		if (repo.remote.local) {
+		if (isLocal) {
 			// Local repos: columns 5-6 collapse to "local"
 			line += `    ${remoteNameColored}${" ".repeat(remoteNamePad + 2 + maxRemoteDiff)}`;
-		} else if (repo.branch.detached) {
+		} else if (isDetached) {
 			// Detached: show "detached" with no diff
 			line += `    ${remoteNameColored}${" ".repeat(remoteNamePad + 2 + maxRemoteDiff)}`;
 		} else {
@@ -252,75 +268,56 @@ async function runStatus(
 		}
 	}
 
-	// Summary line — each repo must appear in exactly one bucket
-	const verdicts = repos.map((r) => getVerdict(r));
-	const clean = verdicts.filter((v, i) => {
-		if (v !== "ok" && v !== "local") return false;
-		const r = repos[i];
-		return !(r && r.base !== null && r.base.behind > 0);
-	}).length;
-	const dirty = verdicts.filter((v) => v === "dirty").length;
-	const unpushed = verdicts.filter((v) => v === "unpushed").length;
-	const atRisk = verdicts.filter((v) => v === "at-risk").length;
-	const behindBase = repos.filter(
-		(r, i) => r.base !== null && r.base.behind > 0 && (verdicts[i] === "ok" || verdicts[i] === "local"),
-	).length;
-
-	const parts: string[] = [];
-	if (clean > 0) parts.push(`${clean} clean`);
-	if (unpushed > 0) parts.push(`${unpushed} unpushed`);
-	if (dirty > 0) parts.push(`${dirty} dirty`);
-	if (atRisk > 0) parts.push(`${atRisk} at-risk`);
-	if (behindBase > 0) parts.push(`${behindBase} behind base`);
-
-	const line = parts.join(", ");
-	const allGood = unpushed === 0 && dirty === 0 && atRisk === 0 && behindBase === 0;
+	// Summary line — flag-based
+	const issueCount = summary.withIssues;
+	const labels = summary.issueLabels;
 
 	process.stdout.write("\n");
-	if (allGood) {
-		success(`  ${line}`);
+	if (issueCount === 0) {
+		success("  no issues");
 	} else {
-		warn(`  ${line}`);
+		warn(`  ${issueCount} with issues (${labels.join(", ")})`);
 	}
 
-	return hasIssues(summary) ? 1 : 0;
+	return summary.withIssues > 0 ? 1 : 0;
 }
 
-function hasIssues(summary: WorkspaceSummary): boolean {
-	return summary.repos.some((r) => {
-		const v = getVerdict(r);
-		return v !== "ok" && v !== "local";
-	});
-}
-
-// At-risk check: repo has unique content that could be lost
-function isAtRisk(repo: RepoStatus, summary: WorkspaceSummary): boolean {
-	const v = getVerdict(repo);
-	if (v !== "ok" && v !== "local") return true;
-	if (summary.base !== null && repo.base !== null && repo.base.name !== summary.base) return true;
+// Check if repo needs attention (for row coloring and --at-risk filter)
+function repoNeedsAttention(repo: RepoStatus, summary: WorkspaceSummary): boolean {
+	const flags = computeFlags(repo, summary.branch);
+	if (needsAttention(flags)) return true;
+	// Also flag repos where base fell back to a different branch than configured
+	if (summary.base !== null && repo.base !== null && repo.base.ref !== summary.base) return true;
+	// Flag repos where tracking branch doesn't match expected
 	if (
-		!repo.remote.local &&
-		repo.remote.trackingBranch !== null &&
-		repo.remote.trackingBranch !== `${repo.remotes.publish}/${repo.branch.actual}`
-	)
-		return true;
+		repo.publish !== null &&
+		repo.publish.refMode === "configured" &&
+		repo.publish.ref !== null &&
+		repo.identity.headMode.kind === "attached"
+	) {
+		const expectedTracking = `${repo.publish.remote}/${repo.identity.headMode.branch}`;
+		if (repo.publish.ref !== expectedTracking) return true;
+	}
 	return false;
 }
 
 // Plain-text cell computation (no ANSI codes) for width measurement
 
 function plainCells(repo: RepoStatus): CellData {
+	const isDetached = repo.identity.headMode.kind === "detached";
+	const actualBranch = repo.identity.headMode.kind === "attached" ? repo.identity.headMode.branch : "";
+
 	// Col 1: repo name
 	const repoName = repo.name;
 
 	// Col 2: branch
-	const branch = repo.branch.detached ? "(detached)" : repo.branch.actual;
+	const branch = isDetached ? "(detached)" : actualBranch;
 
 	// Col 3: base name — show upstream remote prefix when upstream ≠ publish (fork setup)
 	let baseName: string;
 	if (repo.base) {
-		const isFork = repo.remotes.upstream !== repo.remotes.publish;
-		baseName = isFork ? `${repo.remotes.upstream}/${repo.base.name}` : repo.base.name;
+		const isFork = repo.base.remote !== repo.publish?.remote;
+		baseName = isFork ? `${repo.base.remote}/${repo.base.ref}` : repo.base.ref;
 	} else {
 		baseName = "";
 	}
@@ -328,7 +325,7 @@ function plainCells(repo: RepoStatus): CellData {
 	// Col 4: base diff
 	let baseDiff = "";
 	if (repo.base) {
-		if (repo.branch.detached) {
+		if (isDetached) {
 			baseDiff = "";
 		} else {
 			baseDiff = plainBaseDiff(repo.base);
@@ -337,19 +334,19 @@ function plainCells(repo: RepoStatus): CellData {
 
 	// Col 5: remote name
 	let remoteName: string;
-	if (repo.remote.local) {
+	if (repo.publish === null) {
 		remoteName = "local";
-	} else if (repo.branch.detached) {
+	} else if (isDetached) {
 		remoteName = "detached";
-	} else if (repo.remote.trackingBranch) {
-		remoteName = repo.remote.trackingBranch;
+	} else if (repo.publish.refMode === "configured" && repo.publish.ref) {
+		remoteName = repo.publish.ref;
 	} else {
-		remoteName = `${repo.remotes.publish}/${repo.branch.actual}`;
+		remoteName = `${repo.publish?.remote ?? "origin"}/${actualBranch}`;
 	}
 
 	// Col 6: remote diff
 	let remoteDiff = "";
-	if (!repo.remote.local && !repo.branch.detached) {
+	if (repo.publish !== null && !isDetached) {
 		remoteDiff = plainRemoteDiff(repo);
 	}
 
@@ -363,29 +360,29 @@ function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
 	const parts = [base.ahead > 0 && `${base.ahead} ahead`, base.behind > 0 && `${base.behind} behind`]
 		.filter(Boolean)
 		.join(", ");
-	return parts || "aligned";
+	return parts || "equal";
 }
 
 function plainRemoteDiff(repo: RepoStatus): string {
-	if (repo.remote.gone) {
+	if (repo.publish === null) return "";
+
+	if (repo.publish.refMode === "gone") {
 		if (repo.base !== null && repo.base.ahead > 0) {
 			return `gone, ${repo.base.ahead} to push`;
 		}
 		return "gone";
 	}
-	if (!repo.remote.pushed) {
+	if (repo.publish.refMode === "noRef") {
 		if (repo.base !== null && repo.base.ahead > 0) {
 			return `${repo.base.ahead} to push`;
 		}
 		return "not pushed";
 	}
-	if (repo.remote.ahead === 0 && repo.remote.behind === 0) return "aligned";
-	const parts = [
-		repo.remote.ahead > 0 && `${repo.remote.ahead} to push`,
-		repo.remote.behind > 0 && `${repo.remote.behind} to pull`,
-	]
-		.filter(Boolean)
-		.join(", ");
+	// configured or implicit — use toPush/toPull
+	const toPush = repo.publish.toPush ?? 0;
+	const toPull = repo.publish.toPull ?? 0;
+	if (toPush === 0 && toPull === 0) return "up to date";
+	const parts = [toPush > 0 && `${toPush} to push`, toPull > 0 && `${toPull} to pull`].filter(Boolean).join(", ");
 	return parts;
 }
 
@@ -398,12 +395,16 @@ function plainLocal(repo: RepoStatus): string {
 	]
 		.filter(Boolean)
 		.join(", ");
+
+	const suffixParts: string[] = [];
+	if (repo.operation) suffixParts.push(repo.operation);
+	if (repo.identity.shallow) suffixParts.push("shallow");
+	const suffix = suffixParts.length > 0 ? ` (${suffixParts.join(", ")})` : "";
+
 	if (!parts) {
-		const suffix = repo.operation ? ` (${repo.operation})` : "";
 		return `clean${suffix}`;
 	}
-	if (repo.operation) return `${parts} (${repo.operation})`;
-	return parts;
+	return `${parts}${suffix}`;
 }
 
 // Colored helpers
@@ -415,14 +416,17 @@ function colorLocal(repo: RepoStatus): string {
 	if (repo.local.modified > 0) parts.push(`${repo.local.modified} modified`);
 	if (repo.local.untracked > 0) parts.push(`${repo.local.untracked} untracked`);
 
+	const suffixParts: string[] = [];
+	if (repo.operation) suffixParts.push(repo.operation);
+	if (repo.identity.shallow) suffixParts.push("shallow");
+	const suffix = suffixParts.length > 0 ? yellow(` (${suffixParts.join(", ")})`) : "";
+
 	if (parts.length === 0) {
-		const suffix = repo.operation ? yellow(` (${repo.operation})`) : "";
 		return `clean${suffix}`;
 	}
 
 	const text = parts.join(", ");
-	if (repo.operation) return `${yellow(text)} ${yellow(`(${repo.operation})`)}`;
-	return yellow(text);
+	return `${yellow(text)}${suffix}`;
 }
 
 // Verbose output with git-status-style sections
@@ -436,11 +440,11 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 
 	// Ahead of base
 	if (repo.base && repo.base.ahead > 0) {
-		const baseRef = `${repo.remotes.upstream}/${repo.base.name}`;
+		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
 		const commits = await getCommitsBetween(repoDir, baseRef, "HEAD");
 		if (commits.length > 0) {
-			const baseLabel =
-				repo.remotes.upstream !== repo.remotes.publish ? `${repo.remotes.upstream}/${repo.base.name}` : repo.base.name;
+			const isFork = repo.base.remote !== repo.publish?.remote;
+			const baseLabel = isFork ? `${repo.base.remote}/${repo.base.ref}` : repo.base.ref;
 			let section = `\n${SECTION_INDENT}Ahead of ${baseLabel}:\n`;
 			for (const c of commits) {
 				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
@@ -451,11 +455,11 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 
 	// Behind base
 	if (repo.base && repo.base.behind > 0) {
-		const baseRef = `${repo.remotes.upstream}/${repo.base.name}`;
+		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
 		const commits = await getCommitsBetween(repoDir, "HEAD", baseRef);
 		if (commits.length > 0) {
-			const baseLabel =
-				repo.remotes.upstream !== repo.remotes.publish ? `${repo.remotes.upstream}/${repo.base.name}` : repo.base.name;
+			const isFork = repo.base.remote !== repo.publish?.remote;
+			const baseLabel = isFork ? `${repo.base.remote}/${repo.base.ref}` : repo.base.ref;
 			let section = `\n${SECTION_INDENT}Behind ${baseLabel}:\n`;
 			for (const c of commits) {
 				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
@@ -465,11 +469,10 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 	}
 
 	// Unpushed to remote
-	if (repo.remote.pushed && repo.remote.ahead > 0) {
-		const trackRef = repo.remote.trackingBranch ?? `${repo.remotes.publish}/${repo.branch.actual}`;
-		const commits = await getCommitsBetween(repoDir, trackRef, "HEAD");
+	if (repo.publish !== null && repo.publish.toPush !== null && repo.publish.toPush > 0 && repo.publish.ref) {
+		const commits = await getCommitsBetween(repoDir, repo.publish.ref, "HEAD");
 		if (commits.length > 0) {
-			const publishLabel = repo.remotes.publish;
+			const publishLabel = repo.publish.remote;
 			let section = `\n${SECTION_INDENT}Unpushed to ${publishLabel}:\n`;
 			for (const c of commits) {
 				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
@@ -479,7 +482,7 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 	}
 
 	// File-level detail
-	if (isDirty(repo)) {
+	if (repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0) {
 		const files = await parseGitStatusFiles(repoDir);
 
 		if (files.staged.length > 0) {

@@ -2,11 +2,12 @@ import { existsSync } from "node:fs";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { hasRemote } from "../lib/git";
+import type { ListJsonEntry } from "../lib/json-types";
 import { bold, dim, green, info, plural, red, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, listWorkspaces, workspaceRepoDirs } from "../lib/repos";
-import { type WorkspaceSummary, gatherWorkspaceSummary, isUnpushed } from "../lib/status";
+import { type WorkspaceSummary, gatherWorkspaceSummary } from "../lib/status";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
@@ -19,19 +20,6 @@ interface ListRow {
 	repos: string;
 	statusColored: string;
 	special: "config-missing" | "empty" | null;
-}
-
-interface ListJsonWorkspace {
-	workspace: string;
-	active: boolean;
-	branch: string | null;
-	base: string | null;
-	repoCount: number | null;
-	status: "config-missing" | "empty" | null;
-	dirty?: number;
-	unpushed?: number;
-	behind?: number;
-	drifted?: number;
 }
 
 export function registerListCommand(program: Command, getCtx: () => ArbContext): void {
@@ -154,7 +142,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 			// ── JSON output path ──
 			if (options.json) {
-				const jsonEntries: ListJsonWorkspace[] = rows.map((row) => ({
+				const jsonEntries: ListJsonEntry[] = rows.map((row) => ({
 					workspace: row.name,
 					active: row.marker,
 					branch: row.special === "config-missing" ? null : row.branch || null,
@@ -179,8 +167,8 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				for (const { index, summary } of results) {
 					const entry = jsonEntries[index];
 					if (entry && entry.status === null) {
-						const agg = computeAggregates(summary);
-						Object.assign(entry, agg);
+						entry.withIssues = summary.withIssues;
+						entry.issueLabels = summary.issueLabels;
 					}
 				}
 
@@ -310,33 +298,11 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		});
 }
 
-function computeAggregates(summary: WorkspaceSummary): {
-	dirty: number;
-	unpushed: number;
-	behind: number;
-	drifted: number;
-} {
-	return {
-		dirty: summary.dirty,
-		unpushed: summary.repos.filter((r) => !r.remote.local && isUnpushed(r)).length,
-		behind: summary.repos.filter((r) => (r.base && r.base.behind > 0) || r.remote.behind > 0).length,
-		drifted: summary.drifted,
-	};
-}
-
 function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
-	const agg = computeAggregates(summary);
-
-	const statusColoredParts: string[] = [];
-
-	if (agg.dirty > 0) statusColoredParts.push(yellow(`${agg.dirty} dirty`));
-	if (agg.unpushed > 0) statusColoredParts.push(yellow(`${agg.unpushed} unpushed`));
-	if (agg.behind > 0) statusColoredParts.push(`${agg.behind} behind`);
-	if (agg.drifted > 0) statusColoredParts.push(yellow(`${agg.drifted} drifted`));
-
-	if (statusColoredParts.length === 0) {
-		row.statusColored = "ok";
+	if (summary.withIssues === 0) {
+		row.statusColored = "no issues";
 	} else {
-		row.statusColored = statusColoredParts.join(", ");
+		const labels = summary.issueLabels.join(", ");
+		row.statusColored = yellow(`${summary.withIssues} with issues (${labels})`);
 	}
 }

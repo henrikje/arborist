@@ -1,16 +1,39 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 
-export type GitOperation = "rebase" | "merge" | "cherry-pick" | null;
+export type GitOperation = "rebase" | "merge" | "cherry-pick" | "revert" | "bisect" | "am" | null;
 
 export async function detectOperation(repoDir: string): Promise<GitOperation> {
 	const gitDirResult = await git(repoDir, "rev-parse", "--git-dir");
 	if (gitDirResult.exitCode !== 0) return null;
 	const gitDir = gitDirResult.stdout.trim();
 	const absGitDir = gitDir.startsWith("/") ? gitDir : `${repoDir}/${gitDir}`;
-	if (existsSync(`${absGitDir}/rebase-merge`) || existsSync(`${absGitDir}/rebase-apply`)) return "rebase";
+	if (existsSync(`${absGitDir}/rebase-merge`)) return "rebase";
+	if (existsSync(`${absGitDir}/rebase-apply`)) {
+		// Distinguish am (git am) from rebase: am sets an "applying" sentinel
+		if (existsSync(`${absGitDir}/rebase-apply/applying`)) return "am";
+		return "rebase";
+	}
 	if (existsSync(`${absGitDir}/MERGE_HEAD`)) return "merge";
 	if (existsSync(`${absGitDir}/CHERRY_PICK_HEAD`)) return "cherry-pick";
+	if (existsSync(`${absGitDir}/REVERT_HEAD`)) return "revert";
+	if (existsSync(`${absGitDir}/BISECT_LOG`)) return "bisect";
 	return null;
+}
+
+export async function isShallowRepo(repoDir: string): Promise<boolean> {
+	const result = await git(repoDir, "rev-parse", "--is-shallow-repository");
+	return result.exitCode === 0 && result.stdout.trim() === "true";
+}
+
+export function isLinkedWorktree(repoDir: string): boolean {
+	try {
+		const stat = statSync(`${repoDir}/.git`);
+		// Linked worktrees have a .git file (not directory) pointing to the main repo's worktrees dir
+		return !stat.isDirectory();
+	} catch {
+		// .git doesn't exist — not a valid git repo at all
+		return false;
+	}
 }
 
 export async function git(repoDir: string, ...args: string[]): Promise<{ exitCode: number; stdout: string }> {
@@ -23,6 +46,11 @@ export async function git(repoDir: string, ...args: string[]): Promise<{ exitCod
 	const stdout = await new Response(proc.stdout).text();
 	await proc.exited;
 	return { exitCode: proc.exitCode ?? 1, stdout };
+}
+
+export async function getShortHead(repoDir: string): Promise<string> {
+	const result = await git(repoDir, "rev-parse", "--short", "HEAD");
+	return result.exitCode === 0 ? result.stdout.trim() : "";
 }
 
 export async function getDefaultBranch(repoDir: string, remote = "origin"): Promise<string | null> {
