@@ -2,6 +2,7 @@
 
 Complete reference for all 18 `arb` commands. Global options available on every command:
 
+- `-C <directory>` — Run as if arb was started in `<directory>` (like `git -C`)
 - `-w, --workspace <name>` — Target a specific workspace (overrides auto-detect)
 - `-v, --version` — Show version
 - `-h, --help` — Show help

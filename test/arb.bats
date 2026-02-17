@@ -4127,3 +4127,81 @@ push_then_delete_remote() {
     [ -d "$TEST_DIR/project/ws-two" ]
 }
 
+# ── -C / --chdir ─────────────────────────────────────────────────
+
+@test "arb -C targets the given directory" {
+    cd /tmp
+    run arb -C "$TEST_DIR/project" repos
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"repo-b"* ]]
+}
+
+@test "arb -C resolves relative paths" {
+    cd "$TEST_DIR"
+    run arb -C project repos
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+}
+
+@test "arb -C with non-existent directory fails" {
+    run arb -C /no/such/directory repos
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot change to"* ]]
+    [[ "$output" == *"no such directory"* ]]
+}
+
+@test "arb -C with init creates arb root in target directory" {
+    mkdir "$TEST_DIR/new-root"
+    cd /tmp
+    run arb -C "$TEST_DIR/new-root" init
+    [ "$status" -eq 0 ]
+    [ -d "$TEST_DIR/new-root/.arb" ]
+}
+
+@test "arb -C with status detects workspace from target directory" {
+    arb create my-feature repo-a
+    cd /tmp
+    run arb -C "$TEST_DIR/project/my-feature" status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+}
+
+@test "arb -C with list shows workspaces" {
+    arb create my-feature repo-a
+    cd /tmp
+    run arb -C "$TEST_DIR/project" list -q
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"my-feature"* ]]
+}
+
+@test "arb -C with path prints correct path" {
+    arb create my-feature repo-a
+    cd /tmp
+    run arb -C "$TEST_DIR/project" path
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"$TEST_DIR/project"* ]]
+}
+
+@test "arb -C with cd outputs correct directory" {
+    arb create my-feature repo-a
+    cd /tmp
+    run arb -C "$TEST_DIR/project" cd my-feature
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"$TEST_DIR/project/my-feature"* ]]
+}
+
+@test "arb -C combined with -w targets workspace" {
+    arb create my-feature repo-a
+    cd /tmp
+    run arb -C "$TEST_DIR/project" -w my-feature status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+}
+
+@test "arb -C is visible in --help output" {
+    run arb --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"-C <directory>"* ]]
+}
+

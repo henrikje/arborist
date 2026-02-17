@@ -145,7 +145,14 @@ git commit -m "Fix the bug on the login page"
 
 There is no `arb commit` — you commit in each repo individually.
 
-The commands below run from inside a workspace or worktree. You can also target a workspace from anywhere using `--workspace` (`-w`).
+The commands below run from inside a workspace or worktree. You can also target a workspace from anywhere using `--workspace` (`-w`), or specify the directory context explicitly with `-C`:
+
+```bash
+arb -C ~/my-project status               # run from the arb root
+arb -C ~/my-project -w fix-login status   # target a specific workspace
+```
+
+`-C` works like `git -C` — it changes the working directory before any command runs.
 
 ### Check status
 
