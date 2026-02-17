@@ -60,11 +60,12 @@ To detect context programmatically, check for `.arb/` or `.arbws/` in the curren
 
 ### Checking Status
 
-- `arb status` — Human-readable overview of all repos in the workspace
-- `arb status --json` — Machine-readable output for parsing
+- `arb status` — Human-readable overview of all repos in the workspace (includes last commit date in summary)
+- `arb status --json` — Machine-readable output for parsing (includes `lastCommit` ISO 8601 field)
 - `arb status --fetch` — Fetch remotes first for up-to-date info
 - `arb status -d` — Only show repos with uncommitted changes
 - `arb status -r` — Only show repos that need attention (unpushed, drifted, dirty)
+- `arb list` — Shows all workspaces with a LAST COMMIT column indicating when work last happened
 
 Key signals in status output:
 - **dirty** — Staged, modified, or untracked files exist
@@ -72,6 +73,7 @@ Key signals in status output:
 - **behind base** — Base branch (e.g., main) has moved ahead; consider rebasing
 - **behind remote** — Remote feature branch has commits you don't have; consider pulling
 - **drifted** — Worktree is on the wrong branch (rare, usually manual intervention)
+- **last commit** — Most recent commit author date across all repos; helps gauge workspace staleness
 
 ### Syncing with Upstream (Rebase or Merge)
 

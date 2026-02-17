@@ -116,7 +116,7 @@ List all workspaces.
 arb list [-f] [-q] [--json]
 ```
 
-Lists all workspaces with aggregate status. The active workspace is marked with `*`.
+Lists all workspaces with aggregate status. The active workspace is marked with `*`. Shows a LAST COMMIT column with the most recent commit author date across all repos (as relative time in TTY, ISO 8601 in JSON).
 
 **Flags:**
 - `-f, --fetch` — Fetch all repos before listing for fresh remote data
@@ -138,12 +138,13 @@ Lists all workspaces with aggregate status. The active workspace is marked with 
     "issueCounts": [
       { "label": "dirty", "count": 1 },
       { "label": "unpushed", "count": 1 }
-    ]
+    ],
+    "lastCommit": "2025-01-15T10:30:00+01:00"
   }
 ]
 ```
 
-Fields `withIssues`, `issueLabels`, and `issueCounts` are omitted when `--quick` is used. The `issueCounts` array provides per-flag counts in display order. The `status` field is `null` for normal workspaces, `"config-missing"` if `.arbws/config` is absent, or `"empty"` if the workspace has no worktrees.
+Fields `withIssues`, `issueLabels`, `issueCounts`, and `lastCommit` are omitted when `--quick` is used. The `issueCounts` array provides per-flag counts in display order. The `status` field is `null` for normal workspaces, `"config-missing"` if `.arbws/config` is absent, or `"empty"` if the workspace has no worktrees.
 
 ---
 
@@ -225,7 +226,7 @@ Show workspace status.
 arb status [-d] [-r] [-f] [--verbose] [--json]
 ```
 
-Shows each worktree's position relative to the base branch, push status, and local changes.
+Shows each worktree's position relative to the base branch, push status, and local changes. The summary includes the workspace's last commit date (most recent author date across all repos).
 
 **Flags:**
 - `-d, --dirty` — Only show repos with local changes
@@ -272,7 +273,8 @@ Shows each worktree's position relative to the base branch, push status, and loc
   ],
   "total": 2,
   "withIssues": 1,
-  "issueLabels": ["dirty"]
+  "issueLabels": ["dirty"],
+  "lastCommit": "2025-01-15T10:30:00+01:00"
 }
 ```
 

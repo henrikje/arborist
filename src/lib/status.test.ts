@@ -20,6 +20,7 @@ function makeRepo(overrides: Partial<RepoStatus> = {}): RepoStatus {
 			toPull: 0,
 		},
 		operation: null,
+		lastCommit: null,
 		...overrides,
 	};
 }

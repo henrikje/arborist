@@ -71,7 +71,7 @@ After each change, check whether the following need updating:
 
 ## Code Style
 
-- Biome enforces: tabs, 120 char line width, double quotes, always semicolons
+- Indent with tabs (not spaces). Biome enforces: tabs, 120 char line width, double quotes, always semicolons
 - Conventional commits enforced via commitlint
 - Strict TypeScript with `noUncheckedIndexedAccess`
 - Uses Bun's `$` shell template literals for git process spawning
