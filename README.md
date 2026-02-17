@@ -244,7 +244,7 @@ Shows all workspaces with their branch, repo count, and aggregate status:
 ```
   WORKSPACE    BRANCH         REPOS  STATUS
 * ws-one       my-feature     2      no issues
-  ws-two       feat/payments  1      1 with issues (dirty, unpushed)
+  ws-two       feat/payments  1      dirty, unpushed
 ```
 
 The active workspace (the one you're currently inside) is marked with `*`.

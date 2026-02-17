@@ -48,4 +48,5 @@ export interface ListJsonEntry {
 	status: "config-missing" | "empty" | null;
 	withIssues?: number;
 	issueLabels?: string[];
+	issueCounts?: { label: string; count: number }[];
 }

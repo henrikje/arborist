@@ -147,6 +147,7 @@ export interface WorkspaceSummary {
 	total: number;
 	withIssues: number;
 	issueLabels: string[];
+	issueCounts: { label: string; count: number; key: keyof RepoFlags }[];
 }
 
 // ── Status Gathering ──
@@ -342,16 +343,26 @@ export async function gatherWorkspaceSummary(
 	// Compute aggregate flags
 	let withIssues = 0;
 	const allLabels = new Set<string>();
+	const flagCounts = new Map<keyof RepoFlags, number>();
 
 	for (const repo of repos) {
 		const flags = computeFlags(repo, branch);
 		if (needsAttention(flags)) {
 			withIssues++;
-			for (const label of flagLabels(flags)) {
-				allLabels.add(label);
+			for (const { key, label } of FLAG_LABELS) {
+				if (flags[key]) {
+					allLabels.add(label);
+					flagCounts.set(key, (flagCounts.get(key) ?? 0) + 1);
+				}
 			}
 		}
 	}
+
+	const issueCounts = FLAG_LABELS.filter(({ key }) => flagCounts.has(key)).map(({ key, label }) => ({
+		label,
+		count: flagCounts.get(key) ?? 0,
+		key,
+	}));
 
 	return {
 		workspace,
@@ -361,5 +372,6 @@ export async function gatherWorkspaceSummary(
 		total: repos.length,
 		withIssues,
 		issueLabels: [...allLabels],
+		issueCounts,
 	};
 }

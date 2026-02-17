@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import type { Command } from "commander";
 import { type FileChange, getCommitsBetween, parseGitStatusFiles } from "../lib/git";
 import type { StatusJsonOutput } from "../lib/json-types";
-import { dim, green, success, warn, yellow } from "../lib/output";
+import { dim, green, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { classifyRepos } from "../lib/repos";
 import {
@@ -158,12 +158,11 @@ async function runStatus(
 		if (!repo || !cell) continue;
 
 		const isActive = repo.name === currentRepo;
-		const risk = repoNeedsAttention(repo, summary);
 		const flags = computeFlags(repo, summary.branch);
 
 		// Col 1: Repo name
 		const marker = isActive ? `${green("*")} ` : "  ";
-		const repoName = risk ? yellow(repo.name) : repo.name;
+		const repoName = repo.name;
 		const repoPad = maxRepo - cell.repo.length;
 
 		// Col 2: Current branch
@@ -266,17 +265,6 @@ async function runStatus(
 				process.stdout.write("\n");
 			}
 		}
-	}
-
-	// Summary line — flag-based
-	const issueCount = summary.withIssues;
-	const labels = summary.issueLabels;
-
-	process.stdout.write("\n");
-	if (issueCount === 0) {
-		success("  no issues");
-	} else {
-		warn(`  ${issueCount} with issues (${labels.join(", ")})`);
 	}
 
 	return summary.withIssues > 0 ? 1 : 0;
