@@ -8,6 +8,13 @@ import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, listWorkspaces, workspaceRepoDirs } from "../lib/repos";
 import { type WorkspaceSummary, gatherWorkspaceSummary } from "../lib/status";
+import {
+	type LastCommitWidths,
+	type RelativeTimeParts,
+	computeLastCommitWidths,
+	formatLastCommitCell,
+	formatRelativeTimeParts,
+} from "../lib/time";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
@@ -19,6 +26,7 @@ interface ListRow {
 	base: string;
 	repos: string;
 	statusColored: string;
+	lastCommit: string | null;
 	special: "config-missing" | "empty" | null;
 }
 
@@ -27,7 +35,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		.command("list")
 		.summary("List all workspaces")
 		.description(
-			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, and status for each workspace. The active workspace (the one you're currently inside) is marked with *. Use --quick to skip per-repo status gathering for faster output. Use --fetch to fetch all repos before listing for fresh remote data. Use --json for machine-readable output.",
+			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *. Use --quick to skip per-repo status gathering for faster output. Use --fetch to fetch all repos before listing for fresh remote data. Use --json for machine-readable output.",
 		)
 		.option("-f, --fetch", "Fetch all repos before listing")
 		.option("-q, --quick", "Skip per-repo status (faster for large setups)")
@@ -83,6 +91,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						base: "",
 						repos: "",
 						statusColored: red("(config missing)"),
+						lastCommit: null,
 						special: "config-missing",
 					});
 					continue;
@@ -108,6 +117,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						base,
 						repos: reposText,
 						statusColored: yellow("(empty)"),
+						lastCommit: null,
 						special: "empty",
 					});
 					continue;
@@ -116,7 +126,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				const reposText = `${repoDirs.length}`;
 				if (reposText.length > maxRepos) maxRepos = reposText.length;
 
-				// Placeholder — status will be filled in Phase 2
+				// Placeholder — status and lastCommit will be filled in Phase 2
 				rows.push({
 					name,
 					marker,
@@ -124,6 +134,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					base,
 					repos: reposText,
 					statusColored: dim("..."),
+					lastCommit: null,
 					special: null,
 				});
 				toScan.push({ index: rows.length - 1, wsDir });
@@ -170,6 +181,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						entry.withIssues = summary.withIssues;
 						entry.issueLabels = summary.issueLabels;
 						entry.issueCounts = summary.issueCounts.map(({ label, count }) => ({ label, count }));
+						entry.lastCommit = summary.lastCommit;
 					}
 				}
 
@@ -187,10 +199,23 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 			const tty = isTTY();
 
+			// LAST COMMIT column width — recomputed before each render
+			let lcWidths: LastCommitWidths = { maxNum: 0, maxUnit: 0, total: 11 };
+			const lastCommitParts = (row: ListRow): RelativeTimeParts => {
+				if (!row.lastCommit) return { num: "", unit: "" };
+				return formatRelativeTimeParts(row.lastCommit);
+			};
+			const recomputeLastCommitWidth = () => {
+				lcWidths = computeLastCommitWidths(rows.map(lastCommitParts));
+			};
+
 			// Render helpers
 			const renderHeader = (): string => {
 				let header = `  ${dim("WORKSPACE")}${" ".repeat(maxName - 9)}`;
 				header += `    ${dim("BRANCH")}${" ".repeat(maxBranch - 6)}`;
+				if (showStatus) {
+					header += `    ${dim("LAST COMMIT")}${" ".repeat(lcWidths.total - 11)}`;
+				}
 				if (hasAnyBase) {
 					header += `    ${dim("BASE")}${" ".repeat(maxBase - 4)}`;
 				}
@@ -208,19 +233,36 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				if (row.special === "config-missing") {
 					let line = `${prefix}${paddedName}`;
 					line += `    ${" ".repeat(maxBranch)}`;
+					if (showStatus) line += `    ${" ".repeat(lcWidths.total)}`;
 					if (hasAnyBase) line += `    ${" ".repeat(maxBase)}`;
 					line += `    ${" ".repeat(maxRepos)}`;
-					if (showStatus) line += `    ${row.statusColored}`;
+					if (showStatus) {
+						line += `    ${row.statusColored}`;
+					}
 					return line;
 				}
 
 				let line = `${prefix}${paddedName}`;
 				line += `    ${row.branch.padEnd(maxBranch)}`;
+				if (showStatus) {
+					const parts = lastCommitParts(row);
+					let commitCell: string;
+					if (parts.num || parts.unit) {
+						commitCell = formatLastCommitCell(parts, lcWidths, true);
+					} else if (row.special === null) {
+						commitCell = "...".padEnd(lcWidths.total);
+					} else {
+						commitCell = " ".repeat(lcWidths.total);
+					}
+					line += `    ${commitCell}`;
+				}
 				if (hasAnyBase) {
 					line += `    ${row.base.padEnd(maxBase)}`;
 				}
 				line += `    ${row.repos.padEnd(maxRepos)}`;
-				if (showStatus) line += `    ${row.statusColored}`;
+				if (showStatus) {
+					line += `    ${row.statusColored}`;
+				}
 				return line;
 			};
 
@@ -271,6 +313,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					const row = rows[index];
 					if (row) applySummaryToRow(row, summary);
 				}
+				recomputeLastCommitWidth();
 
 				// Re-render table in place: move cursor up, overwrite each line
 				process.stdout.write(`\x1b[${rowCount}A`);
@@ -293,6 +336,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					const row = rows[index];
 					if (row) applySummaryToRow(row, summary);
 				}
+				recomputeLastCommitWidth();
 
 				renderTable();
 			}
@@ -323,4 +367,5 @@ function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
 	} else {
 		row.statusColored = formatIssueCounts(summary.issueCounts);
 	}
+	row.lastCommit = summary.lastCommit;
 }

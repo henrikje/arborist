@@ -195,6 +195,13 @@ export async function parseGitStatusFiles(
 	return { staged, unstaged, untracked };
 }
 
+export async function getHeadCommitDate(repoDir: string): Promise<string | null> {
+	const result = await git(repoDir, "log", "-1", "--format=%aI", "HEAD");
+	if (result.exitCode !== 0) return null;
+	const date = result.stdout.trim();
+	return date || null;
+}
+
 export async function getCommitsBetween(
 	repoDir: string,
 	ref1: string,

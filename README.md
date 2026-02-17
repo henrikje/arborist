@@ -239,15 +239,15 @@ Runs the given command with all worktree directories as arguments — useful for
 arb list
 ```
 
-Shows all workspaces with their branch, repo count, and aggregate status:
+Shows all workspaces with their branch, repo count, last commit date, and aggregate status:
 
 ```
-  WORKSPACE    BRANCH         REPOS  STATUS
-* ws-one       my-feature     2      no issues
-  ws-two       feat/payments  1      dirty, unpushed
+  WORKSPACE    BRANCH          LAST COMMIT    REPOS    STATUS
+* ws-one       my-feature       3 days        2        no issues
+  ws-two       feat/payments    2 months       1        dirty, unpushed
 ```
 
-The active workspace (the one you're currently inside) is marked with `*`.
+The active workspace (the one you're currently inside) is marked with `*`. The LAST COMMIT column shows when work last happened (the most recent commit author date across all repos), helping you gauge workspace staleness.
 
 ### Navigate
 
@@ -419,7 +419,7 @@ This is especially useful in scripted or AI-driven workflows where you want to i
 
 ### Machine-readable output
 
-`arb list --json` writes a JSON array of workspace objects to stdout with aggregate issue counts and labels (`withIssues`, `issueLabels`). Combine with `--quick` to skip status gathering:
+`arb list --json` writes a JSON array of workspace objects to stdout with aggregate issue counts, labels (`withIssues`, `issueLabels`), and last commit date (`lastCommit` as ISO 8601). Combine with `--quick` to skip status gathering:
 
 ```bash
 arb list --json | jq '[.[] | select(.active)]'

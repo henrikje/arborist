@@ -710,7 +710,46 @@ teardown() {
     [[ "$output" == *"WORKSPACE"* ]]
     [[ "$output" == *"BRANCH"* ]]
     [[ "$output" == *"REPOS"* ]]
+    [[ "$output" == *"LAST COMMIT"* ]]
     [[ "$output" == *"STATUS"* ]]
+}
+
+@test "arb list --quick hides LAST COMMIT column" {
+    arb create ws-one repo-a
+    run arb list --quick
+    [[ "$output" != *"LAST COMMIT"* ]]
+}
+
+@test "arb list shows relative time in LAST COMMIT column" {
+    arb create ws-one repo-a
+    # Commit with a date 3 days ago
+    (cd "$TEST_DIR/project/ws-one/repo-a" && \
+     GIT_AUTHOR_DATE="$(date -v-3d +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -d '3 days ago' +%Y-%m-%dT%H:%M:%S)" \
+     git commit --allow-empty -m "old commit") >/dev/null 2>&1
+    run arb list
+    [[ "$output" == *"3 days"* ]]
+}
+
+@test "arb list shows months for old commits" {
+    arb create ws-one repo-a
+    (cd "$TEST_DIR/project/ws-one/repo-a" && \
+     GIT_AUTHOR_DATE="$(date -v-90d +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -d '90 days ago' +%Y-%m-%dT%H:%M:%S)" \
+     git commit --allow-empty -m "old commit") >/dev/null 2>&1
+    run arb list
+    [[ "$output" == *"3 months"* ]]
+}
+
+@test "arb list LAST COMMIT column appears after BRANCH" {
+    arb create ws-one repo-a
+    run arb list
+    # LAST COMMIT should appear between BRANCH and REPOS in the header
+    header=$(echo "$output" | head -1)
+    branch_pos=$(echo "$header" | grep -bo "BRANCH" | head -1 | cut -d: -f1)
+    commit_pos=$(echo "$header" | grep -bo "LAST COMMIT" | head -1 | cut -d: -f1)
+    repos_pos=$(echo "$header" | grep -bo "REPOS" | head -1 | cut -d: -f1)
+    # LAST COMMIT should be after BRANCH and before REPOS
+    [ "$commit_pos" -gt "$branch_pos" ]
+    [ "$commit_pos" -lt "$repos_pos" ]
 }
 
 @test "arb list shows branch name" {
@@ -799,6 +838,8 @@ assert ws['repoCount'] == 2
 assert ws['status'] is None
 assert 'withIssues' in ws
 assert 'issueLabels' in ws
+assert 'lastCommit' in ws
+assert isinstance(ws['lastCommit'], str), 'lastCommit should be an ISO date string'
 "
 }
 
@@ -1402,6 +1443,18 @@ assert 'issueLabels' in d
 "
 }
 
+@test "arb status --json includes lastCommit" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --json
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+assert 'lastCommit' in d
+assert isinstance(d['lastCommit'], str), 'lastCommit should be an ISO date string'
+"
+}
+
 @test "arb status --json includes identity section" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
@@ -1617,9 +1670,75 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     run arb status
     [[ "$output" == *"REPO"* ]]
     [[ "$output" == *"BRANCH"* ]]
+    [[ "$output" == *"LAST COMMIT"* ]]
     [[ "$output" == *"BASE"* ]]
     [[ "$output" == *"REMOTE"* ]]
     [[ "$output" == *"LOCAL"* ]]
+}
+
+@test "arb status shows relative time in LAST COMMIT column" {
+    arb create my-feature repo-a
+    (cd "$TEST_DIR/project/my-feature/repo-a" && \
+     GIT_AUTHOR_DATE="$(date -v-2d +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -d '2 days ago' +%Y-%m-%dT%H:%M:%S)" \
+     git commit --allow-empty -m "old commit") >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [[ "$output" == *"2 days"* ]]
+}
+
+@test "arb status shows weeks for old commits" {
+    arb create my-feature repo-a
+    (cd "$TEST_DIR/project/my-feature/repo-a" && \
+     GIT_AUTHOR_DATE="$(date -v-14d +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -d '14 days ago' +%Y-%m-%dT%H:%M:%S)" \
+     git commit --allow-empty -m "old commit") >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [[ "$output" == *"2 weeks"* ]]
+}
+
+@test "arb status shows years for very old commits" {
+    arb create my-feature repo-a
+    (cd "$TEST_DIR/project/my-feature/repo-a" && \
+     GIT_AUTHOR_DATE="$(date -v-400d +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -d '400 days ago' +%Y-%m-%dT%H:%M:%S)" \
+     git commit --allow-empty -m "ancient commit") >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [[ "$output" == *"1 year"* ]]
+}
+
+@test "arb status LAST COMMIT column appears after BRANCH" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    header=$(echo "$output" | head -1)
+    branch_pos=$(echo "$header" | grep -bo "BRANCH" | head -1 | cut -d: -f1)
+    commit_pos=$(echo "$header" | grep -bo "LAST COMMIT" | head -1 | cut -d: -f1)
+    base_pos=$(echo "$header" | grep -bo "BASE" | head -1 | cut -d: -f1)
+    # LAST COMMIT should be after BRANCH and before BASE
+    [ "$commit_pos" -gt "$branch_pos" ]
+    [ "$commit_pos" -lt "$base_pos" ]
+}
+
+@test "arb status LAST COMMIT right-aligns numbers across repos" {
+    arb create my-feature repo-a repo-b
+    # repo-a: 3 days ago (single-digit number)
+    (cd "$TEST_DIR/project/my-feature/repo-a" && \
+     GIT_AUTHOR_DATE="$(date -v-3d +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -d '3 days ago' +%Y-%m-%dT%H:%M:%S)" \
+     git commit --allow-empty -m "recent") >/dev/null 2>&1
+    # repo-b: ~10 months ago (double-digit number)
+    (cd "$TEST_DIR/project/my-feature/repo-b" && \
+     GIT_AUTHOR_DATE="$(date -v-300d +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -d '300 days ago' +%Y-%m-%dT%H:%M:%S)" \
+     git commit --allow-empty -m "older") >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    # Single-digit "3" should be padded to align with double-digit "10"
+    # Extract the data lines (skip header)
+    repo_a_line=$(echo "$output" | grep "repo-a")
+    repo_b_line=$(echo "$output" | grep "repo-b")
+    # Find the position of the unit text — both "days" and "months" should start at the same column
+    days_pos=$(echo "$repo_a_line" | grep -bo "days" | head -1 | cut -d: -f1)
+    months_pos=$(echo "$repo_b_line" | grep -bo "months" | head -1 | cut -d: -f1)
+    [ "$days_pos" -eq "$months_pos" ]
 }
 
 @test "arb status --at-risk shows only at-risk repos" {

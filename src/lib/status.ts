@@ -5,6 +5,7 @@ import {
 	branchExistsLocally,
 	detectOperation,
 	getDefaultBranch,
+	getHeadCommitDate,
 	git,
 	isLinkedWorktree,
 	isShallowRepo,
@@ -13,6 +14,7 @@ import {
 } from "./git";
 import { type RepoRemotes, getRemoteNames, resolveRemotes } from "./remotes";
 import { workspaceRepoDirs } from "./repos";
+import { latestCommitDate } from "./time";
 import { workspaceBranch } from "./workspace-branch";
 
 // ── 5-Section Model Types ──
@@ -39,6 +41,7 @@ export interface RepoStatus {
 		toPull: number | null; // null = unknown
 	} | null; // null when no remote
 	operation: GitOperation;
+	lastCommit: string | null;
 }
 
 export interface RepoFlags {
@@ -148,6 +151,7 @@ export interface WorkspaceSummary {
 	withIssues: number;
 	issueLabels: string[];
 	issueCounts: { label: string; count: number; key: keyof RepoFlags }[];
+	lastCommit: string | null;
 }
 
 // ── Status Gathering ──
@@ -301,6 +305,7 @@ export async function gatherRepoStatus(
 		base: baseStatus,
 		publish: publishStatus,
 		operation: gitDirResult,
+		lastCommit: null,
 	};
 }
 
@@ -316,7 +321,7 @@ export async function gatherWorkspaceSummary(
 	const repoDirs = workspaceRepoDirs(wsDir);
 	let scanned = 0;
 
-	const repos = await Promise.all(
+	const repoResults = await Promise.all(
 		repoDirs.map(async (repoDir) => {
 			const repo = basename(repoDir);
 			const canonicalPath = `${reposDir}/${repo}`;
@@ -333,12 +338,20 @@ export async function gatherWorkspaceSummary(
 				}
 			}
 
-			const status = await gatherRepoStatus(repoDir, reposDir, configBase, remotes, repoHasRemote);
+			const [status, commitDate] = await Promise.all([
+				gatherRepoStatus(repoDir, reposDir, configBase, remotes, repoHasRemote),
+				getHeadCommitDate(repoDir),
+			]);
 			scanned++;
 			onProgress?.(scanned, repoDirs.length);
-			return status;
+			return { status, commitDate };
 		}),
 	);
+
+	const repos = repoResults.map((r) => {
+		r.status.lastCommit = r.commitDate;
+		return r.status;
+	});
 
 	// Compute aggregate flags
 	let withIssues = 0;
@@ -364,6 +377,8 @@ export async function gatherWorkspaceSummary(
 		key,
 	}));
 
+	const lastCommit = latestCommitDate(repoResults.map((r) => r.commitDate));
+
 	return {
 		workspace,
 		branch,
@@ -373,5 +388,6 @@ export async function gatherWorkspaceSummary(
 		withIssues,
 		issueLabels: [...allLabels],
 		issueCounts,
+		lastCommit,
 	};
 }

@@ -12,6 +12,12 @@ import {
 	gatherWorkspaceSummary,
 	needsAttention,
 } from "../lib/status";
+import {
+	type RelativeTimeParts,
+	computeLastCommitWidths,
+	formatLastCommitCell,
+	formatRelativeTimeParts,
+} from "../lib/time";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireWorkspace } from "../lib/workspace-context";
@@ -26,7 +32,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("--json", "Output structured JSON")
 		.summary("Show workspace status")
 		.description(
-			"Show each worktree's position relative to the default branch, push status against the publish remote, and local changes (staged, modified, untracked). Use --dirty to only show worktrees with uncommitted changes. Use --at-risk to only show repos that need attention (unpushed, drifted, dirty, etc). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
+			"Show each worktree's position relative to the default branch, push status against the publish remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos). Use --dirty to only show worktrees with uncommitted changes. Use --at-risk to only show repos that need attention (unpushed, drifted, dirty, etc). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
 		)
 		.action(
 			async (options: {
@@ -44,7 +50,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		);
 }
 
-// 7-column cell data for width measurement (plain text, no ANSI)
+// 8-column cell data for width measurement (plain text, no ANSI)
 interface CellData {
 	repo: string;
 	branch: string;
@@ -53,6 +59,7 @@ interface CellData {
 	remoteName: string;
 	remoteDiff: string;
 	local: string;
+	lastCommit: RelativeTimeParts;
 }
 
 async function runStatus(
@@ -121,6 +128,7 @@ async function runStatus(
 	let maxBaseDiff = 0;
 	let maxRemoteName = 0;
 	let maxRemoteDiff = 0;
+	let maxLocal = 0;
 
 	for (const repo of repos) {
 		const cell = plainCells(repo);
@@ -131,7 +139,9 @@ async function runStatus(
 		if (cell.baseDiff.length > maxBaseDiff) maxBaseDiff = cell.baseDiff.length;
 		if (cell.remoteName.length > maxRemoteName) maxRemoteName = cell.remoteName.length;
 		if (cell.remoteDiff.length > maxRemoteDiff) maxRemoteDiff = cell.remoteDiff.length;
+		if (cell.local.length > maxLocal) maxLocal = cell.local.length;
 	}
+	const lcWidths = computeLastCommitWidths(cells.map((c) => c.lastCommit));
 
 	// Ensure minimum widths for header labels
 	if (maxRepo < 4) maxRepo = 4; // "REPO"
@@ -140,12 +150,14 @@ async function runStatus(
 	// Each group = name + 2sp + diff. Expand the diff column if needed.
 	if (maxBaseName + 2 + maxBaseDiff < 4) maxBaseDiff = Math.max(maxBaseDiff, 4 - maxBaseName - 2);
 	if (maxRemoteName + 2 + maxRemoteDiff < 6) maxRemoteDiff = Math.max(maxRemoteDiff, 6 - maxRemoteName - 2);
+	if (maxLocal < 5) maxLocal = 5; // "LOCAL"
 
 	// Header line
 	const baseGroupWidth = maxBaseName + 2 + maxBaseDiff;
 	const remoteGroupWidth = maxRemoteName + 2 + maxRemoteDiff;
 	let header = `  ${dim("REPO")}${" ".repeat(maxRepo - 4)}`;
 	header += `    ${dim("BRANCH")}${" ".repeat(maxBranch - 6)}`;
+	header += `    ${dim("LAST COMMIT")}${" ".repeat(lcWidths.total - 11)}`;
 	header += `    ${dim("BASE")}${" ".repeat(baseGroupWidth - 4)}`;
 	header += `    ${dim("REMOTE")}${" ".repeat(remoteGroupWidth - 6)}`;
 	header += `    ${dim("LOCAL")}`;
@@ -226,9 +238,12 @@ async function runStatus(
 		// Col 7: Local changes
 		const localColored = colorLocal(repo);
 
-		// Assemble line with grouping: [repo]  4sp  [branch]  4sp  [baseName  2sp  baseDiff]  4sp  [remoteName  2sp  remoteDiff]  4sp  [local]
+		// Assemble line: [repo]  4sp  [branch]  4sp  [lastCommit]  4sp  [baseName  2sp  baseDiff]  4sp  [remoteName  2sp  remoteDiff]  4sp  [local]
 		let line = `${marker}${repoName}${" ".repeat(repoPad)}`;
 		line += `    ${branchColored}${" ".repeat(branchPad)}`;
+
+		// Last commit (number right-aligned, unit left-aligned)
+		line += `    ${formatLastCommitCell(cell.lastCommit, lcWidths, true)}`;
 
 		// Base group (name + diff)
 		if (cell.baseName) {
@@ -341,7 +356,10 @@ function plainCells(repo: RepoStatus): CellData {
 	// Col 7: local
 	const local = plainLocal(repo);
 
-	return { repo: repoName, branch, baseName, baseDiff, remoteName, remoteDiff, local };
+	// Col 8: last commit
+	const lastCommit = repo.lastCommit ? formatRelativeTimeParts(repo.lastCommit) : { num: "", unit: "" };
+
+	return { repo: repoName, branch, baseName, baseDiff, remoteName, remoteDiff, local, lastCommit };
 }
 
 function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {

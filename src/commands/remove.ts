@@ -3,12 +3,20 @@ import { basename } from "node:path";
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
-import { branchExistsLocally, git, hasRemote, remoteBranchExists, validateWorkspaceName } from "../lib/git";
-import { error, green, info, inlineResult, inlineStart, plural, red, success, warn, yellow } from "../lib/output";
+import {
+	branchExistsLocally,
+	getHeadCommitDate,
+	git,
+	hasRemote,
+	remoteBranchExists,
+	validateWorkspaceName,
+} from "../lib/git";
+import { dim, error, green, info, inlineResult, inlineStart, plural, red, success, warn, yellow } from "../lib/output";
 import { resolveRemotes } from "../lib/remotes";
 import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import { type RepoStatus, computeFlags, gatherRepoStatus, wouldLoseWork } from "../lib/status";
 import { type TemplateDiff, diffTemplates } from "../lib/templates";
+import { formatRelativeTime, latestCommitDate } from "../lib/time";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
@@ -23,6 +31,7 @@ interface WorkspaceAssessment {
 	atRiskCount: number;
 	hasAtRisk: boolean;
 	templateDiffs: TemplateDiff[];
+	lastCommit: string | null;
 }
 
 async function assessWorkspace(name: string, ctx: ArbContext): Promise<WorkspaceAssessment | null> {
@@ -61,10 +70,17 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 
 	// Per-repo status gathering
 	const repoStatuses: RepoStatus[] = [];
+	const commitDates: (string | null)[] = [];
 	for (const repo of repos) {
 		const wtPath = `${wsDir}/${repo}`;
-		repoStatuses.push(await gatherRepoStatus(wtPath, ctx.reposDir, configBase));
+		const [status, commitDate] = await Promise.all([
+			gatherRepoStatus(wtPath, ctx.reposDir, configBase),
+			getHeadCommitDate(wtPath),
+		]);
+		repoStatuses.push(status);
+		commitDates.push(commitDate);
 	}
+	const lastCommit = latestCommitDate(commitDates);
 
 	// Determine at-risk repos and collect remote repos
 	let hasAtRisk = false;
@@ -100,11 +116,16 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 		atRiskCount,
 		hasAtRisk,
 		templateDiffs,
+		lastCommit,
 	};
 }
 
 function displayStatusTable(assessment: WorkspaceAssessment): void {
-	const { repos, repoStatuses, atRiskCount, hasAtRisk, templateDiffs } = assessment;
+	const { repos, repoStatuses, atRiskCount, hasAtRisk, templateDiffs, lastCommit } = assessment;
+
+	if (lastCommit) {
+		process.stderr.write(`  ${dim(`last commit ${formatRelativeTime(lastCommit)}`)}\n`);
+	}
 
 	const maxRepoLen = Math.max(...repos.map((r) => r.length));
 	for (const status of repoStatuses) {

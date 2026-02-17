@@ -27,6 +27,7 @@ export interface StatusJsonRepo {
 		toPull: number | null;
 	} | null;
 	operation: GitOperation;
+	lastCommit: string | null;
 }
 
 export interface StatusJsonOutput {
@@ -37,6 +38,7 @@ export interface StatusJsonOutput {
 	total: number;
 	withIssues: number;
 	issueLabels: string[];
+	lastCommit: string | null;
 }
 
 export interface ListJsonEntry {
@@ -49,4 +51,5 @@ export interface ListJsonEntry {
 	withIssues?: number;
 	issueLabels?: string[];
 	issueCounts?: { label: string; count: number }[];
+	lastCommit?: string | null;
 }
