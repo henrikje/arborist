@@ -8,7 +8,7 @@ Working on a feature that spans multiple repositories means juggling branches ac
 
 ## Mental model
 
-Git worktrees make it possible to check out multiple branches of the same repository at the same time, each in its own directory. Arborist builds on this by keeping a stable canonical clone of each repository and creating temporary workspaces for actual development. Each workspace represents one feature or issue. It contains a separate worktree for each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete.
+Git worktrees make it possible to check out multiple branches of the same repository at the same time, each in its own directory. Arborist builds on this by keeping a stable canonical clone of each repository and creating temporary workspaces for actual development.
 
 Here's what that looks like on disk:
 
@@ -28,7 +28,8 @@ Here's what that looks like on disk:
     └── shared/
 ```
 
-You work in the workspaces. The canonical clones under `.arb/` are managed by arb — you never touch them directly.
+You work in the workspaces. Each workspace represents one feature or issue. It contains a separate worktree for each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete. The canonical clones under `.arb/` are managed by arb — you never touch them directly.
+
 
 ## Getting started
 
