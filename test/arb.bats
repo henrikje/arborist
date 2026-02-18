@@ -3079,8 +3079,8 @@ delete_workspace_config() {
     cd "$TEST_DIR/project/my-feature"
     run arb pull --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"to pull (merge)"* ]]
-    [[ "$output" == *"(merge)"* ]]
+    [[ "$output" == *"to pull (merge"* ]]
+    [[ "$output" == *"pulled"*"(merge)"* ]]
 }
 
 @test "arb pull detects rebase from pull.rebase config" {
@@ -3095,8 +3095,8 @@ delete_workspace_config() {
     cd "$TEST_DIR/project/my-feature"
     run arb pull --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"to pull (rebase)"* ]]
-    [[ "$output" == *"(rebase)"* ]]
+    [[ "$output" == *"to pull (rebase"* ]]
+    [[ "$output" == *"pulled"*"(rebase)"* ]]
 }
 
 @test "arb pull --rebase forces rebase mode" {
@@ -3109,8 +3109,8 @@ delete_workspace_config() {
     cd "$TEST_DIR/project/my-feature"
     run arb pull --rebase --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"to pull (rebase)"* ]]
-    [[ "$output" == *"(rebase)"* ]]
+    [[ "$output" == *"to pull (rebase"* ]]
+    [[ "$output" == *"pulled"*"(rebase)"* ]]
 }
 
 @test "arb pull --merge forces merge mode" {
@@ -3126,8 +3126,8 @@ delete_workspace_config() {
     cd "$TEST_DIR/project/my-feature"
     run arb pull --merge --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"to pull (merge)"* ]]
-    [[ "$output" == *"(merge)"* ]]
+    [[ "$output" == *"to pull (merge"* ]]
+    [[ "$output" == *"pulled"*"(merge)"* ]]
 }
 
 @test "arb pull --rebase --merge errors" {
@@ -3372,16 +3372,14 @@ setup_fork_repo() {
     [[ "$output" == *"canonical/main"* ]]
 }
 
-@test "fork: single-origin repos behave identically" {
+@test "fork: single-origin repos show origin/ prefix in BASE column" {
     # Create a workspace with standard single-origin repo
     arb create single-origin-ws repo-a repo-b
     cd "$TEST_DIR/project/single-origin-ws"
 
     run arb status
-    # BASE column should NOT show origin/ prefix (single-origin keeps it clean)
-    [[ "$output" != *"origin/main"* ]]
-    # Should just show "main" in the base column
-    [[ "$output" == *"main"* ]]
+    # BASE column should show origin/main (always includes remote prefix)
+    [[ "$output" == *"origin/main"* ]]
 }
 
 @test "fork: merge targets the upstream remote" {
