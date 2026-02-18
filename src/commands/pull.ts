@@ -61,7 +61,6 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 
 				let fetchResults = new Map<string, { exitCode: number; output: string }>();
 				if (fetchDirs.length > 0) {
-					process.stderr.write(`Fetching ${plural(fetchDirs.length, "repo")}...\n`);
 					fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
 				}
 

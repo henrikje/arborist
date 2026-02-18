@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { branchExistsLocally, getDefaultBranch, hasRemote, isRepoDirty, remoteBranchExists } from "./git";
-import { error, inlineResult, inlineStart, plural, warn } from "./output";
+import { error, inlineResult, inlineStart, warn } from "./output";
 import { type FetchResult, parallelFetch } from "./parallel-fetch";
 import type { RepoRemotes } from "./remotes";
 
@@ -40,7 +40,6 @@ export async function addWorktrees(
 	}
 
 	if (reposDirsToFetch.length > 0) {
-		process.stderr.write(`Fetching ${plural(reposDirsToFetch.length, "repo")}...\n`);
 		const fetched = await parallelFetch(reposDirsToFetch, undefined, remotesMap);
 		for (const [repo, fr] of fetched) {
 			fetchResults.set(repo, fr);

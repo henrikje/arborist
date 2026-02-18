@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { error } from "./output";
+import { error, plural } from "./output";
 import type { RepoRemotes } from "./remotes";
 import { isTTY } from "./tty";
 
@@ -20,12 +20,15 @@ export async function parallelFetch(
 
 	if (total === 0) return results;
 
+	const startTime = performance.now();
 	let completed = 0;
-	const showProgress = isTTY() && total > 0;
+	const tty = isTTY();
+	const label = plural(total, "repo");
 
 	const updateProgress = () => {
-		if (showProgress) {
-			process.stderr.write(`\r  Fetched ${completed}/${total}`);
+		if (tty) {
+			const counter = completed > 0 ? ` ${completed}/${total}` : "";
+			process.stderr.write(`\r\x1B[2KFetching ${label}...${counter}`);
 		}
 	};
 
@@ -101,8 +104,11 @@ export async function parallelFetch(
 
 	if (timeoutId !== undefined) clearTimeout(timeoutId);
 
-	if (showProgress) {
-		process.stderr.write(`\r${" ".repeat(40)}\r`);
+	const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+	if (tty) {
+		process.stderr.write(`\r\x1B[2KFetched ${label} in ${elapsed}s\n`);
+	} else {
+		process.stderr.write(`Fetched ${label} in ${elapsed}s\n`);
 	}
 
 	return results;

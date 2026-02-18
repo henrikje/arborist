@@ -50,7 +50,6 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				if (options.fetch !== false) {
 					const { repos: allRepos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
 					if (fetchDirs.length > 0) {
-						process.stderr.write(`Fetching ${plural(fetchDirs.length, "repo")}...\n`);
 						const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
 						reportFetchFailures(allRepos, localRepos, fetchResults);
 					}
