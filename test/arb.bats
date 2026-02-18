@@ -1363,7 +1363,7 @@ assert data == []
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "ahead commit" >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
     run arb status --verbose
-    [[ "$output" == *"Ahead of main:"* ]]
+    [[ "$output" == *"Ahead of origin/main:"* ]]
     [[ "$output" == *"ahead commit"* ]]
 }
 
@@ -1376,7 +1376,7 @@ assert data == []
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb status --verbose
-    [[ "$output" == *"Behind main:"* ]]
+    [[ "$output" == *"Behind origin/main:"* ]]
     [[ "$output" == *"upstream change"* ]]
 }
 
