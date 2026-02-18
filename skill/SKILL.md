@@ -51,12 +51,11 @@ To detect context programmatically, check for `.arb/` or `.arbws/` in the curren
 
 1. Run `arb list -q` to see existing workspaces (quick mode, skips status)
 2. Derive a kebab-case workspace name from the feature description
-3. Create: `arb create <name> -a`
+3. Create: `arb create <name> -a` (auto-cds into the workspace)
    - `-a` includes all repos (omit to select specific repos)
    - `-b <branch>` for a custom branch name (defaults to workspace name)
    - `--base <branch>` to branch from something other than the default branch
    - No `-y` flag needed — `create` runs non-interactively when name and repos are provided
-4. Navigate into the created workspace to begin work
 
 ### Checking Status
 

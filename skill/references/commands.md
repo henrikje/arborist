@@ -161,7 +161,7 @@ Create a new workspace.
 arb create [name] [repos...] [-a] [-b <branch>] [--base <branch>]
 ```
 
-Creates a workspace with worktrees for selected repos on a shared feature branch. Automatically seeds files from `.arb/templates/` if configured. Prompts interactively for name, branch, and repos when run without arguments.
+Creates a workspace with worktrees for selected repos on a shared feature branch. Automatically seeds files from `.arb/templates/` if configured. Prompts interactively for name, branch, and repos when run without arguments. With the shell integration, auto-cds into the new workspace on success.
 
 **Arguments:**
 - `[name]` — Workspace name (prompted if not provided)

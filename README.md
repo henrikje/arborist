@@ -81,10 +81,10 @@ arb repos
 Here's the full lifecycle of a workspace — from creation to cleanup:
 
 ```bash
-# Create a workspace for your feature
+# Create a workspace for your feature (auto-cds into it)
 arb create fix-login frontend backend
 
-# Work in individual repos as usual
+# Work in individual repos
 arb cd fix-login/frontend
 # hack hack hack
 git add -p && git commit -m "Fix the login page"
@@ -121,7 +121,7 @@ You will create a new workspace for each feature or issue you work on. A workspa
 arb create fix-login frontend backend
 ```
 
-This creates a `fix-login` workspace, checks out a `fix-login` branch in `frontend` and `backend`, and creates separate working directories for each under `fix-login/`. The branches are created if they do not exist.
+This creates a `fix-login` workspace, checks out a `fix-login` branch in `frontend` and `backend`, and creates separate working directories for each under `fix-login/`. The branches are created if they do not exist. With the shell integration installed, your shell automatically `cd`s into the new workspace.
 
 Use `--branch` (`-b`) when the branch name differs from the workspace name, `--base` when you want to target a specific base branch (instead of each repo's default), and `--all-repos` (`-a`) to include every cloned repo:
 

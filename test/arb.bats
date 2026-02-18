@@ -265,9 +265,14 @@ teardown() {
     [ "$branch" = "reuse-me" ]
 }
 
-@test "arb create produces no stdout" {
+@test "arb create outputs workspace path on stdout" {
     run bash -c 'arb create foo repo-a 2>/dev/null'
-    [ -z "$output" ]
+    [ "$output" = "$TEST_DIR/project/foo" ]
+}
+
+@test "arb create path output is clean when stdout is captured (shell wrapper pattern)" {
+    _arb_dir="$(arb create capture-test repo-a 2>/dev/null)"
+    [ "$_arb_dir" = "$TEST_DIR/project/capture-test" ]
 }
 
 @test "arb create shows workspace path" {
