@@ -4292,6 +4292,9 @@ push_then_delete_remote() {
     cd "$TEST_DIR/project/my-feature"
     run arb exec --dirty pwd
     [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
 
 # ── template ─────────────────────────────────────────────────────
 
