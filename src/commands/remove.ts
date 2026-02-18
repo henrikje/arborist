@@ -2,21 +2,25 @@ import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
-import { configGet } from "../lib/config";
-import {
-	branchExistsLocally,
-	getHeadCommitDate,
-	git,
-	hasRemote,
-	remoteBranchExists,
-	validateWorkspaceName,
-} from "../lib/git";
-import { dim, error, green, info, inlineResult, inlineStart, plural, red, success, warn, yellow } from "../lib/output";
+import { branchExistsLocally, git, hasRemote, remoteBranchExists, validateWorkspaceName } from "../lib/git";
+import { dim, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "../lib/output";
 import { resolveRemotes } from "../lib/remotes";
 import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
-import { type RepoStatus, computeFlags, gatherRepoStatus, wouldLoseWork } from "../lib/status";
+import {
+	type RepoFlags,
+	type WorkspaceSummary,
+	computeFlags,
+	gatherWorkspaceSummary,
+	wouldLoseWork,
+} from "../lib/status";
 import { type TemplateDiff, diffTemplates } from "../lib/templates";
-import { formatRelativeTime, latestCommitDate } from "../lib/time";
+import {
+	type LastCommitWidths,
+	type RelativeTimeParts,
+	computeLastCommitWidths,
+	formatLastCommitCell,
+	formatRelativeTimeParts,
+} from "../lib/time";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
@@ -25,13 +29,11 @@ interface WorkspaceAssessment {
 	name: string;
 	wsDir: string;
 	branch: string;
-	repos: string[];
-	repoStatuses: RepoStatus[];
+	summary: WorkspaceSummary;
 	remoteRepos: string[];
 	atRiskCount: number;
 	hasAtRisk: boolean;
 	templateDiffs: TemplateDiff[];
-	lastCommit: string | null;
 }
 
 async function assessWorkspace(name: string, ctx: ArbContext): Promise<WorkspaceAssessment | null> {
@@ -47,7 +49,7 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 		process.exit(1);
 	}
 
-	// Read branch and base from config
+	// Read branch from config
 	let branch: string;
 	const wb = await workspaceBranch(wsDir);
 	if (wb) {
@@ -56,7 +58,6 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 		branch = name.toLowerCase();
 		warn(`Could not determine branch for ${name}, assuming '${branch}'`);
 	}
-	const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 
 	// Discover repos
 	const repoPaths = workspaceRepoDirs(wsDir);
@@ -68,26 +69,15 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 		return null;
 	}
 
-	// Per-repo status gathering
-	const repoStatuses: RepoStatus[] = [];
-	const commitDates: (string | null)[] = [];
-	for (const repo of repos) {
-		const wtPath = `${wsDir}/${repo}`;
-		const [status, commitDate] = await Promise.all([
-			gatherRepoStatus(wtPath, ctx.reposDir, configBase),
-			getHeadCommitDate(wtPath),
-		]);
-		repoStatuses.push(status);
-		commitDates.push(commitDate);
-	}
-	const lastCommit = latestCommitDate(commitDates);
+	// Gather workspace summary using the canonical status model
+	const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir);
 
 	// Determine at-risk repos and collect remote repos
 	let hasAtRisk = false;
 	let atRiskCount = 0;
 	const remoteRepos: string[] = [];
 
-	for (const status of repoStatuses) {
+	for (const status of summary.repos) {
 		if (status.publish !== null) {
 			if (status.publish.refMode === "configured" || status.publish.refMode === "implicit") {
 				remoteRepos.push(status.name);
@@ -110,55 +100,114 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 		name,
 		wsDir,
 		branch,
-		repos,
-		repoStatuses,
+		summary,
 		remoteRepos,
 		atRiskCount,
 		hasAtRisk,
 		templateDiffs,
-		lastCommit,
 	};
 }
 
-function displayStatusTable(assessment: WorkspaceAssessment): void {
-	const { repos, repoStatuses, atRiskCount, hasAtRisk, templateDiffs, lastCommit } = assessment;
+const YELLOW_FLAGS = new Set<keyof RepoFlags>([
+	"isDirty",
+	"isUnpushed",
+	"isDrifted",
+	"isDetached",
+	"hasOperation",
+	"isLocal",
+	"isShallow",
+]);
 
-	if (lastCommit) {
-		process.stderr.write(`  ${dim(`last commit ${formatRelativeTime(lastCommit)}`)}\n`);
+function formatIssueCounts(issueCounts: WorkspaceSummary["issueCounts"]): string {
+	return issueCounts
+		.map(({ label, key }) => {
+			return YELLOW_FLAGS.has(key) ? yellow(label) : label;
+		})
+		.join(", ");
+}
+
+function displayRemoveTable(assessments: WorkspaceAssessment[]): void {
+	// Compute column widths
+	let maxName = "WORKSPACE".length;
+	let maxRepos = "REPOS".length;
+
+	for (const a of assessments) {
+		if (a.name.length > maxName) maxName = a.name.length;
+		const reposText = `${a.summary.total}`;
+		if (reposText.length > maxRepos) maxRepos = reposText.length;
 	}
 
-	const maxRepoLen = Math.max(...repos.map((r) => r.length));
-	for (const status of repoStatuses) {
-		const notPushedWithCommits =
-			status.publish !== null && status.publish.refMode === "noRef" && status.base && status.base.ahead > 0;
+	// Last commit column
+	const allTimeParts: RelativeTimeParts[] = assessments.map((a) =>
+		a.summary.lastCommit ? formatRelativeTimeParts(a.summary.lastCommit) : { num: "", unit: "" },
+	);
+	const lcWidths: LastCommitWidths = computeLastCommitWidths(allTimeParts);
 
-		const toPush = status.publish !== null ? (status.publish.toPush ?? 0) : 0;
+	// Header
+	let header = `  ${dim("WORKSPACE")}${" ".repeat(maxName - 9)}`;
+	header += `    ${dim("LAST COMMIT")}${" ".repeat(lcWidths.total - 11)}`;
+	header += `    ${dim("REPOS")}${" ".repeat(maxRepos - 5)}`;
+	header += `    ${dim("STATUS")}`;
+	process.stderr.write(`${header}\n`);
 
-		const parts = [
-			status.local.staged > 0 && green(`${status.local.staged} staged`),
-			status.local.modified > 0 && yellow(`${status.local.modified} modified`),
-			status.local.untracked > 0 && yellow(`${status.local.untracked} untracked`),
-			notPushedWithCommits ? red("not pushed at all") : toPush > 0 ? yellow(`${toPush} commits not pushed`) : false,
-		]
-			.filter(Boolean)
-			.join(", ");
+	// Rows
+	for (let i = 0; i < assessments.length; i++) {
+		const a = assessments[i];
+		const parts = allTimeParts[i];
+		if (!a || !parts) continue;
 
-		const display = parts || green("\u2714 clean, pushed");
-		process.stderr.write(`  ${status.name.padEnd(maxRepoLen)} ${display}\n`);
+		let line = `  ${a.name.padEnd(maxName)}`;
+
+		// Last commit cell
+		let commitCell: string;
+		if (parts.num || parts.unit) {
+			commitCell = formatLastCommitCell(parts, lcWidths, true);
+		} else {
+			commitCell = " ".repeat(lcWidths.total);
+		}
+		line += `    ${commitCell}`;
+
+		// Repos
+		line += `    ${`${a.summary.total}`.padEnd(maxRepos)}`;
+
+		// Status
+		if (a.summary.withIssues === 0) {
+			line += "    no issues";
+		} else {
+			line += `    ${formatIssueCounts(a.summary.issueCounts)}`;
+		}
+
+		process.stderr.write(`${line}\n`);
 	}
+
 	process.stderr.write("\n");
 
-	if (hasAtRisk) {
-		warn(`  \u26A0 ${plural(atRiskCount, "repo")} ${atRiskCount === 1 ? "has" : "have"} changes that will be lost.`);
-		process.stderr.write("\n");
+	// Template diffs below the table
+	const multiWs = assessments.length > 1;
+	for (const a of assessments) {
+		if (a.templateDiffs.length > 0) {
+			const suffix = multiWs ? ` (${a.name})` : "";
+			warn(`      Template files modified${suffix}:`);
+			for (const diff of a.templateDiffs) {
+				const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
+				process.stderr.write(`          ${prefix}${diff.relPath}\n`);
+			}
+			process.stderr.write("\n");
+		}
 	}
 
-	if (templateDiffs.length > 0) {
-		warn("  Template files modified:");
-		for (const diff of templateDiffs) {
-			const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
-			process.stderr.write(`    ${prefix}${diff.relPath}\n`);
+	// At-risk warnings
+	for (const a of assessments) {
+		if (a.hasAtRisk) {
+			const inWs = multiWs ? ` in ${a.name}` : "";
+			warn(
+				`  \u26A0 ${plural(a.atRiskCount, "repo")}${inWs} ${a.atRiskCount === 1 ? "has" : "have"} changes that will be lost.`,
+			);
 		}
+	}
+
+	const hasAnyAtRisk = assessments.some((a) => a.hasAtRisk);
+	if (hasAnyAtRisk) {
 		process.stderr.write("\n");
 	}
 }
@@ -168,7 +217,8 @@ async function executeRemoval(
 	ctx: ArbContext,
 	deleteRemote: boolean,
 ): Promise<string[]> {
-	const { wsDir, branch, repos } = assessment;
+	const { wsDir, branch } = assessment;
+	const repos = assessment.summary.repos.map((r) => r.name);
 	const failedRemoteDeletes: string[] = [];
 
 	for (const repo of repos) {
@@ -205,7 +255,7 @@ async function executeRemoval(
 }
 
 function isAssessmentOk(assessment: WorkspaceAssessment): boolean {
-	for (const status of assessment.repoStatuses) {
+	for (const status of assessment.summary.repos) {
 		const flags = computeFlags(status, assessment.branch);
 		if (wouldLoseWork(flags)) return false;
 		if (status.publish === null && status.base !== null && status.base.ahead > 0) return false;
@@ -275,10 +325,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 					}
 
 					process.stderr.write("\n");
-					for (const entry of okEntries) {
-						process.stderr.write(`${entry.name}:\n`);
-						displayStatusTable(entry);
-					}
+					displayRemoveTable(okEntries);
 
 					if (deleteRemote) {
 						process.stderr.write("  Remote branches will also be deleted.\n\n");
@@ -343,15 +390,9 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 
 				if (assessments.length === 0) return;
 
-				// Plan: display status for all workspaces
-				const isSingle = assessments.length === 1;
+				// Display columnar status table
 				process.stderr.write("\n");
-				for (const assessment of assessments) {
-					if (!isSingle) {
-						process.stderr.write(`${assessment.name}:\n`);
-					}
-					displayStatusTable(assessment);
-				}
+				displayRemoveTable(assessments);
 
 				// Check for at-risk across all workspaces
 				const atRiskWorkspaces = assessments.filter((a) => a.hasAtRisk);
@@ -391,6 +432,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 				}
 
 				// Execute
+				const isSingle = assessments.length === 1;
 				for (const assessment of assessments) {
 					if (!isSingle) inlineStart(assessment.name, "removing");
 					const failedRemoteDeletes = await executeRemoval(assessment, ctx, deleteRemote);
