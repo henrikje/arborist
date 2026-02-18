@@ -3,8 +3,21 @@ import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { getShortHead, predictMergeConflict } from "../lib/git";
-import { dim, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "../lib/output";
+import {
+	clearLines,
+	countLines,
+	dim,
+	error,
+	info,
+	inlineResult,
+	inlineStart,
+	plural,
+	success,
+	warn,
+	yellow,
+} from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
+import type { RepoRemotes } from "../lib/remotes";
 import { resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos, resolveRepoSelection } from "../lib/repos";
 import { type RepoStatus, gatherRepoStatus } from "../lib/status";
@@ -56,69 +69,64 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
 				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 
-				// Phase 1: parallel fetch (only selected repos)
+				// Phase 1: classify and fetch
 				const { repos: allRepos, fetchDirs: allFetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
 				const repos = allRepos.filter((r) => selectedSet.has(r));
 				const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
+				const canTwoPhase = fetchDirs.length > 0 && isTTY();
 
-				let fetchResults = new Map<string, { exitCode: number; output: string }>();
-				if (fetchDirs.length > 0) {
-					fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
+				const assess = async (fetchFailed: string[]) => {
+					const assessments: PullAssessment[] = [];
+					for (const repo of repos) {
+						const repoDir = `${wsDir}/${repo}`;
+						const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
+						assessments.push(await assessPullRepo(status, repoDir, branch, fetchFailed, flagMode));
+					}
+					return assessments;
+				};
+
+				let assessments: PullAssessment[];
+
+				if (canTwoPhase) {
+					// Two-phase: render stale plan immediately, re-render after fetch
+					const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, { silent: true });
+
+					assessments = await assess([]);
+					const stalePlan = formatPullPlan(assessments, remotesMap);
+					const fetchingLine = `${dim(`Fetching ${plural(fetchDirs.length, "repo")}...`)}\n`;
+					const staleOutput = stalePlan + fetchingLine;
+					process.stderr.write(staleOutput);
+
+					const fetchResults = await fetchPromise;
+
+					// Compute fetch failures silently (no stderr output yet)
+					const fetchFailed = getFetchFailedRepos(repos, localRepos, fetchResults);
+
+					// Re-assess with fresh refs and predict conflicts
+					assessments = await assess(fetchFailed);
+					await predictPullConflicts(assessments, remotesMap, branch);
+					const freshPlan = formatPullPlan(assessments, remotesMap);
+					clearLines(countLines(staleOutput));
+					process.stderr.write(freshPlan);
+
+					reportFetchFailures(repos, localRepos, fetchResults);
+				} else if (fetchDirs.length > 0) {
+					// Fallback: fetch with visible progress, then assess
+					const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
+					const fetchFailed = reportFetchFailures(repos, localRepos, fetchResults);
+					assessments = await assess(fetchFailed);
+					await predictPullConflicts(assessments, remotesMap, branch);
+					process.stderr.write(formatPullPlan(assessments, remotesMap));
+				} else {
+					// No fetch needed
+					assessments = await assess([]);
+					await predictPullConflicts(assessments, remotesMap, branch);
+					process.stderr.write(formatPullPlan(assessments, remotesMap));
 				}
 
-				const fetchFailed = reportFetchFailures(repos, localRepos, fetchResults);
-
-				// Phase 2: assess each repo
-				const assessments: PullAssessment[] = [];
-				for (const repo of repos) {
-					const repoDir = `${wsDir}/${repo}`;
-					const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
-					assessments.push(await assessPullRepo(status, repoDir, branch, fetchFailed, flagMode));
-				}
-
-				// Phase 2b: predict conflicts for will-pull repos
-				await Promise.all(
-					assessments
-						.filter((a) => a.outcome === "will-pull")
-						.map(async (a) => {
-							if (a.behind > 0 && a.toPush > 0) {
-								const shareRemote = remotesMap.get(a.repo)?.share ?? "origin";
-								const ref = `${shareRemote}/${branch}`;
-								const prediction = await predictMergeConflict(a.repoDir, ref);
-								a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
-							} else {
-								a.conflictPrediction = "clean";
-							}
-						}),
-				);
-
-				// Phase 3: display plan
 				const willPull = assessments.filter((a) => a.outcome === "will-pull");
 				const upToDate = assessments.filter((a) => a.outcome === "up-to-date");
 				const skipped = assessments.filter((a) => a.outcome === "skip");
-
-				process.stderr.write("\n");
-				for (const a of assessments) {
-					const remotes = remotesMap.get(a.repo);
-					const forkSuffix = remotes && remotes.upstream !== remotes.share ? ` ← ${remotes.share}` : "";
-					const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
-					if (a.outcome === "will-pull") {
-						let conflictHint = "";
-						if (a.conflictPrediction === "conflict") {
-							conflictHint = `, ${yellow("conflict likely")}`;
-						} else if (a.conflictPrediction === "clean") {
-							conflictHint = ", conflict unlikely";
-						}
-						process.stderr.write(
-							`  ${a.repo}   ${plural(a.behind, "commit")} to pull (${a.pullMode}${conflictHint})${forkSuffix}${headStr}\n`,
-						);
-					} else if (a.outcome === "up-to-date") {
-						process.stderr.write(`  ${a.repo}   up to date\n`);
-					} else {
-						process.stderr.write(`  ${yellow(`${a.repo}   skipped — ${a.skipReason}`)}\n`);
-					}
-				}
-				process.stderr.write("\n");
 
 				if (willPull.length === 0) {
 					info(upToDate.length > 0 ? "All repos up to date" : "Nothing to do");
@@ -258,6 +266,64 @@ async function assessPullRepo(
 
 	const toPush = status.share.toPush ?? 0;
 	return { ...base, outcome: "will-pull", behind: toPull, toPush, pullMode };
+}
+
+function formatPullPlan(assessments: PullAssessment[], remotesMap: Map<string, RepoRemotes>): string {
+	let out = "\n";
+	for (const a of assessments) {
+		const remotes = remotesMap.get(a.repo);
+		const forkSuffix = remotes && remotes.upstream !== remotes.share ? ` ← ${remotes.share}` : "";
+		const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
+		if (a.outcome === "will-pull") {
+			let conflictHint = "";
+			if (a.conflictPrediction === "conflict") {
+				conflictHint = `, ${yellow("conflict likely")}`;
+			} else if (a.conflictPrediction === "clean") {
+				conflictHint = ", conflict unlikely";
+			}
+			out += `  ${a.repo}   ${plural(a.behind, "commit")} to pull (${a.pullMode}${conflictHint})${forkSuffix}${headStr}\n`;
+		} else if (a.outcome === "up-to-date") {
+			out += `  ${a.repo}   up to date\n`;
+		} else {
+			out += `  ${yellow(`${a.repo}   skipped — ${a.skipReason}`)}\n`;
+		}
+	}
+	out += "\n";
+	return out;
+}
+
+function getFetchFailedRepos(
+	repos: string[],
+	localRepos: string[],
+	results: Map<string, { exitCode: number; output: string }>,
+): string[] {
+	return repos
+		.filter((repo) => !localRepos.includes(repo))
+		.filter((repo) => {
+			const fr = results.get(repo);
+			return !fr || fr.exitCode !== 0;
+		});
+}
+
+async function predictPullConflicts(
+	assessments: PullAssessment[],
+	remotesMap: Map<string, RepoRemotes>,
+	branch: string,
+): Promise<void> {
+	await Promise.all(
+		assessments
+			.filter((a) => a.outcome === "will-pull")
+			.map(async (a) => {
+				if (a.behind > 0 && a.toPush > 0) {
+					const shareRemote = remotesMap.get(a.repo)?.share ?? "origin";
+					const ref = `${shareRemote}/${branch}`;
+					const prediction = await predictMergeConflict(a.repoDir, ref);
+					a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
+				} else {
+					a.conflictPrediction = "clean";
+				}
+			}),
+	);
 }
 
 async function detectPullMode(repoDir: string, branch: string): Promise<"rebase" | "merge"> {

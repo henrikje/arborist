@@ -2,8 +2,21 @@ import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { getShortHead } from "../lib/git";
-import { dim, error, info, inlineResult, inlineStart, plural, red, success, yellow } from "../lib/output";
+import {
+	clearLines,
+	countLines,
+	dim,
+	error,
+	info,
+	inlineResult,
+	inlineStart,
+	plural,
+	red,
+	success,
+	yellow,
+} from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
+import type { RepoRemotes } from "../lib/remotes";
 import { resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos, resolveRepoSelection } from "../lib/repos";
 import { type RepoStatus, gatherRepoStatus } from "../lib/status";
@@ -46,57 +59,62 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
 				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 
-				// Phase 0: fetch (unless --no-fetch)
-				if (options.fetch !== false) {
-					const { repos: allRepos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
-					if (fetchDirs.length > 0) {
-						const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
-						reportFetchFailures(allRepos, localRepos, fetchResults);
+				const shouldFetch = options.fetch !== false;
+				const { repos: allRepos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
+				const canTwoPhase = shouldFetch && fetchDirs.length > 0 && isTTY();
+
+				const assess = async () => {
+					const assessments: PushAssessment[] = [];
+					for (const repo of selectedRepos) {
+						const repoDir = `${wsDir}/${repo}`;
+						const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
+						assessments.push(await assessPushRepo(status, repoDir, branch));
 					}
-				}
-
-				// Phase 1: assess each repo
-				const assessments: PushAssessment[] = [];
-				for (const repo of selectedRepos) {
-					const repoDir = `${wsDir}/${repo}`;
-					const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
-					assessments.push(await assessPushRepo(status, repoDir, branch));
-				}
-
-				// Reclassify force-push when --force is not set
-				for (const a of assessments) {
-					if (a.outcome === "will-force-push" && !options.force) {
-						a.outcome = "skip";
-						a.skipReason = `diverged from ${a.shareRemote} (use --force)`;
+					for (const a of assessments) {
+						if (a.outcome === "will-force-push" && !options.force) {
+							a.outcome = "skip";
+							a.skipReason = `diverged from ${a.shareRemote} (use --force)`;
+						}
 					}
+					return assessments;
+				};
+
+				let assessments: PushAssessment[];
+
+				if (canTwoPhase) {
+					// Two-phase: render stale plan immediately, re-render after fetch
+					const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, { silent: true });
+
+					assessments = await assess();
+					const stalePlan = formatPushPlan(assessments, remotesMap);
+					const fetchingLine = `${dim(`Fetching ${plural(fetchDirs.length, "repo")}...`)}\n`;
+					const staleOutput = stalePlan + fetchingLine;
+					process.stderr.write(staleOutput);
+
+					const fetchResults = await fetchPromise;
+
+					// Re-assess with fresh refs
+					assessments = await assess();
+					const freshPlan = formatPushPlan(assessments, remotesMap);
+					clearLines(countLines(staleOutput));
+					process.stderr.write(freshPlan);
+
+					reportFetchFailures(allRepos, localRepos, fetchResults);
+				} else if (shouldFetch && fetchDirs.length > 0) {
+					// Fallback: fetch with visible progress, then assess
+					const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
+					reportFetchFailures(allRepos, localRepos, fetchResults);
+					assessments = await assess();
+					process.stderr.write(formatPushPlan(assessments, remotesMap));
+				} else {
+					// No fetch needed
+					assessments = await assess();
+					process.stderr.write(formatPushPlan(assessments, remotesMap));
 				}
 
-				// Phase 2: display plan
 				const willPush = assessments.filter((a) => a.outcome === "will-push" || a.outcome === "will-force-push");
 				const upToDate = assessments.filter((a) => a.outcome === "up-to-date");
 				const skipped = assessments.filter((a) => a.outcome === "skip");
-
-				process.stderr.write("\n");
-				for (const a of assessments) {
-					const remotes = remotesMap.get(a.repo);
-					const forkSuffix = remotes && remotes.upstream !== remotes.share ? ` → ${a.shareRemote}` : "";
-					const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
-					if (a.outcome === "will-push") {
-						const newBranchSuffix = a.recreate ? " (recreate)" : a.newBranch ? " (new branch)" : "";
-						process.stderr.write(
-							`  ${a.repo}   ${plural(a.ahead, "commit")} to push${newBranchSuffix}${forkSuffix}${headStr}\n`,
-						);
-					} else if (a.outcome === "will-force-push") {
-						process.stderr.write(
-							`  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.shareRemote})${headStr}\n`,
-						);
-					} else if (a.outcome === "up-to-date") {
-						process.stderr.write(`  ${a.repo}   up to date\n`);
-					} else {
-						process.stderr.write(`  ${yellow(`${a.repo}   skipped — ${a.skipReason}`)}\n`);
-					}
-				}
-				process.stderr.write("\n");
 
 				if (willPush.length === 0) {
 					info(upToDate.length > 0 ? "All repos up to date" : "Nothing to do");
@@ -161,6 +179,27 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				success(parts.join(", "));
 			},
 		);
+}
+
+function formatPushPlan(assessments: PushAssessment[], remotesMap: Map<string, RepoRemotes>): string {
+	let out = "\n";
+	for (const a of assessments) {
+		const remotes = remotesMap.get(a.repo);
+		const forkSuffix = remotes && remotes.upstream !== remotes.share ? ` → ${a.shareRemote}` : "";
+		const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
+		if (a.outcome === "will-push") {
+			const newBranchSuffix = a.recreate ? " (recreate)" : a.newBranch ? " (new branch)" : "";
+			out += `  ${a.repo}   ${plural(a.ahead, "commit")} to push${newBranchSuffix}${forkSuffix}${headStr}\n`;
+		} else if (a.outcome === "will-force-push") {
+			out += `  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.shareRemote})${headStr}\n`;
+		} else if (a.outcome === "up-to-date") {
+			out += `  ${a.repo}   up to date\n`;
+		} else {
+			out += `  ${yellow(`${a.repo}   skipped — ${a.skipReason}`)}\n`;
+		}
+	}
+	out += "\n";
+	return out;
 }
 
 async function assessPushRepo(status: RepoStatus, repoDir: string, branch: string): Promise<PushAssessment> {
