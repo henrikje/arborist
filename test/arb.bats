@@ -620,7 +620,7 @@ teardown() {
     git -C "$wt" merge "origin/$default_branch" >/dev/null 2>&1 || true
 
     # Status should show conflicts
-    run arb -w my-feature status
+    run arb -C "$TEST_DIR/project/my-feature" status
     [[ "$output" == *"conflicts"* ]]
 
     # Remove without --force should refuse (non-TTY exits before at-risk check)
@@ -2243,34 +2243,21 @@ SCRIPT
     [[ "$output" == *"not found in PATH"* ]]
 }
 
-# ── --workspace flag ─────────────────────────────────────────────
+# ── -w as --where short form ──────────────────────────────────────
 
-@test "arb --workspace flag overrides cwd detection" {
-    arb create ws-one repo-a
-    arb create ws-two repo-b
-    cd "$TEST_DIR/project/ws-one"
-    run arb --workspace ws-two status
-    [[ "$output" == *"repo-b"* ]]
-}
-
-@test "arb -w flag overrides cwd detection" {
-    arb create ws-one repo-a
-    arb create ws-two repo-b
-    cd "$TEST_DIR/project/ws-one"
-    run arb -w ws-two status
-    [[ "$output" == *"repo-b"* ]]
-}
-
-@test "arb --workspace with nonexistent workspace fails" {
-    run arb -w ghost status
+@test "arb status -w dirty filters repos (short for --where)" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    echo "change" >> repo-a/file.txt
+    run arb status -w dirty
     [ "$status" -ne 0 ]
-    [[ "$output" == *"does not exist"* ]]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
 }
 
-@test "arb --workspace without value fails" {
-    run arb --workspace
+@test "arb -w as global option is rejected" {
+    run arb -w dirty status
     [ "$status" -ne 0 ]
-    [[ "$output" == *"argument missing"* ]]
 }
 
 # ── local repos (no remote) ──────────────────────────────────────
@@ -4203,14 +4190,6 @@ push_then_delete_remote() {
     run arb -C "$TEST_DIR/project" cd my-feature
     [ "$status" -eq 0 ]
     [[ "$output" == *"$TEST_DIR/project/my-feature"* ]]
-}
-
-@test "arb -C combined with -w targets workspace" {
-    arb create my-feature repo-a
-    cd /tmp
-    run arb -C "$TEST_DIR/project" -w my-feature status
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"repo-a"* ]]
 }
 
 @test "arb -C is visible in --help output" {

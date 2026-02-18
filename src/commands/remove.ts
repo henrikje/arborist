@@ -248,7 +248,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 			"-a, --all-safe",
 			"Remove all safe workspaces (no uncommitted changes, unpushed commits, or branch drift; behind base is fine)",
 		)
-		.option("--where <filter>", "Filter workspaces by repo status flags (comma-separated, OR logic)")
+		.option("-w, --where <filter>", "Filter workspaces by repo status flags (comma-separated, OR logic)")
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.summary("Remove one or more workspaces")
 		.description(

@@ -144,11 +144,11 @@ git commit -m "Fix the bug on the login page"
 
 There is no `arb commit` — you commit in each repo individually.
 
-The commands below run from inside a workspace or worktree. You can also target a workspace from anywhere using `--workspace` (`-w`), or specify the directory context explicitly with `-C`:
+The commands below run from inside a workspace or worktree. You can also target a workspace from anywhere using `-C`:
 
 ```bash
-arb -C ~/my-project status               # run from the arb root
-arb -C ~/my-project -w fix-login status   # target a specific workspace
+arb -C ~/my-project status                    # run from the arb root
+arb -C ~/my-project/fix-login status          # target a specific workspace
 ```
 
 `-C` works like `git -C` — it changes the working directory before any command runs.
@@ -294,7 +294,7 @@ When a feature is done:
 arb remove fix-login
 ```
 
-This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before removing the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-safe` to batch-remove every workspace with safe status. Combine `--all-safe --where gone` to target merged-and-safe workspaces specifically. See `arb remove --help` for all options.
+This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before removing the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-safe` to batch-remove every workspace with safe status. Combine `--all-safe -w gone` to target merged-and-safe workspaces specifically. See `arb remove --help` for all options.
 
 ## Workspace templates
 
@@ -461,7 +461,7 @@ arb status --json | jq '[.repos[] | select(.base.behind > 0) | .name]'
 `0` means success, `1` means failure or issues detected, `130` means the user aborted a confirmation prompt. `arb status` returns `1` when any repo has issues, making it useful as a health check:
 
 ```bash
-if arb status --workspace my-feature > /dev/null; then
+if arb -C my-feature status > /dev/null; then
   echo "all clean"
 fi
 ```

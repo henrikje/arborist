@@ -11,7 +11,7 @@ export function registerOpenCommand(program: Command, getCtx: () => ArbContext):
 		.command("open")
 		.argument("<command...>", "Command to open worktrees with")
 		.option("-d, --dirty", "Only open dirty worktrees (shorthand for --where dirty)")
-		.option("--where <filter>", "Only open worktrees matching status filter (comma-separated, OR logic)")
+		.option("-w, --where <filter>", "Only open worktrees matching status filter (comma-separated, OR logic)")
 		.passThroughOptions()
 		.summary("Open worktrees in an application")
 		.description(

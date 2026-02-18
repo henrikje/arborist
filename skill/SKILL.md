@@ -63,10 +63,10 @@ To detect context programmatically, check for `.arb/` or `.arbws/` in the curren
 - `arb status --json` — Machine-readable output for parsing (includes `lastCommit` ISO 8601 field)
 - `arb status --fetch` — Fetch remotes first for up-to-date info
 - `arb status -d` — Only show repos with uncommitted changes
-- `arb status --where at-risk` — Only show repos that need attention (unpushed, drifted, dirty, etc)
-- `arb status --where gone` — Only show repos with deleted remote branches
+- `arb status -w at-risk` — Only show repos that need attention (unpushed, drifted, dirty, etc)
+- `arb status -w gone` — Only show repos with deleted remote branches
 - `arb list` — Shows all workspaces with a LAST COMMIT column indicating when work last happened
-- `arb list --where at-risk` — Only show workspaces with at least one repo needing attention
+- `arb list -w at-risk` — Only show workspaces with at least one repo needing attention
 
 Key signals in status output:
 - **dirty** — Staged, modified, or untracked files exist
@@ -110,7 +110,7 @@ Key signals in status output:
 4. `-y` flag skips the confirmation prompt
 5. `-f` flag overrides at-risk safety checks (implies `-y`)
 6. `--all-safe` removes all workspaces with safe status (no work would be lost)
-7. `--all-safe --where gone` narrows to safe workspaces with merged PRs
+7. `--all-safe -w gone` narrows to safe workspaces with merged PRs
 
 ## Working with Code Across Repos
 
@@ -127,7 +127,7 @@ Key signals in status output:
   ```
 - `arb exec <command>` runs a command in each worktree sequentially (e.g., `arb exec npm install`)
 - `arb exec --dirty git diff` runs only in repos with local changes
-- `arb exec --where unpushed git log` runs only in repos with unpushed commits
+- `arb exec -w unpushed git log` runs only in repos with unpushed commits
 - `arb open code` opens all worktrees in VS Code
 - After making changes across repos, `arb push -y` publishes everything at once
 - Use `arb add <repo>` to add more repos to an existing workspace
@@ -142,14 +142,6 @@ cd /path/to/project/my-ws && arb status
 ```
 
 Do NOT use `arb -C` — it has the same permission-scoping problem as `git -C` (a blanket `arb -C:*` permission cannot be restricted to safe operations only).
-
-The `-w, --workspace` option targets a specific workspace when you are at the arb root:
-
-```
-arb -w my-ws status
-```
-
-`-w` is a **global option** that must come **before** the subcommand name.
 
 ## Non-Interactive Mode
 

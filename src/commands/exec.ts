@@ -12,7 +12,7 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 		.command("exec")
 		.argument("<command...>", "Command to run in each worktree")
 		.option("-d, --dirty", "Only run in dirty repos (shorthand for --where dirty)")
-		.option("--where <filter>", "Only run in repos matching status filter (comma-separated, OR logic)")
+		.option("-w, --where <filter>", "Only run in repos matching status filter (comma-separated, OR logic)")
 		.passThroughOptions()
 		.summary("Run a command in each worktree")
 		.description(
