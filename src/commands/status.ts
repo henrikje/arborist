@@ -318,11 +318,10 @@ function plainCells(repo: RepoStatus): CellData {
 	// Col 2: branch
 	const branch = isDetached ? "(detached)" : actualBranch;
 
-	// Col 3: base name — show upstream remote prefix when upstream ≠ share (fork setup)
+	// Col 3: base name — always show remote/ref for clarity
 	let baseName: string;
 	if (repo.base) {
-		const isFork = repo.base.remote !== repo.share?.remote;
-		baseName = isFork ? `${repo.base.remote}/${repo.base.ref}` : repo.base.ref;
+		baseName = `${repo.base.remote}/${repo.base.ref}`;
 	} else {
 		baseName = "";
 	}
@@ -451,8 +450,7 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
 		const commits = await getCommitsBetween(repoDir, baseRef, "HEAD");
 		if (commits.length > 0) {
-			const baseLabel = `${repo.base.remote}/${repo.base.ref}`;
-			let section = `\n${SECTION_INDENT}Ahead of ${baseLabel}:\n`;
+			let section = `\n${SECTION_INDENT}Ahead of ${baseRef}:\n`;
 			for (const c of commits) {
 				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
 			}
@@ -465,8 +463,7 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
 		const commits = await getCommitsBetween(repoDir, "HEAD", baseRef);
 		if (commits.length > 0) {
-			const baseLabel = `${repo.base.remote}/${repo.base.ref}`;
-			let section = `\n${SECTION_INDENT}Behind ${baseLabel}:\n`;
+			let section = `\n${SECTION_INDENT}Behind ${baseRef}:\n`;
 			for (const c of commits) {
 				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
 			}
