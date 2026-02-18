@@ -147,7 +147,6 @@ export function flagLabels(flags: RepoFlags): string[] {
 const YELLOW_FLAGS = new Set<keyof RepoFlags>([
 	"isDirty",
 	"isUnpushed",
-	"isDiverged",
 	"isDrifted",
 	"isDetached",
 	"hasOperation",

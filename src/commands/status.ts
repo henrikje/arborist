@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import type { Command } from "commander";
-import { type FileChange, getCommitsBetween, parseGitStatusFiles } from "../lib/git";
+import { type FileChange, getCommitsBetween, parseGitStatusFiles, predictMergeConflict } from "../lib/git";
 import type { StatusJsonOutput } from "../lib/json-types";
 import { dim, green, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
@@ -130,6 +130,23 @@ async function runStatus(
 		return 0;
 	}
 
+	// Predict conflicts for diverged repos (both ahead and behind base)
+	const conflictRepos = new Set<string>();
+	await Promise.all(
+		repos
+			.filter((r) => r.base !== null && r.base.ahead > 0 && r.base.behind > 0)
+			.map(async (r) => {
+				const repoDir = `${wsDir}/${r.name}`;
+				const base = r.base;
+				if (!base) return;
+				const ref = `${base.remote}/${base.ref}`;
+				const prediction = await predictMergeConflict(repoDir, ref);
+				if (prediction?.hasConflict) {
+					conflictRepos.add(r.name);
+				}
+			}),
+	);
+
 	// Detect current repo from cwd
 	const cwd = resolve(process.cwd());
 	let currentRepo: string | null = null;
@@ -216,8 +233,8 @@ async function runStatus(
 		}
 		const baseNamePad = maxBaseName - cell.baseName.length;
 
-		// Col 4: Base diff
-		const baseDiffColored = flags.isDiverged ? yellow(cell.baseDiff) : cell.baseDiff;
+		// Col 4: Base diff — yellow only when merge-tree predicts a conflict
+		const baseDiffColored = conflictRepos.has(repo.name) ? yellow(cell.baseDiff) : cell.baseDiff;
 		const baseDiffPad = maxBaseDiff - cell.baseDiff.length;
 
 		// Col 5: Remote name

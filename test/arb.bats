@@ -4918,3 +4918,114 @@ SCRIPT
     [[ "$output" == *"repo-a"*"skipped"* ]]
 }
 
+# ── status conflict prediction ───────────────────────────────────
+
+@test "arb status shows diverged with overlapping changes (conflict path)" {
+    arb create my-feature repo-a
+
+    # Create a shared file on main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "original" > shared.txt && git add shared.txt && git commit -m "add shared" && git push) >/dev/null 2>&1
+
+    # Pull the shared file into the feature branch
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    arb rebase --yes >/dev/null 2>&1
+
+    # Conflicting change on feature branch
+    echo "feature version" > "$TEST_DIR/project/my-feature/repo-a/shared.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add shared.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature change" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Conflicting change on main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "main version" > shared.txt && git add shared.txt && git commit -m "main change" && git push) >/dev/null 2>&1
+
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"1 ahead"* ]]
+    [[ "$output" == *"1 behind"* ]]
+}
+
+@test "arb status shows diverged with non-overlapping changes (clean path)" {
+    arb create my-feature repo-a
+
+    # Local commit on feature branch (different file)
+    echo "local" > "$TEST_DIR/project/my-feature/repo-a/local.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add local.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "local" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Upstream commit on main (different file)
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"1 ahead"* ]]
+    [[ "$output" == *"1 behind"* ]]
+}
+
+@test "arb status with mixed diverged and non-diverged repos" {
+    arb create my-feature repo-a repo-b
+
+    # Create a shared file on main for repo-a
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "original" > shared.txt && git add shared.txt && git commit -m "add shared" && git push) >/dev/null 2>&1
+
+    # Pull into feature branch
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    arb rebase --yes >/dev/null 2>&1
+
+    # Conflicting change on feature branch for repo-a
+    echo "feature version" > "$TEST_DIR/project/my-feature/repo-a/shared.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add shared.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature change" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Conflicting change on main for repo-a
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "main version" > shared.txt && git add shared.txt && git commit -m "main change" && git push) >/dev/null 2>&1
+
+    # repo-b stays equal (no changes)
+
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"repo-b"* ]]
+    [[ "$output" == *"equal"* ]]
+}
+
+@test "arb status --json unaffected by conflict prediction" {
+    arb create my-feature repo-a
+
+    # Create a shared file on main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "original" > shared.txt && git add shared.txt && git commit -m "add shared" && git push) >/dev/null 2>&1
+
+    # Pull into feature branch
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    arb rebase --yes >/dev/null 2>&1
+
+    # Conflicting change on feature branch
+    echo "feature version" > "$TEST_DIR/project/my-feature/repo-a/shared.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add shared.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature change" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Conflicting change on main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "main version" > shared.txt && git add shared.txt && git commit -m "main change" && git push) >/dev/null 2>&1
+
+    arb fetch >/dev/null 2>&1
+    run arb status --json
+    [ "$status" -eq 1 ]
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+r = d['repos'][0]
+assert r['base']['ahead'] == 1, f'expected ahead=1, got {r[\"base\"][\"ahead\"]}'
+assert r['base']['behind'] == 1, f'expected behind=1, got {r[\"base\"][\"behind\"]}'
+"
+}
+
