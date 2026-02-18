@@ -1,6 +1,6 @@
 # Arborist Command Reference
 
-Complete reference for all 18 `arb` commands. Global options available on every command:
+Complete reference for all `arb` commands. Global options available on every command:
 
 - `-C <directory>` — Run as if arb was started in `<directory>` (like `git -C`)
 - `-w, --workspace <name>` — Target a specific workspace (overrides auto-detect)
@@ -56,6 +56,98 @@ arb repos
 ```
 
 Lists all repositories in `.arb/repos/`. No flags.
+
+---
+
+### template
+
+Manage workspace template files.
+
+```
+arb template <subcommand>
+```
+
+Subcommands for managing template files that are automatically seeded into new workspaces. Templates live in `.arb/templates/` and are copied during `arb create` and `arb add`.
+
+#### template add
+
+```
+arb template add <file> [--repo <name>] [--workspace] [-f]
+```
+
+Capture a file from the current workspace as a template. Scope is auto-detected from CWD (workspace root or repo worktree). The file must exist.
+
+**Arguments:**
+- `<file>` — File path to capture (resolved relative to CWD)
+
+**Flags:**
+- `--repo <name>` — Target repo scope (repeatable for multiple repos)
+- `--workspace` — Target workspace scope
+- `-f, --force` — Overwrite existing template if content differs
+
+**Behavior:** If the template already exists with identical content, succeeds silently. If content differs, refuses unless `--force` is used.
+
+#### template remove
+
+```
+arb template remove <file> [--repo <name>] [--workspace]
+```
+
+Delete a template file from `.arb/templates/`. Does not delete seeded copies in existing workspaces.
+
+**Arguments:**
+- `<file>` — Template file path to remove
+
+**Flags:**
+- `--repo <name>` — Target repo scope (repeatable)
+- `--workspace` — Target workspace scope
+
+#### template list
+
+```
+arb template list
+```
+
+Show all defined template files. When run inside a workspace, annotates files that differ from their seeded copy with `(modified)`. No flags.
+
+#### template diff
+
+```
+arb template diff [file] [--repo <name>] [--workspace]
+```
+
+Show content differences between templates and their workspace copies using unified diff format. Exits with code 1 if any drift is found (useful for CI). Requires workspace context.
+
+**Arguments:**
+- `[file]` — Optional file path to diff only that template
+
+**Flags:**
+- `--repo <name>` — Filter to specific repo (repeatable)
+- `--workspace` — Filter to workspace templates only
+
+**Combining flags:** `--workspace --repo api` shows workspace templates and api templates.
+
+#### template apply
+
+```
+arb template apply [file] [--repo <name>] [--workspace] [-f]
+```
+
+Re-seed template files into the current workspace. By default, only copies files that don't already exist (safe, non-destructive). Requires workspace context.
+
+**Arguments:**
+- `[file]` — Optional file path to apply only that template
+
+**Flags:**
+- `--repo <name>` — Apply only to specific repo (repeatable)
+- `--workspace` — Apply only workspace templates
+- `-f, --force` — Overwrite drifted files (reset to template version)
+
+**Scoping:**
+- No flags → workspace + all repos
+- `--repo api` → only api repo templates
+- `--workspace` → only workspace templates
+- `--workspace --repo api` → workspace + api
 
 ---
 

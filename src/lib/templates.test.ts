@@ -2,7 +2,16 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyRepoTemplates, applyWorkspaceTemplates, diffTemplates, overlayDirectory } from "./templates";
+import {
+	applyRepoTemplates,
+	applyWorkspaceTemplates,
+	detectTemplateScope,
+	diffTemplates,
+	forceOverlayDirectory,
+	listTemplates,
+	overlayDirectory,
+	removeTemplate,
+} from "./templates";
 
 describe("templates", () => {
 	let tmpDir: string;
@@ -332,6 +341,226 @@ describe("templates", () => {
 
 			const result = diffTemplates(baseDir, wsDir, []);
 			expect(result).toEqual([{ relPath: "data.bin", scope: "workspace" }]);
+		});
+	});
+
+	describe("listTemplates", () => {
+		test("returns empty array when no templates directory exists", () => {
+			const baseDir = join(tmpDir, "project");
+			mkdirSync(join(baseDir, ".arb"), { recursive: true });
+			expect(listTemplates(baseDir)).toEqual([]);
+		});
+
+		test("lists workspace templates", () => {
+			const baseDir = join(tmpDir, "project");
+			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			mkdirSync(templateDir, { recursive: true });
+			writeFileSync(join(templateDir, ".env"), "KEY=value");
+
+			const result = listTemplates(baseDir);
+			expect(result).toEqual([{ scope: "workspace", relPath: ".env" }]);
+		});
+
+		test("lists repo templates", () => {
+			const baseDir = join(tmpDir, "project");
+			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			writeFileSync(join(baseDir, ".arb", "templates", "repos", "api", ".env"), "DB=localhost");
+
+			const result = listTemplates(baseDir);
+			expect(result).toEqual([{ scope: "repo", repo: "api", relPath: ".env" }]);
+		});
+
+		test("lists both workspace and repo templates", () => {
+			const baseDir = join(tmpDir, "project");
+			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
+			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			mkdirSync(join(baseDir, ".arb", "templates", "repos", "web"), { recursive: true });
+			writeFileSync(join(baseDir, ".arb", "templates", "workspace", ".env"), "WS");
+			writeFileSync(join(baseDir, ".arb", "templates", "repos", "api", ".env"), "API");
+			writeFileSync(join(baseDir, ".arb", "templates", "repos", "web", ".env.local"), "WEB");
+
+			const result = listTemplates(baseDir);
+			expect(result).toHaveLength(3);
+			expect(result).toContainEqual({ scope: "workspace", relPath: ".env" });
+			expect(result).toContainEqual({ scope: "repo", repo: "api", relPath: ".env" });
+			expect(result).toContainEqual({ scope: "repo", repo: "web", relPath: ".env.local" });
+		});
+
+		test("handles nested template files", () => {
+			const baseDir = join(tmpDir, "project");
+			mkdirSync(join(baseDir, ".arb", "templates", "workspace", ".claude"), { recursive: true });
+			writeFileSync(join(baseDir, ".arb", "templates", "workspace", ".claude", "settings.local.json"), "{}");
+
+			const result = listTemplates(baseDir);
+			expect(result).toEqual([{ scope: "workspace", relPath: join(".claude", "settings.local.json") }]);
+		});
+	});
+
+	describe("detectTemplateScope", () => {
+		test("returns workspace scope at workspace root", () => {
+			const baseDir = join(tmpDir, "project");
+			const wsDir = join(baseDir, "my-ws");
+			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+
+			const result = detectTemplateScope(baseDir, wsDir);
+			expect(result).toEqual({ scope: "workspace" });
+		});
+
+		test("returns repo scope inside a repo worktree", () => {
+			const baseDir = join(tmpDir, "project");
+			const wsDir = join(baseDir, "my-ws");
+			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+			mkdirSync(join(wsDir, "api", ".git"), { recursive: true });
+
+			const result = detectTemplateScope(baseDir, join(wsDir, "api"));
+			expect(result).toEqual({ scope: "repo", repo: "api" });
+		});
+
+		test("returns null outside a workspace", () => {
+			const baseDir = join(tmpDir, "project");
+			mkdirSync(baseDir, { recursive: true });
+
+			const result = detectTemplateScope(baseDir, baseDir);
+			expect(result).toBeNull();
+		});
+
+		test("returns null when CWD is outside baseDir", () => {
+			const baseDir = join(tmpDir, "project");
+			mkdirSync(baseDir, { recursive: true });
+
+			const result = detectTemplateScope(baseDir, "/tmp/somewhere-else");
+			expect(result).toBeNull();
+		});
+
+		test("returns workspace scope when in workspace but not in a repo", () => {
+			const baseDir = join(tmpDir, "project");
+			const wsDir = join(baseDir, "my-ws");
+			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+			mkdirSync(join(wsDir, "subdir"), { recursive: true });
+
+			const result = detectTemplateScope(baseDir, join(wsDir, "subdir"));
+			expect(result).toEqual({ scope: "workspace" });
+		});
+	});
+
+	describe("removeTemplate", () => {
+		test("removes a workspace template file", () => {
+			const baseDir = join(tmpDir, "project");
+			const templatePath = join(baseDir, ".arb", "templates", "workspace", ".env");
+			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
+			writeFileSync(templatePath, "KEY=value");
+
+			removeTemplate(baseDir, "workspace", ".env");
+			expect(existsSync(templatePath)).toBe(false);
+		});
+
+		test("removes a repo template file", () => {
+			const baseDir = join(tmpDir, "project");
+			const templatePath = join(baseDir, ".arb", "templates", "repos", "api", ".env");
+			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			writeFileSync(templatePath, "DB=localhost");
+
+			removeTemplate(baseDir, "repo", ".env", "api");
+			expect(existsSync(templatePath)).toBe(false);
+		});
+
+		test("cleans up empty parent directories", () => {
+			const baseDir = join(tmpDir, "project");
+			const nestedDir = join(baseDir, ".arb", "templates", "workspace", "config", "deep");
+			mkdirSync(nestedDir, { recursive: true });
+			writeFileSync(join(nestedDir, "settings.json"), "{}");
+
+			removeTemplate(baseDir, "workspace", join("config", "deep", "settings.json"));
+			expect(existsSync(nestedDir)).toBe(false);
+			expect(existsSync(join(baseDir, ".arb", "templates", "workspace", "config"))).toBe(false);
+			expect(existsSync(join(baseDir, ".arb", "templates", "workspace"))).toBe(true);
+		});
+
+		test("does not remove non-empty parent directories", () => {
+			const baseDir = join(tmpDir, "project");
+			const configDir = join(baseDir, ".arb", "templates", "workspace", "config");
+			mkdirSync(configDir, { recursive: true });
+			writeFileSync(join(configDir, "a.json"), "a");
+			writeFileSync(join(configDir, "b.json"), "b");
+
+			removeTemplate(baseDir, "workspace", join("config", "a.json"));
+			expect(existsSync(join(configDir, "b.json"))).toBe(true);
+			expect(existsSync(configDir)).toBe(true);
+		});
+
+		test("throws when template does not exist", () => {
+			const baseDir = join(tmpDir, "project");
+			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
+
+			expect(() => removeTemplate(baseDir, "workspace", "nonexistent.txt")).toThrow("Template does not exist");
+		});
+	});
+
+	describe("forceOverlayDirectory", () => {
+		test("returns empty result when source directory does not exist", () => {
+			const result = forceOverlayDirectory(join(tmpDir, "nonexistent"), join(tmpDir, "dest"));
+			expect(result.seeded).toEqual([]);
+			expect(result.reset).toEqual([]);
+			expect(result.unchanged).toEqual([]);
+			expect(result.failed).toEqual([]);
+		});
+
+		test("seeds missing files", () => {
+			const src = join(tmpDir, "src");
+			const dest = join(tmpDir, "dest");
+			mkdirSync(src);
+			mkdirSync(dest);
+			writeFileSync(join(src, "file.txt"), "hello");
+
+			const result = forceOverlayDirectory(src, dest);
+			expect(result.seeded).toEqual(["file.txt"]);
+			expect(readFileSync(join(dest, "file.txt"), "utf-8")).toBe("hello");
+		});
+
+		test("resets drifted files", () => {
+			const src = join(tmpDir, "src");
+			const dest = join(tmpDir, "dest");
+			mkdirSync(src);
+			mkdirSync(dest);
+			writeFileSync(join(src, "file.txt"), "original");
+			writeFileSync(join(dest, "file.txt"), "modified");
+
+			const result = forceOverlayDirectory(src, dest);
+			expect(result.reset).toEqual(["file.txt"]);
+			expect(result.seeded).toEqual([]);
+			expect(result.unchanged).toEqual([]);
+			expect(readFileSync(join(dest, "file.txt"), "utf-8")).toBe("original");
+		});
+
+		test("reports unchanged files", () => {
+			const src = join(tmpDir, "src");
+			const dest = join(tmpDir, "dest");
+			mkdirSync(src);
+			mkdirSync(dest);
+			writeFileSync(join(src, "file.txt"), "same");
+			writeFileSync(join(dest, "file.txt"), "same");
+
+			const result = forceOverlayDirectory(src, dest);
+			expect(result.unchanged).toEqual(["file.txt"]);
+			expect(result.seeded).toEqual([]);
+			expect(result.reset).toEqual([]);
+		});
+
+		test("handles mixed seeded, reset, and unchanged files", () => {
+			const src = join(tmpDir, "src");
+			const dest = join(tmpDir, "dest");
+			mkdirSync(src);
+			mkdirSync(dest);
+			writeFileSync(join(src, "new.txt"), "new");
+			writeFileSync(join(src, "drifted.txt"), "original");
+			writeFileSync(join(dest, "drifted.txt"), "changed");
+			writeFileSync(join(src, "same.txt"), "content");
+			writeFileSync(join(dest, "same.txt"), "content");
+
+			const result = forceOverlayDirectory(src, dest);
+			expect(result.seeded).toEqual(["new.txt"]);
+			expect(result.reset).toEqual(["drifted.txt"]);
+			expect(result.unchanged).toEqual(["same.txt"]);
 		});
 	});
 });

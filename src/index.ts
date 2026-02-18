@@ -19,6 +19,7 @@ import { registerRebaseCommand } from "./commands/rebase";
 import { registerRemoveCommand } from "./commands/remove";
 import { registerReposCommand } from "./commands/repos";
 import { registerStatusCommand } from "./commands/status";
+import { registerTemplateCommand } from "./commands/template";
 import { detectBaseDir, detectWorkspace } from "./lib/base-dir";
 import { error } from "./lib/output";
 import type { ArbContext } from "./lib/types";
@@ -31,7 +32,7 @@ function helpDim(str: string): string {
 	return process.stdout.isTTY ? `\x1b[2m${str}\x1b[0m` : str;
 }
 
-const SETUP_COMMANDS = new Set(["init", "clone", "repos", "help"]);
+const SETUP_COMMANDS = new Set(["init", "clone", "repos", "template", "help"]);
 const WORKTREE_COMMANDS = new Set([
 	"add",
 	"drop",
@@ -205,6 +206,7 @@ registerRebaseCommand(program, getCtx);
 registerMergeCommand(program, getCtx);
 registerExecCommand(program, getCtx);
 registerOpenCommand(program, getCtx);
+registerTemplateCommand(program, getCtx);
 
 try {
 	await program.parseAsync();
