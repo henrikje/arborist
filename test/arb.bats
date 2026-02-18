@@ -3055,6 +3055,26 @@ delete_workspace_config() {
     [[ "$output" == *"upstream"* ]]
 }
 
+@test "arb push --force implies --yes" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Push an upstream change to main to create divergence after rebase
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    # Rebase the feature branch
+    cd "$TEST_DIR/project/my-feature"
+    arb rebase --yes >/dev/null 2>&1
+
+    # Push with --force only (no --yes) — should skip confirmation
+    run arb push --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pushed"* ]]
+}
+
 # ── pull --rebase / --merge ──────────────────────────────────────
 
 @test "arb pull defaults to merge mode in plan and result" {

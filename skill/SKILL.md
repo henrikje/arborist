@@ -89,13 +89,13 @@ Key signals in status output:
    - `git add .`
    - `git rebase --continue` (or `git merge --continue`)
    - Return to workspace root
-6. After resolving all conflicts, `arb push -f -y` to force-push the rebased branches
+6. After resolving all conflicts, `arb push -f` to force-push the rebased branches
 
 ### Publishing Changes
 
 1. Run `arb status` first to understand what will be pushed
 2. `arb push -y` — Push all repos with unpushed commits
-3. `arb push -f -y` — Force push with lease (required after rebase)
+3. `arb push -f` — Force push with lease (required after rebase)
 4. `arb push repo1 repo2 -y` — Push only specific repos
 
 ### Pulling Remote Changes
@@ -178,7 +178,7 @@ Commands that do NOT need `-y`: `init`, `clone`, `repos`, `create`, `list`, `pat
 6. **Prefer rebase over merge** unless the user explicitly asks for merge.
 7. **Run `arb status` before sync operations** to understand current state before rebasing, merging, pushing, or pulling.
 8. **Guide through conflicts** — When conflicts occur, walk the user through resolution repo by repo. Do NOT force-skip or abort without asking.
-9. **Force push only after rebase** — `arb push -f -y` uses `--force-with-lease` internally, but only use it when branches have been rebased.
+9. **Force push only after rebase** — `arb push -f` uses `--force-with-lease` internally, but only use it when branches have been rebased.
 
 ## Command Quick Reference
 

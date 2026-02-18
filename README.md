@@ -424,10 +424,10 @@ Here `api` is a fork (base is `upstream/main`) while `web` uses a single origin 
 
 ### Non-interactive mode
 
-Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, `merge`, and `remove`. For `remove`, use `--force` (`-f`) instead. Without these flags, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
+Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, `merge`, and `remove`. For `push` and `remove`, `--force` (`-f`) implies `--yes`. Without these flags, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
 
 ```bash
-arb rebase --yes && arb push --force --yes
+arb rebase --yes && arb push --force
 ```
 
 ### Dry run

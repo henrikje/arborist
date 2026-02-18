@@ -422,12 +422,12 @@ Fetches all repos, then pushes the feature branch. Sets up tracking on first pus
 - `[repos...]` — Repos to push (all if not specified)
 
 **Flags:**
-- `-f, --force` — Force push with lease (use after rebase)
+- `-f, --force` — Force push with lease (implies `--yes`)
 - `--no-fetch` — Skip fetching before push
 - `-n, --dry-run` — Show what would be pushed without executing
 - `-y, --yes` — Skip confirmation prompt
 
-**Non-interactive usage:** Use `--dry-run` first to preview, then `--yes` to execute. Use `-f` only after rebase.
+**Non-interactive usage:** Use `--dry-run` first to preview, then `--yes` to execute. Use `--force` only after rebase (implies `--yes`).
 
 ---
 
