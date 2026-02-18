@@ -242,9 +242,9 @@ arb list
 Shows all workspaces with their branch, repo count, last commit date, and aggregate status:
 
 ```
-  WORKSPACE    BRANCH          LAST COMMIT    REPOS    STATUS
-* ws-one       my-feature       3 days        2        no issues
-  ws-two       feat/payments    2 months       1        dirty, unpushed
+  WORKSPACE    BRANCH          REPOS    LAST COMMIT    STATUS
+* ws-one       my-feature      2         3 days        no issues
+  ws-two       feat/payments   1         2 months      dirty, unpushed
 ```
 
 The active workspace (the one you're currently inside) is marked with `*`. The LAST COMMIT column shows when work last happened (the most recent commit author date across all repos), helping you gauge workspace staleness.
