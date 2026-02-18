@@ -206,6 +206,8 @@ arb push
 arb push --force
 ```
 
+Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
+
 All state-changing commands (`rebase`, `merge`, `push`, `pull`) automatically fetch before operating, ensuring they work with the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh. Read-only commands (`status`, `list`) do not fetch by default — use `--fetch` to opt in. If fetching fails (e.g. offline), the command warns and continues with stale data.
 
 All commands show a plan before proceeding. See `arb help <command>` for options.
@@ -374,6 +376,16 @@ arb create my-feature --all-repos
 # → Seeded 2 template file(s)
 ```
 
+### Example: sharing Claude Code permissions
+
+If your team uses Claude Code, you can template a `settings.local.json` so every workspace starts with the right permissions:
+
+```bash
+arb template add .claude/settings.local.json
+```
+
+New workspaces will get the settings file automatically.
+
 ## Fork workflows
 
 Arborist has built-in support for fork-based development, where you push feature branches to your fork and rebase onto the canonical (upstream) repository.
@@ -489,6 +501,13 @@ _Note_: Creating a workspace for the default branch works because Arborist keeps
 When using Claude Code or other AI coding agents, start them from the workspace directory rather than an individual worktree. This gives the agent visibility across all repos in the workspace.
 
 If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed, `install.sh` sets up an `arb` [skill](https://docs.anthropic.com/en/docs/claude-code/skills) that teaches Claude how to work with arb. Claude will automatically use the skill when it detects an arb workspace or when you mention arb-related tasks. It knows how to create and remove workspaces, check status, push, pull, rebase, and resolve conflicts — all using the correct flags for non-interactive mode. You can ask things like "create a workspace for the login feature across all repos" or "rebase and push everything" and Claude will handle the multi-repo coordination.
+
+You can also drive Claude across repos using `arb exec`:
+
+```bash
+arb exec --dirty claude -p "commit all changes"
+arb exec -w operation claude -p "resolve the rebase conflicts and run git rebase --continue"
+```
 
 ### Multiple arb roots
 
