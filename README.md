@@ -332,16 +332,40 @@ Template files are only copied when the target doesn't already exist. Existing f
 
 `arb init` creates `.arb/.gitignore` with a `repos/` entry, which means everything else in `.arb/` — including `templates/` — is version-controllable. You can commit your templates to a dotfiles repo, a team bootstrap repo, or just keep them local.
 
+### Managing templates
+
+Use `arb template` to manage templates without manually constructing paths:
+
+```bash
+# Capture a file from your workspace as a template
+cd my-feature/api
+arb template add .env                    # auto-detects repo scope from CWD
+arb template add .env --workspace        # override to workspace scope
+
+# See what templates exist
+arb template list
+
+# Check for drift between templates and workspace copies
+arb template diff
+
+# Re-seed templates into an existing workspace
+arb template apply                       # seeds only missing files (safe)
+arb template apply --force               # also resets drifted files
+
+# Remove a template
+arb template remove .env --repo api
+```
+
+All template commands support `--repo <name>` and `--workspace` flags for explicit scope control. See `arb template --help` for all options.
+
 ### Example: setting up `.env` templates
 
 ```bash
-# Create template directories
-mkdir -p .arb/templates/repos/api
-mkdir -p .arb/templates/repos/web
-
-# Add your .env templates
-cp api/.env.example .arb/templates/repos/api/.env
-cp web/.env.example .arb/templates/repos/web/.env
+# From inside a workspace, capture files as templates
+cd my-feature/api
+arb template add .env.example
+cd ../web
+arb template add .env.example
 
 # Every new workspace gets these automatically
 arb create my-feature --all-repos

@@ -4296,6 +4296,173 @@ push_then_delete_remote() {
     [[ "$output" != *"repo-b"* ]]
 }
 
+# ── template ─────────────────────────────────────────────────────
+
+@test "arb template list shows no templates when none defined" {
+    run arb template list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"No templates defined"* ]]
+}
+
+@test "arb template add captures a workspace file as template" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    echo "SECRET=abc" > "$TEST_DIR/project/my-feature/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template add .env --workspace
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Added template"* ]]
+    [ -f "$TEST_DIR/project/.arb/templates/workspace/.env" ]
+}
+
+@test "arb template add captures a repo file as template" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    echo "DB=localhost" > "$TEST_DIR/project/my-feature/repo-a/.env"
+    cd "$TEST_DIR/project/my-feature/repo-a"
+    run arb template add .env
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Added template"* ]]
+    [[ "$output" == *"repo: repo-a"* ]]
+    [ -f "$TEST_DIR/project/.arb/templates/repos/repo-a/.env" ]
+}
+
+@test "arb template add with --repo overrides scope detection" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    echo "DB=localhost" > "$TEST_DIR/project/my-feature/repo-a/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template add repo-a/.env --repo repo-a
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Added template"* ]]
+    [ -f "$TEST_DIR/project/.arb/templates/repos/repo-a/.env" ]
+}
+
+@test "arb template add refuses overwrite without --force" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "OLD" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    echo "NEW" > "$TEST_DIR/project/my-feature/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template add .env --workspace
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"already exists"* ]]
+}
+
+@test "arb template add --force overwrites existing template" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "OLD" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    echo "NEW" > "$TEST_DIR/project/my-feature/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template add .env --workspace --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Updated template"* ]]
+    [ "$(cat "$TEST_DIR/project/.arb/templates/workspace/.env")" = "NEW" ]
+}
+
+@test "arb template add succeeds silently when content is identical" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "SAME" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    echo "SAME" > "$TEST_DIR/project/my-feature/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template add .env --workspace
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"already up to date"* ]]
+}
+
+@test "arb template remove deletes a template file" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    echo "DB=localhost" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+    arb create my-feature repo-a >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature/repo-a"
+    run arb template remove .env
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Removed template"* ]]
+    [ ! -f "$TEST_DIR/project/.arb/templates/repos/repo-a/.env" ]
+}
+
+@test "arb template remove errors for nonexistent template" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb template remove nonexistent.txt --workspace
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"does not exist"* ]]
+}
+
+@test "arb template list shows workspace and repo templates" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    echo "WS" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    echo "REPO" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+    run arb template list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"[workspace]"* ]]
+    [[ "$output" == *"[repo-a]"* ]]
+    [[ "$output" == *".env"* ]]
+}
+
+@test "arb template list shows modified annotation inside workspace" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "ORIGINAL" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    arb create my-feature repo-a >/dev/null 2>&1
+    echo "MODIFIED" > "$TEST_DIR/project/my-feature/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"modified"* ]]
+}
+
+@test "arb template diff shows no changes when templates match" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "SAME" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    arb create my-feature repo-a >/dev/null 2>&1
+    echo "SAME" > "$TEST_DIR/project/my-feature/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template diff
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"No changes"* ]]
+}
+
+@test "arb template diff exits 1 when drift is found" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "ORIGINAL" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    arb create my-feature repo-a >/dev/null 2>&1
+    echo "MODIFIED" > "$TEST_DIR/project/my-feature/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template diff
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"ORIGINAL"* ]]
+    [[ "$output" == *"MODIFIED"* ]]
+}
+
+@test "arb template diff filters by file path" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "A" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    echo "B" > "$TEST_DIR/project/.arb/templates/workspace/.config"
+    arb create my-feature repo-a >/dev/null 2>&1
+    echo "A-modified" > "$TEST_DIR/project/my-feature/.env"
+    echo "B-modified" > "$TEST_DIR/project/my-feature/.config"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template diff .env
+    [ "$status" -eq 1 ]
+    [[ "$output" == *".env"* ]]
+    [[ "$output" != *".config"* ]]
+}
+
+@test "arb template diff filters by --repo" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-b"
+    echo "A" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+    echo "B" > "$TEST_DIR/project/.arb/templates/repos/repo-b/.env"
+    arb create my-feature repo-a repo-b >/dev/null 2>&1
+    echo "A-modified" > "$TEST_DIR/project/my-feature/repo-a/.env"
+    echo "B-modified" > "$TEST_DIR/project/my-feature/repo-b/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template diff --repo repo-a
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
 @test "arb list --where at-risk filters workspaces" {
     arb create ws-dirty repo-a
     arb create ws-clean repo-a
@@ -4330,5 +4497,136 @@ push_then_delete_remote() {
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-gone" ]
     [ -d "$TEST_DIR/project/ws-safe" ]
+}
+
+@test "arb template apply seeds missing files" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    # Set up templates AFTER create so they haven't been seeded yet
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "SEEDED" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template apply
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Seeded"* ]]
+    [ "$(cat "$TEST_DIR/project/my-feature/.env")" = "SEEDED" ]
+}
+
+@test "arb template apply skips existing files" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "TEMPLATE" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    arb create my-feature repo-a >/dev/null 2>&1
+    echo "CUSTOM" > "$TEST_DIR/project/my-feature/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template apply
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"already present"* ]]
+    [ "$(cat "$TEST_DIR/project/my-feature/.env")" = "CUSTOM" ]
+}
+
+@test "arb template apply --force resets drifted files" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "TEMPLATE" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    arb create my-feature repo-a >/dev/null 2>&1
+    echo "DRIFTED" > "$TEST_DIR/project/my-feature/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template apply --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"reset"* ]]
+    [ "$(cat "$TEST_DIR/project/my-feature/.env")" = "TEMPLATE" ]
+}
+
+@test "arb template apply --repo limits to specific repo" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    # Set up templates AFTER create so they haven't been seeded yet
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    echo "WS" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    echo "REPO" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template apply --repo repo-a
+    [ "$status" -eq 0 ]
+    # Repo template seeded
+    [ -f "$TEST_DIR/project/my-feature/repo-a/.env" ]
+    # Workspace template NOT seeded (--repo limits scope)
+    [ ! -f "$TEST_DIR/project/my-feature/.env" ]
+}
+
+@test "arb template apply --workspace limits to workspace scope" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    # Set up templates AFTER create so they haven't been seeded yet
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    echo "WS" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    echo "REPO" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template apply --workspace
+    [ "$status" -eq 0 ]
+    # Workspace template seeded
+    [ -f "$TEST_DIR/project/my-feature/.env" ]
+    # Repo template NOT seeded (--workspace limits scope)
+    [ ! -f "$TEST_DIR/project/my-feature/repo-a/.env" ]
+}
+
+@test "arb template apply filters by file path" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    # Set up templates AFTER create so they haven't been seeded yet
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "A" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    echo "B" > "$TEST_DIR/project/.arb/templates/workspace/.config"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template apply .env
+    [ "$status" -eq 0 ]
+    [ -f "$TEST_DIR/project/my-feature/.env" ]
+    [ ! -f "$TEST_DIR/project/my-feature/.config" ]
+}
+
+@test "arb template --help shows subcommands" {
+    run arb template --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"add"* ]]
+    [[ "$output" == *"remove"* ]]
+    [[ "$output" == *"list"* ]]
+    [[ "$output" == *"diff"* ]]
+    [[ "$output" == *"apply"* ]]
+}
+
+@test "arb template add with multiple --repo flags" {
+    arb create my-feature repo-a repo-b >/dev/null 2>&1
+    echo "DB=localhost" > "$TEST_DIR/project/my-feature/repo-a/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template add repo-a/.env --repo repo-a --repo repo-b
+    [ "$status" -eq 0 ]
+    [ -f "$TEST_DIR/project/.arb/templates/repos/repo-a/.env" ]
+    [ -f "$TEST_DIR/project/.arb/templates/repos/repo-b/.env" ]
+}
+
+@test "arb template add with multiple --repo continues past conflict" {
+    arb create my-feature repo-a repo-b >/dev/null 2>&1
+    # Pre-create a conflicting template for repo-a only
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    echo "OLD" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+    echo "NEW" > "$TEST_DIR/project/my-feature/repo-a/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template add repo-a/.env --repo repo-a --repo repo-b
+    # Should fail (conflict on repo-a) but still add repo-b
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"already exists"* ]]
+    [ -f "$TEST_DIR/project/.arb/templates/repos/repo-b/.env" ]
+    [ "$(cat "$TEST_DIR/project/.arb/templates/repos/repo-a/.env")" = "OLD" ]
+}
+
+@test "arb template list aligns modified annotations" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "SHORT" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    echo "LONG" > "$TEST_DIR/project/.arb/templates/workspace/some-longer-filename.txt"
+    arb create my-feature repo-a >/dev/null 2>&1
+    echo "CHANGED" > "$TEST_DIR/project/my-feature/.env"
+    echo "CHANGED" > "$TEST_DIR/project/my-feature/some-longer-filename.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template list
+    [ "$status" -eq 0 ]
+    # Both should show (modified) and the output should contain padding
+    [[ "$output" == *".env"*"(modified)"* ]]
+    [[ "$output" == *"some-longer-filename.txt"*"(modified)"* ]]
 }
 

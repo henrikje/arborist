@@ -16,7 +16,7 @@ import {
 	workspaceMatchesWhere,
 	wouldLoseWork,
 } from "../lib/status";
-import { type TemplateDiff, diffTemplates } from "../lib/templates";
+import { type TemplateDiff, diffTemplates, displayTemplateDiffs } from "../lib/templates";
 import {
 	type LastCommitWidths,
 	type RelativeTimeParts,
@@ -170,15 +170,8 @@ function displayRemoveTable(assessments: WorkspaceAssessment[]): void {
 	// Template diffs below the table
 	const multiWs = assessments.length > 1;
 	for (const a of assessments) {
-		if (a.templateDiffs.length > 0) {
-			const suffix = multiWs ? ` (${a.name})` : "";
-			warn(`      Template files modified${suffix}:`);
-			for (const diff of a.templateDiffs) {
-				const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
-				process.stderr.write(`          ${prefix}${diff.relPath}\n`);
-			}
-			process.stderr.write("\n");
-		}
+		const suffix = multiWs ? ` (${a.name})` : "";
+		displayTemplateDiffs(a.templateDiffs, (text) => process.stderr.write(text), warn, suffix);
 	}
 
 	// At-risk warnings

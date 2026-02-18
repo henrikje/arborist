@@ -187,6 +187,11 @@ Commands that do NOT need `-y`: `init`, `clone`, `repos`, `create`, `list`, `pat
 | `arb init [path]` | Initialize a new arb root |
 | `arb clone <url> [name]` | Clone a repo into `.arb/repos/` |
 | `arb repos` | List all cloned repos |
+| `arb template add <file>` | Capture a file as a template |
+| `arb template remove <file>` | Remove a template file |
+| `arb template list` | List all defined templates |
+| `arb template diff [file]` | Show template drift (unified diff) |
+| `arb template apply [file]` | Re-seed templates into workspace |
 | `arb create [name] [repos...]` | Create a new workspace |
 | `arb remove [names...]` | Remove workspaces |
 | `arb list` | List all workspaces |
