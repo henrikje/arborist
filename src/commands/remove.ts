@@ -81,14 +81,14 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 	const remoteRepos: string[] = [];
 
 	for (const status of summary.repos) {
-		if (status.publish !== null) {
-			if (status.publish.refMode === "configured" || status.publish.refMode === "implicit") {
+		if (status.share !== null) {
+			if (status.share.refMode === "configured" || status.share.refMode === "implicit") {
 				remoteRepos.push(status.name);
 			}
 		}
 
 		const flags = computeFlags(status, branch);
-		const localWithCommits = status.publish === null && status.base !== null && status.base.ahead > 0;
+		const localWithCommits = status.share === null && status.base !== null && status.base.ahead > 0;
 		const atRisk = wouldLoseWork(flags) || localWithCommits;
 		if (atRisk) {
 			hasAtRisk = true;
@@ -207,15 +207,15 @@ async function executeRemoval(
 		}
 
 		if (deleteRemote && (await hasRemote(`${ctx.reposDir}/${repo}`))) {
-			let publishRemote = "origin";
+			let shareRemote = "origin";
 			try {
 				const remotes = await resolveRemotes(`${ctx.reposDir}/${repo}`);
-				publishRemote = remotes.publish;
+				shareRemote = remotes.share;
 			} catch {
 				// Fall back to origin
 			}
-			if (await remoteBranchExists(`${ctx.reposDir}/${repo}`, branch, publishRemote)) {
-				const pushResult = await git(`${ctx.reposDir}/${repo}`, "push", publishRemote, "--delete", branch);
+			if (await remoteBranchExists(`${ctx.reposDir}/${repo}`, branch, shareRemote)) {
+				const pushResult = await git(`${ctx.reposDir}/${repo}`, "push", shareRemote, "--delete", branch);
 				if (pushResult.exitCode !== 0) {
 					failedRemoteDeletes.push(repo);
 				}
@@ -252,7 +252,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.summary("Remove one or more workspaces")
 		.description(
-			"Remove one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-remove all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Combine with --where <filter> to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). --where accepts: dirty, unpushed, behind-remote, behind-base, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.",
+			"Remove one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-remove all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Combine with --where <filter> to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). --where accepts: dirty, unpushed, behind-share, behind-base, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.",
 		)
 		.action(
 			async (

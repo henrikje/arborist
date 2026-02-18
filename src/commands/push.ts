@@ -19,7 +19,7 @@ interface PushAssessment {
 	ahead: number;
 	behind: number;
 	branch: string;
-	publishRemote: string;
+	shareRemote: string;
 	newBranch: boolean;
 	headSha: string;
 	recreate: boolean;
@@ -32,9 +32,9 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 		.option("--no-fetch", "Skip fetching before push")
 		.option("-y, --yes", "Skip confirmation prompt")
 		.option("-n, --dry-run", "Show what would happen without executing")
-		.summary("Push the feature branch to the publish remote")
+		.summary("Push the feature branch to the share remote")
 		.description(
-			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the publish remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. If a remote branch was deleted (e.g. after merging a PR), the push recreates it. Skips repos without a remote and repos where the remote branch has been deleted. Use --force after rebase or amend to force push with lease (implies --yes). Use --no-fetch to skip fetching when refs are known to be fresh.",
+			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. If a remote branch was deleted (e.g. after merging a PR), the push recreates it. Skips repos without a remote and repos where the remote branch has been deleted. Use --force after rebase or amend to force push with lease (implies --yes). Use --no-fetch to skip fetching when refs are known to be fresh.",
 		)
 		.action(
 			async (repoArgs: string[], options: { force?: boolean; fetch?: boolean; yes?: boolean; dryRun?: boolean }) => {
@@ -67,7 +67,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				for (const a of assessments) {
 					if (a.outcome === "will-force-push" && !options.force) {
 						a.outcome = "skip";
-						a.skipReason = `diverged from ${a.publishRemote} (use --force)`;
+						a.skipReason = `diverged from ${a.shareRemote} (use --force)`;
 					}
 				}
 
@@ -79,7 +79,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				process.stderr.write("\n");
 				for (const a of assessments) {
 					const remotes = remotesMap.get(a.repo);
-					const forkSuffix = remotes && remotes.upstream !== remotes.publish ? ` → ${a.publishRemote}` : "";
+					const forkSuffix = remotes && remotes.upstream !== remotes.share ? ` → ${a.shareRemote}` : "";
 					const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 					if (a.outcome === "will-push") {
 						const newBranchSuffix = a.recreate ? " (recreate)" : a.newBranch ? " (new branch)" : "";
@@ -88,7 +88,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 						);
 					} else if (a.outcome === "will-force-push") {
 						process.stderr.write(
-							`  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.publishRemote})${headStr}\n`,
+							`  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.shareRemote})${headStr}\n`,
 						);
 					} else if (a.outcome === "up-to-date") {
 						process.stderr.write(`  ${a.repo}   up to date\n`);
@@ -133,8 +133,8 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 					inlineStart(a.repo, "pushing");
 					const pushArgs =
 						a.outcome === "will-force-push"
-							? ["push", "-u", "--force-with-lease", a.publishRemote, a.branch]
-							: ["push", "-u", a.publishRemote, a.branch];
+							? ["push", "-u", "--force-with-lease", a.shareRemote, a.branch]
+							: ["push", "-u", a.shareRemote, a.branch];
 					const pushResult = await Bun.$`git -C ${a.repoDir} ${pushArgs}`.cwd(a.repoDir).quiet().nothrow();
 					if (pushResult.exitCode === 0) {
 						inlineResult(a.repo, `pushed ${plural(a.ahead, "commit")}`);
@@ -164,7 +164,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 }
 
 async function assessPushRepo(status: RepoStatus, repoDir: string, branch: string): Promise<PushAssessment> {
-	const publishRemote = status.publish?.remote ?? "origin";
+	const shareRemote = status.share?.remote ?? "origin";
 
 	const headSha = await getShortHead(repoDir);
 
@@ -175,14 +175,14 @@ async function assessPushRepo(status: RepoStatus, repoDir: string, branch: strin
 		ahead: 0,
 		behind: 0,
 		branch,
-		publishRemote,
+		shareRemote,
 		newBranch: false,
 		headSha,
 		recreate: false,
 	};
 
-	// Local repo — no publish remote
-	if (status.publish === null) {
+	// Local repo — no share remote
+	if (status.share === null) {
 		return { ...base, skipReason: "local repo" };
 	}
 
@@ -195,27 +195,27 @@ async function assessPushRepo(status: RepoStatus, repoDir: string, branch: strin
 	}
 
 	// Remote branch was deleted (gone) — recreate
-	if (status.publish.refMode === "gone") {
+	if (status.share.refMode === "gone") {
 		const ahead = status.base?.ahead ?? 1;
 		return { ...base, outcome: "will-push", ahead, recreate: true };
 	}
 
 	// Never pushed (noRef) — new branch
-	if (status.publish.refMode === "noRef") {
+	if (status.share.refMode === "noRef") {
 		const ahead = status.base?.ahead ?? 1;
 		return { ...base, outcome: "will-push", ahead, newBranch: true };
 	}
 
 	// Has push/pull counts — compare
-	const toPush = status.publish.toPush ?? 0;
-	const toPull = status.publish.toPull ?? 0;
+	const toPush = status.share.toPush ?? 0;
+	const toPull = status.share.toPull ?? 0;
 
 	if (toPush === 0 && toPull === 0) {
 		return { ...base, outcome: "up-to-date" };
 	}
 
 	if (toPush === 0 && toPull > 0) {
-		return { ...base, outcome: "skip", skipReason: `behind ${publishRemote} (pull first?)`, behind: toPull };
+		return { ...base, outcome: "skip", skipReason: `behind ${shareRemote} (pull first?)`, behind: toPull };
 	}
 
 	if (toPush > 0 && toPull > 0) {

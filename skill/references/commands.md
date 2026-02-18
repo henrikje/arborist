@@ -322,7 +322,7 @@ Shows each worktree's position relative to the base branch, push status, and loc
 
 **Flags:**
 - `-d, --dirty` — Only show repos with local changes (shorthand for `--where dirty`)
-- `-w, --where <filter>` — Filter repos by status flags (comma-separated, OR logic): dirty, unpushed, behind-remote, behind-base, drifted, detached, operation, local, gone, shallow, at-risk
+- `-w, --where <filter>` — Filter repos by status flags (comma-separated, OR logic): dirty, unpushed, behind-share, behind-base, drifted, detached, operation, local, gone, shallow, at-risk
 - `-f, --fetch` — Fetch remotes before showing status
 - `--verbose` — Show file-level detail
 - `--json` — Machine-readable JSON output (filtered when `--where` is active)
@@ -353,7 +353,7 @@ Shows each worktree's position relative to the base branch, push status, and loc
         "ahead": 3,
         "behind": 0
       },
-      "publish": {
+      "share": {
         "remote": "origin",
         "ref": "origin/feature-login",
         "refMode": "configured",
@@ -386,7 +386,7 @@ Fetches from all configured remotes for every repo in the workspace, in parallel
 
 ### pull
 
-Pull the feature branch from the publish remote.
+Pull the feature branch from the share remote.
 
 ```
 arb pull [repos...] [-n] [-y] [--rebase] [--merge]
@@ -409,7 +409,7 @@ Pulls the feature branch for all or specified repos. Fetches first, shows a plan
 
 ### push
 
-Push the feature branch to the publish remote.
+Push the feature branch to the share remote.
 
 ```
 arb push [repos...] [-f] [--no-fetch] [-n] [-y]

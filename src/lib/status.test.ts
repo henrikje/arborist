@@ -21,7 +21,7 @@ function makeRepo(overrides: Partial<RepoStatus> = {}): RepoStatus {
 		},
 		local: { staged: 0, modified: 0, untracked: 0, conflicts: 0 },
 		base: { remote: "origin", ref: "main", ahead: 0, behind: 0 },
-		publish: {
+		share: {
 			remote: "origin",
 			ref: "origin/feature",
 			refMode: "configured",
@@ -74,7 +74,7 @@ describe("computeFlags", () => {
 	test("isUnpushed when toPush > 0", () => {
 		const flags = computeFlags(
 			makeRepo({
-				publish: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 },
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 },
 			}),
 			"feature",
 		);
@@ -84,7 +84,7 @@ describe("computeFlags", () => {
 	test("isUnpushed when noRef with base.ahead > 0", () => {
 		const flags = computeFlags(
 			makeRepo({
-				publish: { remote: "origin", ref: null, refMode: "noRef", toPush: null, toPull: null },
+				share: { remote: "origin", ref: null, refMode: "noRef", toPush: null, toPull: null },
 				base: { remote: "origin", ref: "main", ahead: 3, behind: 0 },
 			}),
 			"feature",
@@ -95,7 +95,7 @@ describe("computeFlags", () => {
 	test("not isUnpushed when gone even with base.ahead > 0", () => {
 		const flags = computeFlags(
 			makeRepo({
-				publish: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
 				base: { remote: "origin", ref: "main", ahead: 3, behind: 0 },
 			}),
 			"feature",
@@ -109,15 +109,15 @@ describe("computeFlags", () => {
 		expect(flags.isUnpushed).toBe(false);
 	});
 
-	test("not isUnpushed when publish is null (local repo)", () => {
-		const flags = computeFlags(makeRepo({ publish: null }), "feature");
+	test("not isUnpushed when share is null (local repo)", () => {
+		const flags = computeFlags(makeRepo({ share: null }), "feature");
 		expect(flags.isUnpushed).toBe(false);
 	});
 
 	test("needsPull when toPull > 0", () => {
 		const flags = computeFlags(
 			makeRepo({
-				publish: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3 },
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3 },
 			}),
 			"feature",
 		);
@@ -154,12 +154,12 @@ describe("computeFlags", () => {
 		expect(flags.hasOperation).toBe(true);
 	});
 
-	test("isLocal when no publish remote", () => {
-		const flags = computeFlags(makeRepo({ publish: null }), "feature");
+	test("isLocal when no share remote", () => {
+		const flags = computeFlags(makeRepo({ share: null }), "feature");
 		expect(flags.isLocal).toBe(true);
 	});
 
-	test("not isLocal when publish remote exists", () => {
+	test("not isLocal when share remote exists", () => {
 		const flags = computeFlags(makeRepo(), "feature");
 		expect(flags.isLocal).toBe(false);
 	});
@@ -167,7 +167,7 @@ describe("computeFlags", () => {
 	test("isGone when refMode is gone", () => {
 		const flags = computeFlags(
 			makeRepo({
-				publish: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
 			}),
 			"feature",
 		);
@@ -222,7 +222,7 @@ describe("flagLabels", () => {
 		const flags = computeFlags(
 			makeRepo({
 				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
-				publish: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 },
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 },
 			}),
 			"feature",
 		);
@@ -257,7 +257,7 @@ describe("wouldLoseWork", () => {
 	test("returns true when isUnpushed", () => {
 		const flags = computeFlags(
 			makeRepo({
-				publish: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 },
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 },
 			}),
 			"feature",
 		);
@@ -292,7 +292,7 @@ describe("wouldLoseWork", () => {
 	test("returns false when only needsPull", () => {
 		const flags = computeFlags(
 			makeRepo({
-				publish: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3 },
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3 },
 			}),
 			"feature",
 		);
@@ -315,14 +315,14 @@ describe("wouldLoseWork", () => {
 	});
 
 	test("returns false when isLocal", () => {
-		const flags = computeFlags(makeRepo({ publish: null, base: null }), "feature");
+		const flags = computeFlags(makeRepo({ share: null, base: null }), "feature");
 		expect(wouldLoseWork(flags)).toBe(false);
 	});
 
 	test("returns false when isGone (without unpushed commits)", () => {
 		const flags = computeFlags(
 			makeRepo({
-				publish: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
 				base: { remote: "origin", ref: "main", ahead: 0, behind: 0 },
 			}),
 			"feature",
@@ -346,7 +346,7 @@ describe("validateWhere", () => {
 
 	test("returns null for all valid terms", () => {
 		expect(
-			validateWhere("dirty,unpushed,behind-remote,behind-base,drifted,detached,operation,local,gone,shallow,at-risk"),
+			validateWhere("dirty,unpushed,behind-share,behind-base,drifted,detached,operation,local,gone,shallow,at-risk"),
 		).toBeNull();
 	});
 
@@ -385,7 +385,7 @@ describe("repoMatchesWhere", () => {
 
 	test("matches with comma OR — second term matches", () => {
 		const flags = computeFlags(
-			makeRepo({ publish: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null } }),
+			makeRepo({ share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null } }),
 			"feature",
 		);
 		expect(repoMatchesWhere(flags, "dirty,gone")).toBe(true);
@@ -408,13 +408,10 @@ describe("repoMatchesWhere", () => {
 
 	test("matches each raw flag term", () => {
 		const cases: [string, Partial<RepoStatus>][] = [
+			["unpushed", { share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 } }],
 			[
-				"unpushed",
-				{ publish: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 } },
-			],
-			[
-				"behind-remote",
-				{ publish: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3 } },
+				"behind-share",
+				{ share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3 } },
 			],
 			["behind-base", { base: { remote: "origin", ref: "main", ahead: 0, behind: 2 } }],
 			[
@@ -423,8 +420,8 @@ describe("repoMatchesWhere", () => {
 			],
 			["detached", { identity: { worktreeKind: "linked", headMode: { kind: "detached" }, shallow: false } }],
 			["operation", { operation: "rebase" }],
-			["local", { publish: null }],
-			["gone", { publish: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null } }],
+			["local", { share: null }],
+			["gone", { share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null } }],
 			[
 				"shallow",
 				{ identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "feature" }, shallow: true } },
@@ -456,7 +453,7 @@ describe("workspaceMatchesWhere", () => {
 			makeRepo({ name: "clean-repo" }),
 			makeRepo({
 				name: "gone-repo",
-				publish: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
 			}),
 		];
 		expect(workspaceMatchesWhere(repos, "feature", "at-risk")).toBe(true);
@@ -478,7 +475,7 @@ describe("isWorkspaceSafe", () => {
 		const repos = [
 			makeRepo({
 				name: "unpushed",
-				publish: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 },
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 },
 			}),
 		];
 		expect(isWorkspaceSafe(repos, "feature")).toBe(false);
@@ -488,7 +485,7 @@ describe("isWorkspaceSafe", () => {
 		const repos = [
 			makeRepo({
 				name: "local-with-commits",
-				publish: null,
+				share: null,
 				base: { remote: "origin", ref: "main", ahead: 3, behind: 0 },
 			}),
 		];
@@ -504,7 +501,7 @@ describe("isWorkspaceSafe", () => {
 		const repos = [
 			makeRepo({
 				name: "gone",
-				publish: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
 			}),
 		];
 		expect(isWorkspaceSafe(repos, "feature")).toBe(true);

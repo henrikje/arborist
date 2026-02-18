@@ -47,7 +47,7 @@ export async function parallelFetch(
 			const remotesToFetch = new Set<string>();
 			if (repoRemotes) {
 				remotesToFetch.add(repoRemotes.upstream);
-				remotesToFetch.add(repoRemotes.publish);
+				remotesToFetch.add(repoRemotes.share);
 			} else {
 				remotesToFetch.add("origin");
 			}

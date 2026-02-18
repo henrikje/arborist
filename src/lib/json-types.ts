@@ -19,7 +19,7 @@ export interface StatusJsonRepo {
 		ahead: number;
 		behind: number;
 	} | null;
-	publish: {
+	share: {
 		remote: string;
 		ref: string | null;
 		refMode: "noRef" | "implicit" | "configured" | "gone";
