@@ -74,7 +74,9 @@ export async function integrate(
 				.join(", ");
 			const diffStr = diffParts ? ` \u2014 ${diffParts}` : "";
 			const baseRef = `${a.upstreamRemote}/${a.baseBranch}`;
-			const action = mode === "rebase" ? `rebase ${branch} onto ${baseRef}` : `merge ${baseRef} into ${branch}`;
+			const mergeType = mode === "merge" ? (a.ahead === 0 ? " (fast-forward)" : " (three-way)") : "";
+			const action =
+				mode === "rebase" ? `rebase ${branch} onto ${baseRef}` : `merge ${baseRef} into ${branch}${mergeType}`;
 			const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 			process.stderr.write(`  ${a.repo}   ${action}${diffStr}${headStr}\n`);
 		} else if (a.outcome === "up-to-date") {

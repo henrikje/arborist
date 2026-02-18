@@ -4,6 +4,7 @@ import { type FileChange, getCommitsBetween, parseGitStatusFiles } from "../lib/
 import type { StatusJsonOutput } from "../lib/json-types";
 import { dim, green, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
+import { resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos } from "../lib/repos";
 import {
 	type RepoStatus,
@@ -88,7 +89,9 @@ async function runStatus(
 	// Fetch if requested
 	if (options.fetch) {
 		const { repos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
-		const results = await parallelFetch(fetchDirs);
+		const remoteRepos = repos.filter((r) => !localRepos.includes(r));
+		const remotesMap = await resolveRemotesMap(remoteRepos, ctx.reposDir);
+		const results = await parallelFetch(fetchDirs, undefined, remotesMap);
 		const failed = reportFetchFailures(repos, localRepos, results);
 		if (failed.length > 0) return 1;
 	}
