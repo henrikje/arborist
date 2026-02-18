@@ -215,6 +215,7 @@ All commands show a plan before proceeding. See `arb help <command>` for options
 ```bash
 arb exec git log --oneline -5
 arb exec npm install
+arb exec --repo api --repo web -- npm test   # only in specific repos
 arb exec --dirty git diff -d   # --dirty is arb's, -d goes to git diff
 ```
 
@@ -226,6 +227,7 @@ Runs the given command in each worktree sequentially. It supports running intera
 arb open code
 # expands to:
 # code /home/you/my-project/fix-login/frontend /home/you/my-project/fix-login/backend
+arb open --repo frontend code   # only open specific repos
 arb open code -n --add    # -n and --add are passed to code
 ```
 

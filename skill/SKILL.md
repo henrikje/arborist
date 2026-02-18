@@ -126,9 +126,11 @@ Key signals in status output:
   arb -C /path/to/project status
   ```
 - `arb exec <command>` runs a command in each worktree sequentially (e.g., `arb exec npm install`)
+- `arb exec --repo api --repo web -- npm test` runs only in specified repos
 - `arb exec --dirty git diff` runs only in repos with local changes
 - `arb exec -w unpushed git log` runs only in repos with unpushed commits
 - `arb open code` opens all worktrees in VS Code
+- `arb open --repo api --repo web code` opens only specified repos
 - After making changes across repos, `arb push -y` publishes everything at once
 - Use `arb add <repo>` to add more repos to an existing workspace
 - Use `arb drop <repo>` to remove repos you no longer need in the workspace

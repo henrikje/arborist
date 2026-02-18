@@ -1,7 +1,8 @@
+import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { error, info } from "../lib/output";
-import { workspaceRepoDirs } from "../lib/repos";
+import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
 import { computeFlags, gatherRepoStatus, repoMatchesWhere, validateWhere } from "../lib/status";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -10,17 +11,23 @@ export function registerOpenCommand(program: Command, getCtx: () => ArbContext):
 	program
 		.command("open")
 		.argument("<command...>", "Command to open worktrees with")
+		.option("--repo <name>", "Only open specified repos (repeatable)", collectRepo, [])
 		.option("-d, --dirty", "Only open dirty worktrees (shorthand for --where dirty)")
 		.option("-w, --where <filter>", "Only open worktrees matching status filter (comma-separated, OR logic)")
 		.passThroughOptions()
 		.summary("Open worktrees in an application")
 		.description(
-			'Run a command with all worktree directories as arguments, using absolute paths. Useful for opening worktrees in an editor, e.g. "arb open code". The command must exist in your PATH.\n\nUse --dirty to only open worktrees with local changes, or --where <filter> to filter by any status flag: dirty, unpushed, behind-remote, behind-base, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic.\n\nArb flags must come before the command. Everything after the command name is passed through verbatim:\n\n  arb open --dirty code -n --add    # --dirty → arb, -n --add → code',
+			'Run a command with all worktree directories as arguments, using absolute paths. Useful for opening worktrees in an editor, e.g. "arb open code". The command must exist in your PATH.\n\nUse --repo <name> to target specific repos (repeatable). Use --dirty to only open worktrees with local changes, or --where <filter> to filter by any status flag: dirty, unpushed, behind-remote, behind-base, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic. --repo and --where/--dirty can be combined (AND logic).\n\nArb flags must come before the command. Everything after the command name is passed through verbatim:\n\n  arb open --repo api --repo web code\n  arb open --dirty code -n --add    # --dirty → arb, -n --add → code',
 		)
-		.action(async (args: string[], options: { dirty?: boolean; where?: string }) => {
+		.action(async (args: string[], options: { repo?: string[]; dirty?: boolean; where?: string }) => {
 			const [command = "", ...extraFlags] = args;
 			const ctx = getCtx();
 			const { wsDir } = requireWorkspace(ctx);
+
+			// Validate --repo names
+			if (options.repo && options.repo.length > 0) {
+				validateRepoNames(wsDir, options.repo);
+			}
 
 			// Resolve --dirty as shorthand for --where dirty
 			if (options.dirty && options.where) {
@@ -44,7 +51,14 @@ export function registerOpenCommand(program: Command, getCtx: () => ArbContext):
 				process.exit(1);
 			}
 
-			const repoDirs = workspaceRepoDirs(wsDir);
+			let repoDirs = workspaceRepoDirs(wsDir);
+
+			// Filter by --repo names
+			if (options.repo && options.repo.length > 0) {
+				const repoSet = new Set(options.repo);
+				repoDirs = repoDirs.filter((d) => repoSet.has(basename(d)));
+			}
+
 			const dirsToOpen: string[] = [];
 
 			if (where) {

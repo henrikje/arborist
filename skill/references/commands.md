@@ -479,18 +479,20 @@ Fetches all repos, then merges the base branch into the feature branch. Same beh
 Run a command in each worktree.
 
 ```
-arb exec [-d] [-w <filter>] <command...>
+arb exec [--repo <name>] [-d] [-w <filter>] <command...>
 ```
 
 Runs the given command sequentially in each worktree. Each worktree output is preceded by an `==> repo <==` header. Arb flags must come before the command; everything after is passed through verbatim.
 
 **Flags:**
+- `--repo <name>` — Only run in specified repos (repeatable, AND logic with `--where`/`--dirty`)
 - `-d, --dirty` — Only run in repos with local changes (shorthand for `--where dirty`)
 - `-w, --where <filter>` — Only run in repos matching status filter (comma-separated, OR logic)
 
 **Examples:**
 ```
 arb exec git status
+arb exec --repo api --repo web -- npm test
 arb exec --dirty git diff
 arb exec -w unpushed git log --oneline
 arb exec npm install
@@ -504,18 +506,20 @@ arb exec -- bash -c 'echo hello'
 Open worktrees in an application.
 
 ```
-arb open [-d] [-w <filter>] <command...>
+arb open [--repo <name>] [-d] [-w <filter>] <command...>
 ```
 
 Runs a command with all worktree directories as arguments (absolute paths). Arb flags must come before the command.
 
 **Flags:**
+- `--repo <name>` — Only open specified repos (repeatable, AND logic with `--where`/`--dirty`)
 - `-d, --dirty` — Only open dirty worktrees (shorthand for `--where dirty`)
 - `-w, --where <filter>` — Only open worktrees matching status filter (comma-separated, OR logic)
 
 **Examples:**
 ```
 arb open code
+arb open --repo api --repo web code
 arb open --dirty vim
 arb open -w dirty,unpushed code
 arb open code -n --add

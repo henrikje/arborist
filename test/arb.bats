@@ -4300,6 +4300,104 @@ push_then_delete_remote() {
     [[ "$output" != *"repo-b"* ]]
 }
 
+@test "arb exec --repo runs only in specified repo" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb exec --repo repo-a pwd
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb exec --repo with multiple repos runs in all specified" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb exec --repo repo-a --repo repo-b pwd
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"repo-b"* ]]
+}
+
+@test "arb exec --repo with invalid repo name errors" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb exec --repo nonexistent pwd
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Repo 'nonexistent' is not in this workspace"* ]]
+}
+
+@test "arb exec --repo combined with --dirty uses AND logic" {
+    arb create my-feature repo-a repo-b
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-b/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb exec --repo repo-a --dirty pwd
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb open --repo opens only specified repos" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    local spy="$TEST_DIR/editor-spy"
+    cat > "$spy" <<'SCRIPT'
+#!/usr/bin/env bash
+for arg in "$@"; do echo "$arg"; done >> "$TEST_DIR/opened-dirs"
+SCRIPT
+    chmod +x "$spy"
+    export TEST_DIR
+    run arb open --repo repo-a "$spy"
+    [ "$status" -eq 0 ]
+    run cat "$TEST_DIR/opened-dirs"
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb open --repo with multiple repos opens all specified" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    local spy="$TEST_DIR/editor-spy"
+    cat > "$spy" <<'SCRIPT'
+#!/usr/bin/env bash
+for arg in "$@"; do echo "$arg"; done >> "$TEST_DIR/opened-dirs"
+SCRIPT
+    chmod +x "$spy"
+    export TEST_DIR
+    run arb open --repo repo-a --repo repo-b "$spy"
+    [ "$status" -eq 0 ]
+    run cat "$TEST_DIR/opened-dirs"
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"repo-b"* ]]
+}
+
+@test "arb open --repo with invalid repo name errors" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb open --repo nonexistent true
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Repo 'nonexistent' is not in this workspace"* ]]
+}
+
+@test "arb open --repo combined with --dirty uses AND logic" {
+    arb create my-feature repo-a repo-b
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-b/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    local spy="$TEST_DIR/editor-spy"
+    cat > "$spy" <<'SCRIPT'
+#!/usr/bin/env bash
+for arg in "$@"; do echo "$arg"; done >> "$TEST_DIR/opened-dirs"
+SCRIPT
+    chmod +x "$spy"
+    export TEST_DIR
+    run arb open --repo repo-a --dirty "$spy"
+    [ "$status" -eq 0 ]
+    run cat "$TEST_DIR/opened-dirs"
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
 # ── template ─────────────────────────────────────────────────────
 
 @test "arb template list shows no templates when none defined" {

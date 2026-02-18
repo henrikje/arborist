@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import type { Command } from "commander";
 import { error, info, plural, success, yellow } from "../lib/output";
-import { workspaceRepoDirs } from "../lib/repos";
+import { collectRepo, workspaceRepoDirs } from "../lib/repos";
 import {
 	type ForceOverlayResult,
 	type OverlayResult,
@@ -21,10 +21,6 @@ import {
 } from "../lib/templates";
 import type { ArbContext } from "../lib/types";
 import { requireWorkspace } from "../lib/workspace-context";
-
-function collectRepo(value: string, previous: string[]): string[] {
-	return previous.concat(value);
-}
 
 function resolveScope(
 	options: { repo?: string[]; workspace?: boolean },

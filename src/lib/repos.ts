@@ -65,6 +65,20 @@ export async function selectReposInteractive(reposDir: string): Promise<string[]
 	return selectInteractive(repos, "Select repos to include");
 }
 
+export function collectRepo(value: string, previous: string[]): string[] {
+	return previous.concat(value);
+}
+
+export function validateRepoNames(wsDir: string, repoNames: string[]): void {
+	const allRepoNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
+	for (const repo of repoNames) {
+		if (!allRepoNames.includes(repo)) {
+			error(`Repo '${repo}' is not in this workspace.`);
+			process.exit(1);
+		}
+	}
+}
+
 export function resolveRepoSelection(wsDir: string, repoArgs: string[]): string[] {
 	const allRepoNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
 
