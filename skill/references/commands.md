@@ -3,11 +3,10 @@
 Complete reference for all `arb` commands. Global options available on every command:
 
 - `-C <directory>` — Run as if arb was started in `<directory>` (like `git -C`)
-- `-w, --workspace <name>` — Target a specific workspace (overrides auto-detect)
 - `-v, --version` — Show version
 - `-h, --help` — Show help
 
-**Important:** Global options must come **before** the command name (e.g., `arb -w my-ws push`, NOT `arb push -w my-ws`).
+**Important:** Global options must come **before** the command name (e.g., `arb -C my-ws status`, NOT `arb status -C my-ws`).
 
 ---
 
@@ -161,7 +160,7 @@ Create a new workspace.
 arb create [name] [repos...] [-a] [-b <branch>] [--base <branch>]
 ```
 
-Creates a workspace with worktrees for selected repos on a shared feature branch. Automatically seeds files from `.arb/templates/` if configured. Prompts interactively for name, branch, and repos when run without arguments.
+Creates a workspace with worktrees for selected repos on a shared feature branch. Automatically seeds files from `.arb/templates/` if configured. Prompts interactively for name, branch, and repos when run without arguments. With the shell integration, auto-cds into the new workspace on success.
 
 **Arguments:**
 - `[name]` — Workspace name (prompted if not provided)
@@ -181,7 +180,7 @@ Creates a workspace with worktrees for selected repos on a shared feature branch
 Remove one or more workspaces.
 
 ```
-arb remove [names...] [-f] [-d] [-a] [--where <filter>] [-n]
+arb remove [names...] [-f] [-d] [-a] [-w <filter>] [-n]
 ```
 
 Removes workspaces and their worktrees. Shows status of each worktree before proceeding. Prompts with a picker when run without arguments.
@@ -193,7 +192,7 @@ Removes workspaces and their worktrees. Shows status of each worktree before pro
 - `-f, --force` — Force removal of at-risk workspaces (implies `--yes`)
 - `-d, --delete-remote` — Also delete remote branches
 - `-a, --all-safe` — Remove all workspaces with safe status (no work would be lost)
-- `--where <filter>` — Filter workspaces by repo status flags (comma-separated, OR logic). Combines with `--all-safe` using AND.
+- `-w, --where <filter>` — Filter workspaces by repo status flags (comma-separated, OR logic). Combines with `--all-safe` using AND.
 - `-n, --dry-run` — Show what would be removed without executing
 
 **Non-interactive usage:** Use `--dry-run` first to preview, then `--force` to execute. NEVER use without user confirmation.
@@ -205,7 +204,7 @@ Removes workspaces and their worktrees. Shows status of each worktree before pro
 List all workspaces.
 
 ```
-arb list [-f] [-q] [--where <filter>] [--json]
+arb list [-f] [-q] [-w <filter>] [--json]
 ```
 
 Lists all workspaces with aggregate status. The active workspace is marked with `*`. Shows a LAST COMMIT column with the most recent commit author date across all repos (as relative time in TTY, ISO 8601 in JSON).
@@ -213,7 +212,7 @@ Lists all workspaces with aggregate status. The active workspace is marked with 
 **Flags:**
 - `-f, --fetch` — Fetch all repos before listing for fresh remote data
 - `-q, --quick` — Skip per-repo status gathering (faster)
-- `--where <filter>` — Filter workspaces by repo status flags (comma-separated, OR logic). Cannot combine with `--quick`.
+- `-w, --where <filter>` — Filter workspaces by repo status flags (comma-separated, OR logic). Cannot combine with `--quick`.
 - `--json` — Machine-readable JSON output
 
 **JSON output structure:**
@@ -316,14 +315,14 @@ Removes worktrees from the workspace without deleting the workspace itself.
 Show workspace status.
 
 ```
-arb status [-d] [--where <filter>] [-f] [--verbose] [--json]
+arb status [-d] [-w <filter>] [-f] [--verbose] [--json]
 ```
 
 Shows each worktree's position relative to the base branch, push status, and local changes. The summary includes the workspace's last commit date (most recent author date across all repos).
 
 **Flags:**
 - `-d, --dirty` — Only show repos with local changes (shorthand for `--where dirty`)
-- `--where <filter>` — Filter repos by status flags (comma-separated, OR logic): dirty, unpushed, behind-remote, behind-base, drifted, detached, operation, local, gone, shallow, at-risk
+- `-w, --where <filter>` — Filter repos by status flags (comma-separated, OR logic): dirty, unpushed, behind-remote, behind-base, drifted, detached, operation, local, gone, shallow, at-risk
 - `-f, --fetch` — Fetch remotes before showing status
 - `--verbose` — Show file-level detail
 - `--json` — Machine-readable JSON output (filtered when `--where` is active)
@@ -422,12 +421,12 @@ Fetches all repos, then pushes the feature branch. Sets up tracking on first pus
 - `[repos...]` — Repos to push (all if not specified)
 
 **Flags:**
-- `-f, --force` — Force push with lease (use after rebase)
+- `-f, --force` — Force push with lease (implies `--yes`)
 - `--no-fetch` — Skip fetching before push
 - `-n, --dry-run` — Show what would be pushed without executing
 - `-y, --yes` — Skip confirmation prompt
 
-**Non-interactive usage:** Use `--dry-run` first to preview, then `--yes` to execute. Use `-f` only after rebase.
+**Non-interactive usage:** Use `--dry-run` first to preview, then `--yes` to execute. Use `--force` only after rebase (implies `--yes`).
 
 ---
 
@@ -480,20 +479,22 @@ Fetches all repos, then merges the base branch into the feature branch. Same beh
 Run a command in each worktree.
 
 ```
-arb exec [-d] [--where <filter>] <command...>
+arb exec [--repo <name>] [-d] [-w <filter>] <command...>
 ```
 
 Runs the given command sequentially in each worktree. Each worktree output is preceded by an `==> repo <==` header. Arb flags must come before the command; everything after is passed through verbatim.
 
 **Flags:**
+- `--repo <name>` — Only run in specified repos (repeatable, AND logic with `--where`/`--dirty`)
 - `-d, --dirty` — Only run in repos with local changes (shorthand for `--where dirty`)
-- `--where <filter>` — Only run in repos matching status filter (comma-separated, OR logic)
+- `-w, --where <filter>` — Only run in repos matching status filter (comma-separated, OR logic)
 
 **Examples:**
 ```
 arb exec git status
+arb exec --repo api --repo web -- npm test
 arb exec --dirty git diff
-arb exec --where unpushed git log --oneline
+arb exec -w unpushed git log --oneline
 arb exec npm install
 arb exec -- bash -c 'echo hello'
 ```
@@ -505,19 +506,21 @@ arb exec -- bash -c 'echo hello'
 Open worktrees in an application.
 
 ```
-arb open [-d] [--where <filter>] <command...>
+arb open [--repo <name>] [-d] [-w <filter>] <command...>
 ```
 
 Runs a command with all worktree directories as arguments (absolute paths). Arb flags must come before the command.
 
 **Flags:**
+- `--repo <name>` — Only open specified repos (repeatable, AND logic with `--where`/`--dirty`)
 - `-d, --dirty` — Only open dirty worktrees (shorthand for `--where dirty`)
-- `--where <filter>` — Only open worktrees matching status filter (comma-separated, OR logic)
+- `-w, --where <filter>` — Only open worktrees matching status filter (comma-separated, OR logic)
 
 **Examples:**
 ```
 arb open code
+arb open --repo api --repo web code
 arb open --dirty vim
-arb open --where dirty,unpushed code
+arb open -w dirty,unpushed code
 arb open code -n --add
 ```

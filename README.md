@@ -81,10 +81,10 @@ arb repos
 Here's the full lifecycle of a workspace — from creation to cleanup:
 
 ```bash
-# Create a workspace for your feature
+# Create a workspace for your feature (auto-cds into it)
 arb create fix-login frontend backend
 
-# Work in individual repos as usual
+# Work in individual repos
 arb cd fix-login/frontend
 # hack hack hack
 git add -p && git commit -m "Fix the login page"
@@ -121,7 +121,7 @@ You will create a new workspace for each feature or issue you work on. A workspa
 arb create fix-login frontend backend
 ```
 
-This creates a `fix-login` workspace, checks out a `fix-login` branch in `frontend` and `backend`, and creates separate working directories for each under `fix-login/`. The branches are created if they do not exist.
+This creates a `fix-login` workspace, checks out a `fix-login` branch in `frontend` and `backend`, and creates separate working directories for each under `fix-login/`. The branches are created if they do not exist. With the shell integration installed, your shell automatically `cd`s into the new workspace.
 
 Use `--branch` (`-b`) when the branch name differs from the workspace name, `--base` when you want to target a specific base branch (instead of each repo's default), and `--all-repos` (`-a`) to include every cloned repo:
 
@@ -144,11 +144,11 @@ git commit -m "Fix the bug on the login page"
 
 There is no `arb commit` — you commit in each repo individually.
 
-The commands below run from inside a workspace or worktree. You can also target a workspace from anywhere using `--workspace` (`-w`), or specify the directory context explicitly with `-C`:
+The commands below run from inside a workspace or worktree. You can also target a workspace from anywhere using `-C`:
 
 ```bash
-arb -C ~/my-project status               # run from the arb root
-arb -C ~/my-project -w fix-login status   # target a specific workspace
+arb -C ~/my-project status                    # run from the arb root
+arb -C ~/my-project/fix-login status          # target a specific workspace
 ```
 
 `-C` works like `git -C` — it changes the working directory before any command runs.
@@ -215,6 +215,7 @@ All commands show a plan before proceeding. See `arb help <command>` for options
 ```bash
 arb exec git log --oneline -5
 arb exec npm install
+arb exec --repo api --repo web -- npm test   # only in specific repos
 arb exec --dirty git diff -d   # --dirty is arb's, -d goes to git diff
 ```
 
@@ -226,6 +227,7 @@ Runs the given command in each worktree sequentially. It supports running intera
 arb open code
 # expands to:
 # code /home/you/my-project/fix-login/frontend /home/you/my-project/fix-login/backend
+arb open --repo frontend code   # only open specific repos
 arb open code -n --add    # -n and --add are passed to code
 ```
 
@@ -294,7 +296,7 @@ When a feature is done:
 arb remove fix-login
 ```
 
-This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before removing the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-safe` to batch-remove every workspace with safe status. Combine `--all-safe --where gone` to target merged-and-safe workspaces specifically. See `arb remove --help` for all options.
+This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before removing the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-safe` to batch-remove every workspace with safe status. Combine `--all-safe -w gone` to target merged-and-safe workspaces specifically. See `arb remove --help` for all options.
 
 ## Workspace templates
 
@@ -424,10 +426,10 @@ Here `api` is a fork (base is `upstream/main`) while `web` uses a single origin 
 
 ### Non-interactive mode
 
-Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, `merge`, and `remove`. For `remove`, use `--force` (`-f`) instead. Without these flags, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
+Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, `merge`, and `remove`. For `push` and `remove`, `--force` (`-f`) implies `--yes`. Without these flags, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
 
 ```bash
-arb rebase --yes && arb push --force --yes
+arb rebase --yes && arb push --force
 ```
 
 ### Dry run
@@ -461,7 +463,7 @@ arb status --json | jq '[.repos[] | select(.base.behind > 0) | .name]'
 `0` means success, `1` means failure or issues detected, `130` means the user aborted a confirmation prompt. `arb status` returns `1` when any repo has issues, making it useful as a health check:
 
 ```bash
-if arb status --workspace my-feature > /dev/null; then
+if arb -C my-feature status > /dev/null; then
   echo "all clean"
 fi
 ```

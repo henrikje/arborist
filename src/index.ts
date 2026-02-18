@@ -124,7 +124,7 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 		});
 		output = output.concat([
 			helper.styleTitle("Worktree Commands:"),
-			helpDim("  Manage worktrees. Run from within a workspace, or with -w <workspace>."),
+			helpDim("  Manage worktrees. Run from within a workspace, or with -C <workspace>."),
 			"",
 			...list,
 			"",
@@ -154,7 +154,7 @@ function getCtx(): ArbContext {
 	return {
 		baseDir,
 		reposDir: `${baseDir}/.arb/repos`,
-		currentWorkspace: program.opts().workspace ?? detectWorkspace(baseDir),
+		currentWorkspace: detectWorkspace(baseDir),
 	};
 }
 
@@ -165,7 +165,6 @@ program
 	.description("Arborist is a workspace manager that makes multi-repo development safe and simple.")
 	.version(`Arborist ${ARB_VERSION}`, "-v, --version")
 	.option("-C <directory>", "Run as if arb was started in <directory>")
-	.option("-w, --workspace <name>", "Target workspace (overrides auto-detect)")
 	.usage("[options] [command]")
 	.configureHelp({ formatHelp: arbFormatHelp, styleTitle: (str) => helpBold(str) })
 	.configureOutput({

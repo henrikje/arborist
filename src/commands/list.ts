@@ -45,7 +45,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		)
 		.option("-f, --fetch", "Fetch all repos before listing")
 		.option("-q, --quick", "Skip per-repo status (faster for large setups)")
-		.option("--where <filter>", "Filter workspaces by repo status flags (comma-separated, OR logic)")
+		.option("-w, --where <filter>", "Filter workspaces by repo status flags (comma-separated, OR logic)")
 		.option("--json", "Output structured JSON")
 		.action(async (options: { fetch?: boolean; quick?: boolean; where?: string; json?: boolean }) => {
 			const ctx = getCtx();

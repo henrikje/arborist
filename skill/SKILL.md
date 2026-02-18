@@ -51,12 +51,11 @@ To detect context programmatically, check for `.arb/` or `.arbws/` in the curren
 
 1. Run `arb list -q` to see existing workspaces (quick mode, skips status)
 2. Derive a kebab-case workspace name from the feature description
-3. Create: `arb create <name> -a`
+3. Create: `arb create <name> -a` (auto-cds into the workspace)
    - `-a` includes all repos (omit to select specific repos)
    - `-b <branch>` for a custom branch name (defaults to workspace name)
    - `--base <branch>` to branch from something other than the default branch
    - No `-y` flag needed — `create` runs non-interactively when name and repos are provided
-4. Navigate into the created workspace to begin work
 
 ### Checking Status
 
@@ -64,10 +63,10 @@ To detect context programmatically, check for `.arb/` or `.arbws/` in the curren
 - `arb status --json` — Machine-readable output for parsing (includes `lastCommit` ISO 8601 field)
 - `arb status --fetch` — Fetch remotes first for up-to-date info
 - `arb status -d` — Only show repos with uncommitted changes
-- `arb status --where at-risk` — Only show repos that need attention (unpushed, drifted, dirty, etc)
-- `arb status --where gone` — Only show repos with deleted remote branches
+- `arb status -w at-risk` — Only show repos that need attention (unpushed, drifted, dirty, etc)
+- `arb status -w gone` — Only show repos with deleted remote branches
 - `arb list` — Shows all workspaces with a LAST COMMIT column indicating when work last happened
-- `arb list --where at-risk` — Only show workspaces with at least one repo needing attention
+- `arb list -w at-risk` — Only show workspaces with at least one repo needing attention
 
 Key signals in status output:
 - **dirty** — Staged, modified, or untracked files exist
@@ -89,13 +88,13 @@ Key signals in status output:
    - `git add .`
    - `git rebase --continue` (or `git merge --continue`)
    - Return to workspace root
-6. After resolving all conflicts, `arb push -f -y` to force-push the rebased branches
+6. After resolving all conflicts, `arb push -f` to force-push the rebased branches
 
 ### Publishing Changes
 
 1. Run `arb status` first to understand what will be pushed
 2. `arb push -y` — Push all repos with unpushed commits
-3. `arb push -f -y` — Force push with lease (required after rebase)
+3. `arb push -f` — Force push with lease (required after rebase)
 4. `arb push repo1 repo2 -y` — Push only specific repos
 
 ### Pulling Remote Changes
@@ -111,7 +110,7 @@ Key signals in status output:
 4. `-y` flag skips the confirmation prompt
 5. `-f` flag overrides at-risk safety checks (implies `-y`)
 6. `--all-safe` removes all workspaces with safe status (no work would be lost)
-7. `--all-safe --where gone` narrows to safe workspaces with merged PRs
+7. `--all-safe -w gone` narrows to safe workspaces with merged PRs
 
 ## Working with Code Across Repos
 
@@ -127,9 +126,11 @@ Key signals in status output:
   arb -C /path/to/project status
   ```
 - `arb exec <command>` runs a command in each worktree sequentially (e.g., `arb exec npm install`)
+- `arb exec --repo api --repo web -- npm test` runs only in specified repos
 - `arb exec --dirty git diff` runs only in repos with local changes
-- `arb exec --where unpushed git log` runs only in repos with unpushed commits
+- `arb exec -w unpushed git log` runs only in repos with unpushed commits
 - `arb open code` opens all worktrees in VS Code
+- `arb open --repo api --repo web code` opens only specified repos
 - After making changes across repos, `arb push -y` publishes everything at once
 - Use `arb add <repo>` to add more repos to an existing workspace
 - Use `arb drop <repo>` to remove repos you no longer need in the workspace
@@ -143,14 +144,6 @@ cd /path/to/project/my-ws && arb status
 ```
 
 Do NOT use `arb -C` — it has the same permission-scoping problem as `git -C` (a blanket `arb -C:*` permission cannot be restricted to safe operations only).
-
-The `-w, --workspace` option targets a specific workspace when you are at the arb root:
-
-```
-arb -w my-ws status
-```
-
-`-w` is a **global option** that must come **before** the subcommand name.
 
 ## Non-Interactive Mode
 
@@ -178,7 +171,7 @@ Commands that do NOT need `-y`: `init`, `clone`, `repos`, `create`, `list`, `pat
 6. **Prefer rebase over merge** unless the user explicitly asks for merge.
 7. **Run `arb status` before sync operations** to understand current state before rebasing, merging, pushing, or pulling.
 8. **Guide through conflicts** — When conflicts occur, walk the user through resolution repo by repo. Do NOT force-skip or abort without asking.
-9. **Force push only after rebase** — `arb push -f -y` uses `--force-with-lease` internally, but only use it when branches have been rebased.
+9. **Force push only after rebase** — `arb push -f` uses `--force-with-lease` internally, but only use it when branches have been rebased.
 
 ## Command Quick Reference
 

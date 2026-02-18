@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { boldLine, error, plural, success } from "../lib/output";
-import { workspaceRepoDirs } from "../lib/repos";
+import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
 import { computeFlags, gatherRepoStatus, repoMatchesWhere, validateWhere } from "../lib/status";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -11,16 +11,22 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 	program
 		.command("exec")
 		.argument("<command...>", "Command to run in each worktree")
+		.option("--repo <name>", "Only run in specified repos (repeatable)", collectRepo, [])
 		.option("-d, --dirty", "Only run in dirty repos (shorthand for --where dirty)")
-		.option("--where <filter>", "Only run in repos matching status filter (comma-separated, OR logic)")
+		.option("-w, --where <filter>", "Only run in repos matching status filter (comma-separated, OR logic)")
 		.passThroughOptions()
 		.summary("Run a command in each worktree")
 		.description(
-			"Run the given command sequentially in each worktree and report which succeeded or failed. Each worktree is preceded by an ==> repo <== header. The command inherits your terminal, so interactive programs work.\n\nUse --dirty to only run in repos with local changes, or --where <filter> to filter by any status flag: dirty, unpushed, behind-remote, behind-base, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic.\n\nArb flags must come before the command. Everything after the command name is passed through verbatim:\n\n  arb exec --dirty git diff -d    # --dirty → arb, -d → git diff",
+			"Run the given command sequentially in each worktree and report which succeeded or failed. Each worktree is preceded by an ==> repo <== header. The command inherits your terminal, so interactive programs work.\n\nUse --repo <name> to target specific repos (repeatable). Use --dirty to only run in repos with local changes, or --where <filter> to filter by any status flag: dirty, unpushed, behind-remote, behind-base, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic. --repo and --where/--dirty can be combined (AND logic).\n\nArb flags must come before the command. Everything after the command name is passed through verbatim:\n\n  arb exec --repo api --repo web -- npm test\n  arb exec --dirty git diff -d    # --dirty → arb, -d → git diff",
 		)
-		.action(async (args: string[], options: { dirty?: boolean; where?: string }) => {
+		.action(async (args: string[], options: { repo?: string[]; dirty?: boolean; where?: string }) => {
 			const ctx = getCtx();
 			const { wsDir } = requireWorkspace(ctx);
+
+			// Validate --repo names
+			if (options.repo && options.repo.length > 0) {
+				validateRepoNames(wsDir, options.repo);
+			}
 
 			// Resolve --dirty as shorthand for --where dirty
 			if (options.dirty && options.where) {
@@ -40,7 +46,13 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 			const execOk: string[] = [];
 			const execFailed: string[] = [];
 			const skipped: string[] = [];
-			const repoDirs = workspaceRepoDirs(wsDir);
+			let repoDirs = workspaceRepoDirs(wsDir);
+
+			// Filter by --repo names
+			if (options.repo && options.repo.length > 0) {
+				const repoSet = new Set(options.repo);
+				repoDirs = repoDirs.filter((d) => repoSet.has(basename(d)));
+			}
 
 			// Pre-gather status when filtering
 			const repoFilter = new Map<string, boolean>();

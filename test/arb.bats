@@ -265,9 +265,14 @@ teardown() {
     [ "$branch" = "reuse-me" ]
 }
 
-@test "arb create produces no stdout" {
+@test "arb create outputs workspace path on stdout" {
     run bash -c 'arb create foo repo-a 2>/dev/null'
-    [ -z "$output" ]
+    [ "$output" = "$TEST_DIR/project/foo" ]
+}
+
+@test "arb create path output is clean when stdout is captured (shell wrapper pattern)" {
+    _arb_dir="$(arb create capture-test repo-a 2>/dev/null)"
+    [ "$_arb_dir" = "$TEST_DIR/project/capture-test" ]
 }
 
 @test "arb create shows workspace path" {
@@ -615,7 +620,7 @@ teardown() {
     git -C "$wt" merge "origin/$default_branch" >/dev/null 2>&1 || true
 
     # Status should show conflicts
-    run arb -w my-feature status
+    run arb -C "$TEST_DIR/project/my-feature" status
     [[ "$output" == *"conflicts"* ]]
 
     # Remove without --force should refuse (non-TTY exits before at-risk check)
@@ -2238,34 +2243,21 @@ SCRIPT
     [[ "$output" == *"not found in PATH"* ]]
 }
 
-# ── --workspace flag ─────────────────────────────────────────────
+# ── -w as --where short form ──────────────────────────────────────
 
-@test "arb --workspace flag overrides cwd detection" {
-    arb create ws-one repo-a
-    arb create ws-two repo-b
-    cd "$TEST_DIR/project/ws-one"
-    run arb --workspace ws-two status
-    [[ "$output" == *"repo-b"* ]]
-}
-
-@test "arb -w flag overrides cwd detection" {
-    arb create ws-one repo-a
-    arb create ws-two repo-b
-    cd "$TEST_DIR/project/ws-one"
-    run arb -w ws-two status
-    [[ "$output" == *"repo-b"* ]]
-}
-
-@test "arb --workspace with nonexistent workspace fails" {
-    run arb -w ghost status
+@test "arb status -w dirty filters repos (short for --where)" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    echo "change" >> repo-a/file.txt
+    run arb status -w dirty
     [ "$status" -ne 0 ]
-    [[ "$output" == *"does not exist"* ]]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
 }
 
-@test "arb --workspace without value fails" {
-    run arb --workspace
+@test "arb -w as global option is rejected" {
+    run arb -w dirty status
     [ "$status" -ne 0 ]
-    [[ "$output" == *"argument missing"* ]]
 }
 
 # ── local repos (no remote) ──────────────────────────────────────
@@ -3053,6 +3045,26 @@ delete_workspace_config() {
     run git -C "$TEST_DIR/project/.arb/repos/repo-a" log --oneline origin/my-feature
     [[ "$output" == *"feature"* ]]
     [[ "$output" == *"upstream"* ]]
+}
+
+@test "arb push --force implies --yes" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Push an upstream change to main to create divergence after rebase
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    # Rebase the feature branch
+    cd "$TEST_DIR/project/my-feature"
+    arb rebase --yes >/dev/null 2>&1
+
+    # Push with --force only (no --yes) — should skip confirmation
+    run arb push --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pushed"* ]]
 }
 
 # ── pull --rebase / --merge ──────────────────────────────────────
@@ -4200,14 +4212,6 @@ push_then_delete_remote() {
     [[ "$output" == *"$TEST_DIR/project/my-feature"* ]]
 }
 
-@test "arb -C combined with -w targets workspace" {
-    arb create my-feature repo-a
-    cd /tmp
-    run arb -C "$TEST_DIR/project" -w my-feature status
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"repo-a"* ]]
-}
-
 @test "arb -C is visible in --help output" {
     run arb --help
     [ "$status" -eq 0 ]
@@ -4292,6 +4296,104 @@ push_then_delete_remote() {
     cd "$TEST_DIR/project/my-feature"
     run arb exec --dirty pwd
     [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb exec --repo runs only in specified repo" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb exec --repo repo-a pwd
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb exec --repo with multiple repos runs in all specified" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb exec --repo repo-a --repo repo-b pwd
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"repo-b"* ]]
+}
+
+@test "arb exec --repo with invalid repo name errors" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb exec --repo nonexistent pwd
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Repo 'nonexistent' is not in this workspace"* ]]
+}
+
+@test "arb exec --repo combined with --dirty uses AND logic" {
+    arb create my-feature repo-a repo-b
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-b/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb exec --repo repo-a --dirty pwd
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb open --repo opens only specified repos" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    local spy="$TEST_DIR/editor-spy"
+    cat > "$spy" <<'SCRIPT'
+#!/usr/bin/env bash
+for arg in "$@"; do echo "$arg"; done >> "$TEST_DIR/opened-dirs"
+SCRIPT
+    chmod +x "$spy"
+    export TEST_DIR
+    run arb open --repo repo-a "$spy"
+    [ "$status" -eq 0 ]
+    run cat "$TEST_DIR/opened-dirs"
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb open --repo with multiple repos opens all specified" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    local spy="$TEST_DIR/editor-spy"
+    cat > "$spy" <<'SCRIPT'
+#!/usr/bin/env bash
+for arg in "$@"; do echo "$arg"; done >> "$TEST_DIR/opened-dirs"
+SCRIPT
+    chmod +x "$spy"
+    export TEST_DIR
+    run arb open --repo repo-a --repo repo-b "$spy"
+    [ "$status" -eq 0 ]
+    run cat "$TEST_DIR/opened-dirs"
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"repo-b"* ]]
+}
+
+@test "arb open --repo with invalid repo name errors" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb open --repo nonexistent true
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Repo 'nonexistent' is not in this workspace"* ]]
+}
+
+@test "arb open --repo combined with --dirty uses AND logic" {
+    arb create my-feature repo-a repo-b
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-b/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    local spy="$TEST_DIR/editor-spy"
+    cat > "$spy" <<'SCRIPT'
+#!/usr/bin/env bash
+for arg in "$@"; do echo "$arg"; done >> "$TEST_DIR/opened-dirs"
+SCRIPT
+    chmod +x "$spy"
+    export TEST_DIR
+    run arb open --repo repo-a --dirty "$spy"
+    [ "$status" -eq 0 ]
+    run cat "$TEST_DIR/opened-dirs"
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" != *"repo-b"* ]]
 }

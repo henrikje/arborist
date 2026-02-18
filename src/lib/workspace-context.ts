@@ -5,7 +5,7 @@ import { workspaceBranch } from "./workspace-branch";
 
 export function requireWorkspace(ctx: ArbContext): { wsDir: string; workspace: string } {
 	if (!ctx.currentWorkspace) {
-		error("Not inside a workspace. cd into one or use --workspace <workspace>");
+		error("Not inside a workspace. cd into one or use -C <workspace>");
 		process.exit(1);
 	}
 	const wsDir = `${ctx.baseDir}/${ctx.currentWorkspace}`;

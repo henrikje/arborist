@@ -20,6 +20,17 @@ arb() {
         return
     fi
 
+    if [[ "$1" == "create" ]]; then
+        # Pass help flags through without capturing
+        case " ${*:2} " in
+            *" --help "*|*" -h "*) command arb create "${@:2}"; return ;;
+        esac
+        local _arb_dir
+        _arb_dir="$(command arb create "${@:2}")" || return
+        [[ -n "$_arb_dir" ]] && cd "$_arb_dir"
+        return
+    fi
+
     command arb "$@"
 }
 
