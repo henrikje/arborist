@@ -42,7 +42,12 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 					name = await input(
 						{
 							message: "Workspace name:",
-							validate: (v) => validateWorkspaceName(v) ?? true,
+							validate: (v) => {
+								const formatError = validateWorkspaceName(v);
+								if (formatError) return formatError;
+								if (existsSync(`${ctx.baseDir}/${v}`)) return `Workspace '${v}' already exists`;
+								return true;
+							},
 						},
 						{ output: process.stderr },
 					);
@@ -51,6 +56,12 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				const validationError = validateWorkspaceName(name);
 				if (validationError) {
 					error(validationError);
+					process.exit(1);
+				}
+
+				const wsDir = `${ctx.baseDir}/${name}`;
+				if (existsSync(wsDir)) {
+					error(`Workspace '${name}' already exists`);
 					process.exit(1);
 				}
 
@@ -107,12 +118,6 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 						error((e as Error).message);
 						process.exit(1);
 					}
-				}
-
-				const wsDir = `${ctx.baseDir}/${name}`;
-				if (existsSync(wsDir)) {
-					error(`Workspace '${name}' already exists`);
-					process.exit(1);
 				}
 
 				mkdirSync(`${wsDir}/.arbws`, { recursive: true });
