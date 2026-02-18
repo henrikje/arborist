@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
-import { getShortHead } from "../lib/git";
+import { getShortHead, predictMergeConflict } from "../lib/git";
 import { dim, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
@@ -18,8 +18,10 @@ interface PullAssessment {
 	outcome: "will-pull" | "up-to-date" | "skip";
 	skipReason?: string;
 	behind: number;
+	toPush: number;
 	pullMode: "rebase" | "merge";
 	headSha: string;
+	conflictPrediction?: "clean" | "conflict" | null;
 }
 
 export function registerPullCommand(program: Command, getCtx: () => ArbContext): void {
@@ -74,6 +76,22 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					assessments.push(await assessPullRepo(status, repoDir, branch, fetchFailed, flagMode));
 				}
 
+				// Phase 2b: predict conflicts for will-pull repos
+				await Promise.all(
+					assessments
+						.filter((a) => a.outcome === "will-pull")
+						.map(async (a) => {
+							if (a.behind > 0 && a.toPush > 0) {
+								const shareRemote = remotesMap.get(a.repo)?.share ?? "origin";
+								const ref = `${shareRemote}/${branch}`;
+								const prediction = await predictMergeConflict(a.repoDir, ref);
+								a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
+							} else {
+								a.conflictPrediction = "clean";
+							}
+						}),
+				);
+
 				// Phase 3: display plan
 				const willPull = assessments.filter((a) => a.outcome === "will-pull");
 				const upToDate = assessments.filter((a) => a.outcome === "up-to-date");
@@ -85,8 +103,14 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					const forkSuffix = remotes && remotes.upstream !== remotes.share ? ` ← ${remotes.share}` : "";
 					const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 					if (a.outcome === "will-pull") {
+						let conflictHint = "";
+						if (a.conflictPrediction === "conflict") {
+							conflictHint = `, ${yellow("conflict likely")}`;
+						} else if (a.conflictPrediction === "clean") {
+							conflictHint = ", conflict unlikely";
+						}
 						process.stderr.write(
-							`  ${a.repo}   ${plural(a.behind, "commit")} to pull (${a.pullMode})${forkSuffix}${headStr}\n`,
+							`  ${a.repo}   ${plural(a.behind, "commit")} to pull (${a.pullMode}${conflictHint})${forkSuffix}${headStr}\n`,
 						);
 					} else if (a.outcome === "up-to-date") {
 						process.stderr.write(`  ${a.repo}   up to date\n`);
@@ -185,7 +209,15 @@ async function assessPullRepo(
 ): Promise<PullAssessment> {
 	const headSha = await getShortHead(repoDir);
 
-	const base: PullAssessment = { repo: status.name, repoDir, outcome: "skip", behind: 0, pullMode: "merge", headSha };
+	const base: PullAssessment = {
+		repo: status.name,
+		repoDir,
+		outcome: "skip",
+		behind: 0,
+		toPush: 0,
+		pullMode: "merge",
+		headSha,
+	};
 
 	// Local repo — no share remote
 	if (status.share === null) {
@@ -224,7 +256,8 @@ async function assessPullRepo(
 		return { ...base, outcome: "up-to-date", pullMode };
 	}
 
-	return { ...base, outcome: "will-pull", behind: toPull, pullMode };
+	const toPush = status.share.toPush ?? 0;
+	return { ...base, outcome: "will-pull", behind: toPull, toPush, pullMode };
 }
 
 async function detectPullMode(repoDir: string, branch: string): Promise<"rebase" | "merge"> {

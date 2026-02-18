@@ -50,6 +50,7 @@ export interface RepoFlags {
 	isUnpushed: boolean;
 	needsPull: boolean;
 	needsRebase: boolean;
+	isDiverged: boolean;
 	isDrifted: boolean;
 	isDetached: boolean;
 	hasOperation: boolean;
@@ -86,6 +87,9 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 	// needsRebase: behind base branch
 	const needsRebase = repo.base !== null && repo.base.behind > 0;
 
+	// isDiverged: both ahead of and behind base branch (non-trivial rebase/merge needed)
+	const isDiverged = repo.base !== null && repo.base.ahead > 0 && repo.base.behind > 0;
+
 	// isDrifted: on the wrong branch (not detached, but branch doesn't match expected)
 	let isDrifted = false;
 	if (repo.identity.headMode.kind === "attached") {
@@ -97,6 +101,7 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 		isUnpushed,
 		needsPull,
 		needsRebase,
+		isDiverged,
 		isDrifted,
 		isDetached,
 		hasOperation: repo.operation !== null,
@@ -116,6 +121,7 @@ export function needsAttention(flags: RepoFlags): boolean {
 		flags.isGone ||
 		flags.needsPull ||
 		flags.needsRebase ||
+		flags.isDiverged ||
 		flags.isShallow
 	);
 }
@@ -125,6 +131,7 @@ const FLAG_LABELS: { key: keyof RepoFlags; label: string }[] = [
 	{ key: "isUnpushed", label: "unpushed" },
 	{ key: "needsPull", label: "behind share" },
 	{ key: "needsRebase", label: "behind base" },
+	{ key: "isDiverged", label: "diverged" },
 	{ key: "isDrifted", label: "drifted" },
 	{ key: "isDetached", label: "detached" },
 	{ key: "hasOperation", label: "operation" },
@@ -140,6 +147,7 @@ export function flagLabels(flags: RepoFlags): string[] {
 const YELLOW_FLAGS = new Set<keyof RepoFlags>([
 	"isDirty",
 	"isUnpushed",
+	"isDiverged",
 	"isDrifted",
 	"isDetached",
 	"hasOperation",
@@ -166,6 +174,7 @@ const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
 	unpushed: (f) => f.isUnpushed,
 	"behind-share": (f) => f.needsPull,
 	"behind-base": (f) => f.needsRebase,
+	diverged: (f) => f.isDiverged,
 	drifted: (f) => f.isDrifted,
 	detached: (f) => f.isDetached,
 	operation: (f) => f.hasOperation,

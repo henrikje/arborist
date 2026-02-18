@@ -72,6 +72,7 @@ Key signals in status output:
 - **dirty** — Staged, modified, or untracked files exist
 - **unpushed** — Local commits not yet on the remote
 - **behind base** — Base branch (e.g., main) has moved ahead; consider rebasing
+- **diverged** — Both ahead of and behind base branch; rebase/merge will replay commits and may produce conflicts
 - **behind share** — Remote feature branch has commits you don't have; consider pulling
 - **drifted** — Worktree is on the wrong branch (rare, usually manual intervention)
 - **last commit** — Most recent commit author date across all repos; helps gauge workspace staleness

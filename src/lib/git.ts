@@ -202,6 +202,26 @@ export async function getHeadCommitDate(repoDir: string): Promise<string | null>
 	return date || null;
 }
 
+export async function predictMergeConflict(
+	repoDir: string,
+	ref: string,
+): Promise<{ hasConflict: boolean; files: string[] } | null> {
+	const result = await git(repoDir, "merge-tree", "--write-tree", "--name-only", "HEAD", ref);
+	if (result.exitCode === 0) return { hasConflict: false, files: [] };
+	if (result.exitCode === 1) {
+		// Exit 1 with stdout = conflict detected (stdout has tree hash + file list)
+		// Exit 1 without stdout = error (e.g. invalid ref — error goes to stderr)
+		if (!result.stdout.trim()) return null;
+		// Skip first line (tree hash), filter CONFLICT/Auto-merging info lines
+		const files = result.stdout
+			.split("\n")
+			.slice(1)
+			.filter((line) => line && !line.startsWith("Auto-merging") && !line.startsWith("CONFLICT"));
+		return { hasConflict: true, files };
+	}
+	return null; // unexpected error or old git without merge-tree support
+}
+
 export async function getCommitsBetween(
 	repoDir: string,
 	ref1: string,
