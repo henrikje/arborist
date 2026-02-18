@@ -30,6 +30,8 @@ Here's what that looks like on disk:
 
 You work in the workspaces. Each workspace represents one feature or issue. It contains a separate worktree for each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete. The canonical clones under `.arb/` are managed by arb — you never touch them directly.
 
+Keeping your work in sync involves two axes: integrating upstream changes from the base branch (using `rebase` or `merge`) and sharing your feature branch with collaborators (using `push` and `pull`). Arborist's synchronization commands handle both across all repos at once.
+
 ## Getting started
 
 ### Install
@@ -164,46 +166,37 @@ arb status
 This shows the state of each worktree in a compact table with labeled columns:
 
 ```
-  REPO         BRANCH        BASE                     REMOTE                          LOCAL
+  REPO         BRANCH        BASE                     SHARE                          LOCAL
   repo-a       my-feature    main  equal              origin/my-feature  up to date   clean
   repo-b       my-feature    main  2 ahead            origin/my-feature  2 to push    1 staged, 1 modified
   repo-c       experiment    main  2 ahead, 1 behind  origin/experiment  1 to pull    clean
   local-lib    my-feature    main  equal              local                           clean
 ```
 
-This view is designed to give you the full picture in one glance — repo name, current branch, how far you've drifted from the base branch, whether the remote is ahead or behind, and what's uncommitted locally. Yellow highlights things that need attention: unpushed commits, local changes, repos on an unexpected branch (like `repo-c` above).
+This view is designed to give you the full picture in one glance — repo name, current branch, how far you've drifted from the base branch, whether the share remote is ahead or behind, and what's uncommitted locally. Yellow highlights things that need attention: unpushed commits, local changes, repos on an unexpected branch (like `repo-c` above).
 
 See `arb status --help` for all options.
 
 ### Stay in sync
 
-**See what changed** — fetch the remote for every repo without merging. Arborist fetches all repos in parallel:
+Arborist's synchronization commands — `push`, `pull`, `rebase`, and `merge` — keep your workspace current. They automatically fetch all repos before operating, so you always work against the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh. To fetch manually without making changes, use `arb fetch`.
 
-```bash
-arb fetch
-```
-
-**Pull teammate changes** — pull the feature branch from the remote for all repos:
-
-```bash
-arb pull
-```
-
-**Integrate base branch updates** — when the base branch has moved forward (e.g. teammates merged PRs to `main`), rebase your feature branches onto it:
+**Integration axis** — when the base branch has moved forward (e.g. teammates merged PRs to `main`), rebase your feature branches onto it:
 
 ```bash
 arb rebase
 ```
 
-Arb automatically fetches all repos before rebasing, so you always rebase onto the latest remote state. If a rebase hits conflicts, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. This way you see the complete state of all repos in one pass instead of re-running for each conflict. If you re-run while a repo is still mid-rebase, it is automatically skipped. Prefer merge commits? Use `arb merge` instead — same workflow, uses `git merge`.
+If a rebase hits conflicts, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. This way you see the complete state of all repos in one pass instead of re-running for each conflict. If you re-run while a repo is still mid-rebase, it is automatically skipped. Prefer merge commits? Use `arb merge` instead — same workflow, uses `git merge`.
 
 Arb auto-detects each repo's default branch, so repos using `main`, `master`, or `develop` coexist without extra configuration.
 
-**Push your work** — push the feature branch to the remote for all repos. After rebasing, use `--force` to force push with lease:
+**Sharing axis** — pull teammate changes to your feature branch, or push your local commits:
 
 ```bash
+arb pull
 arb push
-arb push --force
+arb push --force    # after rebasing
 ```
 
 Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
@@ -395,9 +388,9 @@ Arborist has built-in support for fork-based development, where you push feature
 Arborist thinks in terms of two remote roles:
 
 - **upstream** — the source of base branches and the target for rebase/merge operations
-- **publish** — where feature branches are pushed and pulled
+- **share** — where feature branches are pushed and pulled
 
-For single-remote repos, both roles typically resolve to `origin`. For fork setups, the upstream role maps to the canonical repository (often a remote named `upstream`), and the publish role maps to your fork (often `origin`).
+For single-remote repos, both roles typically resolve to `origin`. For fork setups, the upstream role maps to the canonical repository (often a remote named `upstream`), and the share role maps to your fork (often `origin`).
 
 ### Setting up a fork
 
@@ -414,7 +407,7 @@ This clones your fork as `origin`, adds the canonical repo as `upstream`, sets `
 Arborist reads `remote.pushDefault` and remote names from git config to determine roles automatically. No arborist-specific configuration is needed. Detection follows these rules:
 
 1. Single remote — used for both roles
-2. `remote.pushDefault` set — that remote is `publish`, the other is `upstream`
+2. `remote.pushDefault` set — that remote is `share`, the other is `upstream`
 3. Remotes named `upstream` and `origin` — conventional fork layout
 4. Ambiguous — arb reports an error with guidance on how to configure `remote.pushDefault`
 
@@ -427,12 +420,23 @@ Different repos in a workspace can have different remote layouts. Some repos mig
 In fork setups, `arb status` shows the upstream remote prefix in the BASE column so you can see where each repo's base branch lives:
 
 ```
-  REPO      BRANCH        BASE                          REMOTE                          LOCAL
+  REPO      BRANCH        BASE                          SHARE                          LOCAL
   api       my-feature    upstream/main  2 ahead        origin/my-feature  2 to push    clean
   web       my-feature    main           equal          origin/my-feature  up to date   clean
 ```
 
 Here `api` is a fork (base is `upstream/main`) while `web` uses a single origin (base is just `main`).
+
+### Two axes of synchronization
+
+Arborist tracks two independent relationships per repo, each mapped to a remote role:
+
+| Axis | Remote | Column | Commands | Flag | Auto-fetch |
+|------|--------|--------|----------|------|------------|
+| Integration | upstream | BASE | rebase, merge | behind base | yes |
+| Sharing | share | SHARE | push, pull | behind share | yes |
+
+For single-remote repos both roles point to `origin` and the distinction is invisible — it only matters for fork setups where each role maps to a different remote.
 
 ## Scripting & automation
 

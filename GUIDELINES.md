@@ -141,7 +141,9 @@ The parallel pre-fetch also serves a performance purpose: `parallelFetch()` fetc
 
 ### Canonical status model
 
-`status.ts` defines Arborist's view of reality for repository state. The `RepoStatus` type is a 5-section model (identity, local, base, publish, operation) that captures everything git tells us about a repo. `RepoFlags` computes 10 independent boolean flags from that model. Shared functions (`computeFlags`, `needsAttention`, `flagLabels`) derive decisions and display text from those flags.
+`status.ts` defines Arborist's view of reality for repository state. The `RepoStatus` type is a 5-section model (identity, local, base, share, operation) that captures everything git tells us about a repo. `RepoFlags` computes 10 independent boolean flags from that model. Shared functions (`computeFlags`, `needsAttention`, `flagLabels`) derive decisions and display text from those flags.
+
+**Terminology: remote roles vs status sections.** The two remote roles are `upstream` (integration) and `share` (sharing), defined in `RepoRemotes`. The corresponding status sections are `base` and `share` in `RepoStatus`. The user-facing column headers are `BASE` and `SHARE`. Flag labels are `behind base` and `behind share`. When writing code or documentation, use `upstream`/`share` for git remote names, `base`/`share` for status model sections.
 
 **This model is the single source of truth.** Every command that needs to understand repo state — whether for display, filtering, safety checks, or operational decisions — must work from `RepoStatus` and `RepoFlags`. Do not invent local status representations, ad-hoc dirty checks, or one-off git queries that duplicate what the model already captures. If a command needs information that the model doesn't provide, extend the model in `status.ts` so every consumer benefits.
 

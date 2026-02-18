@@ -189,7 +189,7 @@ async function assessRepo(status: RepoStatus, repoDir: string, branch: string): 
 	};
 
 	// Local repo — no remote
-	if (status.publish === null) {
+	if (status.share === null) {
 		return { ...base, skipReason: "local repo" };
 	}
 
