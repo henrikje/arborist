@@ -34,6 +34,21 @@ arb() {
     command arb "$@"
 }
 
+_arb_where_filter() {
+    _values -s , 'filter term' \
+        'dirty[Repos with local changes]' \
+        'unpushed[Repos with commits not yet pushed]' \
+        'behind-remote[Repos behind their remote branch]' \
+        'behind-base[Repos behind the base branch]' \
+        'drifted[Repos on the wrong branch]' \
+        'detached[Repos in detached HEAD state]' \
+        'operation[Repos with an in-progress operation]' \
+        'local[Repos with no remote]' \
+        'gone[Repos whose remote branch was deleted]' \
+        'shallow[Repos that are shallow clones]' \
+        'at-risk[Repos needing any kind of attention]'
+}
+
 _arb() {
     # Walk up from $PWD looking for .arb/ marker
     local base_dir=""
@@ -93,7 +108,11 @@ _arb() {
                     _arguments \
                         '*:workspace:($ws_names)' \
                         '(-f --force)'{-f,--force}'[Force removal]' \
-                        '(-d --delete-remote)'{-d,--delete-remote}'[Delete remote branches]'
+                        '(-d --delete-remote)'{-d,--delete-remote}'[Delete remote branches]' \
+                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                        '(-a --all-safe)'{-a,--all-safe}'[Remove all safe workspaces]' \
+                        '(-w --where)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]'
                     ;;
                 path)
                     _arguments '1:workspace:($ws_names)'
@@ -139,18 +158,33 @@ _arb() {
                 init)
                     _arguments '1:path:_directories'
                     ;;
+                list)
+                    _arguments \
+                        '(-f --fetch)'{-f,--fetch}'[Fetch all repos before listing]' \
+                        '(-q --quick -w --where)'{-q,--quick}'[Skip per-repo status]' \
+                        '(-q --quick -w --where)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
+                        '--json[Output structured JSON]'
+                    ;;
                 status)
                     _arguments \
-                        '(-d --dirty)'{-d,--dirty}'[Only show dirty repos]'
+                        '(-d --dirty -w --where)'{-d,--dirty}'[Only show dirty repos]' \
+                        '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
+                        '(-f --fetch)'{-f,--fetch}'[Fetch before showing status]' \
+                        '--verbose[Show file-level detail]' \
+                        '--json[Output structured JSON]'
                     ;;
                 exec)
                     _arguments \
-                        '(-d --dirty)'{-d,--dirty}'[Only run in dirty repos]' \
+                        '*--repo[Only run in specified repos]:repo:($repo_names)' \
+                        '(-d --dirty -w --where)'{-d,--dirty}'[Only run in dirty repos]' \
+                        '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:command:'
                     ;;
                 open)
                     _arguments \
-                        '(-d --dirty)'{-d,--dirty}'[Only open dirty worktrees]' \
+                        '*--repo[Only open specified repos]:repo:($repo_names)' \
+                        '(-d --dirty -w --where)'{-d,--dirty}'[Only open dirty worktrees]' \
+                        '(-d --dirty -w --where)'{-w,--where}'[Filter worktrees by status flags]:filter:_arb_where_filter' \
                         '1:editor:(code cursor zed subl)'
                     ;;
             esac
