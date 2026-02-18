@@ -34,7 +34,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("--json", "Output structured JSON")
 		.summary("Show workspace status")
 		.description(
-			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
+			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
 		)
 		.action(
 			async (options: {
@@ -217,7 +217,7 @@ async function runStatus(
 		const baseNamePad = maxBaseName - cell.baseName.length;
 
 		// Col 4: Base diff
-		const baseDiffColored = cell.baseDiff;
+		const baseDiffColored = flags.isDiverged ? yellow(cell.baseDiff) : cell.baseDiff;
 		const baseDiffPad = maxBaseDiff - cell.baseDiff.length;
 
 		// Col 5: Remote name
@@ -318,11 +318,10 @@ function plainCells(repo: RepoStatus): CellData {
 	// Col 2: branch
 	const branch = isDetached ? "(detached)" : actualBranch;
 
-	// Col 3: base name — show upstream remote prefix when upstream ≠ share (fork setup)
+	// Col 3: base name — always show remote/ref for clarity
 	let baseName: string;
 	if (repo.base) {
-		const isFork = repo.base.remote !== repo.share?.remote;
-		baseName = isFork ? `${repo.base.remote}/${repo.base.ref}` : repo.base.ref;
+		baseName = `${repo.base.remote}/${repo.base.ref}`;
 	} else {
 		baseName = "";
 	}
@@ -451,8 +450,7 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
 		const commits = await getCommitsBetween(repoDir, baseRef, "HEAD");
 		if (commits.length > 0) {
-			const baseLabel = `${repo.base.remote}/${repo.base.ref}`;
-			let section = `\n${SECTION_INDENT}Ahead of ${baseLabel}:\n`;
+			let section = `\n${SECTION_INDENT}Ahead of ${baseRef}:\n`;
 			for (const c of commits) {
 				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
 			}
@@ -465,8 +463,7 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
 		const commits = await getCommitsBetween(repoDir, "HEAD", baseRef);
 		if (commits.length > 0) {
-			const baseLabel = `${repo.base.remote}/${repo.base.ref}`;
-			let section = `\n${SECTION_INDENT}Behind ${baseLabel}:\n`;
+			let section = `\n${SECTION_INDENT}Behind ${baseRef}:\n`;
 			for (const c of commits) {
 				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
 			}

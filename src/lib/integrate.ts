@@ -1,6 +1,6 @@
 import confirm from "@inquirer/confirm";
 import { configGet } from "./config";
-import { getShortHead, git } from "./git";
+import { getShortHead, git, predictMergeConflict } from "./git";
 import { dim, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "./output";
 import { parallelFetch, reportFetchFailures } from "./parallel-fetch";
 import { resolveRemotesMap } from "./remotes";
@@ -23,6 +23,7 @@ interface RepoAssessment {
 	ahead: number;
 	headSha: string;
 	shallow: boolean;
+	conflictPrediction?: "clean" | "conflict" | null;
 }
 
 export async function integrate(
@@ -61,6 +62,21 @@ export async function integrate(
 		assessments.push(await assessRepo(status, repoDir, branch));
 	}
 
+	// Phase 3b: predict conflicts for will-operate repos
+	await Promise.all(
+		assessments
+			.filter((a) => a.outcome === "will-operate")
+			.map(async (a) => {
+				if (a.ahead > 0 && a.behind > 0) {
+					const ref = `${a.upstreamRemote}/${a.baseBranch}`;
+					const prediction = await predictMergeConflict(a.repoDir, ref);
+					a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
+				} else {
+					a.conflictPrediction = "clean";
+				}
+			}),
+	);
+
 	// Phase 4: display plan & confirm
 	const willOperate = assessments.filter((a) => a.outcome === "will-operate");
 	const upToDate = assessments.filter((a) => a.outcome === "up-to-date");
@@ -77,8 +93,14 @@ export async function integrate(
 			const mergeType = mode === "merge" ? (a.ahead === 0 ? " (fast-forward)" : " (three-way)") : "";
 			const action =
 				mode === "rebase" ? `rebase ${branch} onto ${baseRef}` : `merge ${baseRef} into ${branch}${mergeType}`;
+			let conflictHint = "";
+			if (a.conflictPrediction === "conflict") {
+				conflictHint = mode === "merge" ? ` ${yellow("(will conflict)")}` : ` ${yellow("(conflict likely)")}`;
+			} else if (a.conflictPrediction === "clean") {
+				conflictHint = mode === "merge" ? " (no conflict)" : " (conflict unlikely)";
+			}
 			const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
-			process.stderr.write(`  ${a.repo}   ${action}${diffStr}${headStr}\n`);
+			process.stderr.write(`  ${a.repo}   ${action}${diffStr}${conflictHint}${headStr}\n`);
 		} else if (a.outcome === "up-to-date") {
 			process.stderr.write(`  ${a.repo}   up to date\n`);
 		} else {

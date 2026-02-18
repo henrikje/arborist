@@ -9,6 +9,7 @@ import {
 	hasRemote,
 	isRepoDirty,
 	parseGitStatus,
+	predictMergeConflict,
 	validateBranchName,
 	validateWorkspaceName,
 } from "./git";
@@ -177,6 +178,63 @@ describe("git repo functions", () => {
 			const result = await checkBranchMatch(repoDir, "main");
 			expect(result.matches).toBe(false);
 			expect(result.actual).toBe("other");
+		});
+	});
+
+	describe("predictMergeConflict", () => {
+		test("returns clean for non-conflicting merge", async () => {
+			// Create a feature branch with a non-overlapping change
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "feature.txt"), "feature content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "feature.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "feature commit"]);
+
+			// Add a different change on the default branch
+			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			writeFileSync(join(repoDir, "main.txt"), "main content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "main.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "main commit"]);
+
+			// Go back to feature and predict
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+			const result = await predictMergeConflict(repoDir, defaultBranch);
+			if (!result) throw new Error("expected non-null result");
+			expect(result.hasConflict).toBe(false);
+			expect(result.files).toEqual([]);
+		});
+
+		test("returns conflict for overlapping changes", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+
+			// Create a shared file on the default branch (common ancestor)
+			writeFileSync(join(repoDir, "shared.txt"), "original");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "shared.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add shared"]);
+
+			// Create a feature branch from here and make a conflicting change
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "shared.txt"), "feature version");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "shared.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "feature change"]);
+
+			// Add a conflicting change on the default branch
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			writeFileSync(join(repoDir, "shared.txt"), "main version");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "shared.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "main change"]);
+
+			// Go back to feature and predict
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+			const result = await predictMergeConflict(repoDir, defaultBranch);
+			if (!result) throw new Error("expected non-null result");
+			expect(result.hasConflict).toBe(true);
+			expect(result.files.length).toBeGreaterThan(0);
+		});
+
+		test("returns null for invalid ref", async () => {
+			const result = await predictMergeConflict(repoDir, "nonexistent-ref");
+			expect(result).toBeNull();
 		});
 	});
 });

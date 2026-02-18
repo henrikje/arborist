@@ -322,7 +322,7 @@ Shows each worktree's position relative to the base branch, push status, and loc
 
 **Flags:**
 - `-d, --dirty` — Only show repos with local changes (shorthand for `--where dirty`)
-- `-w, --where <filter>` — Filter repos by status flags (comma-separated, OR logic): dirty, unpushed, behind-share, behind-base, drifted, detached, operation, local, gone, shallow, at-risk
+- `-w, --where <filter>` — Filter repos by status flags (comma-separated, OR logic): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk
 - `-f, --fetch` — Fetch remotes before showing status
 - `--verbose` — Show file-level detail
 - `--json` — Machine-readable JSON output (filtered when `--where` is active)

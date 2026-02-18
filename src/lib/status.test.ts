@@ -42,6 +42,7 @@ describe("computeFlags", () => {
 			isUnpushed: false,
 			needsPull: false,
 			needsRebase: false,
+			isDiverged: false,
 			isDrifted: false,
 			isDetached: false,
 			hasOperation: false,
@@ -129,6 +130,26 @@ describe("computeFlags", () => {
 		expect(flags.needsRebase).toBe(true);
 	});
 
+	test("isDiverged when both ahead and behind base", () => {
+		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 2, behind: 3 } }), "feature");
+		expect(flags.isDiverged).toBe(true);
+	});
+
+	test("not isDiverged when only behind base", () => {
+		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 0, behind: 2 } }), "feature");
+		expect(flags.isDiverged).toBe(false);
+	});
+
+	test("not isDiverged when only ahead of base", () => {
+		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 3, behind: 0 } }), "feature");
+		expect(flags.isDiverged).toBe(false);
+	});
+
+	test("not isDiverged when base is null", () => {
+		const flags = computeFlags(makeRepo({ base: null }), "feature");
+		expect(flags.isDiverged).toBe(false);
+	});
+
 	test("isDrifted when on wrong branch", () => {
 		const flags = computeFlags(
 			makeRepo({
@@ -210,6 +231,11 @@ describe("needsAttention", () => {
 		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 0, behind: 1 } }), "feature");
 		expect(needsAttention(flags)).toBe(true);
 	});
+
+	test("returns true when isDiverged", () => {
+		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 2, behind: 3 } }), "feature");
+		expect(needsAttention(flags)).toBe(true);
+	});
 });
 
 describe("flagLabels", () => {
@@ -240,6 +266,11 @@ describe("flagLabels", () => {
 			"feature",
 		);
 		expect(flagLabels(flags)).toEqual(["dirty", "behind base", "operation", "shallow"]);
+	});
+
+	test("returns diverged label when both ahead and behind base", () => {
+		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 2, behind: 3 } }), "feature");
+		expect(flagLabels(flags)).toEqual(["behind base", "diverged"]);
 	});
 });
 
@@ -304,6 +335,11 @@ describe("wouldLoseWork", () => {
 		expect(wouldLoseWork(flags)).toBe(false);
 	});
 
+	test("returns false when isDiverged", () => {
+		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 2, behind: 3 } }), "feature");
+		expect(wouldLoseWork(flags)).toBe(false);
+	});
+
 	test("returns false when isShallow", () => {
 		const flags = computeFlags(
 			makeRepo({
@@ -346,7 +382,9 @@ describe("validateWhere", () => {
 
 	test("returns null for all valid terms", () => {
 		expect(
-			validateWhere("dirty,unpushed,behind-share,behind-base,drifted,detached,operation,local,gone,shallow,at-risk"),
+			validateWhere(
+				"dirty,unpushed,behind-share,behind-base,diverged,drifted,detached,operation,local,gone,shallow,at-risk",
+			),
 		).toBeNull();
 	});
 
@@ -414,6 +452,7 @@ describe("repoMatchesWhere", () => {
 				{ share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3 } },
 			],
 			["behind-base", { base: { remote: "origin", ref: "main", ahead: 0, behind: 2 } }],
+			["diverged", { base: { remote: "origin", ref: "main", ahead: 2, behind: 3 } }],
 			[
 				"drifted",
 				{ identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false } },

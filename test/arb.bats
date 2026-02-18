@@ -3079,8 +3079,8 @@ delete_workspace_config() {
     cd "$TEST_DIR/project/my-feature"
     run arb pull --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"to pull (merge)"* ]]
-    [[ "$output" == *"(merge)"* ]]
+    [[ "$output" == *"to pull (merge"* ]]
+    [[ "$output" == *"pulled"*"(merge)"* ]]
 }
 
 @test "arb pull detects rebase from pull.rebase config" {
@@ -3095,8 +3095,8 @@ delete_workspace_config() {
     cd "$TEST_DIR/project/my-feature"
     run arb pull --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"to pull (rebase)"* ]]
-    [[ "$output" == *"(rebase)"* ]]
+    [[ "$output" == *"to pull (rebase"* ]]
+    [[ "$output" == *"pulled"*"(rebase)"* ]]
 }
 
 @test "arb pull --rebase forces rebase mode" {
@@ -3109,8 +3109,8 @@ delete_workspace_config() {
     cd "$TEST_DIR/project/my-feature"
     run arb pull --rebase --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"to pull (rebase)"* ]]
-    [[ "$output" == *"(rebase)"* ]]
+    [[ "$output" == *"to pull (rebase"* ]]
+    [[ "$output" == *"pulled"*"(rebase)"* ]]
 }
 
 @test "arb pull --merge forces merge mode" {
@@ -3126,8 +3126,8 @@ delete_workspace_config() {
     cd "$TEST_DIR/project/my-feature"
     run arb pull --merge --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"to pull (merge)"* ]]
-    [[ "$output" == *"(merge)"* ]]
+    [[ "$output" == *"to pull (merge"* ]]
+    [[ "$output" == *"pulled"*"(merge)"* ]]
 }
 
 @test "arb pull --rebase --merge errors" {
@@ -3372,16 +3372,14 @@ setup_fork_repo() {
     [[ "$output" == *"canonical/main"* ]]
 }
 
-@test "fork: single-origin repos behave identically" {
+@test "fork: single-origin repos show origin/ prefix in BASE column" {
     # Create a workspace with standard single-origin repo
     arb create single-origin-ws repo-a repo-b
     cd "$TEST_DIR/project/single-origin-ws"
 
     run arb status
-    # BASE column should NOT show origin/ prefix (single-origin keeps it clean)
-    [[ "$output" != *"origin/main"* ]]
-    # Should just show "main" in the base column
-    [[ "$output" == *"main"* ]]
+    # BASE column should show origin/main (always includes remote prefix)
+    [[ "$output" == *"origin/main"* ]]
 }
 
 @test "fork: merge targets the upstream remote" {
@@ -4730,5 +4728,134 @@ SCRIPT
     # Both should show (modified) and the output should contain padding
     [[ "$output" == *".env"*"(modified)"* ]]
     [[ "$output" == *"some-longer-filename.txt"*"(modified)"* ]]
+}
+
+# ── isDiverged flag ──────────────────────────────────────────────
+
+@test "arb status --where diverged shows only diverged repos" {
+    arb create my-feature repo-a repo-b
+
+    # Make repo-a diverged: local commit + upstream commit
+    echo "local" > "$TEST_DIR/project/my-feature/repo-a/local.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add local.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "local" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    # repo-b stays equal (not diverged)
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status --where diverged
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb status --where diverged excludes behind-only repos" {
+    arb create my-feature repo-a
+
+    # Make repo-a only behind (not diverged)
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status --where diverged
+    # repo-a is behind-only, not diverged — should not match
+    [[ "$output" != *"repo-a"* ]]
+}
+
+# ── conflict prediction ─────────────────────────────────────────
+
+@test "arb rebase --dry-run shows conflict likely for overlapping changes" {
+    arb create my-feature repo-a
+
+    # Create a shared file on main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "original" > shared.txt && git add shared.txt && git commit -m "add shared" && git push) >/dev/null 2>&1
+
+    # Pull the shared file into the feature branch
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    arb rebase --yes >/dev/null 2>&1
+
+    # Now create a conflicting change on the feature branch
+    echo "feature version" > "$TEST_DIR/project/my-feature/repo-a/shared.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add shared.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature change" >/dev/null 2>&1
+
+    # And a conflicting change on main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "main version" > shared.txt && git add shared.txt && git commit -m "main change" && git push) >/dev/null 2>&1
+
+    run arb rebase --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"conflict likely"* ]]
+}
+
+@test "arb rebase --dry-run shows conflict unlikely for non-overlapping changes" {
+    arb create my-feature repo-a
+
+    # Make a local commit on the feature branch (different file)
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature commit" >/dev/null 2>&1
+
+    # Push an upstream change (different file)
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb rebase --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"conflict unlikely"* ]]
+}
+
+@test "arb rebase --dry-run shows conflict unlikely for fast-forward" {
+    arb create my-feature repo-a
+
+    # Push an upstream change (repo-a is behind only, no local commits)
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb rebase --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"conflict unlikely"* ]]
+}
+
+@test "arb merge --dry-run shows will conflict for overlapping changes" {
+    arb create my-feature repo-a
+
+    # Create a shared file on main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "original" > shared.txt && git add shared.txt && git commit -m "add shared" && git push) >/dev/null 2>&1
+
+    # Pull the shared file into the feature branch
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    arb rebase --yes >/dev/null 2>&1
+
+    # Now create a conflicting change on the feature branch
+    echo "feature version" > "$TEST_DIR/project/my-feature/repo-a/shared.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add shared.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature change" >/dev/null 2>&1
+
+    # And a conflicting change on main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "main version" > shared.txt && git add shared.txt && git commit -m "main change" && git push) >/dev/null 2>&1
+
+    run arb merge --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"will conflict"* ]]
+}
+
+@test "arb pull --dry-run shows conflict unlikely for simple pull" {
+    arb create my-feature repo-a
+
+    # Push the feature branch first
+    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "local" > local.txt && git add local.txt && git commit -m "local" && git push -u origin my-feature) >/dev/null 2>&1
+
+    # Push a remote commit to the feature branch via a tmp clone
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > remote.txt && git add remote.txt && git commit -m "remote" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"conflict unlikely"* ]]
 }
 
