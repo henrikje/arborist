@@ -1677,7 +1677,7 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     [[ "$output" == *"BRANCH"* ]]
     [[ "$output" == *"LAST COMMIT"* ]]
     [[ "$output" == *"BASE"* ]]
-    [[ "$output" == *"REMOTE"* ]]
+    [[ "$output" == *"SHARE"* ]]
     [[ "$output" == *"LOCAL"* ]]
 }
 
@@ -3214,7 +3214,7 @@ setup_fork_repo() {
     [ -f "$TEST_DIR/project/fork-ws/repo-a/upstream.txt" ]
 }
 
-@test "fork: push targets the publish remote (origin/fork)" {
+@test "fork: push targets the share remote (origin/fork)" {
     setup_fork_repo repo-a
     arb create fork-push repo-a
     cd "$TEST_DIR/project/fork-push"
@@ -3278,13 +3278,13 @@ setup_fork_repo() {
     cd "$TEST_DIR/project/fork-status"
 
     run arb status
-    # BASE column should show upstream/main since upstream ≠ publish
+    # BASE column should show upstream/main since upstream ≠ share
     [[ "$output" == *"upstream/main"* ]]
-    # REMOTE column should show origin/<branch>
+    # SHARE column should show origin/<branch>
     [[ "$output" == *"origin/fork-status"* ]]
 }
 
-@test "fork: remove --delete-remote deletes from publish remote" {
+@test "fork: remove --delete-remote deletes from share remote" {
     setup_fork_repo repo-a
     arb create fork-remove repo-a
 
@@ -3436,7 +3436,7 @@ setup_fork_repo() {
     [[ "$output" == *"ambig"* ]]
 }
 
-@test "fork: pull syncs from publish remote" {
+@test "fork: pull syncs from share remote" {
     setup_fork_repo repo-a
     arb create fork-pull repo-a
 

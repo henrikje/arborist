@@ -57,7 +57,7 @@ export function registerCloneCommand(program: Command, getCtx: () => ArbContext)
 				}
 				await Bun.$`git -C ${target} remote set-head upstream --auto`.cwd(target).quiet().nothrow();
 
-				info(`  publish:  origin (${url})`);
+				info(`  share:    origin (${url})`);
 				info(`  upstream: upstream (${options.upstream})`);
 				success(`Cloned repo ${repoName}`);
 			} else {

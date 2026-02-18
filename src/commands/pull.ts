@@ -29,9 +29,9 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.option("--rebase", "Pull with rebase")
 		.option("--merge", "Pull with merge")
-		.summary("Pull the feature branch from the publish remote")
+		.summary("Pull the feature branch from the share remote")
 		.description(
-			"Pull the feature branch for all repos, or only the named repos. Pulls from the publish remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos that haven't been pushed yet or where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end.",
+			"Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos that haven't been pushed yet or where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end.",
 		)
 		.action(
 			async (repoArgs: string[], options: { rebase?: boolean; merge?: boolean; yes?: boolean; dryRun?: boolean }) => {
@@ -82,7 +82,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				process.stderr.write("\n");
 				for (const a of assessments) {
 					const remotes = remotesMap.get(a.repo);
-					const forkSuffix = remotes && remotes.upstream !== remotes.publish ? ` ← ${remotes.publish}` : "";
+					const forkSuffix = remotes && remotes.upstream !== remotes.share ? ` ← ${remotes.share}` : "";
 					const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 					if (a.outcome === "will-pull") {
 						process.stderr.write(
@@ -130,7 +130,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 
 				for (const a of willPull) {
 					inlineStart(a.repo, `pulling (${a.pullMode})`);
-					const pullRemote = remotesMap.get(a.repo)?.publish ?? "origin";
+					const pullRemote = remotesMap.get(a.repo)?.share ?? "origin";
 					const pullFlag = a.pullMode === "rebase" ? "--rebase" : "--no-rebase";
 					const pullResult = await Bun.$`git -C ${a.repoDir} pull ${pullFlag} ${pullRemote} ${branch}`
 						.cwd(a.repoDir)
@@ -187,8 +187,8 @@ async function assessPullRepo(
 
 	const base: PullAssessment = { repo: status.name, repoDir, outcome: "skip", behind: 0, pullMode: "merge", headSha };
 
-	// Local repo — no publish remote
-	if (status.publish === null) {
+	// Local repo — no share remote
+	if (status.share === null) {
 		return { ...base, skipReason: "local repo" };
 	}
 
@@ -206,12 +206,12 @@ async function assessPullRepo(
 	}
 
 	// Not pushed yet
-	if (status.publish.refMode === "noRef") {
+	if (status.share.refMode === "noRef") {
 		return { ...base, skipReason: "not pushed yet" };
 	}
 
 	// Remote branch gone
-	if (status.publish.refMode === "gone") {
+	if (status.share.refMode === "gone") {
 		return { ...base, skipReason: "remote branch gone" };
 	}
 
@@ -219,7 +219,7 @@ async function assessPullRepo(
 	const pullMode = flagMode ?? (await detectPullMode(repoDir, branch));
 
 	// Check toPull count
-	const toPull = status.publish.toPull ?? 0;
+	const toPull = status.share.toPull ?? 0;
 	if (toPull === 0) {
 		return { ...base, outcome: "up-to-date", pullMode };
 	}

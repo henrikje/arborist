@@ -34,7 +34,7 @@ export interface RepoStatus {
 		ahead: number;
 		behind: number;
 	} | null;
-	publish: {
+	share: {
 		remote: string;
 		ref: string | null;
 		refMode: "noRef" | "implicit" | "configured" | "gone";
@@ -64,24 +64,24 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 
 	const isDetached = repo.identity.headMode.kind === "detached";
 
-	const isLocal = repo.publish === null;
+	const isLocal = repo.share === null;
 
-	const isGone = repo.publish !== null && repo.publish.refMode === "gone";
+	const isGone = repo.share !== null && repo.share.refMode === "gone";
 
-	// isUnpushed: has commits to push to publish remote, or never pushed with commits ahead of base
+	// isUnpushed: has commits to push to share remote, or never pushed with commits ahead of base
 	// Note: "gone" branches are excluded — the remote deleted the branch (typically after PR merge),
 	// so "unpushed" would be misleading. The "gone" flag alone signals the state.
 	let isUnpushed = false;
-	if (repo.publish !== null) {
-		if (repo.publish.toPush !== null && repo.publish.toPush > 0) {
+	if (repo.share !== null) {
+		if (repo.share.toPush !== null && repo.share.toPush > 0) {
 			isUnpushed = true;
-		} else if (repo.publish.refMode === "noRef" && repo.base !== null && repo.base.ahead > 0) {
+		} else if (repo.share.refMode === "noRef" && repo.base !== null && repo.base.ahead > 0) {
 			isUnpushed = true;
 		}
 	}
 
-	// needsPull: publish remote has commits to pull
-	const needsPull = repo.publish !== null && repo.publish.toPull !== null && repo.publish.toPull > 0;
+	// needsPull: share remote has commits to pull
+	const needsPull = repo.share !== null && repo.share.toPull !== null && repo.share.toPull > 0;
 
 	// needsRebase: behind base branch
 	const needsRebase = repo.base !== null && repo.base.behind > 0;
@@ -123,7 +123,7 @@ export function needsAttention(flags: RepoFlags): boolean {
 const FLAG_LABELS: { key: keyof RepoFlags; label: string }[] = [
 	{ key: "isDirty", label: "dirty" },
 	{ key: "isUnpushed", label: "unpushed" },
-	{ key: "needsPull", label: "behind remote" },
+	{ key: "needsPull", label: "behind share" },
 	{ key: "needsRebase", label: "behind base" },
 	{ key: "isDrifted", label: "drifted" },
 	{ key: "isDetached", label: "detached" },
@@ -164,7 +164,7 @@ export function wouldLoseWork(flags: RepoFlags): boolean {
 const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
 	dirty: (f) => f.isDirty,
 	unpushed: (f) => f.isUnpushed,
-	"behind-remote": (f) => f.needsPull,
+	"behind-share": (f) => f.needsPull,
 	"behind-base": (f) => f.needsRebase,
 	drifted: (f) => f.isDrifted,
 	detached: (f) => f.isDetached,
@@ -202,7 +202,7 @@ export function isWorkspaceSafe(repos: RepoStatus[], branch: string): boolean {
 	for (const repo of repos) {
 		const flags = computeFlags(repo, branch);
 		if (wouldLoseWork(flags)) return false;
-		if (repo.publish === null && repo.base !== null && repo.base.ahead > 0) return false;
+		if (repo.share === null && repo.base !== null && repo.base.ahead > 0) return false;
 	}
 	return true;
 }
@@ -282,9 +282,9 @@ export async function gatherRepoStatus(
 	// Remote detection — use pre-resolved value if available
 	const repoHasRemote = knownHasRemote ?? (await getRemoteNames(repoPath)).length > 0;
 
-	// Resolve remote names (upstream for base, publish for tracking)
+	// Resolve remote names (upstream for base, share for tracking)
 	const upstreamRemote = remotes?.upstream ?? "origin";
-	const publishRemote = remotes?.publish ?? "origin";
+	const shareRemote = remotes?.share ?? "origin";
 
 	// ── Section 2: Local (working tree status) ──
 	// Gathered above in the parallel group (parseGitStatus → local).
@@ -319,9 +319,9 @@ export async function gatherRepoStatus(
 		}
 	}
 
-	// ── Section 4: Publish (push/pull status vs publish remote) ──
+	// ── Section 4: Share (push/pull status vs share remote) ──
 
-	let publishStatus: RepoStatus["publish"] = null;
+	let shareStatus: RepoStatus["share"] = null;
 	if (repoHasRemote && !detached) {
 		// Step 1: Try configured tracking branch
 		const upstreamResult = await git(repoDir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}");
@@ -336,22 +336,16 @@ export async function gatherRepoStatus(
 				toPull = Number.parseInt(parts[0] ?? "0", 10);
 				toPush = Number.parseInt(parts[1] ?? "0", 10);
 			}
-			publishStatus = {
-				remote: publishRemote,
+			shareStatus = {
+				remote: shareRemote,
 				ref: trackingRef,
 				refMode: "configured",
 				toPush,
 				toPull,
 			};
-		} else if (await remoteBranchExists(repoDir, actualBranch, publishRemote)) {
+		} else if (await remoteBranchExists(repoDir, actualBranch, shareRemote)) {
 			// Step 2: No tracking config but remote ref exists → implicit
-			const pushLr = await git(
-				repoDir,
-				"rev-list",
-				"--left-right",
-				"--count",
-				`${publishRemote}/${actualBranch}...HEAD`,
-			);
+			const pushLr = await git(repoDir, "rev-list", "--left-right", "--count", `${shareRemote}/${actualBranch}...HEAD`);
 			let toPush: number | null = null;
 			let toPull: number | null = null;
 			if (pushLr.exitCode === 0) {
@@ -359,9 +353,9 @@ export async function gatherRepoStatus(
 				toPull = Number.parseInt(parts[0] ?? "0", 10);
 				toPush = Number.parseInt(parts[1] ?? "0", 10);
 			}
-			publishStatus = {
-				remote: publishRemote,
-				ref: `${publishRemote}/${actualBranch}`,
+			shareStatus = {
+				remote: shareRemote,
+				ref: `${shareRemote}/${actualBranch}`,
 				refMode: "implicit",
 				toPush,
 				toPull,
@@ -370,8 +364,8 @@ export async function gatherRepoStatus(
 			// Step 3: Check if tracking config exists (→ gone) or not (→ noRef)
 			const configRemote = await git(repoDir, "config", `branch.${actualBranch}.remote`);
 			const isGone = configRemote.exitCode === 0 && configRemote.stdout.trim().length > 0;
-			publishStatus = {
-				remote: publishRemote,
+			shareStatus = {
+				remote: shareRemote,
 				ref: null,
 				refMode: isGone ? "gone" : "noRef",
 				toPush: null,
@@ -379,12 +373,12 @@ export async function gatherRepoStatus(
 			};
 		}
 	} else if (!repoHasRemote) {
-		// No remote at all — publish is null (local repo)
-		publishStatus = null;
+		// No remote at all — share is null (local repo)
+		shareStatus = null;
 	} else {
-		// Detached — publish is present but no ref comparison possible
-		publishStatus = {
-			remote: publishRemote,
+		// Detached — share is present but no ref comparison possible
+		shareStatus = {
+			remote: shareRemote,
 			ref: null,
 			refMode: "noRef",
 			toPush: null,
@@ -397,7 +391,7 @@ export async function gatherRepoStatus(
 		identity: { worktreeKind, headMode, shallow },
 		local,
 		base: baseStatus,
-		publish: publishStatus,
+		share: shareStatus,
 		operation: gitDirResult,
 		lastCommit: null,
 	};

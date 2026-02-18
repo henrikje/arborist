@@ -72,7 +72,7 @@ Key signals in status output:
 - **dirty** — Staged, modified, or untracked files exist
 - **unpushed** — Local commits not yet on the remote
 - **behind base** — Base branch (e.g., main) has moved ahead; consider rebasing
-- **behind remote** — Remote feature branch has commits you don't have; consider pulling
+- **behind share** — Remote feature branch has commits you don't have; consider pulling
 - **drifted** — Worktree is on the wrong branch (rare, usually manual intervention)
 - **last commit** — Most recent commit author date across all repos; helps gauge workspace staleness
 
@@ -90,7 +90,7 @@ Key signals in status output:
    - Return to workspace root
 6. After resolving all conflicts, `arb push -f` to force-push the rebased branches
 
-### Publishing Changes
+### Sharing Changes
 
 1. Run `arb status` first to understand what will be pushed
 2. `arb push -y` — Push all repos with unpushed commits

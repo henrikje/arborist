@@ -2,7 +2,7 @@ import { git } from "./git";
 
 export interface RepoRemotes {
 	upstream: string; // Source of base branches (rebase/merge targets, default branch)
-	publish: string; // Where feature branches are shared (push, pull, tracking)
+	share: string; // Where feature branches are shared (push, pull, tracking)
 }
 
 /**
@@ -10,9 +10,9 @@ export interface RepoRemotes {
  *
  * Resolution order:
  * 1. Single remote → use it for both roles
- * 2. Git config: remote.pushDefault → publish; determine upstream from remaining remotes
- * 3. Convention: remote named "upstream" alongside "origin" → { upstream: "upstream", publish: "origin" }
- * 4. Default: only "origin" → { upstream: "origin", publish: "origin" }
+ * 2. Git config: remote.pushDefault → share; determine upstream from remaining remotes
+ * 3. Convention: remote named "upstream" alongside "origin" → { upstream: "upstream", share: "origin" }
+ * 4. Default: only "origin" → { upstream: "origin", share: "origin" }
  * 5. Ambiguous → error with guidance
  */
 export async function resolveRemotes(repoDir: string, knownRemoteNames?: string[]): Promise<RepoRemotes> {
@@ -25,7 +25,7 @@ export async function resolveRemotes(repoDir: string, knownRemoteNames?: string[
 	// Single remote — use it for both roles regardless of name
 	if (remotes.length === 1) {
 		const single = remotes[0] ?? "origin";
-		return { upstream: single, publish: single };
+		return { upstream: single, share: single };
 	}
 
 	// Check remote.pushDefault
@@ -43,18 +43,18 @@ export async function resolveRemotes(repoDir: string, knownRemoteNames?: string[
 				`Cannot determine upstream remote for ${repoName} (remotes: ${remotes.join(", ")}).\nAdd a remote named 'upstream' or reduce to two remotes.`,
 			);
 		}
-		return { upstream, publish: pushDefault };
+		return { upstream, share: pushDefault };
 	}
 
 	// Convention: "upstream" + "origin"
 	if (remotes.includes("upstream") && remotes.includes("origin")) {
 		if (remotes.length === 2) {
-			return { upstream: "upstream", publish: "origin" };
+			return { upstream: "upstream", share: "origin" };
 		}
-		// 3+ remotes with both upstream and origin but no pushDefault — ambiguous publish
+		// 3+ remotes with both upstream and origin but no pushDefault — ambiguous share
 		const repoName = repoDir.split("/").pop() ?? repoDir;
 		throw new Error(
-			`Cannot determine remote roles for ${repoName} (remotes: ${remotes.join(", ")}).\nSet the publish remote: git -C ${repoDir} config remote.pushDefault origin`,
+			`Cannot determine remote roles for ${repoName} (remotes: ${remotes.join(", ")}).\nSet the share remote: git -C ${repoDir} config remote.pushDefault origin`,
 		);
 	}
 
@@ -65,14 +65,14 @@ export async function resolveRemotes(repoDir: string, knownRemoteNames?: string[
 		const repoName = repoDir.split("/").pop() ?? repoDir;
 		const other = remotes.find((r) => r !== "origin") ?? "origin";
 		throw new Error(
-			`Cannot determine remote roles for ${repoName} (remotes: ${remotes.join(", ")}).\nSet the publish remote: git -C ${repoDir} config remote.pushDefault ${other}`,
+			`Cannot determine remote roles for ${repoName} (remotes: ${remotes.join(", ")}).\nSet the share remote: git -C ${repoDir} config remote.pushDefault ${other}`,
 		);
 	}
 
 	// Fallback: ambiguous
 	const repoName = repoDir.split("/").pop() ?? repoDir;
 	throw new Error(
-		`Cannot determine remote roles for ${repoName} (remotes: ${remotes.join(", ")}).\nSet the publish remote: git -C ${repoDir} config remote.pushDefault <remote-name>`,
+		`Cannot determine remote roles for ${repoName} (remotes: ${remotes.join(", ")}).\nSet the share remote: git -C ${repoDir} config remote.pushDefault <remote-name>`,
 	);
 }
 

@@ -34,7 +34,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("--json", "Output structured JSON")
 		.summary("Show workspace status")
 		.description(
-			"Show each worktree's position relative to the default branch, push status against the publish remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-remote, behind-base, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
+			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
 		)
 		.action(
 			async (options: {
@@ -167,10 +167,10 @@ async function runStatus(
 	// Ensure minimum widths for header labels
 	if (maxRepo < 4) maxRepo = 4; // "REPO"
 	if (maxBranch < 6) maxBranch = 6; // "BRANCH"
-	// BASE group must fit "BASE" (4 chars), REMOTE group must fit "REMOTE" (6 chars)
+	// BASE group must fit "BASE" (4 chars), SHARE group must fit "SHARE" (5 chars)
 	// Each group = name + 2sp + diff. Expand the diff column if needed.
 	if (maxBaseName + 2 + maxBaseDiff < 4) maxBaseDiff = Math.max(maxBaseDiff, 4 - maxBaseName - 2);
-	if (maxRemoteName + 2 + maxRemoteDiff < 6) maxRemoteDiff = Math.max(maxRemoteDiff, 6 - maxRemoteName - 2);
+	if (maxRemoteName + 2 + maxRemoteDiff < 5) maxRemoteDiff = Math.max(maxRemoteDiff, 5 - maxRemoteName - 2);
 	if (maxLocal < 5) maxLocal = 5; // "LOCAL"
 
 	// Header line
@@ -180,7 +180,7 @@ async function runStatus(
 	header += `    ${dim("BRANCH")}${" ".repeat(maxBranch - 6)}`;
 	header += `    ${dim("LAST COMMIT")}${" ".repeat(lcWidths.total - 11)}`;
 	header += `    ${dim("BASE")}${" ".repeat(baseGroupWidth - 4)}`;
-	header += `    ${dim("REMOTE")}${" ".repeat(remoteGroupWidth - 6)}`;
+	header += `    ${dim("SHARE")}${" ".repeat(remoteGroupWidth - 5)}`;
 	header += `    ${dim("LOCAL")}`;
 	process.stdout.write(`${header}\n`);
 
@@ -222,18 +222,18 @@ async function runStatus(
 
 		// Col 5: Remote name
 		let remoteNameColored: string;
-		const isLocal = repo.publish === null;
+		const isLocal = repo.share === null;
 		if (isLocal) {
 			remoteNameColored = cell.remoteName;
 		} else if (isDetached) {
 			remoteNameColored = yellow(cell.remoteName);
 		} else if (cell.remoteName) {
-			const expectedTracking = `${repo.publish?.remote}/${repo.identity.headMode.kind === "attached" ? repo.identity.headMode.branch : ""}`;
+			const expectedTracking = `${repo.share?.remote}/${repo.identity.headMode.kind === "attached" ? repo.identity.headMode.branch : ""}`;
 			const isUnexpected =
-				repo.publish !== null &&
-				repo.publish.refMode === "configured" &&
-				repo.publish.ref !== null &&
-				repo.publish.ref !== expectedTracking;
+				repo.share !== null &&
+				repo.share.refMode === "configured" &&
+				repo.share.ref !== null &&
+				repo.share.ref !== expectedTracking;
 			remoteNameColored = isUnexpected || isDrifted ? yellow(cell.remoteName) : cell.remoteName;
 		} else {
 			remoteNameColored = "";
@@ -246,7 +246,7 @@ async function runStatus(
 			remoteDiffColored = cell.remoteDiff;
 		} else if (
 			cell.remoteDiff === "not pushed" ||
-			(repo.publish !== null && repo.publish.toPush === 0 && repo.publish.toPull !== null && repo.publish.toPull > 0)
+			(repo.share !== null && repo.share.toPush === 0 && repo.share.toPull !== null && repo.share.toPull > 0)
 		) {
 			remoteDiffColored = cell.remoteDiff;
 		} else if (flags.isUnpushed) {
@@ -318,10 +318,10 @@ function plainCells(repo: RepoStatus): CellData {
 	// Col 2: branch
 	const branch = isDetached ? "(detached)" : actualBranch;
 
-	// Col 3: base name — show upstream remote prefix when upstream ≠ publish (fork setup)
+	// Col 3: base name — show upstream remote prefix when upstream ≠ share (fork setup)
 	let baseName: string;
 	if (repo.base) {
-		const isFork = repo.base.remote !== repo.publish?.remote;
+		const isFork = repo.base.remote !== repo.share?.remote;
 		baseName = isFork ? `${repo.base.remote}/${repo.base.ref}` : repo.base.ref;
 	} else {
 		baseName = "";
@@ -339,19 +339,19 @@ function plainCells(repo: RepoStatus): CellData {
 
 	// Col 5: remote name
 	let remoteName: string;
-	if (repo.publish === null) {
+	if (repo.share === null) {
 		remoteName = "local";
 	} else if (isDetached) {
 		remoteName = "detached";
-	} else if (repo.publish.refMode === "configured" && repo.publish.ref) {
-		remoteName = repo.publish.ref;
+	} else if (repo.share.refMode === "configured" && repo.share.ref) {
+		remoteName = repo.share.ref;
 	} else {
-		remoteName = `${repo.publish?.remote ?? "origin"}/${actualBranch}`;
+		remoteName = `${repo.share?.remote ?? "origin"}/${actualBranch}`;
 	}
 
 	// Col 6: remote diff
 	let remoteDiff = "";
-	if (repo.publish !== null && !isDetached) {
+	if (repo.share !== null && !isDetached) {
 		remoteDiff = plainRemoteDiff(repo);
 	}
 
@@ -372,23 +372,23 @@ function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
 }
 
 function plainRemoteDiff(repo: RepoStatus): string {
-	if (repo.publish === null) return "";
+	if (repo.share === null) return "";
 
-	if (repo.publish.refMode === "gone") {
+	if (repo.share.refMode === "gone") {
 		if (repo.base !== null && repo.base.ahead > 0) {
 			return `gone, ${repo.base.ahead} to push`;
 		}
 		return "gone";
 	}
-	if (repo.publish.refMode === "noRef") {
+	if (repo.share.refMode === "noRef") {
 		if (repo.base !== null && repo.base.ahead > 0) {
 			return `${repo.base.ahead} to push`;
 		}
 		return "not pushed";
 	}
 	// configured or implicit — use toPush/toPull
-	const toPush = repo.publish.toPush ?? 0;
-	const toPull = repo.publish.toPull ?? 0;
+	const toPush = repo.share.toPush ?? 0;
+	const toPull = repo.share.toPull ?? 0;
 	if (toPush === 0 && toPull === 0) return "up to date";
 	const parts = [toPush > 0 && `${toPush} to push`, toPull > 0 && `${toPull} to pull`].filter(Boolean).join(", ");
 	return parts;
@@ -451,7 +451,7 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
 		const commits = await getCommitsBetween(repoDir, baseRef, "HEAD");
 		if (commits.length > 0) {
-			const isFork = repo.base.remote !== repo.publish?.remote;
+			const isFork = repo.base.remote !== repo.share?.remote;
 			const baseLabel = isFork ? `${repo.base.remote}/${repo.base.ref}` : repo.base.ref;
 			let section = `\n${SECTION_INDENT}Ahead of ${baseLabel}:\n`;
 			for (const c of commits) {
@@ -466,7 +466,7 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
 		const commits = await getCommitsBetween(repoDir, "HEAD", baseRef);
 		if (commits.length > 0) {
-			const isFork = repo.base.remote !== repo.publish?.remote;
+			const isFork = repo.base.remote !== repo.share?.remote;
 			const baseLabel = isFork ? `${repo.base.remote}/${repo.base.ref}` : repo.base.ref;
 			let section = `\n${SECTION_INDENT}Behind ${baseLabel}:\n`;
 			for (const c of commits) {
@@ -477,11 +477,11 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 	}
 
 	// Unpushed to remote
-	if (repo.publish !== null && repo.publish.toPush !== null && repo.publish.toPush > 0 && repo.publish.ref) {
-		const commits = await getCommitsBetween(repoDir, repo.publish.ref, "HEAD");
+	if (repo.share !== null && repo.share.toPush !== null && repo.share.toPush > 0 && repo.share.ref) {
+		const commits = await getCommitsBetween(repoDir, repo.share.ref, "HEAD");
 		if (commits.length > 0) {
-			const publishLabel = repo.publish.remote;
-			let section = `\n${SECTION_INDENT}Unpushed to ${publishLabel}:\n`;
+			const shareLabel = repo.share.remote;
+			let section = `\n${SECTION_INDENT}Unpushed to ${shareLabel}:\n`;
 			for (const c of commits) {
 				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
 			}
