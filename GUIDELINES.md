@@ -93,6 +93,10 @@ The recovery pattern depends on whether failures are **independent and mechanica
 
 In both cases, the developer is never left stranded — arb always shows what happened and what to do next.
 
+### Repo specification: positional vs option
+
+When repos are the command's primary target, they are positional arguments (`arb push [repos...]`). When the positional is consumed by another primary argument (a command, a file path), repos become a secondary filter via the `--repo <name>` option, which can be specified multiple times. Examples: `arb exec <command...>` runs in all repos (positional consumed by command), `arb template diff [file] --repo <name>` filters by repo (positional consumed by file path).
+
 ### Documentation: help is reference, README is tutorial
 
 The `--help` output for each command is the authoritative reference. It should document every option, argument, and behavioral detail a user needs. Keep descriptions concise but complete.
