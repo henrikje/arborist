@@ -48,7 +48,6 @@ export async function integrate(
 	if (options.fetch !== false) {
 		const { repos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
 		if (fetchDirs.length > 0) {
-			process.stderr.write(`Fetching ${plural(fetchDirs.length, "repo")}...\n`);
 			const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
 			reportFetchFailures(repos, localRepos, fetchResults);
 		}

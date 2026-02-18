@@ -3,7 +3,7 @@ import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { hasRemote } from "../lib/git";
 import type { ListJsonEntry } from "../lib/json-types";
-import { dim, green, info, plural, red, yellow } from "../lib/output";
+import { dim, green, info, red, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, listWorkspaces, workspaceRepoDirs } from "../lib/repos";
@@ -80,7 +80,6 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				if (fetchDirs.length > 0) {
 					const remoteRepoNames = allRepoNames.filter((r) => !localRepos.includes(r));
 					const remotesMap = await resolveRemotesMap(remoteRepoNames, ctx.reposDir);
-					process.stderr.write(`Fetching ${plural(fetchDirs.length, "repo")}...\n`);
 					const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
 					reportFetchFailures(allRepoNames, localRepos, fetchResults);
 				}

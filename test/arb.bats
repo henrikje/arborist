@@ -819,7 +819,7 @@ teardown() {
     cd "$TEST_DIR/project/ws-one"
     run arb list --fetch
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Fetching"* ]]
+    [[ "$output" == *"Fetched"* ]]
     [[ "$output" == *"ws-one"* ]]
 }
 
@@ -2527,7 +2527,7 @@ delete_workspace_config() {
     cd "$TEST_DIR/project/my-feature"
     run arb rebase --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Fetching"* ]]
+    [[ "$output" == *"Fetched"* ]]
     [[ "$output" == *"Rebased"* ]]
 
     # Verify the upstream commit is now reachable from the feature branch
@@ -2654,7 +2654,7 @@ delete_workspace_config() {
     arb fetch >/dev/null 2>&1
     run arb rebase --no-fetch --yes
     [ "$status" -eq 0 ]
-    [[ "$output" != *"Fetching"* ]]
+    [[ "$output" != *"Fetched"* ]]
     [[ "$output" == *"Rebased"* ]]
 }
 
@@ -2667,7 +2667,7 @@ delete_workspace_config() {
     arb fetch >/dev/null 2>&1
     run arb rebase -F --yes
     [ "$status" -eq 0 ]
-    [[ "$output" != *"Fetching"* ]]
+    [[ "$output" != *"Fetched"* ]]
     [[ "$output" == *"Rebased"* ]]
 }
 
@@ -2727,7 +2727,7 @@ delete_workspace_config() {
     cd "$TEST_DIR/project/my-feature"
     run arb merge --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Fetching"* ]]
+    [[ "$output" == *"Fetched"* ]]
     [[ "$output" == *"Merged"* ]]
 
     # Verify merge commit exists
@@ -2790,7 +2790,7 @@ delete_workspace_config() {
     arb fetch >/dev/null 2>&1
     run arb merge -F --yes
     [ "$status" -eq 0 ]
-    [[ "$output" != *"Fetching"* ]]
+    [[ "$output" != *"Fetched"* ]]
     [[ "$output" == *"Merged"* ]]
 }
 
@@ -2803,7 +2803,7 @@ delete_workspace_config() {
     arb fetch >/dev/null 2>&1
     run arb merge --no-fetch --yes
     [ "$status" -eq 0 ]
-    [[ "$output" != *"Fetching"* ]]
+    [[ "$output" != *"Fetched"* ]]
     [[ "$output" == *"Merged"* ]]
 }
 
@@ -2886,7 +2886,7 @@ delete_workspace_config() {
     cd "$TEST_DIR/project/my-feature"
     run arb push --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Fetching"* ]]
+    [[ "$output" == *"Fetched"* ]]
     [[ "$output" == *"Pushed"* ]]
 }
 
@@ -2898,7 +2898,7 @@ delete_workspace_config() {
     cd "$TEST_DIR/project/my-feature"
     run arb push --no-fetch --yes
     [ "$status" -eq 0 ]
-    [[ "$output" != *"Fetching"* ]]
+    [[ "$output" != *"Fetched"* ]]
     [[ "$output" == *"Pushed"* ]]
 }
 

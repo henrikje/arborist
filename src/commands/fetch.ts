@@ -29,7 +29,6 @@ export function registerFetchCommand(program: Command, getCtx: () => ArbContext)
 			const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
 			let results = new Map<string, { exitCode: number; output: string }>();
 			if (fetchDirs.length > 0) {
-				process.stderr.write(`Fetching ${plural(fetchDirs.length, "repo")}...\n`);
 				results = await parallelFetch(fetchDirs, undefined, remotesMap);
 			}
 
