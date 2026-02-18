@@ -13,6 +13,7 @@ export async function parallelFetch(
 	repoDirs: string[],
 	timeout?: number,
 	remotesMap?: Map<string, RepoRemotes>,
+	options?: { silent?: boolean },
 ): Promise<Map<string, FetchResult>> {
 	const fetchTimeout = timeout ?? (Number(process.env.ARB_FETCH_TIMEOUT) || 120);
 	const results = new Map<string, FetchResult>();
@@ -23,10 +24,11 @@ export async function parallelFetch(
 	const startTime = performance.now();
 	let completed = 0;
 	const tty = isTTY();
+	const silent = options?.silent === true;
 	const label = plural(total, "repo");
 
 	const updateProgress = () => {
-		if (tty) {
+		if (tty && !silent) {
 			const counter = completed > 0 ? ` ${completed}/${total}` : "";
 			process.stderr.write(`\r\x1B[2KFetching ${label}...${counter}`);
 		}
@@ -105,10 +107,12 @@ export async function parallelFetch(
 	if (timeoutId !== undefined) clearTimeout(timeoutId);
 
 	const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-	if (tty) {
-		process.stderr.write(`\r\x1B[2KFetched ${label} in ${elapsed}s\n`);
-	} else {
-		process.stderr.write(`Fetched ${label} in ${elapsed}s\n`);
+	if (!silent) {
+		if (tty) {
+			process.stderr.write(`\r\x1B[2KFetched ${label} in ${elapsed}s\n`);
+		} else {
+			process.stderr.write(`Fetched ${label} in ${elapsed}s\n`);
+		}
 	}
 
 	return results;

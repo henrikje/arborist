@@ -4859,3 +4859,62 @@ SCRIPT
     [[ "$output" == *"conflict unlikely"* ]]
 }
 
+# ── two-phase plan rendering ────────────────────────────────────
+
+@test "arb push --no-fetch shows plan without fetch line" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push --no-fetch --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Fetching"* ]]
+    [[ "$output" != *"Fetched"* ]]
+    [[ "$output" == *"to push"* ]]
+    [[ "$output" == *"Pushed"* ]]
+}
+
+@test "arb pull --dry-run with no remote repos shows plan" {
+    setup_local_repo
+    arb create local-ws local-lib
+    cd "$TEST_DIR/project/local-ws"
+    run arb pull --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"local repo"* ]]
+    [[ "$output" != *"Fetching"* ]]
+    [[ "$output" != *"Fetched"* ]]
+}
+
+@test "arb rebase skips repo when fetch fails" {
+    arb create my-feature repo-a repo-b
+
+    # Push an upstream change to repo-a so rebase would have work to do
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    # Break repo-a's remote URL so fetch fails
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" remote set-url origin "file:///nonexistent/repo.git"
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb rebase --yes
+    [[ "$output" == *"fetch failed"* ]]
+    [[ "$output" == *"repo-a"*"skipped"* ]]
+}
+
+@test "arb pull skips repo when fetch fails" {
+    arb create my-feature repo-a repo-b
+    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "change" > file.txt && git add file.txt && git commit -m "change" && git push -u origin my-feature) >/dev/null 2>&1
+
+    # Push a remote commit so there's something to pull
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote" && git push) >/dev/null 2>&1
+
+    # Break repo-a's remote URL so fetch fails
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" remote set-url origin "file:///nonexistent/repo.git"
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --yes
+    [[ "$output" == *"fetch failed"* ]]
+    [[ "$output" == *"repo-a"*"skipped"* ]]
+}
+

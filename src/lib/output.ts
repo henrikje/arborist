@@ -70,6 +70,19 @@ export function plural(count: number, singular: string, pluralForm?: string): st
 	return `${count} ${count === 1 ? singular : (pluralForm ?? `${singular}s`)}`;
 }
 
+export function clearLines(count: number): void {
+	if (!isTTY() || count <= 0) return;
+	process.stderr.write(`\x1B[${count}A\x1B[J`);
+}
+
+export function countLines(text: string): number {
+	let count = 0;
+	for (let i = 0; i < text.length; i++) {
+		if (text[i] === "\n") count++;
+	}
+	return count;
+}
+
 export function stderr(text: string): void {
 	process.stderr.write(text);
 }
