@@ -451,8 +451,7 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
 		const commits = await getCommitsBetween(repoDir, baseRef, "HEAD");
 		if (commits.length > 0) {
-			const isFork = repo.base.remote !== repo.share?.remote;
-			const baseLabel = isFork ? `${repo.base.remote}/${repo.base.ref}` : repo.base.ref;
+			const baseLabel = `${repo.base.remote}/${repo.base.ref}`;
 			let section = `\n${SECTION_INDENT}Ahead of ${baseLabel}:\n`;
 			for (const c of commits) {
 				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
@@ -466,8 +465,7 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
 		const commits = await getCommitsBetween(repoDir, "HEAD", baseRef);
 		if (commits.length > 0) {
-			const isFork = repo.base.remote !== repo.share?.remote;
-			const baseLabel = isFork ? `${repo.base.remote}/${repo.base.ref}` : repo.base.ref;
+			const baseLabel = `${repo.base.remote}/${repo.base.ref}`;
 			let section = `\n${SECTION_INDENT}Behind ${baseLabel}:\n`;
 			for (const c of commits) {
 				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
