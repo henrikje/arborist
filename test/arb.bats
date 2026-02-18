@@ -3812,10 +3812,10 @@ push_then_delete_remote() {
 
     run arb remove --all-ok --force
     [ "$status" -eq 0 ]
-    # Should have per-workspace status tables
-    [[ "$output" == *"ws-one:"* ]]
-    [[ "$output" == *"ws-two:"* ]]
-    [[ "$output" == *"clean"* ]]
+    # Should have columnar table with workspace names
+    [[ "$output" == *"ws-one"* ]]
+    [[ "$output" == *"ws-two"* ]]
+    [[ "$output" == *"no issues"* ]]
     # Should have compact inline results during execution
     [[ "$output" == *"[ws-one] removed"* ]]
     [[ "$output" == *"[ws-two] removed"* ]]
@@ -3828,9 +3828,9 @@ push_then_delete_remote() {
 
     run arb remove ws-x ws-y --force
     [ "$status" -eq 0 ]
-    # Unified plan: per-workspace status sections
-    [[ "$output" == *"ws-x:"* ]]
-    [[ "$output" == *"ws-y:"* ]]
+    # Unified plan: columnar table with workspace names
+    [[ "$output" == *"ws-x"* ]]
+    [[ "$output" == *"ws-y"* ]]
     # Compact execution lines
     [[ "$output" == *"[ws-x] removed"* ]]
     [[ "$output" == *"[ws-y] removed"* ]]
@@ -3896,9 +3896,9 @@ push_then_delete_remote() {
 
     run arb remove tpl-multi-a tpl-multi-b --force
     [ "$status" -eq 0 ]
-    # Should show per-workspace sections
-    [[ "$output" == *"tpl-multi-a:"* ]]
-    [[ "$output" == *"tpl-multi-b:"* ]]
+    # Should show columnar table with workspace names
+    [[ "$output" == *"tpl-multi-a"* ]]
+    [[ "$output" == *"tpl-multi-b"* ]]
     # Only tpl-multi-a has drift
     [[ "$output" == *"Template files modified"* ]]
     [[ "$output" == *"Removed 2 workspaces"* ]]
@@ -4111,8 +4111,8 @@ push_then_delete_remote() {
     cd "$TEST_DIR/project"
     run arb remove my-feature --dry-run
     [ "$status" -eq 0 ]
-    [[ "$output" == *"repo-a"* ]]
-    [[ "$output" == *"repo-b"* ]]
+    [[ "$output" == *"my-feature"* ]]
+    [[ "$output" == *"WORKSPACE"* ]]
     # Must NOT contain the execution summary
     [[ "$output" != *"Removed"* ]]
     # Verify the workspace still exists

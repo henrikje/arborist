@@ -12,6 +12,7 @@ import {
 	parseGitStatus,
 	remoteBranchExists,
 } from "./git";
+import { yellow } from "./output";
 import { type RepoRemotes, getRemoteNames, resolveRemotes } from "./remotes";
 import { workspaceRepoDirs } from "./repos";
 import { latestCommitDate } from "./time";
@@ -134,6 +135,24 @@ const FLAG_LABELS: { key: keyof RepoFlags; label: string }[] = [
 
 export function flagLabels(flags: RepoFlags): string[] {
 	return FLAG_LABELS.filter(({ key }) => flags[key]).map(({ label }) => label);
+}
+
+const YELLOW_FLAGS = new Set<keyof RepoFlags>([
+	"isDirty",
+	"isUnpushed",
+	"isDrifted",
+	"isDetached",
+	"hasOperation",
+	"isLocal",
+	"isShallow",
+]);
+
+export function formatIssueCounts(issueCounts: WorkspaceSummary["issueCounts"]): string {
+	return issueCounts
+		.map(({ label, key }) => {
+			return YELLOW_FLAGS.has(key) ? yellow(label) : label;
+		})
+		.join(", ");
 }
 
 export function wouldLoseWork(flags: RepoFlags): boolean {

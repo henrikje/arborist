@@ -7,7 +7,7 @@ import { dim, green, info, plural, red, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, listWorkspaces, workspaceRepoDirs } from "../lib/repos";
-import { type WorkspaceSummary, gatherWorkspaceSummary } from "../lib/status";
+import { type WorkspaceSummary, formatIssueCounts, gatherWorkspaceSummary } from "../lib/status";
 import {
 	type LastCommitWidths,
 	type RelativeTimeParts,
@@ -337,24 +337,6 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				renderTable();
 			}
 		});
-}
-
-const YELLOW_FLAGS = new Set([
-	"isDirty",
-	"isUnpushed",
-	"isDrifted",
-	"isDetached",
-	"hasOperation",
-	"isLocal",
-	"isShallow",
-]);
-
-function formatIssueCounts(issueCounts: WorkspaceSummary["issueCounts"]): string {
-	return issueCounts
-		.map(({ label, key }) => {
-			return YELLOW_FLAGS.has(key) ? yellow(label) : label;
-		})
-		.join(", ");
 }
 
 function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
