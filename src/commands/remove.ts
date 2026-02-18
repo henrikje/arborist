@@ -3,13 +3,13 @@ import { basename } from "node:path";
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { branchExistsLocally, git, hasRemote, remoteBranchExists, validateWorkspaceName } from "../lib/git";
-import { dim, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "../lib/output";
+import { dim, error, info, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
 import { resolveRemotes } from "../lib/remotes";
 import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import {
-	type RepoFlags,
 	type WorkspaceSummary,
 	computeFlags,
+	formatIssueCounts,
 	gatherWorkspaceSummary,
 	wouldLoseWork,
 } from "../lib/status";
@@ -106,24 +106,6 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 		hasAtRisk,
 		templateDiffs,
 	};
-}
-
-const YELLOW_FLAGS = new Set<keyof RepoFlags>([
-	"isDirty",
-	"isUnpushed",
-	"isDrifted",
-	"isDetached",
-	"hasOperation",
-	"isLocal",
-	"isShallow",
-]);
-
-function formatIssueCounts(issueCounts: WorkspaceSummary["issueCounts"]): string {
-	return issueCounts
-		.map(({ label, key }) => {
-			return YELLOW_FLAGS.has(key) ? yellow(label) : label;
-		})
-		.join(", ");
 }
 
 function displayRemoveTable(assessments: WorkspaceAssessment[]): void {
