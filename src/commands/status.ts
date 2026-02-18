@@ -137,7 +137,9 @@ async function runStatus(
 			.filter((r) => r.base !== null && r.base.ahead > 0 && r.base.behind > 0)
 			.map(async (r) => {
 				const repoDir = `${wsDir}/${r.name}`;
-				const ref = `${r.base!.remote}/${r.base!.ref}`;
+				const base = r.base;
+				if (!base) return;
+				const ref = `${base.remote}/${base.ref}`;
 				const prediction = await predictMergeConflict(repoDir, ref);
 				if (prediction?.hasConflict) {
 					conflictRepos.add(r.name);
