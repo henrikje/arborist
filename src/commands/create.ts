@@ -150,6 +150,10 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 					if (result.failed.length > 0) error(`  failed:  ${result.failed.join(" ")}`);
 					info(`  ${dim(wsDir)}`);
 				}
+
+				if (result.failed.length === 0) {
+					process.stdout.write(`${wsDir}\n`);
+				}
 			},
 		);
 }
