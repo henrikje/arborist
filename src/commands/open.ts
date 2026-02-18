@@ -1,24 +1,41 @@
 import type { Command } from "commander";
-import { isRepoDirty } from "../lib/git";
+import { configGet } from "../lib/config";
 import { error, info } from "../lib/output";
 import { workspaceRepoDirs } from "../lib/repos";
+import { computeFlags, gatherRepoStatus, repoMatchesWhere, validateWhere } from "../lib/status";
 import type { ArbContext } from "../lib/types";
-import { requireWorkspace } from "../lib/workspace-context";
+import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
 export function registerOpenCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("open")
 		.argument("<command...>", "Command to open worktrees with")
-		.option("-d, --dirty", "Only open dirty worktrees")
+		.option("-d, --dirty", "Only open dirty worktrees (shorthand for --where dirty)")
+		.option("--where <filter>", "Only open worktrees matching status filter (comma-separated, OR logic)")
 		.passThroughOptions()
 		.summary("Open worktrees in an application")
 		.description(
-			'Run a command with all worktree directories as arguments, using absolute paths. Useful for opening worktrees in an editor, e.g. "arb open code". The command must exist in your PATH.\n\nArb flags (--dirty) must come before the command. Everything after the command name is passed through verbatim:\n\n  arb open --dirty code -n --add    # --dirty → arb, -n --add → code',
+			'Run a command with all worktree directories as arguments, using absolute paths. Useful for opening worktrees in an editor, e.g. "arb open code". The command must exist in your PATH.\n\nUse --dirty to only open worktrees with local changes, or --where <filter> to filter by any status flag: dirty, unpushed, behind-remote, behind-base, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic.\n\nArb flags must come before the command. Everything after the command name is passed through verbatim:\n\n  arb open --dirty code -n --add    # --dirty → arb, -n --add → code',
 		)
-		.action(async (args: string[], options: { dirty?: boolean }) => {
+		.action(async (args: string[], options: { dirty?: boolean; where?: string }) => {
 			const [command = "", ...extraFlags] = args;
 			const ctx = getCtx();
 			const { wsDir } = requireWorkspace(ctx);
+
+			// Resolve --dirty as shorthand for --where dirty
+			if (options.dirty && options.where) {
+				error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
+				process.exit(1);
+			}
+			const where = options.dirty ? "dirty" : options.where;
+
+			if (where) {
+				const err = validateWhere(where);
+				if (err) {
+					error(err);
+					process.exit(1);
+				}
+			}
 
 			// Check if command exists in PATH
 			const which = Bun.spawnSync(["which", command], { cwd: wsDir });
@@ -27,20 +44,31 @@ export function registerOpenCommand(program: Command, getCtx: () => ArbContext):
 				process.exit(1);
 			}
 
+			const repoDirs = workspaceRepoDirs(wsDir);
 			const dirsToOpen: string[] = [];
 
-			for (const repoDir of workspaceRepoDirs(wsDir)) {
-				if (options.dirty) {
-					if (!(await isRepoDirty(repoDir))) {
-						continue;
-					}
-				}
-				dirsToOpen.push(repoDir);
+			if (where) {
+				const workspace = ctx.currentWorkspace ?? "";
+				const branch = await requireBranch(wsDir, workspace);
+				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
+				await Promise.all(
+					repoDirs.map(async (repoDir) => {
+						const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase);
+						const flags = computeFlags(status, branch);
+						if (repoMatchesWhere(flags, where)) {
+							dirsToOpen.push(repoDir);
+						}
+					}),
+				);
+				// Preserve original order
+				dirsToOpen.sort((a, b) => repoDirs.indexOf(a) - repoDirs.indexOf(b));
+			} else {
+				dirsToOpen.push(...repoDirs);
 			}
 
 			if (dirsToOpen.length === 0) {
-				if (options.dirty) {
-					info("All worktrees are clean — nothing to open");
+				if (where) {
+					info("No worktrees match the filter");
 				} else {
 					info("No worktrees in workspace");
 				}

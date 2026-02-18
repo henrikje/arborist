@@ -159,6 +159,54 @@ export function wouldLoseWork(flags: RepoFlags): boolean {
 	return flags.isDirty || flags.isUnpushed || flags.isDetached || flags.isDrifted || flags.hasOperation;
 }
 
+// ── Where Filtering ──
+
+const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
+	dirty: (f) => f.isDirty,
+	unpushed: (f) => f.isUnpushed,
+	"behind-remote": (f) => f.needsPull,
+	"behind-base": (f) => f.needsRebase,
+	drifted: (f) => f.isDrifted,
+	detached: (f) => f.isDetached,
+	operation: (f) => f.hasOperation,
+	local: (f) => f.isLocal,
+	gone: (f) => f.isGone,
+	shallow: (f) => f.isShallow,
+	"at-risk": (f) => needsAttention(f),
+};
+
+const VALID_TERMS = Object.keys(FILTER_TERMS);
+
+export function validateWhere(where: string): string | null {
+	const terms = where.split(",");
+	const invalid = terms.filter((t) => !FILTER_TERMS[t]);
+	if (invalid.length > 0) {
+		return `Unknown filter ${invalid.length === 1 ? "term" : "terms"}: ${invalid.join(", ")}. Valid terms: ${VALID_TERMS.join(", ")}`;
+	}
+	return null;
+}
+
+export function repoMatchesWhere(flags: RepoFlags, where: string): boolean {
+	const terms = where.split(",");
+	return terms.some((t) => FILTER_TERMS[t]?.(flags) ?? false);
+}
+
+export function workspaceMatchesWhere(repos: RepoStatus[], branch: string, where: string): boolean {
+	return repos.some((repo) => {
+		const flags = computeFlags(repo, branch);
+		return repoMatchesWhere(flags, where);
+	});
+}
+
+export function isWorkspaceSafe(repos: RepoStatus[], branch: string): boolean {
+	for (const repo of repos) {
+		const flags = computeFlags(repo, branch);
+		if (wouldLoseWork(flags)) return false;
+		if (repo.publish === null && repo.base !== null && repo.base.ahead > 0) return false;
+	}
+	return true;
+}
+
 // ── Workspace Summary ──
 
 export interface WorkspaceSummary {
@@ -171,6 +219,33 @@ export interface WorkspaceSummary {
 	issueLabels: string[];
 	issueCounts: { label: string; count: number; key: keyof RepoFlags }[];
 	lastCommit: string | null;
+}
+
+export function computeSummaryAggregates(
+	repos: RepoStatus[],
+	branch: string,
+): { withIssues: number; issueLabels: string[]; issueCounts: WorkspaceSummary["issueCounts"] } {
+	let withIssues = 0;
+	const allLabels = new Set<string>();
+	const flagCounts = new Map<keyof RepoFlags, number>();
+	for (const repo of repos) {
+		const flags = computeFlags(repo, branch);
+		if (needsAttention(flags)) {
+			withIssues++;
+			for (const { key, label } of FLAG_LABELS) {
+				if (flags[key]) {
+					allLabels.add(label);
+					flagCounts.set(key, (flagCounts.get(key) ?? 0) + 1);
+				}
+			}
+		}
+	}
+	const issueCounts = FLAG_LABELS.filter(({ key }) => flagCounts.has(key)).map(({ key, label }) => ({
+		label,
+		count: flagCounts.get(key) ?? 0,
+		key,
+	}));
+	return { withIssues, issueLabels: [...allLabels], issueCounts };
 }
 
 // ── Status Gathering ──
@@ -372,29 +447,7 @@ export async function gatherWorkspaceSummary(
 		return r.status;
 	});
 
-	// Compute aggregate flags
-	let withIssues = 0;
-	const allLabels = new Set<string>();
-	const flagCounts = new Map<keyof RepoFlags, number>();
-
-	for (const repo of repos) {
-		const flags = computeFlags(repo, branch);
-		if (needsAttention(flags)) {
-			withIssues++;
-			for (const { key, label } of FLAG_LABELS) {
-				if (flags[key]) {
-					allLabels.add(label);
-					flagCounts.set(key, (flagCounts.get(key) ?? 0) + 1);
-				}
-			}
-		}
-	}
-
-	const issueCounts = FLAG_LABELS.filter(({ key }) => flagCounts.has(key)).map(({ key, label }) => ({
-		label,
-		count: flagCounts.get(key) ?? 0,
-		key,
-	}));
+	const { withIssues, issueLabels, issueCounts } = computeSummaryAggregates(repos, branch);
 
 	const lastCommit = latestCommitDate(repoResults.map((r) => r.commitDate));
 
@@ -405,7 +458,7 @@ export async function gatherWorkspaceSummary(
 		repos,
 		total: repos.length,
 		withIssues,
-		issueLabels: [...allLabels],
+		issueLabels,
 		issueCounts,
 		lastCommit,
 	};
