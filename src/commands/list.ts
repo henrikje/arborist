@@ -213,14 +213,12 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 			const renderHeader = (): string => {
 				let header = `  ${dim("WORKSPACE")}${" ".repeat(maxName - 9)}`;
 				header += `    ${dim("BRANCH")}${" ".repeat(maxBranch - 6)}`;
-				if (showStatus) {
-					header += `    ${dim("LAST COMMIT")}${" ".repeat(lcWidths.total - 11)}`;
-				}
 				if (hasAnyBase) {
 					header += `    ${dim("BASE")}${" ".repeat(maxBase - 4)}`;
 				}
 				header += `    ${dim("REPOS")}${" ".repeat(maxRepos - 5)}`;
 				if (showStatus) {
+					header += `    ${dim("LAST COMMIT")}${" ".repeat(lcWidths.total - 11)}`;
 					header += `    ${dim("STATUS")}`;
 				}
 				return header;
@@ -233,10 +231,10 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				if (row.special === "config-missing") {
 					let line = `${prefix}${paddedName}`;
 					line += `    ${" ".repeat(maxBranch)}`;
-					if (showStatus) line += `    ${" ".repeat(lcWidths.total)}`;
 					if (hasAnyBase) line += `    ${" ".repeat(maxBase)}`;
 					line += `    ${" ".repeat(maxRepos)}`;
 					if (showStatus) {
+						line += `    ${" ".repeat(lcWidths.total)}`;
 						line += `    ${row.statusColored}`;
 					}
 					return line;
@@ -244,6 +242,10 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 				let line = `${prefix}${paddedName}`;
 				line += `    ${row.branch.padEnd(maxBranch)}`;
+				if (hasAnyBase) {
+					line += `    ${row.base.padEnd(maxBase)}`;
+				}
+				line += `    ${row.repos.padEnd(maxRepos)}`;
 				if (showStatus) {
 					const parts = lastCommitParts(row);
 					let commitCell: string;
@@ -255,12 +257,6 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						commitCell = " ".repeat(lcWidths.total);
 					}
 					line += `    ${commitCell}`;
-				}
-				if (hasAnyBase) {
-					line += `    ${row.base.padEnd(maxBase)}`;
-				}
-				line += `    ${row.repos.padEnd(maxRepos)}`;
-				if (showStatus) {
 					line += `    ${row.statusColored}`;
 				}
 				return line;

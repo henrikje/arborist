@@ -739,17 +739,17 @@ teardown() {
     [[ "$output" == *"3 months"* ]]
 }
 
-@test "arb list LAST COMMIT column appears after BRANCH" {
+@test "arb list LAST COMMIT column appears between REPOS and STATUS" {
     arb create ws-one repo-a
     run arb list
-    # LAST COMMIT should appear between BRANCH and REPOS in the header
+    # LAST COMMIT should appear between REPOS and STATUS in the header
     header=$(echo "$output" | head -1)
-    branch_pos=$(echo "$header" | grep -bo "BRANCH" | head -1 | cut -d: -f1)
-    commit_pos=$(echo "$header" | grep -bo "LAST COMMIT" | head -1 | cut -d: -f1)
     repos_pos=$(echo "$header" | grep -bo "REPOS" | head -1 | cut -d: -f1)
-    # LAST COMMIT should be after BRANCH and before REPOS
-    [ "$commit_pos" -gt "$branch_pos" ]
-    [ "$commit_pos" -lt "$repos_pos" ]
+    commit_pos=$(echo "$header" | grep -bo "LAST COMMIT" | head -1 | cut -d: -f1)
+    status_pos=$(echo "$header" | grep -bo "STATUS" | head -1 | cut -d: -f1)
+    # LAST COMMIT should be after REPOS and before STATUS
+    [ "$commit_pos" -gt "$repos_pos" ]
+    [ "$commit_pos" -lt "$status_pos" ]
 }
 
 @test "arb list shows branch name" {
