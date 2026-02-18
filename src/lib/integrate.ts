@@ -62,12 +62,12 @@ export async function integrate(
 	const { repos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
 	const canTwoPhase = shouldFetch && fetchDirs.length > 0 && isTTY();
 
-	const assess = async () => {
+	const assess = async (fetchFailed: string[]) => {
 		const assessments: RepoAssessment[] = [];
 		for (const repo of selectedRepos) {
 			const repoDir = `${wsDir}/${repo}`;
 			const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
-			assessments.push(await assessRepo(status, repoDir, branch));
+			assessments.push(await assessRepo(status, repoDir, branch, fetchFailed));
 		}
 		return assessments;
 	};
@@ -78,7 +78,7 @@ export async function integrate(
 		// Two-phase: render stale plan immediately, re-render after fetch
 		const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, { silent: true });
 
-		assessments = await assess();
+		assessments = await assess([]);
 		const stalePlan = formatIntegratePlan(assessments, mode, branch);
 		const fetchingLine = `${dim(`Fetching ${plural(fetchDirs.length, "repo")}...`)}\n`;
 		const staleOutput = stalePlan + fetchingLine;
@@ -86,8 +86,11 @@ export async function integrate(
 
 		const fetchResults = await fetchPromise;
 
+		// Compute fetch failures silently (no stderr output yet)
+		const fetchFailed = getFetchFailedRepos(repos, localRepos, fetchResults);
+
 		// Re-assess with fresh refs and predict conflicts
-		assessments = await assess();
+		assessments = await assess(fetchFailed);
 		await predictIntegrateConflicts(assessments);
 		const freshPlan = formatIntegratePlan(assessments, mode, branch);
 		clearLines(countLines(staleOutput));
@@ -97,13 +100,13 @@ export async function integrate(
 	} else if (shouldFetch && fetchDirs.length > 0) {
 		// Fallback: fetch with visible progress, then assess
 		const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
-		reportFetchFailures(repos, localRepos, fetchResults);
-		assessments = await assess();
+		const fetchFailed = reportFetchFailures(repos, localRepos, fetchResults);
+		assessments = await assess(fetchFailed);
 		await predictIntegrateConflicts(assessments);
 		process.stderr.write(formatIntegratePlan(assessments, mode, branch));
 	} else {
 		// No fetch needed
-		assessments = await assess();
+		assessments = await assess([]);
 		await predictIntegrateConflicts(assessments);
 		process.stderr.write(formatIntegratePlan(assessments, mode, branch));
 	}
@@ -244,7 +247,25 @@ async function predictIntegrateConflicts(assessments: RepoAssessment[]): Promise
 	);
 }
 
-async function assessRepo(status: RepoStatus, repoDir: string, branch: string): Promise<RepoAssessment> {
+function getFetchFailedRepos(
+	repos: string[],
+	localRepos: string[],
+	results: Map<string, { exitCode: number; output: string }>,
+): string[] {
+	return repos
+		.filter((repo) => !localRepos.includes(repo))
+		.filter((repo) => {
+			const fr = results.get(repo);
+			return !fr || fr.exitCode !== 0;
+		});
+}
+
+async function assessRepo(
+	status: RepoStatus,
+	repoDir: string,
+	branch: string,
+	fetchFailed: string[],
+): Promise<RepoAssessment> {
 	const upstreamRemote = status.base?.remote ?? "origin";
 
 	const headSha = await getShortHead(repoDir);
@@ -263,6 +284,11 @@ async function assessRepo(status: RepoStatus, repoDir: string, branch: string): 
 	// Local repo — no remote
 	if (status.share === null) {
 		return { ...base, skipReason: "local repo" };
+	}
+
+	// Fetch failed for this repo
+	if (fetchFailed.includes(status.name)) {
+		return { ...base, skipReason: "fetch failed" };
 	}
 
 	// Operation in progress
