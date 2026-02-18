@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import type { RepoStatus } from "./status";
-import { computeFlags, flagLabels, needsAttention, wouldLoseWork } from "./status";
+import {
+	computeFlags,
+	flagLabels,
+	isWorkspaceSafe,
+	needsAttention,
+	repoMatchesWhere,
+	validateWhere,
+	workspaceMatchesWhere,
+	wouldLoseWork,
+} from "./status";
 
 function makeRepo(overrides: Partial<RepoStatus> = {}): RepoStatus {
 	return {
@@ -319,5 +328,215 @@ describe("wouldLoseWork", () => {
 			"feature",
 		);
 		expect(wouldLoseWork(flags)).toBe(false);
+	});
+});
+
+describe("validateWhere", () => {
+	test("returns null for valid single term", () => {
+		expect(validateWhere("dirty")).toBeNull();
+	});
+
+	test("returns null for valid comma-separated terms", () => {
+		expect(validateWhere("dirty,gone,unpushed")).toBeNull();
+	});
+
+	test("returns null for at-risk derived term", () => {
+		expect(validateWhere("at-risk")).toBeNull();
+	});
+
+	test("returns null for all valid terms", () => {
+		expect(
+			validateWhere("dirty,unpushed,behind-remote,behind-base,drifted,detached,operation,local,gone,shallow,at-risk"),
+		).toBeNull();
+	});
+
+	test("returns error for invalid term", () => {
+		const err = validateWhere("invalid");
+		expect(err).toContain("Unknown filter term: invalid");
+		expect(err).toContain("Valid terms:");
+	});
+
+	test("returns error for multiple invalid terms", () => {
+		const err = validateWhere("foo,bar");
+		expect(err).toContain("Unknown filter terms: foo, bar");
+	});
+
+	test("returns error when mix of valid and invalid", () => {
+		const err = validateWhere("dirty,nope");
+		expect(err).toContain("Unknown filter term: nope");
+	});
+});
+
+describe("repoMatchesWhere", () => {
+	test("matches dirty repo", () => {
+		const flags = computeFlags(makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }), "feature");
+		expect(repoMatchesWhere(flags, "dirty")).toBe(true);
+	});
+
+	test("does not match clean repo for dirty", () => {
+		const flags = computeFlags(makeRepo(), "feature");
+		expect(repoMatchesWhere(flags, "dirty")).toBe(false);
+	});
+
+	test("matches with comma OR — first term matches", () => {
+		const flags = computeFlags(makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }), "feature");
+		expect(repoMatchesWhere(flags, "dirty,gone")).toBe(true);
+	});
+
+	test("matches with comma OR — second term matches", () => {
+		const flags = computeFlags(
+			makeRepo({ publish: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null } }),
+			"feature",
+		);
+		expect(repoMatchesWhere(flags, "dirty,gone")).toBe(true);
+	});
+
+	test("does not match when no terms match", () => {
+		const flags = computeFlags(makeRepo(), "feature");
+		expect(repoMatchesWhere(flags, "dirty,gone")).toBe(false);
+	});
+
+	test("matches at-risk derived term", () => {
+		const flags = computeFlags(makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }), "feature");
+		expect(repoMatchesWhere(flags, "at-risk")).toBe(true);
+	});
+
+	test("at-risk does not match clean repo", () => {
+		const flags = computeFlags(makeRepo(), "feature");
+		expect(repoMatchesWhere(flags, "at-risk")).toBe(false);
+	});
+
+	test("matches each raw flag term", () => {
+		const cases: [string, Partial<RepoStatus>][] = [
+			[
+				"unpushed",
+				{ publish: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 } },
+			],
+			[
+				"behind-remote",
+				{ publish: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3 } },
+			],
+			["behind-base", { base: { remote: "origin", ref: "main", ahead: 0, behind: 2 } }],
+			[
+				"drifted",
+				{ identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false } },
+			],
+			["detached", { identity: { worktreeKind: "linked", headMode: { kind: "detached" }, shallow: false } }],
+			["operation", { operation: "rebase" }],
+			["local", { publish: null }],
+			["gone", { publish: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null } }],
+			[
+				"shallow",
+				{ identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "feature" }, shallow: true } },
+			],
+		];
+		for (const [term, overrides] of cases) {
+			const flags = computeFlags(makeRepo(overrides), "feature");
+			expect(repoMatchesWhere(flags, term)).toBe(true);
+		}
+	});
+});
+
+describe("workspaceMatchesWhere", () => {
+	test("matches when any repo matches (ANY-repo semantics)", () => {
+		const repos = [
+			makeRepo({ name: "clean-repo" }),
+			makeRepo({ name: "dirty-repo", local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }),
+		];
+		expect(workspaceMatchesWhere(repos, "feature", "dirty")).toBe(true);
+	});
+
+	test("does not match when no repos match", () => {
+		const repos = [makeRepo({ name: "clean-a" }), makeRepo({ name: "clean-b" })];
+		expect(workspaceMatchesWhere(repos, "feature", "dirty")).toBe(false);
+	});
+
+	test("matches at-risk across repos", () => {
+		const repos = [
+			makeRepo({ name: "clean-repo" }),
+			makeRepo({
+				name: "gone-repo",
+				publish: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
+			}),
+		];
+		expect(workspaceMatchesWhere(repos, "feature", "at-risk")).toBe(true);
+	});
+});
+
+describe("isWorkspaceSafe", () => {
+	test("returns true for clean repos", () => {
+		const repos = [makeRepo({ name: "a" }), makeRepo({ name: "b" })];
+		expect(isWorkspaceSafe(repos, "feature")).toBe(true);
+	});
+
+	test("returns false when a repo is dirty", () => {
+		const repos = [makeRepo({ name: "dirty", local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } })];
+		expect(isWorkspaceSafe(repos, "feature")).toBe(false);
+	});
+
+	test("returns false when a repo has unpushed commits", () => {
+		const repos = [
+			makeRepo({
+				name: "unpushed",
+				publish: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 },
+			}),
+		];
+		expect(isWorkspaceSafe(repos, "feature")).toBe(false);
+	});
+
+	test("returns false when a local repo has commits ahead of base", () => {
+		const repos = [
+			makeRepo({
+				name: "local-with-commits",
+				publish: null,
+				base: { remote: "origin", ref: "main", ahead: 3, behind: 0 },
+			}),
+		];
+		expect(isWorkspaceSafe(repos, "feature")).toBe(false);
+	});
+
+	test("returns true when repos are behind base (safe to remove)", () => {
+		const repos = [makeRepo({ name: "behind", base: { remote: "origin", ref: "main", ahead: 0, behind: 5 } })];
+		expect(isWorkspaceSafe(repos, "feature")).toBe(true);
+	});
+
+	test("returns true when repos are gone (safe to remove)", () => {
+		const repos = [
+			makeRepo({
+				name: "gone",
+				publish: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
+			}),
+		];
+		expect(isWorkspaceSafe(repos, "feature")).toBe(true);
+	});
+
+	test("returns true when repos are shallow (safe to remove)", () => {
+		const repos = [
+			makeRepo({
+				name: "shallow",
+				identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "feature" }, shallow: true },
+			}),
+		];
+		expect(isWorkspaceSafe(repos, "feature")).toBe(true);
+	});
+
+	test("returns false when a repo is detached", () => {
+		const repos = [
+			makeRepo({
+				name: "detached",
+				identity: { worktreeKind: "linked", headMode: { kind: "detached" }, shallow: false },
+			}),
+		];
+		expect(isWorkspaceSafe(repos, "feature")).toBe(false);
+	});
+
+	test("returns false when a repo is drifted", () => {
+		const repos = [
+			makeRepo({
+				name: "drifted",
+				identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
+			}),
+		];
+		expect(isWorkspaceSafe(repos, "feature")).toBe(false);
 	});
 });

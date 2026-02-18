@@ -1741,7 +1741,7 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     [ "$days_pos" -eq "$months_pos" ]
 }
 
-@test "arb status --at-risk shows only at-risk repos" {
+@test "arb status --where at-risk shows only at-risk repos" {
     arb create my-feature repo-a repo-b
     echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
@@ -1754,11 +1754,11 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     # Both repos are clean and pushed — at-risk should show no repos
-    run arb status --at-risk
+    run arb status --where at-risk
     [[ "$output" == *"(no repos)"* ]]
 }
 
-@test "arb status -r shows only at-risk repos" {
+@test "arb status --where at-risk shows dirty repos" {
     arb create my-feature repo-a repo-b
     # Make repo-a dirty (at-risk), push repo-b so it's clean and pushed (not at-risk)
     echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
@@ -1768,7 +1768,7 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
-    run arb status -r
+    run arb status --where at-risk
     # repo-a is at-risk (dirty), repo-b is not at-risk (clean + pushed)
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" != *"repo-b"* ]]
@@ -2216,11 +2216,11 @@ SCRIPT
     [[ "$output" != *"repo-b"* ]]
 }
 
-@test "arb open --dirty shows nothing to open when all clean" {
+@test "arb open --dirty shows no match when all clean" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb open --dirty true
-    [[ "$output" == *"nothing to open"* ]]
+    [[ "$output" == *"No worktrees match the filter"* ]]
 }
 
 @test "arb open without command fails" {
@@ -3584,78 +3584,78 @@ push_then_delete_remote() {
     [ ! -d "$TEST_DIR/project/gone-remove" ]
 }
 
-# ── remove --all-ok ──────────────────────────────────────────────
+# ── remove --all-safe ──────────────────────────────────────────────
 
-@test "arb remove --all-ok removes ok workspaces, keeps dirty" {
+@test "arb remove --all-safe removes safe workspaces, keeps dirty" {
     arb create ws-clean repo-a
     arb create ws-dirty repo-a
 
-    # Push ws-clean so it's "ok"
+    # Push ws-clean so it's "safe"
     git -C "$TEST_DIR/project/ws-clean/repo-a" push -u origin ws-clean >/dev/null 2>&1
 
     # Push ws-dirty then dirty it up
     git -C "$TEST_DIR/project/ws-dirty/repo-a" push -u origin ws-dirty >/dev/null 2>&1
     echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
 
-    run arb remove --all-ok --force
+    run arb remove --all-safe --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-clean" ]
     [ -d "$TEST_DIR/project/ws-dirty" ]
 }
 
-@test "arb remove --all-ok skips current workspace" {
+@test "arb remove --all-safe skips current workspace" {
     arb create ws-inside repo-a
     git -C "$TEST_DIR/project/ws-inside/repo-a" push -u origin ws-inside >/dev/null 2>&1
 
     cd "$TEST_DIR/project/ws-inside"
-    run arb remove --all-ok --force
+    run arb remove --all-safe --force
     [ "$status" -eq 0 ]
     [ -d "$TEST_DIR/project/ws-inside" ]
 }
 
-@test "arb remove --all-ok with no ok workspaces exits cleanly" {
+@test "arb remove --all-safe with no safe workspaces exits cleanly" {
     arb create ws-dirty repo-a
     git -C "$TEST_DIR/project/ws-dirty/repo-a" push -u origin ws-dirty >/dev/null 2>&1
     echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
 
-    run arb remove --all-ok --force
+    run arb remove --all-safe --force
     [ "$status" -eq 0 ]
-    [[ "$output" == *"No workspaces with ok status"* ]]
+    [[ "$output" == *"No workspaces with safe status"* ]]
     [ -d "$TEST_DIR/project/ws-dirty" ]
 }
 
-@test "arb remove --all-ok with positional args errors" {
-    run arb remove --all-ok ws-a
+@test "arb remove --all-safe with positional args errors" {
+    run arb remove --all-safe ws-a
     [ "$status" -ne 0 ]
-    [[ "$output" == *"Cannot combine --all-ok with workspace names"* ]]
+    [[ "$output" == *"Cannot combine --all-safe with workspace names."* ]]
 }
 
-@test "arb remove --all-ok --force skips confirmation" {
+@test "arb remove --all-safe --force skips confirmation" {
     arb create ws-ok repo-a
     git -C "$TEST_DIR/project/ws-ok/repo-a" push -u origin ws-ok >/dev/null 2>&1
 
-    run arb remove --all-ok --force
+    run arb remove --all-safe --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-ok" ]
 }
 
-@test "arb remove --all-ok skips config-missing workspaces" {
+@test "arb remove --all-safe skips config-missing workspaces" {
     arb create ws-broken repo-a
     git -C "$TEST_DIR/project/ws-broken/repo-a" push -u origin ws-broken >/dev/null 2>&1
     # Remove config to simulate config-missing state
     rm "$TEST_DIR/project/ws-broken/.arbws/config"
 
-    run arb remove --all-ok --force
+    run arb remove --all-safe --force
     [ "$status" -eq 0 ]
-    [[ "$output" == *"No workspaces with ok status"* ]]
+    [[ "$output" == *"No workspaces with safe status"* ]]
     [ -d "$TEST_DIR/project/ws-broken" ]
 }
 
-@test "arb remove --all-ok --delete-remote composes correctly" {
+@test "arb remove --all-safe --delete-remote composes correctly" {
     arb create ws-rd repo-a
     git -C "$TEST_DIR/project/ws-rd/repo-a" push -u origin ws-rd >/dev/null 2>&1
 
-    run arb remove --all-ok --force --delete-remote
+    run arb remove --all-safe --force --delete-remote
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-rd" ]
     # Remote branch should be gone
@@ -3663,7 +3663,7 @@ push_then_delete_remote() {
     [ "$status" -ne 0 ]
 }
 
-@test "arb remove --all-ok includes workspaces that are behind base" {
+@test "arb remove --all-safe includes workspaces that are behind base" {
     arb create ws-behind repo-a
     git -C "$TEST_DIR/project/ws-behind/repo-a" push -u origin ws-behind >/dev/null 2>&1
 
@@ -3673,7 +3673,7 @@ push_then_delete_remote() {
     # Fetch so the workspace sees the new remote state
     git -C "$TEST_DIR/project/ws-behind/repo-a" fetch origin >/dev/null 2>&1
 
-    run arb remove --all-ok --force
+    run arb remove --all-safe --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-behind" ]
 }
@@ -3804,13 +3804,13 @@ push_then_delete_remote() {
     [[ "$output" == *"Seeded 2 template files"* ]]
 }
 
-@test "arb remove --all-ok --force produces per-workspace output" {
+@test "arb remove --all-safe --force produces per-workspace output" {
     arb create ws-one repo-a
     arb create ws-two repo-a
     git -C "$TEST_DIR/project/ws-one/repo-a" push -u origin ws-one >/dev/null 2>&1
     git -C "$TEST_DIR/project/ws-two/repo-a" push -u origin ws-two >/dev/null 2>&1
 
-    run arb remove --all-ok --force
+    run arb remove --all-safe --force
     [ "$status" -eq 0 ]
     # Should have columnar table with workspace names
     [[ "$output" == *"ws-one"* ]]
@@ -3920,7 +3920,7 @@ push_then_delete_remote() {
     [ -d "$TEST_DIR/project/at-risk-b" ]
 }
 
-@test "arb remove --all-ok shows template drift in status table" {
+@test "arb remove --all-safe shows template drift in status table" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
     echo "WS=original" > "$TEST_DIR/project/.arb/templates/workspace/.env"
 
@@ -3929,7 +3929,7 @@ push_then_delete_remote() {
     # Modify workspace-level template file (outside git repos, doesn't affect dirty status)
     echo "WS=modified" > "$TEST_DIR/project/tpl-allok/.env"
 
-    run arb remove --all-ok --force
+    run arb remove --all-safe --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"Template files modified"* ]]
     [ ! -d "$TEST_DIR/project/tpl-allok" ]
@@ -3996,20 +3996,20 @@ push_then_delete_remote() {
     [ "$status" -ne 0 ]
 }
 
-@test "arb remove --all-ok --yes skips confirmation" {
+@test "arb remove --all-safe --yes skips confirmation" {
     arb create ws-allok-y repo-a
     git -C "$TEST_DIR/project/ws-allok-y/repo-a" push -u origin ws-allok-y >/dev/null 2>&1
 
-    run arb remove --all-ok --yes
+    run arb remove --all-safe --yes
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-allok-y" ]
 }
 
-@test "arb remove --all-ok -d shows remote deletion notice" {
+@test "arb remove --all-safe -d shows remote deletion notice" {
     arb create ws-allok-d repo-a
     git -C "$TEST_DIR/project/ws-allok-d/repo-a" push -u origin ws-allok-d >/dev/null 2>&1
 
-    run arb remove --all-ok --yes -d
+    run arb remove --all-safe --yes -d
     [ "$status" -eq 0 ]
     [[ "$output" == *"Remote branches will also be deleted"* ]]
     [ ! -d "$TEST_DIR/project/ws-allok-d" ]
@@ -4119,13 +4119,13 @@ push_then_delete_remote() {
     [ -d "$TEST_DIR/project/my-feature" ]
 }
 
-@test "arb remove --all-ok --dry-run shows workspaces without removing" {
+@test "arb remove --all-safe --dry-run shows workspaces without removing" {
     arb create ws-one repo-a
     git -C "$TEST_DIR/project/ws-one/repo-a" push -u origin ws-one >/dev/null 2>&1
     arb create ws-two repo-b
     git -C "$TEST_DIR/project/ws-two/repo-b" push -u origin ws-two >/dev/null 2>&1
     cd "$TEST_DIR/project"
-    run arb remove --all-ok --dry-run
+    run arb remove --all-safe --dry-run
     [ "$status" -eq 0 ]
     [[ "$output" == *"ws-one"* ]]
     [[ "$output" == *"ws-two"* ]]
@@ -4212,5 +4212,123 @@ push_then_delete_remote() {
     run arb --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"-C <directory>"* ]]
+}
+
+# ── --where filtering ─────────────────────────────────────────────
+
+@test "arb status --where dirty filters repos" {
+    arb create my-feature repo-a repo-b
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --where dirty
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb status --where gone shows only gone repos" {
+    arb create my-feature repo-a repo-b
+    # Push repo-a, then delete the remote branch to make it "gone"
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "commit" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    git -C "$TEST_DIR/origin/repo-a.git" branch -D my-feature >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" fetch --prune >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --where gone
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb status --where dirty --json filters JSON output" {
+    arb create my-feature repo-a repo-b
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --where dirty --json
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb status --where invalid shows helpful error" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --where invalid
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Unknown filter term: invalid"* ]]
+    [[ "$output" == *"Valid terms:"* ]]
+}
+
+@test "arb status --where comma-separated uses OR logic" {
+    arb create my-feature repo-a repo-b
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --where dirty,gone
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb status --dirty --where errors" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --dirty --where dirty
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot combine --dirty with --where"* ]]
+}
+
+@test "arb exec --where dirty runs only in dirty repos" {
+    arb create my-feature repo-a repo-b
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb exec --where dirty pwd
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb exec --dirty still works as shortcut" {
+    arb create my-feature repo-a repo-b
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb exec --dirty pwd
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb list --where at-risk filters workspaces" {
+    arb create ws-dirty repo-a
+    arb create ws-clean repo-a
+    echo "dirty" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
+    echo "change" > "$TEST_DIR/project/ws-clean/repo-a/f.txt"
+    git -C "$TEST_DIR/project/ws-clean/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/ws-clean/repo-a" commit -m "commit" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/ws-clean/repo-a" push -u origin ws-clean >/dev/null 2>&1
+    cd "$TEST_DIR/project"
+    run arb list --where at-risk
+    [[ "$output" == *"ws-dirty"* ]]
+    [[ "$output" != *"ws-clean"* ]]
+}
+
+@test "arb remove --all-safe --where gone narrows to safe-and-gone" {
+    arb create ws-gone repo-a
+    arb create ws-safe repo-a
+    # Make ws-gone have a gone remote (push then delete remote branch)
+    echo "change" > "$TEST_DIR/project/ws-gone/repo-a/f.txt"
+    git -C "$TEST_DIR/project/ws-gone/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/ws-gone/repo-a" commit -m "commit" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/ws-gone/repo-a" push -u origin ws-gone >/dev/null 2>&1
+    git -C "$TEST_DIR/origin/repo-a.git" branch -D ws-gone >/dev/null 2>&1
+    git -C "$TEST_DIR/project/ws-gone/repo-a" fetch --prune >/dev/null 2>&1
+    # Push ws-safe (safe but not gone)
+    echo "change" > "$TEST_DIR/project/ws-safe/repo-a/f.txt"
+    git -C "$TEST_DIR/project/ws-safe/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/ws-safe/repo-a" commit -m "commit" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/ws-safe/repo-a" push -u origin ws-safe >/dev/null 2>&1
+    cd "$TEST_DIR/project"
+    run arb remove --all-safe --where gone --force
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/ws-gone" ]
+    [ -d "$TEST_DIR/project/ws-safe" ]
 }
 

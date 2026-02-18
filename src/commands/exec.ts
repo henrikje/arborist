@@ -1,36 +1,69 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { isRepoDirty } from "../lib/git";
+import { configGet } from "../lib/config";
 import { boldLine, error, plural, success } from "../lib/output";
 import { workspaceRepoDirs } from "../lib/repos";
+import { computeFlags, gatherRepoStatus, repoMatchesWhere, validateWhere } from "../lib/status";
 import type { ArbContext } from "../lib/types";
-import { requireWorkspace } from "../lib/workspace-context";
+import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
 export function registerExecCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("exec")
 		.argument("<command...>", "Command to run in each worktree")
-		.option("-d, --dirty", "Only run in dirty repos")
+		.option("-d, --dirty", "Only run in dirty repos (shorthand for --where dirty)")
+		.option("--where <filter>", "Only run in repos matching status filter (comma-separated, OR logic)")
 		.passThroughOptions()
 		.summary("Run a command in each worktree")
 		.description(
-			"Run the given command sequentially in each worktree and report which succeeded or failed. Each worktree is preceded by an ==> repo <== header. The command inherits your terminal, so interactive programs work.\n\nArb flags (--dirty) must come before the command. Everything after the command name is passed through verbatim:\n\n  arb exec --dirty git diff -d    # --dirty → arb, -d → git diff",
+			"Run the given command sequentially in each worktree and report which succeeded or failed. Each worktree is preceded by an ==> repo <== header. The command inherits your terminal, so interactive programs work.\n\nUse --dirty to only run in repos with local changes, or --where <filter> to filter by any status flag: dirty, unpushed, behind-remote, behind-base, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic.\n\nArb flags must come before the command. Everything after the command name is passed through verbatim:\n\n  arb exec --dirty git diff -d    # --dirty → arb, -d → git diff",
 		)
-		.action(async (args: string[], options: { dirty?: boolean }) => {
+		.action(async (args: string[], options: { dirty?: boolean; where?: string }) => {
 			const ctx = getCtx();
 			const { wsDir } = requireWorkspace(ctx);
+
+			// Resolve --dirty as shorthand for --where dirty
+			if (options.dirty && options.where) {
+				error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
+				process.exit(1);
+			}
+			const where = options.dirty ? "dirty" : options.where;
+
+			if (where) {
+				const err = validateWhere(where);
+				if (err) {
+					error(err);
+					process.exit(1);
+				}
+			}
+
 			const execOk: string[] = [];
 			const execFailed: string[] = [];
 			const skipped: string[] = [];
+			const repoDirs = workspaceRepoDirs(wsDir);
 
-			for (const repoDir of workspaceRepoDirs(wsDir)) {
+			// Pre-gather status when filtering
+			const repoFilter = new Map<string, boolean>();
+			if (where) {
+				const workspace = ctx.currentWorkspace ?? "";
+				const branch = await requireBranch(wsDir, workspace);
+				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
+				await Promise.all(
+					repoDirs.map(async (repoDir) => {
+						const repo = basename(repoDir);
+						const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase);
+						const flags = computeFlags(status, branch);
+						repoFilter.set(repo, repoMatchesWhere(flags, where));
+					}),
+				);
+			}
+
+			for (const repoDir of repoDirs) {
 				const repo = basename(repoDir);
 
-				if (options.dirty) {
-					if (!(await isRepoDirty(repoDir))) {
-						skipped.push(repo);
-						continue;
-					}
+				if (repoFilter.size > 0 && !repoFilter.get(repo)) {
+					skipped.push(repo);
+					continue;
 				}
 
 				boldLine(`==> ${repo} <==`);
@@ -51,7 +84,7 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 
 			const parts: string[] = [];
 			if (execOk.length > 0) parts.push(`Ran in ${plural(execOk.length, "repo")}`);
-			if (skipped.length > 0) parts.push(`${skipped.length} clean`);
+			if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
 			if (parts.length > 0) success(parts.join(", "));
 			if (execFailed.length > 0) error(`Failed: ${execFailed.join(" ")}`);
 

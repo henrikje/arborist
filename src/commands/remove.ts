@@ -11,6 +11,9 @@ import {
 	computeFlags,
 	formatIssueCounts,
 	gatherWorkspaceSummary,
+	isWorkspaceSafe,
+	validateWhere,
+	workspaceMatchesWhere,
 	wouldLoseWork,
 } from "../lib/status";
 import { type TemplateDiff, diffTemplates } from "../lib/templates";
@@ -236,15 +239,6 @@ async function executeRemoval(
 	return failedRemoteDeletes;
 }
 
-function isAssessmentOk(assessment: WorkspaceAssessment): boolean {
-	for (const status of assessment.summary.repos) {
-		const flags = computeFlags(status, assessment.branch);
-		if (wouldLoseWork(flags)) return false;
-		if (status.publish === null && status.base !== null && status.base.ahead > 0) return false;
-	}
-	return true;
-}
-
 function buildConfirmMessage(count: number, singleName: string | undefined, deleteRemote: boolean): string {
 	const subject = count === 1 && singleName ? `workspace ${singleName}` : plural(count, "workspace");
 	const remoteSuffix = deleteRemote ? " and delete remote branches" : "";
@@ -258,27 +252,45 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 		.option("-f, --force", "Force removal of at-risk workspaces (implies --yes)")
 		.option("-d, --delete-remote", "Delete remote branches")
 		.option(
-			"-a, --all-ok",
+			"-a, --all-safe",
 			"Remove all safe workspaces (no uncommitted changes, unpushed commits, or branch drift; behind base is fine)",
 		)
+		.option("--where <filter>", "Filter workspaces by repo status flags (comma-separated, OR logic)")
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.summary("Remove one or more workspaces")
 		.description(
-			"Remove one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments. Use --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches, and --all-ok to batch-remove all workspaces with ok status.",
+			"Remove one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-remove all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Combine with --where <filter> to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). --where accepts: dirty, unpushed, behind-remote, behind-base, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.",
 		)
 		.action(
 			async (
 				nameArgs: string[],
-				options: { yes?: boolean; force?: boolean; deleteRemote?: boolean; allOk?: boolean; dryRun?: boolean },
+				options: {
+					yes?: boolean;
+					force?: boolean;
+					deleteRemote?: boolean;
+					allSafe?: boolean;
+					where?: string;
+					dryRun?: boolean;
+				},
 			) => {
 				const ctx = getCtx();
 				const skipPrompts = options.yes || options.force;
 				const forceAtRisk = options.force ?? false;
 				const deleteRemote = options.deleteRemote ?? false;
 
-				if (options.allOk) {
+				// Validate --where terms
+				const whereFilter = options.where;
+				if (whereFilter) {
+					const err = validateWhere(whereFilter);
+					if (err) {
+						error(err);
+						process.exit(1);
+					}
+				}
+
+				if (options.allSafe) {
 					if (nameArgs.length > 0) {
-						error("Cannot combine --all-ok with workspace names.");
+						error("Cannot combine --all-safe with workspace names.");
 						process.exit(1);
 					}
 
@@ -290,24 +302,30 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 						return;
 					}
 
-					const okEntries: WorkspaceAssessment[] = [];
+					const safeEntries: WorkspaceAssessment[] = [];
 					for (const ws of candidates) {
 						const wsDir = `${ctx.baseDir}/${ws}`;
 						if (!existsSync(`${wsDir}/.arbws/config`)) continue;
 
 						const assessment = await assessWorkspace(ws, ctx);
-						if (assessment && isAssessmentOk(assessment)) {
-							okEntries.push(assessment);
+						if (assessment && isWorkspaceSafe(assessment.summary.repos, assessment.branch)) {
+							// Apply --where narrowing (AND with --all-safe)
+							if (whereFilter) {
+								if (!workspaceMatchesWhere(assessment.summary.repos, assessment.branch, whereFilter)) {
+									continue;
+								}
+							}
+							safeEntries.push(assessment);
 						}
 					}
 
-					if (okEntries.length === 0) {
-						info("No workspaces with ok status.");
+					if (safeEntries.length === 0) {
+						info("No workspaces with safe status.");
 						return;
 					}
 
 					process.stderr.write("\n");
-					displayRemoveTable(okEntries);
+					displayRemoveTable(safeEntries);
 
 					if (deleteRemote) {
 						process.stderr.write("  Remote branches will also be deleted.\n\n");
@@ -322,7 +340,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 						}
 						const shouldRemove = await confirm(
 							{
-								message: buildConfirmMessage(okEntries.length, undefined, deleteRemote),
+								message: buildConfirmMessage(safeEntries.length, undefined, deleteRemote),
 								default: false,
 							},
 							{ output: process.stderr },
@@ -333,7 +351,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 						}
 					}
 
-					for (const entry of okEntries) {
+					for (const entry of safeEntries) {
 						inlineStart(entry.name, "removing");
 						const failedRemoteDeletes = await executeRemoval(entry, ctx, deleteRemote);
 						const remoteSuffix = failedRemoteDeletes.length > 0 ? " (failed to delete remote branch)" : "";
@@ -341,7 +359,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 					}
 
 					process.stderr.write("\n");
-					success(`Removed ${plural(okEntries.length, "workspace")}`);
+					success(`Removed ${plural(safeEntries.length, "workspace")}`);
 					return;
 				}
 
@@ -364,10 +382,15 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 				}
 
 				// Assess all workspaces
-				const assessments: WorkspaceAssessment[] = [];
+				let assessments: WorkspaceAssessment[] = [];
 				for (const name of names) {
 					const assessment = await assessWorkspace(name, ctx);
 					if (assessment) assessments.push(assessment);
+				}
+
+				// Filter by --where
+				if (whereFilter) {
+					assessments = assessments.filter((a) => workspaceMatchesWhere(a.summary.repos, a.branch, whereFilter));
 				}
 
 				if (assessments.length === 0) return;

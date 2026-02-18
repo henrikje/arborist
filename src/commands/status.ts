@@ -7,10 +7,11 @@ import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { classifyRepos } from "../lib/repos";
 import {
 	type RepoStatus,
-	type WorkspaceSummary,
 	computeFlags,
+	computeSummaryAggregates,
 	gatherWorkspaceSummary,
-	needsAttention,
+	repoMatchesWhere,
+	validateWhere,
 } from "../lib/status";
 import {
 	type RelativeTimeParts,
@@ -25,19 +26,19 @@ import { requireWorkspace } from "../lib/workspace-context";
 export function registerStatusCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("status")
-		.option("-d, --dirty", "Only show repos with local changes")
-		.option("-r, --at-risk", "Only show repos that need attention")
+		.option("-d, --dirty", "Only show repos with local changes (shorthand for --where dirty)")
+		.option("--where <filter>", "Filter repos by status flags (comma-separated, OR logic)")
 		.option("-f, --fetch", "Fetch from all remotes before showing status")
 		.option("--verbose", "Show file-level detail for each repo")
 		.option("--json", "Output structured JSON")
 		.summary("Show workspace status")
 		.description(
-			"Show each worktree's position relative to the default branch, push status against the publish remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos). Use --dirty to only show worktrees with uncommitted changes. Use --at-risk to only show repos that need attention (unpushed, drifted, dirty, etc). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
+			"Show each worktree's position relative to the default branch, push status against the publish remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-remote, behind-base, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
 		)
 		.action(
 			async (options: {
 				dirty?: boolean;
-				atRisk?: boolean;
+				where?: string;
 				fetch?: boolean;
 				verbose?: boolean;
 				json?: boolean;
@@ -64,9 +65,25 @@ interface CellData {
 
 async function runStatus(
 	ctx: ArbContext,
-	options: { dirty?: boolean; atRisk?: boolean; fetch?: boolean; verbose?: boolean; json?: boolean },
+	options: { dirty?: boolean; where?: string; fetch?: boolean; verbose?: boolean; json?: boolean },
 ): Promise<number> {
 	const wsDir = `${ctx.baseDir}/${ctx.currentWorkspace}`;
+
+	// Resolve --dirty as shorthand for --where dirty
+	if (options.dirty && options.where) {
+		process.stderr.write("Cannot combine --dirty with --where. Use --where dirty,... instead.\n");
+		return 1;
+	}
+	const where = options.dirty ? "dirty" : options.where;
+
+	// Validate --where terms
+	if (where) {
+		const err = validateWhere(where);
+		if (err) {
+			process.stderr.write(`${err}\n`);
+			return 1;
+		}
+	}
 
 	// Fetch if requested
 	if (options.fetch) {
@@ -85,24 +102,25 @@ async function runStatus(
 	});
 	if (showingProgress) process.stderr.write(`\r${" ".repeat(40)}\r`);
 
-	// JSON output
-	if (options.json) {
-		const output: StatusJsonOutput = summary;
-		process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
-		return summary.withIssues > 0 ? 1 : 0;
+	// Filter repos if --where is active
+	let filteredSummary = summary;
+	if (where) {
+		const repos = summary.repos.filter((r) => {
+			const flags = computeFlags(r, summary.branch);
+			return repoMatchesWhere(flags, where);
+		});
+		const aggregates = computeSummaryAggregates(repos, summary.branch);
+		filteredSummary = { ...summary, repos, total: repos.length, ...aggregates };
 	}
 
-	// Filter dirty if requested
-	let repos = summary.repos;
-	if (options.dirty) {
-		repos = repos.filter((r) => {
-			const flags = computeFlags(r, summary.branch);
-			return flags.isDirty;
-		});
+	// JSON output
+	if (options.json) {
+		const output: StatusJsonOutput = filteredSummary;
+		process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+		return filteredSummary.withIssues > 0 ? 1 : 0;
 	}
-	if (options.atRisk) {
-		repos = repos.filter((r) => repoNeedsAttention(r, summary));
-	}
+
+	const repos = filteredSummary.repos;
 
 	if (repos.length === 0) {
 		process.stdout.write("  (no repos)\n");
@@ -282,26 +300,7 @@ async function runStatus(
 		}
 	}
 
-	return summary.withIssues > 0 ? 1 : 0;
-}
-
-// Check if repo needs attention (for row coloring and --at-risk filter)
-function repoNeedsAttention(repo: RepoStatus, summary: WorkspaceSummary): boolean {
-	const flags = computeFlags(repo, summary.branch);
-	if (needsAttention(flags)) return true;
-	// Also flag repos where base fell back to a different branch than configured
-	if (summary.base !== null && repo.base !== null && repo.base.ref !== summary.base) return true;
-	// Flag repos where tracking branch doesn't match expected
-	if (
-		repo.publish !== null &&
-		repo.publish.refMode === "configured" &&
-		repo.publish.ref !== null &&
-		repo.identity.headMode.kind === "attached"
-	) {
-		const expectedTracking = `${repo.publish.remote}/${repo.identity.headMode.branch}`;
-		if (repo.publish.ref !== expectedTracking) return true;
-	}
-	return false;
+	return filteredSummary.withIssues > 0 ? 1 : 0;
 }
 
 // Plain-text cell computation (no ANSI codes) for width measurement

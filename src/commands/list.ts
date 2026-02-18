@@ -7,7 +7,13 @@ import { dim, green, info, plural, red, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, listWorkspaces, workspaceRepoDirs } from "../lib/repos";
-import { type WorkspaceSummary, formatIssueCounts, gatherWorkspaceSummary } from "../lib/status";
+import {
+	type WorkspaceSummary,
+	formatIssueCounts,
+	gatherWorkspaceSummary,
+	validateWhere,
+	workspaceMatchesWhere,
+} from "../lib/status";
 import {
 	type LastCommitWidths,
 	type RelativeTimeParts,
@@ -35,13 +41,28 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		.command("list")
 		.summary("List all workspaces")
 		.description(
-			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *. Use --quick to skip per-repo status gathering for faster output. Use --fetch to fetch all repos before listing for fresh remote data. Use --json for machine-readable output.",
+			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --where <filter> to filter workspaces by status flags (any workspace with at least one matching repo is shown): dirty, unpushed, behind-remote, behind-base, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic. Use --quick to skip per-repo status gathering for faster output. Use --fetch to fetch all repos before listing for fresh remote data. Use --json for machine-readable output.",
 		)
 		.option("-f, --fetch", "Fetch all repos before listing")
 		.option("-q, --quick", "Skip per-repo status (faster for large setups)")
+		.option("--where <filter>", "Filter workspaces by repo status flags (comma-separated, OR logic)")
 		.option("--json", "Output structured JSON")
-		.action(async (options: { fetch?: boolean; quick?: boolean; json?: boolean }) => {
+		.action(async (options: { fetch?: boolean; quick?: boolean; where?: string; json?: boolean }) => {
 			const ctx = getCtx();
+
+			// Validate --where terms
+			const whereFilter = options.where;
+			if (whereFilter) {
+				const err = validateWhere(whereFilter);
+				if (err) {
+					process.stderr.write(`${err}\n`);
+					process.exit(1);
+				}
+				if (options.quick) {
+					process.stderr.write("Cannot combine --quick with --where. --where requires status gathering.\n");
+					process.exit(1);
+				}
+			}
 
 			// Fetch all canonical repos (benefits all workspaces)
 			if (options.fetch) {
@@ -175,7 +196,9 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					}),
 				);
 
+				const summaryMap = new Map<number, WorkspaceSummary>();
 				for (const { index, summary } of results) {
+					summaryMap.set(index, summary);
 					const entry = jsonEntries[index];
 					if (entry && entry.status === null) {
 						entry.withIssues = summary.withIssues;
@@ -185,7 +208,17 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					}
 				}
 
-				process.stdout.write(`${JSON.stringify(jsonEntries, null, 2)}\n`);
+				// Filter by --where
+				let filtered = jsonEntries;
+				if (whereFilter) {
+					filtered = jsonEntries.filter((_entry, i) => {
+						const summary = summaryMap.get(i);
+						if (!summary) return false;
+						return workspaceMatchesWhere(summary.repos, summary.branch, whereFilter);
+					});
+				}
+
+				process.stdout.write(`${JSON.stringify(filtered, null, 2)}\n`);
 				return;
 			}
 
@@ -206,7 +239,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				return formatRelativeTimeParts(row.lastCommit);
 			};
 			const recomputeLastCommitWidth = () => {
-				lcWidths = computeLastCommitWidths(rows.map(lastCommitParts));
+				lcWidths = computeLastCommitWidths(displayRows.map(lastCommitParts));
 			};
 
 			// Render helpers
@@ -262,9 +295,15 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				return line;
 			};
 
+			// Track summaries for --where filtering
+			const summaryByIndex = new Map<number, WorkspaceSummary>();
+
+			// Rows to display (may be filtered by --where after Phase 2)
+			let displayRows = rows;
+
 			const renderTable = () => {
 				process.stdout.write(`${renderHeader()}\n`);
-				for (const row of rows) {
+				for (const row of displayRows) {
 					process.stdout.write(`${renderRow(row)}\n`);
 				}
 			};
@@ -306,8 +345,18 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 				// Apply results to rows
 				for (const { index, summary } of results) {
+					summaryByIndex.set(index, summary);
 					const row = rows[index];
 					if (row) applySummaryToRow(row, summary);
+				}
+
+				// Filter by --where
+				if (whereFilter) {
+					displayRows = rows.filter((_, i) => {
+						const summary = summaryByIndex.get(i);
+						if (!summary) return false;
+						return workspaceMatchesWhere(summary.repos, summary.branch, whereFilter);
+					});
 				}
 				recomputeLastCommitWidth();
 
@@ -329,8 +378,18 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				);
 
 				for (const { index, summary } of results) {
+					summaryByIndex.set(index, summary);
 					const row = rows[index];
 					if (row) applySummaryToRow(row, summary);
+				}
+
+				// Filter by --where
+				if (whereFilter) {
+					displayRows = rows.filter((_, i) => {
+						const summary = summaryByIndex.get(i);
+						if (!summary) return false;
+						return workspaceMatchesWhere(summary.repos, summary.branch, whereFilter);
+					});
 				}
 				recomputeLastCommitWidth();
 
