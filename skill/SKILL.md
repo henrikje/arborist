@@ -51,11 +51,11 @@ To detect context programmatically, check for `.arb/` or `.arbws/` in the curren
 
 1. Run `arb list -q` to see existing workspaces (quick mode, skips status)
 2. Derive a kebab-case workspace name from the feature description
-3. Create: `arb create <name> -a -y`
+3. Create: `arb create <name> -a`
    - `-a` includes all repos (omit to select specific repos)
-   - `-y` skips confirmation (required — Claude has no TTY)
    - `-b <branch>` for a custom branch name (defaults to workspace name)
    - `--base <branch>` to branch from something other than the default branch
+   - No `-y` flag needed — `create` runs non-interactively when name and repos are provided
 4. Navigate into the created workspace to begin work
 
 ### Checking Status
@@ -114,6 +114,15 @@ Key signals in status output:
 
 - Work from the **workspace root** for full visibility across all repos
 - Navigate into individual worktrees to edit files, then return to workspace root
+- **Always `cd` into a directory before running commands there** — never use `-C` flags. This ensures commands match pre-approved permissions. For example:
+  ```
+  # GOOD — matches pre-approved permissions
+  cd feature-login/frontend && git status
+
+  # BAD — requires blanket -C permissions that can't be scoped to safe operations
+  git -C feature-login/frontend status
+  arb -C /path/to/project status
+  ```
 - `arb exec <command>` runs a command in each worktree sequentially (e.g., `arb exec npm install`)
 - `arb exec --dirty git diff` runs only in repos with local changes
 - `arb open code` opens all worktrees in VS Code
@@ -123,22 +132,21 @@ Key signals in status output:
 
 ## Working Directory
 
-Arb commands detect the workspace from the current working directory. Use the `-C` flag to specify the directory context explicitly — this is the recommended approach for agents and scripts:
+Arb commands detect the workspace from the current working directory. Always `cd` into the target directory before running arb commands — this ensures commands match pre-approved permissions:
 
 ```
-arb -C /path/to/project status          # run from the arb root
-arb -C /path/to/project/my-ws status    # run from inside a workspace
+cd /path/to/project/my-ws && arb status
 ```
 
-`-C` works like `git -C`: it changes the working directory before any command runs. It accepts both absolute and relative paths. This is more reliable than `cd`-ing first, because it makes the directory context explicit and avoids mistakes from stale shell state.
+Do NOT use `arb -C` — it has the same permission-scoping problem as `git -C` (a blanket `arb -C:*` permission cannot be restricted to safe operations only).
 
-The `-w, --workspace` option can be combined with `-C` to target a specific workspace from anywhere:
+The `-w, --workspace` option targets a specific workspace when you are at the arb root:
 
 ```
-arb -C /path/to/project -w my-ws push --dry-run
+arb -w my-ws status
 ```
 
-Both `-C` and `-w` are **global options** that must come **before** the subcommand name.
+`-w` is a **global option** that must come **before** the subcommand name.
 
 ## Non-Interactive Mode
 
@@ -149,23 +157,24 @@ CRITICAL: Claude runs without a TTY. Always follow these rules:
   arb push --dry-run        # preview the plan
   arb push --yes            # execute it
   ```
-- **Always pass `-y` / `--yes`** to `create`, `remove`, `push`, `pull`, `rebase`, and `merge` when you are ready to execute. Without `-y`, these commands will hang waiting for input.
+- **Always pass `-y` / `--yes`** to `remove`, `push`, `pull`, `rebase`, and `merge` when you are ready to execute. Without `-y`, these commands will hang waiting for input.
 - Use `--json` on `arb status` or `arb list` when you need to parse the output programmatically.
 - `arb list -q` for fast workspace listing without status computation.
 - Exit codes: 0 = success, 1 = expected failure (conflicts, nothing to do), 2 = unexpected error.
 
-Commands that do NOT need `-y`: `init`, `clone`, `repos`, `list`, `path`, `cd`, `add`, `drop`, `status`, `fetch`, `exec`, `open`.
+Commands that do NOT need `-y`: `init`, `clone`, `repos`, `create`, `list`, `path`, `cd`, `add`, `drop`, `status`, `fetch`, `exec`, `open`.
 
 ## Safety Rules
 
 1. **Preview before executing** — Use `--dry-run` on `push`, `pull`, `rebase`, `merge`, and `remove` to see what would happen before committing with `--yes`.
 2. **Always use `arb` commands instead of raw `git` when inside a workspace** — Use `arb push` instead of `git push`, `arb pull` instead of `git pull`, `arb rebase` instead of `git rebase`, etc. Arb commands handle worktree-specific concerns (tracking, remote resolution, multi-repo coordination) that raw git does not. Only fall back to raw git for operations arb doesn't cover (e.g., `git add`, `git commit`, `git diff`).
-3. **Never `arb remove` without user confirmation** — This deletes worktrees and cannot be undone. Always ask first.
-4. **Never use `--force` on remove** without user consent — Bypasses dirty/unpushed safety checks.
-5. **Prefer rebase over merge** unless the user explicitly asks for merge.
-6. **Run `arb status` before sync operations** to understand current state before rebasing, merging, pushing, or pulling.
-7. **Guide through conflicts** — When conflicts occur, walk the user through resolution repo by repo. Do NOT force-skip or abort without asking.
-8. **Force push only after rebase** — `arb push -f -y` uses `--force-with-lease` internally, but only use it when branches have been rebased.
+3. **Never use `-C` flags — use `cd` instead** — Always use `cd <path> && <command>` rather than `git -C <path>` or `arb -C <path>`. The `cd` pattern matches pre-approved permissions (e.g., `Bash(git status)`, `Bash(arb status:*)`), while `-C` requires blanket permissions like `git -C:*` or `arb -C:*` that cannot be scoped to safe operations only.
+4. **Never `arb remove` without user confirmation** — This deletes worktrees and cannot be undone. Always ask first.
+5. **Never use `--force` on remove** without user consent — Bypasses dirty/unpushed safety checks.
+6. **Prefer rebase over merge** unless the user explicitly asks for merge.
+7. **Run `arb status` before sync operations** to understand current state before rebasing, merging, pushing, or pulling.
+8. **Guide through conflicts** — When conflicts occur, walk the user through resolution repo by repo. Do NOT force-skip or abort without asking.
+9. **Force push only after rebase** — `arb push -f -y` uses `--force-with-lease` internally, but only use it when branches have been rebased.
 
 ## Command Quick Reference
 

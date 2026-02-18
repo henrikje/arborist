@@ -79,9 +79,8 @@ Creates a workspace with worktrees for selected repos on a shared feature branch
 - `-a, --all-repos` — Include all cloned repos in the workspace
 - `-b, --branch <branch>` — Branch name (defaults to workspace name)
 - `--base <branch>` — Base branch to branch from (e.g., `develop` instead of the repo default)
-- `-y, --yes` — Skip confirmation prompt
 
-**Non-interactive usage:** Always pass `-y`. Provide name and either repo names or `-a`.
+**Non-interactive usage:** Provide name and either repo names or `-a`. No `-y` flag needed — runs non-interactively when all arguments are supplied.
 
 ---
 
