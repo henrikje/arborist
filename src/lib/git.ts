@@ -262,6 +262,46 @@ export async function getCommitsBetweenFull(
 		});
 }
 
+export async function detectBranchMerged(
+	repoDir: string,
+	baseBranchRef: string,
+	commitLimit = 200,
+): Promise<"merge" | "squash" | null> {
+	// Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
+	const ancestor = await git(repoDir, "merge-base", "--is-ancestor", "HEAD", baseBranchRef);
+	if (ancestor.exitCode === 0) return "merge";
+
+	// Phase 2: Squash check — cumulative patch-id comparison
+	const mergeBaseResult = await git(repoDir, "merge-base", "HEAD", baseBranchRef);
+	if (mergeBaseResult.exitCode !== 0) return null;
+	const mergeBase = mergeBaseResult.stdout.trim();
+	if (!mergeBase) return null;
+
+	// Cumulative patch-id for the entire branch range
+	const cumulativeResult = await Bun.$`git -C ${repoDir} diff ${mergeBase}..HEAD | git patch-id --stable`
+		.quiet()
+		.nothrow();
+	if (cumulativeResult.exitCode !== 0) return null;
+	const cumulativeLine = cumulativeResult.text().trim();
+	if (!cumulativeLine) return null;
+	const cumulativePatchId = cumulativeLine.split(" ")[0];
+	if (!cumulativePatchId) return null;
+
+	// Per-commit patch-ids for recent base commits
+	const perCommitResult =
+		await Bun.$`git -C ${repoDir} log -p --max-count=${commitLimit} ${mergeBase}..${baseBranchRef} | git patch-id --stable`
+			.quiet()
+			.nothrow();
+	if (perCommitResult.exitCode !== 0) return null;
+
+	for (const line of perCommitResult.text().split("\n")) {
+		const patchId = line.split(" ")[0];
+		if (patchId === cumulativePatchId) return "squash";
+	}
+
+	return null;
+}
+
 export async function detectRebasedCommits(
 	repoDir: string,
 	trackingRef: string,

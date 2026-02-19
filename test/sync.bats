@@ -617,3 +617,215 @@ SCRIPT
     [ ! -d "$TEST_DIR/project/gone-remove" ]
 }
 
+# ── merged branch detection ──────────────────────────────────────
+
+@test "arb status shows merged (gone) after squash merge + branch delete" {
+    arb create squash-gone repo-a
+    local wt="$TEST_DIR/project/squash-gone/repo-a"
+
+    # Make feature work
+    echo "feature content" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    cd "$TEST_DIR/project/squash-gone"
+    arb push --yes >/dev/null 2>&1
+
+    # Simulate squash merge on main: squash-merge the feature branch
+    local bare="$TEST_DIR/origin/repo-a.git"
+    local tmp="$TEST_DIR/tmp-squash"
+    git clone "$bare" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && git merge --squash origin/squash-gone && git commit -m "squash: feature work") >/dev/null 2>&1
+    (cd "$tmp" && git push origin main) >/dev/null 2>&1
+    rm -rf "$tmp"
+
+    # Delete the feature branch on the remote (simulates GitHub auto-delete)
+    git -C "$bare" branch -D squash-gone >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch --prune >/dev/null 2>&1
+
+    # Fetch and check status
+    cd "$TEST_DIR/project/squash-gone"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [[ "$output" == *"merged (gone)"* ]]
+}
+
+@test "arb status shows merged when branch merged but not deleted" {
+    arb create merged-not-gone repo-a
+    local wt="$TEST_DIR/project/merged-not-gone/repo-a"
+
+    # Make feature work and push
+    echo "feature content" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    cd "$TEST_DIR/project/merged-not-gone"
+    arb push --yes >/dev/null 2>&1
+
+    # Merge feature into main (merge commit)
+    local bare="$TEST_DIR/origin/repo-a.git"
+    local tmp="$TEST_DIR/tmp-merge"
+    git clone "$bare" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && git merge origin/merged-not-gone --no-ff -m "merge feature") >/dev/null 2>&1
+    (cd "$tmp" && git push origin main) >/dev/null 2>&1
+    rm -rf "$tmp"
+
+    # Do NOT delete the feature branch — it stays on the remote
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/merged-not-gone"
+    arb fetch >/dev/null 2>&1
+    run arb status
+    [[ "$output" == *"merged"* ]]
+    [[ "$output" != *"merged (gone)"* ]]
+}
+
+@test "arb push skips merged repos with explanatory message" {
+    arb create merged-push repo-a
+    local wt="$TEST_DIR/project/merged-push/repo-a"
+
+    # Make feature work and push
+    echo "feature content" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    cd "$TEST_DIR/project/merged-push"
+    arb push --yes >/dev/null 2>&1
+
+    # Squash merge + delete
+    local bare="$TEST_DIR/origin/repo-a.git"
+    local tmp="$TEST_DIR/tmp-squash-push"
+    git clone "$bare" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && git merge --squash origin/merged-push && git commit -m "squash merge") >/dev/null 2>&1
+    (cd "$tmp" && git push origin main) >/dev/null 2>&1
+    rm -rf "$tmp"
+    git -C "$bare" branch -D merged-push >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch --prune >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/merged-push"
+    arb fetch >/dev/null 2>&1
+    run arb push --yes
+    [[ "$output" == *"already merged"* ]]
+    [[ "$output" == *"--force"* ]]
+}
+
+@test "arb push --force overrides merged skip and recreates branch" {
+    arb create merged-force repo-a
+    local wt="$TEST_DIR/project/merged-force/repo-a"
+
+    # Make feature work and push
+    echo "feature content" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    cd "$TEST_DIR/project/merged-force"
+    arb push --yes >/dev/null 2>&1
+
+    # Squash merge + delete
+    local bare="$TEST_DIR/origin/repo-a.git"
+    local tmp="$TEST_DIR/tmp-squash-force"
+    git clone "$bare" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && git merge --squash origin/merged-force && git commit -m "squash merge") >/dev/null 2>&1
+    (cd "$tmp" && git push origin main) >/dev/null 2>&1
+    rm -rf "$tmp"
+    git -C "$bare" branch -D merged-force >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch --prune >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/merged-force"
+    arb fetch >/dev/null 2>&1
+    run arb push --force --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"pushed"* ]] || [[ "$output" == *"Pushed"* ]]
+}
+
+@test "arb pull skips merged repos" {
+    arb create merged-pull repo-a
+    local wt="$TEST_DIR/project/merged-pull/repo-a"
+
+    # Make feature work and push
+    echo "feature content" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    cd "$TEST_DIR/project/merged-pull"
+    arb push --yes >/dev/null 2>&1
+
+    # Merge into main (merge commit)
+    local bare="$TEST_DIR/origin/repo-a.git"
+    local tmp="$TEST_DIR/tmp-merge-pull"
+    git clone "$bare" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && git merge origin/merged-pull --no-ff -m "merge feature") >/dev/null 2>&1
+    (cd "$tmp" && git push origin main) >/dev/null 2>&1
+    rm -rf "$tmp"
+
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/merged-pull"
+    arb fetch >/dev/null 2>&1
+    run arb pull --yes
+    [[ "$output" == *"already merged"* ]]
+}
+
+@test "arb status --json includes mergedIntoBase field" {
+    arb create merged-json repo-a
+    local wt="$TEST_DIR/project/merged-json/repo-a"
+
+    # Make feature work and push
+    echo "feature content" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    cd "$TEST_DIR/project/merged-json"
+    arb push --yes >/dev/null 2>&1
+
+    # Squash merge + delete
+    local bare="$TEST_DIR/origin/repo-a.git"
+    local tmp="$TEST_DIR/tmp-squash-json"
+    git clone "$bare" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && git merge --squash origin/merged-json && git commit -m "squash merge") >/dev/null 2>&1
+    (cd "$tmp" && git push origin main) >/dev/null 2>&1
+    rm -rf "$tmp"
+    git -C "$bare" branch -D merged-json >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch --prune >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/merged-json"
+    arb fetch >/dev/null 2>&1
+    run arb status --json
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+r = d['repos'][0]
+assert r['base']['mergedIntoBase'] == 'squash', f'expected squash, got {r[\"base\"][\"mergedIntoBase\"]}'
+"
+}
+
+@test "arb status --where merged filters correctly" {
+    arb create where-merged repo-a repo-b
+    local wt_a="$TEST_DIR/project/where-merged/repo-a"
+    local wt_b="$TEST_DIR/project/where-merged/repo-b"
+
+    # Make feature work on repo-a, push
+    echo "feature content" > "$wt_a/feature.txt"
+    git -C "$wt_a" add feature.txt >/dev/null 2>&1
+    git -C "$wt_a" commit -m "feature work" >/dev/null 2>&1
+
+    # Make feature work on repo-b too (so it's not trivially an ancestor of main)
+    echo "repo-b content" > "$wt_b/b-feature.txt"
+    git -C "$wt_b" add b-feature.txt >/dev/null 2>&1
+    git -C "$wt_b" commit -m "repo-b work" >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/where-merged"
+    arb push --yes >/dev/null 2>&1
+
+    # Only merge repo-a into main (not repo-b)
+    local bare="$TEST_DIR/origin/repo-a.git"
+    local tmp="$TEST_DIR/tmp-where-merge"
+    git clone "$bare" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && git merge origin/where-merged --no-ff -m "merge feature") >/dev/null 2>&1
+    (cd "$tmp" && git push origin main) >/dev/null 2>&1
+    rm -rf "$tmp"
+
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/where-merged"
+    arb fetch >/dev/null 2>&1
+    run arb status --where merged
+    # Should show repo-a (merged) but not repo-b (not merged — has unpushed work)
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
