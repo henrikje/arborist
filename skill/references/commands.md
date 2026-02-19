@@ -315,7 +315,7 @@ Removes worktrees from the workspace without deleting the workspace itself.
 Show workspace status.
 
 ```
-arb status [-d] [-w <filter>] [-f] [--verbose] [--json]
+arb status [-d] [-w <filter>] [-f] [-v] [--json]
 ```
 
 Shows each worktree's position relative to the base branch, push status, and local changes. The summary includes the workspace's last commit date (most recent author date across all repos).
@@ -324,7 +324,7 @@ Shows each worktree's position relative to the base branch, push status, and loc
 - `-d, --dirty` — Only show repos with local changes (shorthand for `--where dirty`)
 - `-w, --where <filter>` — Filter repos by status flags (comma-separated, OR logic): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk
 - `-f, --fetch` — Fetch remotes before showing status
-- `--verbose` — Show file-level detail
+- `-v, --verbose` — Show file-level detail
 - `--json` — Machine-readable JSON output (filtered when `--where` is active)
 
 **JSON output structure:**
