@@ -83,6 +83,14 @@ export function countLines(text: string): number {
 	return count;
 }
 
+export function dryRunNotice(): void {
+	info("Dry run \u2014 no changes were made");
+}
+
+export function skipConfirmNotice(flag: string): void {
+	info(`Skipping confirmation (${flag})`);
+}
+
 export function stderr(text: string): void {
 	process.stderr.write(text);
 }

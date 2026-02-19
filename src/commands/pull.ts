@@ -7,11 +7,13 @@ import {
 	clearLines,
 	countLines,
 	dim,
+	dryRunNotice,
 	error,
 	info,
 	inlineResult,
 	inlineStart,
 	plural,
+	skipConfirmNotice,
 	success,
 	warn,
 	yellow,
@@ -134,7 +136,10 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					return;
 				}
 
-				if (options.dryRun) return;
+				if (options.dryRun) {
+					dryRunNotice();
+					return;
+				}
 
 				// Phase 4: confirm
 				if (!options.yes) {
@@ -153,6 +158,8 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 						process.stderr.write("Aborted.\n");
 						process.exit(130);
 					}
+				} else {
+					skipConfirmNotice("--yes");
 				}
 
 				process.stderr.write("\n");

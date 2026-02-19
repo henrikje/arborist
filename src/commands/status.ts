@@ -54,7 +54,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 				const ctx = getCtx();
 				requireWorkspace(ctx);
 				const code = await runStatus(ctx, options);
-				process.exit(code);
+				process.exitCode = code;
 			},
 		);
 }

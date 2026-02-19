@@ -220,6 +220,7 @@ load test_helper/common-setup
     run arb rebase --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"Rebased"* ]]
+    [[ "$output" == *"Skipping confirmation"* ]]
 }
 
 @test "arb rebase non-TTY without --yes errors" {
@@ -443,6 +444,7 @@ load test_helper/common-setup
     run arb push --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"Pushed"* ]]
+    [[ "$output" == *"Skipping confirmation"* ]]
 }
 
 

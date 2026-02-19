@@ -277,6 +277,7 @@ load test_helper/common-setup
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-yes" ]
     [[ "$output" == *"Removed workspace ws-yes"* ]]
+    [[ "$output" == *"Skipping confirmation"* ]]
 }
 
 @test "arb remove -y skips confirmation for clean workspace" {
@@ -305,6 +306,7 @@ load test_helper/common-setup
     run arb remove ws-fy --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-fy" ]
+    [[ "$output" == *"Skipping confirmation"* ]]
 }
 
 @test "arb remove -d shows remote deletion notice in plan" {
@@ -327,6 +329,7 @@ load test_helper/common-setup
     run arb remove --all-safe --yes
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-allok-y" ]
+    [[ "$output" == *"Skipping confirmation"* ]]
 }
 
 @test "arb remove --all-safe -d shows remote deletion notice" {

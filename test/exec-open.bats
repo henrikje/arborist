@@ -350,6 +350,7 @@ SCRIPT
     [ "$status" -eq 0 ]
     [[ "$output" == *"1 commit"* ]]
     [[ "$output" == *"to push"* ]]
+    [[ "$output" == *"Dry run"* ]]
     # Must NOT contain the execution summary
     [[ "$output" != *"Pushed"* ]]
     # Verify nothing was actually pushed
@@ -366,6 +367,7 @@ SCRIPT
     run arb push -n
     [ "$status" -eq 0 ]
     [[ "$output" == *"to push"* ]]
+    [[ "$output" == *"Dry run"* ]]
     [[ "$output" != *"Pushed"* ]]
 }
 
@@ -390,6 +392,7 @@ SCRIPT
     run arb pull --dry-run
     [ "$status" -eq 0 ]
     [[ "$output" == *"to pull"* ]]
+    [[ "$output" == *"Dry run"* ]]
     # Must NOT contain the execution summary
     [[ "$output" != *"Pulled"* ]]
     # Verify nothing was actually pulled
@@ -406,6 +409,7 @@ SCRIPT
     run arb rebase --dry-run
     [ "$status" -eq 0 ]
     [[ "$output" == *"rebase my-feature onto"* ]]
+    [[ "$output" == *"Dry run"* ]]
     # Must NOT contain the execution summary
     [[ "$output" != *"Rebased"* ]]
     # Verify the upstream commit is NOT reachable (rebase didn't happen)
@@ -422,6 +426,7 @@ SCRIPT
     run arb merge --dry-run
     [ "$status" -eq 0 ]
     [[ "$output" == *"merge"*"into my-feature"* ]]
+    [[ "$output" == *"Dry run"* ]]
     # Must NOT contain the execution summary
     [[ "$output" != *"Merged"* ]]
     # Verify the upstream commit is NOT reachable (merge didn't happen)
@@ -436,6 +441,7 @@ SCRIPT
     [ "$status" -eq 0 ]
     [[ "$output" == *"my-feature"* ]]
     [[ "$output" == *"WORKSPACE"* ]]
+    [[ "$output" == *"Dry run"* ]]
     # Must NOT contain the execution summary
     [[ "$output" != *"Removed"* ]]
     # Verify the workspace still exists
@@ -452,6 +458,7 @@ SCRIPT
     [ "$status" -eq 0 ]
     [[ "$output" == *"ws-one"* ]]
     [[ "$output" == *"ws-two"* ]]
+    [[ "$output" == *"Dry run"* ]]
     # Must NOT contain the execution summary
     [[ "$output" != *"Removed"* ]]
     # Verify both workspaces still exist

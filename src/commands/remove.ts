@@ -3,7 +3,18 @@ import { basename } from "node:path";
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { branchExistsLocally, git, hasRemote, remoteBranchExists, validateWorkspaceName } from "../lib/git";
-import { dim, error, info, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
+import {
+	dim,
+	dryRunNotice,
+	error,
+	info,
+	inlineResult,
+	inlineStart,
+	plural,
+	skipConfirmNotice,
+	success,
+	warn,
+} from "../lib/output";
 import { resolveRemotes } from "../lib/remotes";
 import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import {
@@ -317,14 +328,16 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 						return;
 					}
 
-					process.stderr.write("\n");
 					displayRemoveTable(safeEntries);
 
 					if (deleteRemote) {
 						process.stderr.write("  Remote branches will also be deleted.\n\n");
 					}
 
-					if (options.dryRun) return;
+					if (options.dryRun) {
+						dryRunNotice();
+						return;
+					}
 
 					if (!skipPrompts) {
 						if (!isTTY()) {
@@ -342,6 +355,8 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 							process.stderr.write("Aborted.\n");
 							process.exit(130);
 						}
+					} else {
+						skipConfirmNotice(options.force ? "--force" : "--yes");
 					}
 
 					for (const entry of safeEntries) {
@@ -389,7 +404,6 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 				if (assessments.length === 0) return;
 
 				// Display columnar status table
-				process.stderr.write("\n");
 				displayRemoveTable(assessments);
 
 				// Check for at-risk across all workspaces
@@ -407,7 +421,10 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 					process.stderr.write("  Remote branches will also be deleted.\n\n");
 				}
 
-				if (options.dryRun) return;
+				if (options.dryRun) {
+					dryRunNotice();
+					return;
+				}
 
 				// Confirm
 				if (!skipPrompts) {
@@ -427,6 +444,8 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 						process.stderr.write("Aborted.\n");
 						process.exit(130);
 					}
+				} else {
+					skipConfirmNotice(options.force ? "--force" : "--yes");
 				}
 
 				// Execute

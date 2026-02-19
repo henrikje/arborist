@@ -5,11 +5,13 @@ import {
 	clearLines,
 	countLines,
 	dim,
+	dryRunNotice,
 	error,
 	info,
 	inlineResult,
 	inlineStart,
 	plural,
+	skipConfirmNotice,
 	success,
 	warn,
 	yellow,
@@ -125,7 +127,10 @@ export async function integrate(
 		return;
 	}
 
-	if (options.dryRun) return;
+	if (options.dryRun) {
+		dryRunNotice();
+		return;
+	}
 
 	if (!options.yes) {
 		if (!isTTY()) {
@@ -143,6 +148,8 @@ export async function integrate(
 			process.stderr.write("Aborted.\n");
 			process.exit(130);
 		}
+	} else {
+		skipConfirmNotice("--yes");
 	}
 
 	process.stderr.write("\n");
