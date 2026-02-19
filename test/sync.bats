@@ -214,6 +214,7 @@ SCRIPT
     [ "$status" -eq 0 ]
     [[ "$output" == *"Pulled"* ]]
     [[ "$output" == *"to pull"* ]]
+    [[ "$output" == *"Skipping confirmation"* ]]
 }
 
 @test "arb pull shows plan before pulling" {
@@ -239,6 +240,7 @@ SCRIPT
     [ "$status" -eq 0 ]
     [[ "$output" == *"Pushed"* ]]
     [[ "$output" == *"to push"* ]]
+    [[ "$output" == *"Skipping confirmation"* ]]
 }
 
 @test "arb push shows plan before pushing" {

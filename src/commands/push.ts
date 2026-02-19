@@ -6,12 +6,14 @@ import {
 	clearLines,
 	countLines,
 	dim,
+	dryRunNotice,
 	error,
 	info,
 	inlineResult,
 	inlineStart,
 	plural,
 	red,
+	skipConfirmNotice,
 	success,
 	yellow,
 } from "../lib/output";
@@ -123,7 +125,10 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 					return;
 				}
 
-				if (options.dryRun) return;
+				if (options.dryRun) {
+					dryRunNotice();
+					return;
+				}
 
 				// Phase 3: confirm
 				if (!options.yes && !options.force) {
@@ -142,6 +147,8 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 						process.stderr.write("Aborted.\n");
 						process.exit(130);
 					}
+				} else {
+					skipConfirmNotice(options.force ? "--force" : "--yes");
 				}
 
 				process.stderr.write("\n");
