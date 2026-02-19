@@ -32,6 +32,14 @@ export interface StatusJsonRepo {
 	} | null;
 	operation: GitOperation;
 	lastCommit: string | null;
+	verbose?: {
+		aheadOfBase?: { hash: string; subject: string }[];
+		behindBase?: { hash: string; subject: string }[];
+		unpushed?: { hash: string; subject: string; rebased: boolean }[];
+		staged?: { file: string; type: "new file" | "modified" | "deleted" | "renamed" | "copied" }[];
+		unstaged?: { file: string; type: "modified" | "deleted" }[];
+		untracked?: string[];
+	};
 }
 
 export interface StatusJsonOutput {

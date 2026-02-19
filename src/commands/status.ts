@@ -3,12 +3,11 @@ import type { Command } from "commander";
 import {
 	type FileChange,
 	detectRebasedCommits,
-	getCommitsBetween,
 	getCommitsBetweenFull,
 	parseGitStatusFiles,
 	predictMergeConflict,
 } from "../lib/git";
-import type { StatusJsonOutput } from "../lib/json-types";
+import type { StatusJsonOutput, StatusJsonRepo } from "../lib/json-types";
 import { dim, green, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
@@ -38,10 +37,10 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("-w, --where <filter>", "Filter repos by status flags (comma-separated, OR logic)")
 		.option("-f, --fetch", "Fetch from all remotes before showing status")
 		.option("-v, --verbose", "Show file-level detail for each repo")
-		.option("--json", "Output structured JSON")
+		.option("--json", "Output structured JSON (combine with --verbose for commit and file detail)")
 		.summary("Show workspace status")
 		.description(
-			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, merged, base-merged, base-missing, at-risk. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
+			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, merged, base-merged, base-missing, at-risk. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.",
 		)
 		.action(
 			async (options: {
@@ -125,7 +124,16 @@ async function runStatus(
 
 	// JSON output
 	if (options.json) {
-		const output: StatusJsonOutput = filteredSummary;
+		let output: StatusJsonOutput = filteredSummary;
+		if (options.verbose) {
+			const reposWithVerbose = await Promise.all(
+				filteredSummary.repos.map(async (repo) => {
+					const detail = await gatherVerboseDetail(repo, wsDir);
+					return { ...repo, verbose: detail ? toJsonVerbose(detail) : undefined };
+				}),
+			);
+			output = { ...filteredSummary, repos: reposWithVerbose };
+		}
 		process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
 		return filteredSummary.withIssues > 0 ? 1 : 0;
 	}
@@ -497,8 +505,88 @@ function colorLocal(repo: RepoStatus): string {
 const SECTION_INDENT = "      ";
 const ITEM_INDENT = "          ";
 
-async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void> {
+// Internal verbose type — carries shortHash for text display alongside fullHash for JSON
+interface VerboseCommit {
+	hash: string;
+	shortHash: string;
+	subject: string;
+}
+interface VerboseDetail {
+	aheadOfBase?: VerboseCommit[];
+	behindBase?: VerboseCommit[];
+	unpushed?: (VerboseCommit & { rebased: boolean })[];
+	staged?: NonNullable<StatusJsonRepo["verbose"]>["staged"];
+	unstaged?: NonNullable<StatusJsonRepo["verbose"]>["unstaged"];
+	untracked?: string[];
+}
+
+async function gatherVerboseDetail(repo: RepoStatus, wsDir: string): Promise<VerboseDetail | undefined> {
 	const repoDir = `${wsDir}/${repo.name}`;
+	const verbose: VerboseDetail = {};
+
+	// Ahead of base (suppress when base fell back — numbers are against the fallback, not the configured base)
+	if (repo.base && repo.base.ahead > 0 && !repo.base.configuredRef) {
+		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
+		const commits = await getCommitsBetweenFull(repoDir, baseRef, "HEAD");
+		if (commits.length > 0) {
+			verbose.aheadOfBase = commits.map((c) => ({ hash: c.fullHash, shortHash: c.shortHash, subject: c.subject }));
+		}
+	}
+
+	// Behind base (suppress when base fell back)
+	if (repo.base && repo.base.behind > 0 && !repo.base.configuredRef) {
+		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
+		const commits = await getCommitsBetweenFull(repoDir, "HEAD", baseRef);
+		if (commits.length > 0) {
+			verbose.behindBase = commits.map((c) => ({ hash: c.fullHash, shortHash: c.shortHash, subject: c.subject }));
+		}
+	}
+
+	// Unpushed to remote
+	if (repo.share !== null && repo.share.toPush !== null && repo.share.toPush > 0 && repo.share.ref) {
+		let rebasedHashes: Set<string> | null = null;
+		if (repo.share.rebased != null && repo.share.rebased > 0) {
+			const detection = await detectRebasedCommits(repoDir, repo.share.ref);
+			rebasedHashes = detection?.rebasedLocalHashes ?? null;
+		}
+		const commits = await getCommitsBetweenFull(repoDir, repo.share.ref, "HEAD");
+		if (commits.length > 0) {
+			verbose.unpushed = commits.map((c) => ({
+				hash: c.fullHash,
+				shortHash: c.shortHash,
+				subject: c.subject,
+				rebased: rebasedHashes?.has(c.fullHash) ?? false,
+			}));
+		}
+	}
+
+	// File-level detail
+	if (repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0) {
+		const files = await parseGitStatusFiles(repoDir);
+		if (files.staged.length > 0) verbose.staged = files.staged;
+		if (files.unstaged.length > 0)
+			verbose.unstaged = files.unstaged.map((f) => ({
+				file: f.file,
+				type: f.type as "modified" | "deleted",
+			}));
+		if (files.untracked.length > 0) verbose.untracked = files.untracked;
+	}
+
+	return Object.keys(verbose).length > 0 ? verbose : undefined;
+}
+
+function toJsonVerbose(detail: VerboseDetail): StatusJsonRepo["verbose"] {
+	const { aheadOfBase, behindBase, unpushed, ...rest } = detail;
+	const stripShort = ({ hash, subject }: VerboseCommit) => ({ hash, subject });
+	return {
+		...rest,
+		...(aheadOfBase && { aheadOfBase: aheadOfBase.map(stripShort) }),
+		...(behindBase && { behindBase: behindBase.map(stripShort) }),
+		...(unpushed && { unpushed: unpushed.map(({ hash, subject, rebased }) => ({ hash, subject, rebased })) }),
+	};
+}
+
+async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void> {
 	const sections: string[] = [];
 
 	// Merged into base
@@ -524,78 +612,63 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 		sections.push(section);
 	}
 
-	// Ahead of base (suppress when base fell back — numbers are against the fallback, not the configured base)
-	if (repo.base && repo.base.ahead > 0 && !repo.base.configuredRef) {
+	// Gather structured verbose data
+	const verbose = await gatherVerboseDetail(repo, wsDir);
+
+	// Ahead of base
+	if (verbose?.aheadOfBase && repo.base) {
 		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
-		const commits = await getCommitsBetween(repoDir, baseRef, "HEAD");
-		if (commits.length > 0) {
-			let section = `\n${SECTION_INDENT}Ahead of ${baseRef}:\n`;
-			for (const c of commits) {
-				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
-			}
-			sections.push(section);
+		let section = `\n${SECTION_INDENT}Ahead of ${baseRef}:\n`;
+		for (const c of verbose.aheadOfBase) {
+			section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}\n`;
 		}
+		sections.push(section);
 	}
 
-	// Behind base (suppress when base fell back)
-	if (repo.base && repo.base.behind > 0 && !repo.base.configuredRef) {
+	// Behind base
+	if (verbose?.behindBase && repo.base) {
 		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
-		const commits = await getCommitsBetween(repoDir, "HEAD", baseRef);
-		if (commits.length > 0) {
-			let section = `\n${SECTION_INDENT}Behind ${baseRef}:\n`;
-			for (const c of commits) {
-				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
-			}
-			sections.push(section);
+		let section = `\n${SECTION_INDENT}Behind ${baseRef}:\n`;
+		for (const c of verbose.behindBase) {
+			section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}\n`;
 		}
+		sections.push(section);
 	}
 
 	// Unpushed to remote
-	if (repo.share !== null && repo.share.toPush !== null && repo.share.toPush > 0 && repo.share.ref) {
-		let rebasedHashes: Set<string> | null = null;
-		if (repo.share.rebased != null && repo.share.rebased > 0) {
-			const detection = await detectRebasedCommits(repoDir, repo.share.ref);
-			rebasedHashes = detection?.rebasedLocalHashes ?? null;
+	if (verbose?.unpushed && repo.share) {
+		const shareLabel = repo.share.remote;
+		let section = `\n${SECTION_INDENT}Unpushed to ${shareLabel}:\n`;
+		for (const c of verbose.unpushed) {
+			const tag = c.rebased ? dim(" (rebased)") : "";
+			section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
 		}
-		const commits = await getCommitsBetweenFull(repoDir, repo.share.ref, "HEAD");
-		if (commits.length > 0) {
-			const shareLabel = repo.share.remote;
-			let section = `\n${SECTION_INDENT}Unpushed to ${shareLabel}:\n`;
-			for (const c of commits) {
-				const tag = rebasedHashes?.has(c.fullHash) ? dim(" (rebased)") : "";
-				section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
-			}
-			sections.push(section);
-		}
+		sections.push(section);
 	}
 
 	// File-level detail
-	if (repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0) {
-		const files = await parseGitStatusFiles(repoDir);
-
-		if (files.staged.length > 0) {
-			let section = `\n${SECTION_INDENT}Changes to be committed:\n`;
-			for (const f of files.staged) {
-				section += `${ITEM_INDENT}${formatFileChange(f)}\n`;
-			}
-			sections.push(section);
+	if (verbose?.staged) {
+		let section = `\n${SECTION_INDENT}Changes to be committed:\n`;
+		for (const f of verbose.staged) {
+			section += `${ITEM_INDENT}${formatFileChange(f)}\n`;
 		}
+		sections.push(section);
+	}
 
-		if (files.unstaged.length > 0) {
-			let section = `\n${SECTION_INDENT}Changes not staged for commit:\n`;
-			for (const f of files.unstaged) {
-				section += `${ITEM_INDENT}${formatFileChange(f)}\n`;
-			}
-			sections.push(section);
+	if (verbose?.unstaged) {
+		let section = `\n${SECTION_INDENT}Changes not staged for commit:\n`;
+		for (const f of verbose.unstaged) {
+			section += `${ITEM_INDENT}${formatFileChange(f)}\n`;
 		}
+		sections.push(section);
+	}
 
-		if (files.untracked.length > 0) {
-			let section = `\n${SECTION_INDENT}Untracked files:\n`;
-			for (const f of files.untracked) {
-				section += `${ITEM_INDENT}${f}\n`;
-			}
-			sections.push(section);
+	if (verbose?.untracked) {
+		let section = `\n${SECTION_INDENT}Untracked files:\n`;
+		for (const f of verbose.untracked) {
+			section += `${ITEM_INDENT}${f}\n`;
 		}
+		sections.push(section);
 	}
 
 	for (const section of sections) {

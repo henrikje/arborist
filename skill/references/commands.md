@@ -329,7 +329,7 @@ Shows each worktree's position relative to the base branch, push status, and loc
 - `-w, --where <filter>` — Filter repos by status flags (comma-separated, OR logic): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, merged, base-merged, base-missing, at-risk
 - `-f, --fetch` — Fetch remotes before showing status
 - `-v, --verbose` — Show file-level detail
-- `--json` — Machine-readable JSON output (filtered when `--where` is active)
+- `--json` — Machine-readable JSON output (filtered when `--where` is active). Combine with `--verbose` to include commit lists and file-level detail in a `verbose` object per repo.
 
 **JSON output structure:**
 ```json
@@ -375,6 +375,20 @@ Shows each worktree's position relative to the base branch, push status, and loc
   "withIssues": 1,
   "issueLabels": ["dirty"],
   "lastCommit": "2025-01-15T10:30:00+01:00"
+}
+```
+
+**With `--verbose`**, each repo gains an optional `verbose` object (omitted when all sections are empty):
+```json
+{
+  "verbose": {
+    "aheadOfBase": [{ "hash": "abc123...", "subject": "Add login form" }],
+    "behindBase": [{ "hash": "def456...", "subject": "Update deps" }],
+    "unpushed": [{ "hash": "abc123...", "subject": "Add login form", "rebased": false }],
+    "staged": [{ "file": "src/login.ts", "type": "new file" }],
+    "unstaged": [{ "file": "src/app.ts", "type": "modified" }],
+    "untracked": ["notes.txt"]
+  }
 }
 ```
 

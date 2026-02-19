@@ -161,7 +161,7 @@ CRITICAL: Claude runs without a TTY. Always follow these rules:
   arb push --yes            # execute it
   ```
 - **Always pass `-y` / `--yes`** to `remove`, `push`, `pull`, `rebase`, and `merge` when you are ready to execute. Without `-y`, these commands will hang waiting for input.
-- Use `--json` on `arb status` or `arb list` when you need to parse the output programmatically.
+- Use `--json` on `arb status` or `arb list` when you need to parse the output programmatically. Use `--json --verbose` on `arb status` for full commit lists and file-level detail in JSON.
 - `arb list -q` for fast workspace listing without status computation.
 - Exit codes: 0 = success, 1 = expected failure (conflicts, nothing to do), 2 = unexpected error.
 
