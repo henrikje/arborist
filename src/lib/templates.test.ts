@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	ARBTEMPLATE_EXT,
+	type TemplateContext,
 	applyRepoTemplates,
 	applyWorkspaceTemplates,
 	detectTemplateScope,
@@ -11,6 +13,8 @@ import {
 	listTemplates,
 	overlayDirectory,
 	removeTemplate,
+	substitutePlaceholders,
+	templateFilePath,
 } from "./templates";
 
 describe("templates", () => {
@@ -561,6 +565,484 @@ describe("templates", () => {
 			expect(result.seeded).toEqual(["new.txt"]);
 			expect(result.reset).toEqual(["drifted.txt"]);
 			expect(result.unchanged).toEqual(["same.txt"]);
+		});
+	});
+
+	// ── Placeholder substitution ─────────────────────────────────────
+
+	describe("substitutePlaceholders", () => {
+		test("replaces all workspace placeholders", () => {
+			const ctx: TemplateContext = {
+				arbRootPath: "/projects/myapp",
+				workspaceName: "feat-login",
+				workspacePath: "/projects/myapp/feat-login",
+			};
+			const input = "root=__ARB_ROOT_PATH__ ws=__WORKSPACE_NAME__ path=__WORKSPACE_PATH__";
+			const result = substitutePlaceholders(input, ctx);
+			expect(result).toBe("root=/projects/myapp ws=feat-login path=/projects/myapp/feat-login");
+		});
+
+		test("replaces worktree placeholders when provided", () => {
+			const ctx: TemplateContext = {
+				arbRootPath: "/projects/myapp",
+				workspaceName: "feat-login",
+				workspacePath: "/projects/myapp/feat-login",
+				worktreeName: "api",
+				worktreePath: "/projects/myapp/feat-login/api",
+			};
+			const input = "wt=__WORKTREE_NAME__ wtpath=__WORKTREE_PATH__";
+			const result = substitutePlaceholders(input, ctx);
+			expect(result).toBe("wt=api wtpath=/projects/myapp/feat-login/api");
+		});
+
+		test("leaves worktree placeholders as-is when not provided", () => {
+			const ctx: TemplateContext = {
+				arbRootPath: "/projects/myapp",
+				workspaceName: "feat-login",
+				workspacePath: "/projects/myapp/feat-login",
+			};
+			const input = "__WORKTREE_NAME__ and __WORKTREE_PATH__";
+			const result = substitutePlaceholders(input, ctx);
+			expect(result).toBe("__WORKTREE_NAME__ and __WORKTREE_PATH__");
+		});
+
+		test("handles multiple occurrences of the same placeholder", () => {
+			const ctx: TemplateContext = {
+				arbRootPath: "/root",
+				workspaceName: "ws",
+				workspacePath: "/root/ws",
+			};
+			const input = "__WORKSPACE_NAME__/__WORKSPACE_NAME__/__WORKSPACE_NAME__";
+			const result = substitutePlaceholders(input, ctx);
+			expect(result).toBe("ws/ws/ws");
+		});
+
+		test("handles content with no placeholders", () => {
+			const ctx: TemplateContext = {
+				arbRootPath: "/root",
+				workspaceName: "ws",
+				workspacePath: "/root/ws",
+			};
+			const input = "no placeholders here";
+			const result = substitutePlaceholders(input, ctx);
+			expect(result).toBe("no placeholders here");
+		});
+	});
+
+	describe("overlayDirectory with .arbtemplate", () => {
+		test("substitutes placeholders and strips extension", () => {
+			const src = join(tmpDir, "src");
+			const dest = join(tmpDir, "dest");
+			mkdirSync(src);
+			mkdirSync(dest);
+			writeFileSync(join(src, `config.json${ARBTEMPLATE_EXT}`), '{"path": "__WORKSPACE_PATH__"}');
+
+			const ctx: TemplateContext = {
+				arbRootPath: tmpDir,
+				workspaceName: "my-ws",
+				workspacePath: dest,
+			};
+			const result = overlayDirectory(src, dest, ctx);
+			expect(result.seeded).toEqual(["config.json"]);
+			expect(readFileSync(join(dest, "config.json"), "utf-8")).toBe(`{"path": "${dest}"}`);
+			expect(existsSync(join(dest, `config.json${ARBTEMPLATE_EXT}`))).toBe(false);
+		});
+
+		test("skips if stripped destination already exists", () => {
+			const src = join(tmpDir, "src");
+			const dest = join(tmpDir, "dest");
+			mkdirSync(src);
+			mkdirSync(dest);
+			writeFileSync(join(src, `file.txt${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
+			writeFileSync(join(dest, "file.txt"), "existing");
+
+			const ctx: TemplateContext = {
+				arbRootPath: tmpDir,
+				workspaceName: "ws",
+				workspacePath: dest,
+			};
+			const result = overlayDirectory(src, dest, ctx);
+			expect(result.skipped).toEqual(["file.txt"]);
+			expect(readFileSync(join(dest, "file.txt"), "utf-8")).toBe("existing");
+		});
+
+		test("handles mix of template and regular files", () => {
+			const src = join(tmpDir, "src");
+			const dest = join(tmpDir, "dest");
+			mkdirSync(src);
+			mkdirSync(dest);
+			writeFileSync(join(src, `dynamic.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
+			writeFileSync(join(src, "static.txt"), "plain content");
+
+			const ctx: TemplateContext = {
+				arbRootPath: tmpDir,
+				workspaceName: "ws",
+				workspacePath: dest,
+			};
+			const result = overlayDirectory(src, dest, ctx);
+			expect(result.seeded).toHaveLength(2);
+			expect(readFileSync(join(dest, "dynamic.json"), "utf-8")).toBe("ws");
+			expect(readFileSync(join(dest, "static.txt"), "utf-8")).toBe("plain content");
+		});
+	});
+
+	describe("forceOverlayDirectory with .arbtemplate", () => {
+		test("seeds .arbtemplate with substitution", () => {
+			const src = join(tmpDir, "src");
+			const dest = join(tmpDir, "dest");
+			mkdirSync(src);
+			mkdirSync(dest);
+			writeFileSync(join(src, `file.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_PATH__");
+
+			const ctx: TemplateContext = {
+				arbRootPath: tmpDir,
+				workspaceName: "ws",
+				workspacePath: dest,
+			};
+			const result = forceOverlayDirectory(src, dest, ctx);
+			expect(result.seeded).toEqual(["file.json"]);
+			expect(readFileSync(join(dest, "file.json"), "utf-8")).toBe(dest);
+		});
+
+		test("reports unchanged when substituted content matches", () => {
+			const src = join(tmpDir, "src");
+			const dest = join(tmpDir, "dest");
+			mkdirSync(src);
+			mkdirSync(dest);
+			writeFileSync(join(src, `file.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
+			writeFileSync(join(dest, "file.json"), "ws");
+
+			const ctx: TemplateContext = {
+				arbRootPath: tmpDir,
+				workspaceName: "ws",
+				workspacePath: dest,
+			};
+			const result = forceOverlayDirectory(src, dest, ctx);
+			expect(result.unchanged).toEqual(["file.json"]);
+		});
+
+		test("resets when substituted content differs", () => {
+			const src = join(tmpDir, "src");
+			const dest = join(tmpDir, "dest");
+			mkdirSync(src);
+			mkdirSync(dest);
+			writeFileSync(join(src, `file.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
+			writeFileSync(join(dest, "file.json"), "old-value");
+
+			const ctx: TemplateContext = {
+				arbRootPath: tmpDir,
+				workspaceName: "ws",
+				workspacePath: dest,
+			};
+			const result = forceOverlayDirectory(src, dest, ctx);
+			expect(result.reset).toEqual(["file.json"]);
+			expect(readFileSync(join(dest, "file.json"), "utf-8")).toBe("ws");
+		});
+	});
+
+	describe("diffTemplates with .arbtemplate", () => {
+		test("no drift when substituted content matches workspace file", () => {
+			const baseDir = join(tmpDir, "project");
+			const wsDir = join(baseDir, "my-ws");
+			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			mkdirSync(templateDir, { recursive: true });
+			mkdirSync(wsDir, { recursive: true });
+			writeFileSync(join(templateDir, `config.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
+			writeFileSync(join(wsDir, "config.json"), "my-ws");
+
+			const result = diffTemplates(baseDir, wsDir, []);
+			expect(result).toEqual([]);
+		});
+
+		test("detects drift when substituted content differs", () => {
+			const baseDir = join(tmpDir, "project");
+			const wsDir = join(baseDir, "my-ws");
+			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			mkdirSync(templateDir, { recursive: true });
+			mkdirSync(wsDir, { recursive: true });
+			writeFileSync(join(templateDir, `config.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
+			writeFileSync(join(wsDir, "config.json"), "wrong-value");
+
+			const result = diffTemplates(baseDir, wsDir, []);
+			expect(result).toEqual([{ relPath: "config.json", scope: "workspace" }]);
+		});
+
+		test("handles repo-scoped .arbtemplate with worktree placeholders", () => {
+			const baseDir = join(tmpDir, "project");
+			const wsDir = join(baseDir, "my-ws");
+			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			mkdirSync(join(wsDir, "api"), { recursive: true });
+			writeFileSync(
+				join(baseDir, ".arb", "templates", "repos", "api", `settings.json${ARBTEMPLATE_EXT}`),
+				"__WORKTREE_PATH__",
+			);
+			writeFileSync(join(wsDir, "api", "settings.json"), join(wsDir, "api"));
+
+			const result = diffTemplates(baseDir, wsDir, ["api"]);
+			expect(result).toEqual([]);
+		});
+	});
+
+	describe("listTemplates with .arbtemplate", () => {
+		test("strips extension and sets isTemplate flag", () => {
+			const baseDir = join(tmpDir, "project");
+			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			mkdirSync(templateDir, { recursive: true });
+			writeFileSync(join(templateDir, `config.json${ARBTEMPLATE_EXT}`), "content");
+
+			const result = listTemplates(baseDir);
+			expect(result).toEqual([{ scope: "workspace", relPath: "config.json", isTemplate: true }]);
+		});
+
+		test("regular files have no isTemplate flag", () => {
+			const baseDir = join(tmpDir, "project");
+			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			mkdirSync(templateDir, { recursive: true });
+			writeFileSync(join(templateDir, "plain.txt"), "content");
+
+			const result = listTemplates(baseDir);
+			expect(result).toEqual([{ scope: "workspace", relPath: "plain.txt" }]);
+		});
+
+		test("handles mix of .arbtemplate and regular files", () => {
+			const baseDir = join(tmpDir, "project");
+			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			mkdirSync(templateDir, { recursive: true });
+			writeFileSync(join(templateDir, `dynamic.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
+			writeFileSync(join(templateDir, "static.txt"), "plain");
+
+			const result = listTemplates(baseDir);
+			expect(result).toHaveLength(2);
+			expect(result).toContainEqual({ scope: "workspace", relPath: "dynamic.json", isTemplate: true });
+			expect(result).toContainEqual({ scope: "workspace", relPath: "static.txt" });
+		});
+	});
+
+	describe("removeTemplate with .arbtemplate", () => {
+		test("removes .arbtemplate file when called with stripped name", () => {
+			const baseDir = join(tmpDir, "project");
+			const templatePath = join(baseDir, ".arb", "templates", "workspace", `config.json${ARBTEMPLATE_EXT}`);
+			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
+			writeFileSync(templatePath, "__WORKSPACE_NAME__");
+
+			removeTemplate(baseDir, "workspace", "config.json");
+			expect(existsSync(templatePath)).toBe(false);
+		});
+
+		test("prefers plain file over .arbtemplate when both exist", () => {
+			const baseDir = join(tmpDir, "project");
+			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
+			const plainPath = join(baseDir, ".arb", "templates", "workspace", "config.json");
+			const arbtplPath = join(baseDir, ".arb", "templates", "workspace", `config.json${ARBTEMPLATE_EXT}`);
+			writeFileSync(plainPath, "plain");
+			writeFileSync(arbtplPath, "template");
+
+			removeTemplate(baseDir, "workspace", "config.json");
+			expect(existsSync(plainPath)).toBe(false);
+			expect(existsSync(arbtplPath)).toBe(true);
+		});
+	});
+
+	describe("templateFilePath with .arbtemplate", () => {
+		test("resolves .arbtemplate variant when plain path does not exist", () => {
+			const baseDir = join(tmpDir, "project");
+			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
+			const arbtplPath = join(baseDir, ".arb", "templates", "workspace", `config.json${ARBTEMPLATE_EXT}`);
+			writeFileSync(arbtplPath, "content");
+
+			const result = templateFilePath(baseDir, "workspace", "config.json");
+			expect(result).toBe(arbtplPath);
+		});
+
+		test("returns plain path when both exist", () => {
+			const baseDir = join(tmpDir, "project");
+			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
+			const plainPath = join(baseDir, ".arb", "templates", "workspace", "config.json");
+			const arbtplPath = join(baseDir, ".arb", "templates", "workspace", `config.json${ARBTEMPLATE_EXT}`);
+			writeFileSync(plainPath, "plain");
+			writeFileSync(arbtplPath, "template");
+
+			const result = templateFilePath(baseDir, "workspace", "config.json");
+			expect(result).toBe(plainPath);
+		});
+
+		test("returns plain path when neither exists", () => {
+			const baseDir = join(tmpDir, "project");
+			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
+
+			const result = templateFilePath(baseDir, "workspace", "config.json");
+			expect(result).toBe(join(baseDir, ".arb", "templates", "workspace", "config.json"));
+		});
+	});
+
+	describe("overlayDirectory conflict detection", () => {
+		test("reports conflict when both plain and .arbtemplate exist", () => {
+			const src = join(tmpDir, "src");
+			const dest = join(tmpDir, "dest");
+			mkdirSync(src);
+			mkdirSync(dest);
+			writeFileSync(join(src, "config.json"), "plain");
+			writeFileSync(join(src, `config.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
+
+			const ctx: TemplateContext = {
+				arbRootPath: tmpDir,
+				workspaceName: "ws",
+				workspacePath: dest,
+			};
+			const result = overlayDirectory(src, dest, ctx);
+			// One should be seeded, the other should be in failed
+			expect(result.seeded).toHaveLength(1);
+			expect(result.failed).toHaveLength(1);
+			expect(result.failed[0]?.path).toBe("config.json");
+			expect(result.failed[0]?.error).toContain("Conflict");
+			expect(result.failed[0]?.error).toContain(ARBTEMPLATE_EXT);
+		});
+
+		test("non-conflicting files are unaffected by conflict detection", () => {
+			const src = join(tmpDir, "src");
+			const dest = join(tmpDir, "dest");
+			mkdirSync(src);
+			mkdirSync(dest);
+			writeFileSync(join(src, "a.json"), "a");
+			writeFileSync(join(src, `b.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
+
+			const ctx: TemplateContext = {
+				arbRootPath: tmpDir,
+				workspaceName: "ws",
+				workspacePath: dest,
+			};
+			const result = overlayDirectory(src, dest, ctx);
+			expect(result.seeded).toHaveLength(2);
+			expect(result.failed).toEqual([]);
+		});
+	});
+
+	describe("forceOverlayDirectory conflict detection", () => {
+		test("reports conflict when both plain and .arbtemplate exist", () => {
+			const src = join(tmpDir, "src");
+			const dest = join(tmpDir, "dest");
+			mkdirSync(src);
+			mkdirSync(dest);
+			writeFileSync(join(src, "config.json"), "plain");
+			writeFileSync(join(src, `config.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
+
+			const ctx: TemplateContext = {
+				arbRootPath: tmpDir,
+				workspaceName: "ws",
+				workspacePath: dest,
+			};
+			const result = forceOverlayDirectory(src, dest, ctx);
+			// One should be seeded, the other should be in failed
+			expect(result.seeded).toHaveLength(1);
+			expect(result.failed).toHaveLength(1);
+			expect(result.failed[0]?.path).toBe("config.json");
+			expect(result.failed[0]?.error).toContain("Conflict");
+		});
+
+		test("non-conflicting files are unaffected by conflict detection", () => {
+			const src = join(tmpDir, "src");
+			const dest = join(tmpDir, "dest");
+			mkdirSync(src);
+			mkdirSync(dest);
+			writeFileSync(join(src, "a.json"), "a");
+			writeFileSync(join(src, `b.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
+
+			const ctx: TemplateContext = {
+				arbRootPath: tmpDir,
+				workspaceName: "ws",
+				workspacePath: dest,
+			};
+			const result = forceOverlayDirectory(src, dest, ctx);
+			expect(result.seeded).toHaveLength(2);
+			expect(result.failed).toEqual([]);
+		});
+	});
+
+	describe("listTemplates conflict detection", () => {
+		test("deduplicates and flags conflict when both plain and .arbtemplate exist", () => {
+			const baseDir = join(tmpDir, "project");
+			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			mkdirSync(templateDir, { recursive: true });
+			writeFileSync(join(templateDir, "config.json"), "plain");
+			writeFileSync(join(templateDir, `config.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
+
+			const result = listTemplates(baseDir);
+			expect(result).toHaveLength(1);
+			const entry = result[0];
+			expect(entry?.relPath).toBe("config.json");
+			expect(entry?.conflict).toBe(true);
+		});
+
+		test("prefers plain file entry over .arbtemplate when both exist", () => {
+			const baseDir = join(tmpDir, "project");
+			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			mkdirSync(templateDir, { recursive: true });
+			writeFileSync(join(templateDir, "config.json"), "plain");
+			writeFileSync(join(templateDir, `config.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
+
+			const result = listTemplates(baseDir);
+			expect(result).toHaveLength(1);
+			// The kept entry should be the plain one (not isTemplate)
+			expect(result[0]?.isTemplate).toBeUndefined();
+		});
+
+		test("flags conflict for repo-scoped templates too", () => {
+			const baseDir = join(tmpDir, "project");
+			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			writeFileSync(join(baseDir, ".arb", "templates", "repos", "api", "config.json"), "plain");
+			writeFileSync(join(baseDir, ".arb", "templates", "repos", "api", `config.json${ARBTEMPLATE_EXT}`), "tpl");
+
+			const result = listTemplates(baseDir);
+			expect(result).toHaveLength(1);
+			expect(result[0]?.conflict).toBe(true);
+			expect(result[0]?.scope).toBe("repo");
+			expect(result[0]?.repo).toBe("api");
+		});
+
+		test("no conflict flag when only one variant exists", () => {
+			const baseDir = join(tmpDir, "project");
+			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			mkdirSync(templateDir, { recursive: true });
+			writeFileSync(join(templateDir, "plain.txt"), "content");
+			writeFileSync(join(templateDir, `dynamic.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
+
+			const result = listTemplates(baseDir);
+			expect(result).toHaveLength(2);
+			for (const entry of result) {
+				expect(entry.conflict).toBeUndefined();
+			}
+		});
+	});
+
+	describe("applyWorkspaceTemplates with .arbtemplate", () => {
+		test("substitutes workspace placeholders", () => {
+			const baseDir = join(tmpDir, "project");
+			const wsDir = join(baseDir, "my-ws");
+			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			mkdirSync(templateDir, { recursive: true });
+			mkdirSync(wsDir, { recursive: true });
+			writeFileSync(join(templateDir, `config.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__:__WORKSPACE_PATH__");
+
+			const result = applyWorkspaceTemplates(baseDir, wsDir);
+			expect(result.seeded).toEqual(["config.json"]);
+			expect(readFileSync(join(wsDir, "config.json"), "utf-8")).toBe(`my-ws:${wsDir}`);
+		});
+	});
+
+	describe("applyRepoTemplates with .arbtemplate", () => {
+		test("substitutes repo placeholders including worktree fields", () => {
+			const baseDir = join(tmpDir, "project");
+			const wsDir = join(baseDir, "my-ws");
+			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			mkdirSync(join(wsDir, "api"), { recursive: true });
+			writeFileSync(
+				join(baseDir, ".arb", "templates", "repos", "api", `config.json${ARBTEMPLATE_EXT}`),
+				"__WORKTREE_NAME__:__WORKTREE_PATH__",
+			);
+
+			const result = applyRepoTemplates(baseDir, wsDir, ["api"]);
+			expect(result.seeded).toEqual(["config.json"]);
+			expect(readFileSync(join(wsDir, "api", "config.json"), "utf-8")).toBe(`api:${join(wsDir, "api")}`);
 		});
 	});
 });

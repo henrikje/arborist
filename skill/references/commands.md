@@ -66,7 +66,7 @@ Manage workspace template files.
 arb template <subcommand>
 ```
 
-Subcommands for managing template files that are automatically seeded into new workspaces. Templates live in `.arb/templates/` and are copied during `arb create` and `arb add`.
+Subcommands for managing template files that are automatically seeded into new workspaces. Templates live in `.arb/templates/` and are copied during `arb create` and `arb add`. Files ending with `.arbtemplate` undergo placeholder substitution (`__WORKSPACE_PATH__`, `__WORKTREE_PATH__`, etc.) and have the extension stripped at the destination.
 
 #### template add
 

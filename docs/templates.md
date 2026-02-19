@@ -56,6 +56,22 @@ Template files are only copied when the target doesn't already exist. Existing f
 
 The template tree mirrors the workspace structure. `workspace/` files land at the workspace root, `repos/<name>/` files land inside the corresponding worktree.
 
+## Placeholder substitution
+
+Files ending with `.arbtemplate` undergo placeholder substitution when seeded. The extension is stripped at the destination (`config.json.arbtemplate` → `config.json`). Files without the extension are copied verbatim.
+
+| Placeholder | Value | Scope |
+|---|---|---|
+| `__ARB_ROOT_PATH__` | Absolute path to the arb root | all |
+| `__WORKSPACE_NAME__` | Workspace directory name | all |
+| `__WORKSPACE_PATH__` | Absolute path to the workspace | all |
+| `__WORKTREE_NAME__` | Repo/worktree directory name | repo only |
+| `__WORKTREE_PATH__` | Absolute path to the worktree | repo only |
+
+`__WORKTREE_NAME__` and `__WORKTREE_PATH__` are only replaced in repo-scoped templates. In workspace-scoped templates they are left as literal text.
+
+Substitution happens wherever `.arbtemplate` files are processed: `arb create`, `arb add`, `arb template apply`, `arb template diff`, and `arb template apply --force`.
+
 ## Version-controlling templates
 
 `arb init` creates `.arb/.gitignore` with a `repos/` entry, which means everything else in `.arb/` — including `templates/` — is version-controllable. You can commit your templates to a dotfiles repo, a team bootstrap repo, or just keep them local.
@@ -76,10 +92,38 @@ arb create my-feature --all-repos
 
 ## Example: sharing Claude Code permissions
 
-If your team uses Claude Code, you can template a `settings.local.json` so every workspace starts with the right permissions:
+If your team uses Claude Code, you can template a `settings.local.json` with workspace-specific paths using placeholder substitution.
 
-```bash
-arb template add .claude/settings.local.json
+For workspace-scoped settings, create the template at:
+
+```
+.arb/templates/workspace/.claude/settings.local.json.arbtemplate
 ```
 
-New workspaces will get the settings file automatically.
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls __WORKSPACE_PATH__)"
+    ]
+  }
+}
+```
+
+For repo-scoped settings with worktree paths:
+
+```
+.arb/templates/repos/api/.claude/settings.local.json.arbtemplate
+```
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C __WORKTREE_PATH__ status)"
+    ]
+  }
+}
+```
+
+New workspaces will get the settings file with concrete paths automatically.

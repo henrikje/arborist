@@ -7,8 +7,41 @@ import {
 	readdirSync,
 	rmdirSync,
 	unlinkSync,
+	writeFileSync,
 } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
+
+export const ARBTEMPLATE_EXT = ".arbtemplate";
+
+export interface TemplateContext {
+	arbRootPath: string;
+	workspaceName: string;
+	workspacePath: string;
+	worktreeName?: string;
+	worktreePath?: string;
+}
+
+export function substitutePlaceholders(content: string, ctx: TemplateContext): string {
+	let result = content;
+	result = result.replaceAll("__ARB_ROOT_PATH__", ctx.arbRootPath);
+	result = result.replaceAll("__WORKSPACE_NAME__", ctx.workspaceName);
+	result = result.replaceAll("__WORKSPACE_PATH__", ctx.workspacePath);
+	if (ctx.worktreeName !== undefined) {
+		result = result.replaceAll("__WORKTREE_NAME__", ctx.worktreeName);
+	}
+	if (ctx.worktreePath !== undefined) {
+		result = result.replaceAll("__WORKTREE_PATH__", ctx.worktreePath);
+	}
+	return result;
+}
+
+function isTemplateFile(relPath: string): boolean {
+	return relPath.endsWith(ARBTEMPLATE_EXT);
+}
+
+function stripTemplateExt(relPath: string): string {
+	return relPath.slice(0, -ARBTEMPLATE_EXT.length);
+}
 
 export interface FailedCopy {
 	path: string;
@@ -25,10 +58,11 @@ function emptyResult(): OverlayResult {
 	return { seeded: [], skipped: [], failed: [] };
 }
 
-export function overlayDirectory(srcDir: string, destDir: string): OverlayResult {
+export function overlayDirectory(srcDir: string, destDir: string, ctx?: TemplateContext): OverlayResult {
 	if (!existsSync(srcDir)) return emptyResult();
 
 	const result = emptyResult();
+	const seen = new Set<string>();
 
 	function walk(dir: string): void {
 		for (const entry of readdirSync(dir)) {
@@ -40,7 +74,19 @@ export function overlayDirectory(srcDir: string, destDir: string): OverlayResult
 			if (stat.isDirectory()) {
 				walk(srcPath);
 			} else if (stat.isFile()) {
-				const relPath = relative(srcDir, srcPath);
+				const rawRelPath = relative(srcDir, srcPath);
+				const isArbtpl = isTemplateFile(rawRelPath);
+				const relPath = isArbtpl ? stripTemplateExt(rawRelPath) : rawRelPath;
+
+				if (seen.has(relPath)) {
+					result.failed.push({
+						path: relPath,
+						error: `Conflict: both ${relPath} and ${relPath}${ARBTEMPLATE_EXT} exist — remove one`,
+					});
+					continue;
+				}
+				seen.add(relPath);
+
 				const destPath = join(destDir, relPath);
 
 				if (existsSync(destPath)) {
@@ -48,7 +94,12 @@ export function overlayDirectory(srcDir: string, destDir: string): OverlayResult
 				} else {
 					try {
 						mkdirSync(join(destDir, relative(srcDir, dir)), { recursive: true });
-						copyFileSync(srcPath, destPath);
+						if (isArbtpl && ctx) {
+							const content = readFileSync(srcPath, "utf-8");
+							writeFileSync(destPath, substitutePlaceholders(content, ctx));
+						} else {
+							copyFileSync(srcPath, destPath);
+						}
 						result.seeded.push(relPath);
 					} catch (e) {
 						const msg = e instanceof Error ? e.message : String(e);
@@ -65,7 +116,12 @@ export function overlayDirectory(srcDir: string, destDir: string): OverlayResult
 
 export function applyWorkspaceTemplates(baseDir: string, wsDir: string): OverlayResult {
 	const templateDir = join(baseDir, ".arb", "templates", "workspace");
-	return overlayDirectory(templateDir, wsDir);
+	const ctx: TemplateContext = {
+		arbRootPath: baseDir,
+		workspaceName: basename(wsDir),
+		workspacePath: wsDir,
+	};
+	return overlayDirectory(templateDir, wsDir, ctx);
 }
 
 export function applyRepoTemplates(baseDir: string, wsDir: string, repos: string[]): OverlayResult {
@@ -77,7 +133,14 @@ export function applyRepoTemplates(baseDir: string, wsDir: string, repos: string
 
 		if (!existsSync(templateDir) || !existsSync(repoDir)) continue;
 
-		const repoResult = overlayDirectory(templateDir, repoDir);
+		const ctx: TemplateContext = {
+			arbRootPath: baseDir,
+			workspaceName: basename(wsDir),
+			workspacePath: wsDir,
+			worktreeName: repo,
+			worktreePath: repoDir,
+		};
+		const repoResult = overlayDirectory(templateDir, repoDir, ctx);
 		result.seeded.push(...repoResult.seeded);
 		result.skipped.push(...repoResult.skipped);
 		result.failed.push(...repoResult.failed);
@@ -92,10 +155,11 @@ export interface TemplateDiff {
 	repo?: string;
 }
 
-function diffDirectory(srcDir: string, destDir: string): string[] {
+function diffDirectory(srcDir: string, destDir: string, ctx?: TemplateContext): string[] {
 	if (!existsSync(srcDir)) return [];
 
 	const diffs: string[] = [];
+	const seen = new Set<string>();
 
 	function walk(dir: string): void {
 		for (const entry of readdirSync(dir)) {
@@ -107,12 +171,21 @@ function diffDirectory(srcDir: string, destDir: string): string[] {
 			if (stat.isDirectory()) {
 				walk(srcPath);
 			} else if (stat.isFile()) {
-				const relPath = relative(srcDir, srcPath);
+				const rawRelPath = relative(srcDir, srcPath);
+				const isArbtpl = isTemplateFile(rawRelPath);
+				const relPath = isArbtpl ? stripTemplateExt(rawRelPath) : rawRelPath;
+
+				if (seen.has(relPath)) continue;
+				seen.add(relPath);
+
 				const destPath = join(destDir, relPath);
 
 				if (!existsSync(destPath)) continue;
 
-				const srcContent = readFileSync(srcPath);
+				const srcContent =
+					isArbtpl && ctx
+						? Buffer.from(substitutePlaceholders(readFileSync(srcPath, "utf-8"), ctx))
+						: readFileSync(srcPath);
 				const destContent = readFileSync(destPath);
 				if (!srcContent.equals(destContent)) {
 					diffs.push(relPath);
@@ -129,7 +202,12 @@ export function diffTemplates(baseDir: string, wsDir: string, repos: string[]): 
 	const result: TemplateDiff[] = [];
 
 	const wsTemplateDir = join(baseDir, ".arb", "templates", "workspace");
-	for (const relPath of diffDirectory(wsTemplateDir, wsDir)) {
+	const wsCtx: TemplateContext = {
+		arbRootPath: baseDir,
+		workspaceName: basename(wsDir),
+		workspacePath: wsDir,
+	};
+	for (const relPath of diffDirectory(wsTemplateDir, wsDir, wsCtx)) {
 		result.push({ relPath, scope: "workspace" });
 	}
 
@@ -138,7 +216,14 @@ export function diffTemplates(baseDir: string, wsDir: string, repos: string[]): 
 		const repoDir = join(wsDir, repo);
 		if (!existsSync(repoDir)) continue;
 
-		for (const relPath of diffDirectory(repoTemplateDir, repoDir)) {
+		const repoCtx: TemplateContext = {
+			arbRootPath: baseDir,
+			workspaceName: basename(wsDir),
+			workspacePath: wsDir,
+			worktreeName: repo,
+			worktreePath: repoDir,
+		};
+		for (const relPath of diffDirectory(repoTemplateDir, repoDir, repoCtx)) {
 			result.push({ relPath, scope: "repo", repo });
 		}
 	}
@@ -152,17 +237,38 @@ export interface TemplateEntry {
 	scope: "workspace" | "repo";
 	repo?: string;
 	relPath: string;
+	isTemplate?: boolean;
+	conflict?: boolean;
 }
 
 export function listTemplates(baseDir: string): TemplateEntry[] {
-	const result: TemplateEntry[] = [];
+	const seen = new Map<string, TemplateEntry>();
 	const templatesDir = join(baseDir, ".arb", "templates");
+
+	function addEntry(entry: TemplateEntry): void {
+		const key = `${entry.scope}:${entry.repo ?? ""}:${entry.relPath}`;
+		const existing = seen.get(key);
+		if (existing) {
+			// Prefer the plain file over .arbtemplate; flag the conflict
+			if (existing.isTemplate && !entry.isTemplate) {
+				seen.set(key, { ...entry, conflict: true });
+			} else {
+				existing.conflict = true;
+			}
+		} else {
+			seen.set(key, entry);
+		}
+	}
 
 	// Workspace templates
 	const wsDir = join(templatesDir, "workspace");
 	if (existsSync(wsDir)) {
-		for (const relPath of walkFiles(wsDir)) {
-			result.push({ scope: "workspace", relPath });
+		for (const rawRelPath of walkFiles(wsDir)) {
+			if (isTemplateFile(rawRelPath)) {
+				addEntry({ scope: "workspace", relPath: stripTemplateExt(rawRelPath), isTemplate: true });
+			} else {
+				addEntry({ scope: "workspace", relPath: rawRelPath });
+			}
 		}
 	}
 
@@ -172,13 +278,17 @@ export function listTemplates(baseDir: string): TemplateEntry[] {
 		for (const entry of readdirSync(reposDir)) {
 			const repoTemplateDir = join(reposDir, entry);
 			if (!lstatSync(repoTemplateDir).isDirectory()) continue;
-			for (const relPath of walkFiles(repoTemplateDir)) {
-				result.push({ scope: "repo", repo: entry, relPath });
+			for (const rawRelPath of walkFiles(repoTemplateDir)) {
+				if (isTemplateFile(rawRelPath)) {
+					addEntry({ scope: "repo", repo: entry, relPath: stripTemplateExt(rawRelPath), isTemplate: true });
+				} else {
+					addEntry({ scope: "repo", repo: entry, relPath: rawRelPath });
+				}
 			}
 		}
 	}
 
-	return result;
+	return [...seen.values()];
 }
 
 function walkFiles(dir: string): string[] {
@@ -230,12 +340,15 @@ export function detectTemplateScope(baseDir: string, cwd: string): TemplateScope
 
 export function removeTemplate(baseDir: string, scope: "workspace" | "repo", relPath: string, repo?: string): void {
 	const repoName = repo ?? "";
-	const templatePath =
+	const plainPath =
 		scope === "workspace"
 			? join(baseDir, ".arb", "templates", "workspace", relPath)
 			: join(baseDir, ".arb", "templates", "repos", repoName, relPath);
 
-	if (!existsSync(templatePath)) {
+	const arbtplPath = `${plainPath}${ARBTEMPLATE_EXT}`;
+	const templatePath = existsSync(plainPath) ? plainPath : existsSync(arbtplPath) ? arbtplPath : null;
+
+	if (!templatePath) {
 		throw new Error(`Template does not exist: ${relPath}`);
 	}
 
@@ -263,10 +376,11 @@ export interface ForceOverlayResult {
 	failed: FailedCopy[];
 }
 
-export function forceOverlayDirectory(srcDir: string, destDir: string): ForceOverlayResult {
+export function forceOverlayDirectory(srcDir: string, destDir: string, ctx?: TemplateContext): ForceOverlayResult {
 	if (!existsSync(srcDir)) return { seeded: [], reset: [], unchanged: [], failed: [] };
 
 	const result: ForceOverlayResult = { seeded: [], reset: [], unchanged: [], failed: [] };
+	const seen = new Set<string>();
 
 	function walk(dir: string): void {
 		for (const entry of readdirSync(dir)) {
@@ -278,21 +392,45 @@ export function forceOverlayDirectory(srcDir: string, destDir: string): ForceOve
 			if (stat.isDirectory()) {
 				walk(srcPath);
 			} else if (stat.isFile()) {
-				const relPath = relative(srcDir, srcPath);
+				const rawRelPath = relative(srcDir, srcPath);
+				const isArbtpl = isTemplateFile(rawRelPath);
+				const relPath = isArbtpl ? stripTemplateExt(rawRelPath) : rawRelPath;
+
+				if (seen.has(relPath)) {
+					result.failed.push({
+						path: relPath,
+						error: `Conflict: both ${relPath} and ${relPath}${ARBTEMPLATE_EXT} exist — remove one`,
+					});
+					continue;
+				}
+				seen.add(relPath);
+
 				const destPath = join(destDir, relPath);
 
 				try {
 					if (!existsSync(destPath)) {
 						mkdirSync(join(destDir, relative(srcDir, dir)), { recursive: true });
-						copyFileSync(srcPath, destPath);
+						if (isArbtpl && ctx) {
+							const content = readFileSync(srcPath, "utf-8");
+							writeFileSync(destPath, substitutePlaceholders(content, ctx));
+						} else {
+							copyFileSync(srcPath, destPath);
+						}
 						result.seeded.push(relPath);
 					} else {
-						const srcContent = readFileSync(srcPath);
+						const srcContent =
+							isArbtpl && ctx
+								? Buffer.from(substitutePlaceholders(readFileSync(srcPath, "utf-8"), ctx))
+								: readFileSync(srcPath);
 						const destContent = readFileSync(destPath);
 						if (srcContent.equals(destContent)) {
 							result.unchanged.push(relPath);
 						} else {
-							copyFileSync(srcPath, destPath);
+							if (isArbtpl && ctx) {
+								writeFileSync(destPath, srcContent);
+							} else {
+								copyFileSync(srcPath, destPath);
+							}
 							result.reset.push(relPath);
 						}
 					}
@@ -310,7 +448,12 @@ export function forceOverlayDirectory(srcDir: string, destDir: string): ForceOve
 
 export function forceApplyWorkspaceTemplates(baseDir: string, wsDir: string): ForceOverlayResult {
 	const templateDir = join(baseDir, ".arb", "templates", "workspace");
-	return forceOverlayDirectory(templateDir, wsDir);
+	const ctx: TemplateContext = {
+		arbRootPath: baseDir,
+		workspaceName: basename(wsDir),
+		workspacePath: wsDir,
+	};
+	return forceOverlayDirectory(templateDir, wsDir, ctx);
 }
 
 export function forceApplyRepoTemplates(baseDir: string, wsDir: string, repos: string[]): ForceOverlayResult {
@@ -322,7 +465,14 @@ export function forceApplyRepoTemplates(baseDir: string, wsDir: string, repos: s
 
 		if (!existsSync(templateDir) || !existsSync(repoDir)) continue;
 
-		const repoResult = forceOverlayDirectory(templateDir, repoDir);
+		const ctx: TemplateContext = {
+			arbRootPath: baseDir,
+			workspaceName: basename(wsDir),
+			workspacePath: wsDir,
+			worktreeName: repo,
+			worktreePath: repoDir,
+		};
+		const repoResult = forceOverlayDirectory(templateDir, repoDir, ctx);
 		result.seeded.push(...repoResult.seeded);
 		result.reset.push(...repoResult.reset);
 		result.unchanged.push(...repoResult.unchanged);
@@ -348,9 +498,17 @@ export function displayTemplateDiffs(
 }
 
 export function templateFilePath(baseDir: string, scope: "workspace" | "repo", relPath: string, repo?: string): string {
-	return scope === "workspace"
-		? join(baseDir, ".arb", "templates", "workspace", relPath)
-		: join(baseDir, ".arb", "templates", "repos", repo ?? "", relPath);
+	const plainPath =
+		scope === "workspace"
+			? join(baseDir, ".arb", "templates", "workspace", relPath)
+			: join(baseDir, ".arb", "templates", "repos", repo ?? "", relPath);
+
+	if (existsSync(plainPath)) return plainPath;
+
+	const arbtplPath = `${plainPath}${ARBTEMPLATE_EXT}`;
+	if (existsSync(arbtplPath)) return arbtplPath;
+
+	return plainPath;
 }
 
 export function workspaceFilePath(wsDir: string, scope: "workspace" | "repo", relPath: string, repo?: string): string {

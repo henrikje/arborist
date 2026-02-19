@@ -1,11 +1,14 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import type { Command } from "commander";
-import { error, info, plural, success, yellow } from "../lib/output";
+import { dim, error, info, plural, success, warn, yellow } from "../lib/output";
 import { collectRepo, workspaceRepoDirs } from "../lib/repos";
 import {
+	ARBTEMPLATE_EXT,
 	type ForceOverlayResult,
 	type OverlayResult,
+	type TemplateContext,
 	type TemplateDiff,
 	type TemplateEntry,
 	applyRepoTemplates,
@@ -16,6 +19,7 @@ import {
 	forceApplyWorkspaceTemplates,
 	listTemplates,
 	removeTemplate,
+	substitutePlaceholders,
 	templateFilePath,
 	workspaceFilePath,
 } from "../lib/templates";
@@ -60,7 +64,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 		.command("template")
 		.summary("Manage workspace templates")
 		.description(
-			"Manage template files that are automatically seeded into new workspaces. Templates live in .arb/templates/ and are copied into workspaces during 'arb create' and 'arb add'. Use subcommands to add, remove, list, diff, and apply templates.",
+			"Manage template files that are automatically seeded into new workspaces. Templates live in .arb/templates/ and are copied into workspaces during 'arb create' and 'arb add'. Files ending with .arbtemplate undergo placeholder substitution (__WORKSPACE_PATH__, __WORKTREE_PATH__, etc.) and have the extension stripped at the destination. Use subcommands to add, remove, list, diff, and apply templates.",
 		);
 
 	// ── template add ─────────────────────────────────────────────────
@@ -203,7 +207,11 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 				const key = `${t.scope}:${t.repo ?? ""}:${t.relPath}`;
 				const modified = diffSet.has(key);
 				const padded = t.relPath.padEnd(maxPath);
-				const annotation = modified ? `  ${yellow("(modified)")}` : "";
+				const annotations: string[] = [];
+				if (t.isTemplate) annotations.push(dim("(template)"));
+				if (t.conflict) annotations.push(yellow("(conflict)"));
+				if (modified) annotations.push(yellow("(modified)"));
+				const annotation = annotations.length > 0 ? `  ${annotations.join(" ")}` : "";
 				process.stderr.write(`  [${scopeLabel}]${" ".repeat(maxScope - scopeLabel.length)} ${padded}${annotation}\n`);
 			}
 		});
@@ -260,6 +268,25 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 						: `.arb/templates/repos/${diff.repo}/${diff.relPath}`;
 				const wsLabel = diff.scope === "workspace" ? diff.relPath : `${diff.repo}/${diff.relPath}`;
 
+				// For .arbtemplate files, substitute placeholders before diffing
+				const isArbtpl = tplPath.endsWith(ARBTEMPLATE_EXT);
+				let diffSrcPath = tplPath;
+				let tmpFile: string | null = null;
+				if (isArbtpl) {
+					const repoDir = diff.scope === "repo" && diff.repo ? join(wsDir, diff.repo) : undefined;
+					const tplCtx: TemplateContext = {
+						arbRootPath: ctx.baseDir,
+						workspaceName: basename(wsDir),
+						workspacePath: wsDir,
+						worktreeName: diff.scope === "repo" ? diff.repo : undefined,
+						worktreePath: repoDir,
+					};
+					const content = readFileSync(tplPath, "utf-8");
+					tmpFile = join(tmpdir(), `arb-diff-${process.pid}-${Date.now()}`);
+					writeFileSync(tmpFile, substitutePlaceholders(content, tplCtx));
+					diffSrcPath = tmpFile;
+				}
+
 				// Generate diff using system diff command
 				const proc = Bun.spawnSync([
 					"diff",
@@ -268,13 +295,14 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 					`${tplLabel} (template)`,
 					"--label",
 					`${wsLabel} (workspace)`,
-					tplPath,
+					diffSrcPath,
 					wsPath,
 				]);
 				const output = proc.stdout.toString();
 				if (output) {
 					process.stderr.write(`${output}\n`);
 				}
+				if (tmpFile) unlinkSync(tmpFile);
 			}
 
 			process.exit(1);
@@ -289,7 +317,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 		.option("-f, --force", "Overwrite drifted files (reset to template version)")
 		.summary("Re-seed templates into the current workspace")
 		.description(
-			"Re-seed template files into the current workspace. By default, only copies files that don't already exist (safe, non-destructive). Use --force to also reset drifted files to their template version. Use --repo or --workspace to limit scope, and optionally specify a file path to apply only that template.",
+			"Re-seed template files into the current workspace. By default, only copies files that don't already exist (safe, non-destructive). Use --force to also reset drifted files to their template version. Files with .arbtemplate extension undergo placeholder substitution. Use --repo or --workspace to limit scope, and optionally specify a file path to apply only that template.",
 		)
 		.action((file: string | undefined, options: { repo?: string[]; workspace?: boolean; force?: boolean }) => {
 			const ctx = getCtx();
@@ -334,21 +362,34 @@ function applySingleFile(
 	tplPath: string,
 	destPath: string,
 	force: boolean,
+	ctx?: TemplateContext,
 ): { status: "seeded" | "skipped" | "reset" | "unchanged" } {
+	const isArbtpl = tplPath.endsWith(ARBTEMPLATE_EXT);
+
 	if (!existsSync(destPath)) {
 		mkdirSync(dirname(destPath), { recursive: true });
-		copyFileSync(tplPath, destPath);
+		if (isArbtpl && ctx) {
+			const content = readFileSync(tplPath, "utf-8");
+			writeFileSync(destPath, substitutePlaceholders(content, ctx));
+		} else {
+			copyFileSync(tplPath, destPath);
+		}
 		return { status: "seeded" };
 	}
 	if (!force) {
 		return { status: "skipped" };
 	}
-	const srcContent = readFileSync(tplPath);
+	const srcContent =
+		isArbtpl && ctx ? Buffer.from(substitutePlaceholders(readFileSync(tplPath, "utf-8"), ctx)) : readFileSync(tplPath);
 	const destContent = readFileSync(destPath);
 	if (srcContent.equals(destContent)) {
 		return { status: "unchanged" };
 	}
-	copyFileSync(tplPath, destPath);
+	if (isArbtpl && ctx) {
+		writeFileSync(destPath, srcContent);
+	} else {
+		copyFileSync(tplPath, destPath);
+	}
 	return { status: "reset" };
 }
 
@@ -368,7 +409,15 @@ function applyDefaultMode(
 			const tplPath = templateFilePath(ctx.baseDir, entry.scope, entry.relPath, entry.repo);
 			const destPath = workspaceFilePath(wsDir, entry.scope, entry.relPath, entry.repo);
 			const scope = entry.scope === "workspace" ? "workspace" : (entry.repo ?? "");
-			const { status } = applySingleFile(tplPath, destPath, false);
+			const repoDir = entry.scope === "repo" && entry.repo ? join(wsDir, entry.repo) : undefined;
+			const tplCtx: TemplateContext = {
+				arbRootPath: ctx.baseDir,
+				workspaceName: basename(wsDir),
+				workspacePath: wsDir,
+				worktreeName: entry.scope === "repo" ? entry.repo : undefined,
+				worktreePath: repoDir,
+			};
+			const { status } = applySingleFile(tplPath, destPath, false, tplCtx);
 			const label = status === "skipped" ? yellow("skipped (exists)") : "seeded";
 			process.stderr.write(`  [${scope}] ${entry.relPath.padEnd(40)} ${label}\n`);
 			if (status === "seeded") totalSeeded++;
@@ -414,7 +463,15 @@ function applyForceMode(
 			const tplPath = templateFilePath(ctx.baseDir, entry.scope, entry.relPath, entry.repo);
 			const destPath = workspaceFilePath(wsDir, entry.scope, entry.relPath, entry.repo);
 			const scope = entry.scope === "workspace" ? "workspace" : (entry.repo ?? "");
-			const { status } = applySingleFile(tplPath, destPath, true);
+			const repoDir = entry.scope === "repo" && entry.repo ? join(wsDir, entry.repo) : undefined;
+			const tplCtx: TemplateContext = {
+				arbRootPath: ctx.baseDir,
+				workspaceName: basename(wsDir),
+				workspacePath: wsDir,
+				worktreeName: entry.scope === "repo" ? entry.repo : undefined,
+				worktreePath: repoDir,
+			};
+			const { status } = applySingleFile(tplPath, destPath, true, tplCtx);
 			process.stderr.write(`  [${scope}] ${entry.relPath.padEnd(40)} ${status}\n`);
 			if (status === "seeded") totalSeeded++;
 			else if (status === "reset") totalReset++;
@@ -453,6 +510,9 @@ function displayOverlayResults(result: OverlayResult, scope: string): void {
 	for (const f of result.skipped) {
 		process.stderr.write(`  [${scope}] ${f.padEnd(40)} ${yellow("skipped (exists)")}\n`);
 	}
+	for (const f of result.failed) {
+		warn(`Failed to copy template ${f.path}: ${f.error}`);
+	}
 }
 
 function displayForceOverlayResults(result: ForceOverlayResult, scope: string): void {
@@ -464,5 +524,8 @@ function displayForceOverlayResults(result: ForceOverlayResult, scope: string): 
 	}
 	for (const f of result.unchanged) {
 		process.stderr.write(`  [${scope}] ${f.padEnd(40)} unchanged\n`);
+	}
+	for (const f of result.failed) {
+		warn(`Failed to copy template ${f.path}: ${f.error}`);
 	}
 }
