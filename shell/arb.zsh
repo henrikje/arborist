@@ -49,6 +49,40 @@ _arb_where_filter() {
         'at-risk[Repos needing any kind of attention]'
 }
 
+_arb_template_names() {
+    local base_dir="$1"
+    [[ -z "$base_dir" ]] && return
+
+    local -a names=()
+    local f tpl_dir
+
+    # Workspace-scoped templates
+    tpl_dir="$base_dir/.arb/templates/workspace"
+    if [[ -d "$tpl_dir" ]]; then
+        for f in "$tpl_dir"/**/*(N.); do
+            local rel="${f#$tpl_dir/}"
+            [[ "$rel" == *.arbtemplate ]] && rel="${rel%.arbtemplate}"
+            names+=("$rel")
+        done
+    fi
+
+    # Repo-scoped templates
+    tpl_dir="$base_dir/.arb/templates/repos"
+    if [[ -d "$tpl_dir" ]]; then
+        for f in "$tpl_dir"/*/**/*(N.); do
+            # Strip repos/<repo>/ prefix to get the relative path
+            local rel="${f#$tpl_dir/}"
+            rel="${rel#*/}"
+            [[ "$rel" == *.arbtemplate ]] && rel="${rel%.arbtemplate}"
+            names+=("$rel")
+        done
+    fi
+
+    # Deduplicate and offer completions
+    local -aU unique_names=(${names[@]})
+    compadd -a unique_names
+}
+
 _arb() {
     # Walk up from $PWD looking for .arb/ marker
     local base_dir=""
@@ -83,8 +117,7 @@ _arb() {
         command)
             local -a subcommands=(
                 'init:Initialize a directory as an arb root'
-                'clone:Clone a repo into .arb/repos/'
-                'repos:List cloned repos'
+                'repo:Manage canonical repos'
                 'create:Create a new workspace'
                 'remove:Remove a workspace'
                 'list:List all workspaces'
@@ -156,11 +189,26 @@ _arb() {
                         '--delete-branch[Delete the local branch from the canonical repo]' \
                         '*:repo:($repo_names)'
                     ;;
-                clone)
-                    _arguments \
-                        '--upstream[Add an upstream remote (for fork workflows)]:url:' \
-                        '1:url:' \
-                        '2:name:'
+                repo)
+                    shift words; (( CURRENT-- ))
+                    if (( CURRENT == 1 )); then
+                        local -a repo_subcmds=(
+                            'clone:Clone a repo into .arb/repos/'
+                            'list:List cloned repos'
+                        )
+                        _describe 'repo command' repo_subcmds
+                    else
+                        case "${words[1]}" in
+                            clone)
+                                shift words; (( CURRENT-- ))
+                                _arguments \
+                                    '--upstream[Add an upstream remote (for fork workflows)]:url:' \
+                                    '1:url:' \
+                                    '2:name:'
+                                ;;
+                            list) ;;
+                        esac
+                    fi
                     ;;
                 init)
                     _arguments '1:path:_directories'
@@ -225,6 +273,7 @@ _arb() {
                         '*:repo:($repo_names)'
                     ;;
                 template)
+                    shift words; (( CURRENT-- ))
                     local -a template_subcmds=(
                         'add:Capture a file as a template'
                         'remove:Remove a template file'
@@ -232,11 +281,12 @@ _arb() {
                         'diff:Show template drift'
                         'apply:Re-seed templates into the current workspace'
                     )
-                    if (( CURRENT == 2 )); then
+                    if (( CURRENT == 1 )); then
                         _describe 'template command' template_subcmds
                     else
-                        case "${words[2]}" in
+                        case "${words[1]}" in
                             add)
+                                shift words; (( CURRENT-- ))
                                 _arguments \
                                     '*--repo[Target repo scope]:repo:($repo_names)' \
                                     '--workspace[Target workspace scope]' \
@@ -244,24 +294,27 @@ _arb() {
                                     '1:file:_files'
                                 ;;
                             remove)
+                                shift words; (( CURRENT-- ))
                                 _arguments \
                                     '*--repo[Target repo scope]:repo:($repo_names)' \
                                     '--workspace[Target workspace scope]' \
-                                    '1:file:_files'
+                                    '1:template:{ _arb_template_names "$base_dir" }'
                                 ;;
                             list) ;;
                             diff)
+                                shift words; (( CURRENT-- ))
                                 _arguments \
                                     '*--repo[Filter to specific repo]:repo:($repo_names)' \
                                     '--workspace[Filter to workspace templates only]' \
-                                    '1:file:_files'
+                                    '1:template:{ _arb_template_names "$base_dir" }'
                                 ;;
                             apply)
+                                shift words; (( CURRENT-- ))
                                 _arguments \
                                     '*--repo[Apply only to specific repo]:repo:($repo_names)' \
                                     '--workspace[Apply only workspace templates]' \
                                     '(-f --force)'{-f,--force}'[Overwrite drifted files]' \
-                                    '1:file:_files'
+                                    '1:template:{ _arb_template_names "$base_dir" }'
                                 ;;
                         esac
                     fi
