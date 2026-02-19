@@ -144,6 +144,8 @@ arb push
 arb remove add-dark-mode
 ```
 
+Now you're ready to create new workspaces to tackle new tasks!
+
 ## Core concepts
 
 Now that you've seen the basics, let's take a look at the ideas behind Arborist.
