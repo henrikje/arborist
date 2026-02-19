@@ -674,3 +674,150 @@ load test_helper/common-setup
     [[ "$output" == *"some-longer-filename.txt"*"(modified)"* ]]
 }
 
+# ── .arbtemplate placeholder substitution ─────────────────────────
+
+@test "arb create applies .arbtemplate with workspace placeholders" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '__WORKSPACE_NAME__:__WORKSPACE_PATH__:__ARB_ROOT_PATH__' \
+        > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
+
+    arb create tpl-sub-ws repo-a
+    [ -f "$TEST_DIR/project/tpl-sub-ws/config.json" ]
+    [ ! -f "$TEST_DIR/project/tpl-sub-ws/config.json.arbtemplate" ]
+    local content
+    content="$(cat "$TEST_DIR/project/tpl-sub-ws/config.json")"
+    [[ "$content" == "tpl-sub-ws:$TEST_DIR/project/tpl-sub-ws:$TEST_DIR/project" ]]
+}
+
+@test "arb create applies .arbtemplate with repo placeholders" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    printf '__WORKTREE_NAME__:__WORKTREE_PATH__' \
+        > "$TEST_DIR/project/.arb/templates/repos/repo-a/settings.json.arbtemplate"
+
+    arb create tpl-sub-repo repo-a
+    [ -f "$TEST_DIR/project/tpl-sub-repo/repo-a/settings.json" ]
+    local content
+    content="$(cat "$TEST_DIR/project/tpl-sub-repo/repo-a/settings.json")"
+    [[ "$content" == "repo-a:$TEST_DIR/project/tpl-sub-repo/repo-a" ]]
+}
+
+@test "arb template apply seeds .arbtemplate with substitution" {
+    arb create tpl-apply-sub repo-a >/dev/null 2>&1
+    # Set up templates AFTER create so they haven't been seeded yet
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '__WORKSPACE_NAME__' \
+        > "$TEST_DIR/project/.arb/templates/workspace/marker.txt.arbtemplate"
+    cd "$TEST_DIR/project/tpl-apply-sub"
+    run arb template apply
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Seeded"* ]]
+    [ "$(cat "$TEST_DIR/project/tpl-apply-sub/marker.txt")" = "tpl-apply-sub" ]
+}
+
+@test "arb template apply --force resets .arbtemplate files to substituted content" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '__WORKSPACE_NAME__' \
+        > "$TEST_DIR/project/.arb/templates/workspace/marker.txt.arbtemplate"
+    arb create tpl-force-sub repo-a >/dev/null 2>&1
+    echo "DRIFTED" > "$TEST_DIR/project/tpl-force-sub/marker.txt"
+    cd "$TEST_DIR/project/tpl-force-sub"
+    run arb template apply --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"reset"* ]]
+    [ "$(cat "$TEST_DIR/project/tpl-force-sub/marker.txt")" = "tpl-force-sub" ]
+}
+
+@test "arb template diff compares substituted content for .arbtemplate" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '__WORKSPACE_NAME__' \
+        > "$TEST_DIR/project/.arb/templates/workspace/marker.txt.arbtemplate"
+    arb create tpl-diff-sub repo-a >/dev/null 2>&1
+    # Content matches substituted value — no drift expected
+    cd "$TEST_DIR/project/tpl-diff-sub"
+    run arb template diff
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"No changes"* ]]
+
+    # Now modify to create drift
+    echo "wrong" > "$TEST_DIR/project/tpl-diff-sub/marker.txt"
+    run arb template diff
+    [ "$status" -eq 1 ]
+}
+
+@test "arb template list shows (template) annotation for .arbtemplate" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '__WORKSPACE_NAME__' \
+        > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
+    echo "static" > "$TEST_DIR/project/.arb/templates/workspace/plain.txt"
+    run arb template list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"config.json"*"(template)"* ]]
+    [[ "$output" == *"plain.txt"* ]]
+    # plain.txt should NOT have (template) annotation
+    # (We can't easily test absence per-line in BATS, but config.json should have it)
+}
+
+@test "arb template remove works with stripped name for .arbtemplate" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '__WORKSPACE_NAME__' \
+        > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
+    arb create my-feature repo-a >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb template remove config.json --workspace
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Removed template"* ]]
+    [ ! -f "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate" ]
+}
+
+@test "mix of .arbtemplate and regular files in same template directory" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '__WORKSPACE_NAME__' \
+        > "$TEST_DIR/project/.arb/templates/workspace/dynamic.txt.arbtemplate"
+    echo "static content" > "$TEST_DIR/project/.arb/templates/workspace/static.txt"
+
+    arb create tpl-mix-test repo-a
+    [ -f "$TEST_DIR/project/tpl-mix-test/dynamic.txt" ]
+    [ -f "$TEST_DIR/project/tpl-mix-test/static.txt" ]
+    [ "$(cat "$TEST_DIR/project/tpl-mix-test/dynamic.txt")" = "tpl-mix-test" ]
+    [ "$(cat "$TEST_DIR/project/tpl-mix-test/static.txt")" = "static content" ]
+}
+
+@test "worktree placeholders left as-is in workspace-scoped templates" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '__WORKTREE_NAME__:__WORKTREE_PATH__' \
+        > "$TEST_DIR/project/.arb/templates/workspace/ws-only.txt.arbtemplate"
+
+    arb create tpl-wt-literal repo-a
+    local content
+    content="$(cat "$TEST_DIR/project/tpl-wt-literal/ws-only.txt")"
+    [[ "$content" == "__WORKTREE_NAME__:__WORKTREE_PATH__" ]]
+}
+
+# ── template conflict detection ──────────────────────────────────
+
+@test "arb create warns when both plain and .arbtemplate exist" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "plain" > "$TEST_DIR/project/.arb/templates/workspace/config.json"
+    printf '__WORKSPACE_NAME__' \
+        > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
+
+    run arb create tpl-conflict-test repo-a
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Conflict"* ]]
+    [[ "$output" == *"config.json"* ]]
+    # The file should still be created (first one wins)
+    [ -f "$TEST_DIR/project/tpl-conflict-test/config.json" ]
+}
+
+@test "arb template list shows conflict annotation when both variants exist" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "plain" > "$TEST_DIR/project/.arb/templates/workspace/config.json"
+    printf '__WORKSPACE_NAME__' \
+        > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
+
+    run arb template list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"config.json"* ]]
+    [[ "$output" == *"(conflict)"* ]]
+}
+
