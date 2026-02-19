@@ -326,7 +326,7 @@ Shows each worktree's position relative to the base branch, push status, and loc
 
 **Flags:**
 - `-d, --dirty` — Only show repos with local changes (shorthand for `--where dirty`)
-- `-w, --where <filter>` — Filter repos by status flags (comma-separated, OR logic): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, merged, at-risk
+- `-w, --where <filter>` — Filter repos by status flags (comma-separated, OR logic): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, merged, base-merged, at-risk
 - `-f, --fetch` — Fetch remotes before showing status
 - `-v, --verbose` — Show file-level detail
 - `--json` — Machine-readable JSON output (filtered when `--where` is active)
@@ -356,7 +356,8 @@ Shows each worktree's position relative to the base branch, push status, and loc
         "ref": "main",
         "ahead": 3,
         "behind": 0,
-        "mergedIntoBase": null
+        "mergedIntoBase": null,
+        "baseMergedIntoDefault": null
       },
       "share": {
         "remote": "origin",
@@ -441,10 +442,10 @@ Fetches all repos, then pushes the feature branch. Sets up tracking on first pus
 Rebase feature branches onto the base branch.
 
 ```
-arb rebase [repos...] [-F] [-n] [-y]
+arb rebase [repos...] [-F] [-n] [-y] [--retarget]
 ```
 
-Fetches all repos, then rebases the feature branch onto the updated base branch. Skips repos with uncommitted changes or already up to date. Reports conflicts at the end with per-repo resolution instructions.
+Fetches all repos, then rebases the feature branch onto the updated base branch. Skips repos with uncommitted changes or already up to date. Reports conflicts at the end with per-repo resolution instructions. When a stacked workspace's base branch has been merged into the default branch, rebase skips with a hint to use `--retarget`.
 
 **Arguments:**
 - `[repos...]` — Repos to rebase (all if not specified)
@@ -453,6 +454,7 @@ Fetches all repos, then rebases the feature branch onto the updated base branch.
 - `-F, --no-fetch` — Skip fetching before rebase
 - `-n, --dry-run` — Show what would be rebased without executing
 - `-y, --yes` — Skip confirmation prompt
+- `--retarget` — Retarget repos whose base branch has been merged into the default branch. Rebases onto the default branch using `--onto` for squash merges and updates `.arbws/config`
 
 **Non-interactive usage:** Use `--dry-run` first to preview, then `--yes` to execute.
 

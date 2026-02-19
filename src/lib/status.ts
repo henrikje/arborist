@@ -36,6 +36,7 @@ export interface RepoStatus {
 		ahead: number;
 		behind: number;
 		mergedIntoBase: "merge" | "squash" | null;
+		baseMergedIntoDefault: "merge" | "squash" | null;
 	} | null;
 	share: {
 		remote: string;
@@ -62,6 +63,7 @@ export interface RepoFlags {
 	isGone: boolean;
 	isShallow: boolean;
 	isMerged: boolean;
+	isBaseMerged: boolean;
 }
 
 export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlags {
@@ -103,6 +105,8 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 
 	const isMerged = repo.base?.mergedIntoBase != null;
 
+	const isBaseMerged = repo.base?.baseMergedIntoDefault != null;
+
 	return {
 		isDirty: localDirty,
 		isUnpushed,
@@ -116,6 +120,7 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 		isGone,
 		isShallow: repo.identity.shallow,
 		isMerged,
+		isBaseMerged,
 	};
 }
 
@@ -130,7 +135,8 @@ export function needsAttention(flags: RepoFlags): boolean {
 		flags.needsPull ||
 		flags.needsRebase ||
 		flags.isDiverged ||
-		flags.isShallow
+		flags.isShallow ||
+		flags.isBaseMerged
 	);
 }
 
@@ -147,6 +153,7 @@ const FLAG_LABELS: { key: keyof RepoFlags; label: string }[] = [
 	{ key: "isGone", label: "gone" },
 	{ key: "isShallow", label: "shallow" },
 	{ key: "isMerged", label: "merged" },
+	{ key: "isBaseMerged", label: "base merged" },
 ];
 
 export function flagLabels(flags: RepoFlags): string[] {
@@ -161,6 +168,7 @@ const YELLOW_FLAGS = new Set<keyof RepoFlags>([
 	"hasOperation",
 	"isLocal",
 	"isShallow",
+	"isBaseMerged",
 ]);
 
 export function formatIssueCounts(issueCounts: WorkspaceSummary["issueCounts"], rebasedOnlyCount = 0): string {
@@ -197,6 +205,7 @@ const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
 	gone: (f) => f.isGone,
 	shallow: (f) => f.isShallow,
 	merged: (f) => f.isMerged,
+	"base-merged": (f) => f.isBaseMerged,
 	"at-risk": (f) => needsAttention(f),
 };
 
@@ -354,7 +363,14 @@ export async function gatherRepoStatus(
 				const parts = lr.stdout.trim().split(/\s+/);
 				const behind = Number.parseInt(parts[0] ?? "0", 10);
 				const ahead = Number.parseInt(parts[1] ?? "0", 10);
-				baseStatus = { remote: upstreamRemote, ref: defaultBranch, ahead, behind, mergedIntoBase: null };
+				baseStatus = {
+					remote: upstreamRemote,
+					ref: defaultBranch,
+					ahead,
+					behind,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+				};
 			}
 		}
 	}
@@ -459,6 +475,18 @@ export async function gatherRepoStatus(
 		} else if (shouldCheckSquash) {
 			// Phase 2: Squash merge detection via cumulative patch-id
 			baseStatus.mergedIntoBase = await detectBranchMerged(repoDir, compareRef);
+		}
+	}
+
+	// ── Stacked base merge detection ──
+	// When configBase is set and resolved, check if the base branch itself
+	// has been merged into the repo's true default branch.
+	if (configBase && baseStatus !== null && baseStatus.ref === configBase && repoHasRemote && !detached) {
+		const trueDefault = await getDefaultBranch(repoPath, upstreamRemote);
+		if (trueDefault && trueDefault !== configBase) {
+			const configBaseRef = `${upstreamRemote}/${configBase}`;
+			const defaultRef = `${upstreamRemote}/${trueDefault}`;
+			baseStatus.baseMergedIntoDefault = await detectBranchMerged(repoDir, defaultRef, 200, configBaseRef);
 		}
 	}
 

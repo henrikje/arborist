@@ -266,19 +266,20 @@ export async function detectBranchMerged(
 	repoDir: string,
 	baseBranchRef: string,
 	commitLimit = 200,
+	branchRef = "HEAD",
 ): Promise<"merge" | "squash" | null> {
 	// Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
-	const ancestor = await git(repoDir, "merge-base", "--is-ancestor", "HEAD", baseBranchRef);
+	const ancestor = await git(repoDir, "merge-base", "--is-ancestor", branchRef, baseBranchRef);
 	if (ancestor.exitCode === 0) return "merge";
 
 	// Phase 2: Squash check — cumulative patch-id comparison
-	const mergeBaseResult = await git(repoDir, "merge-base", "HEAD", baseBranchRef);
+	const mergeBaseResult = await git(repoDir, "merge-base", branchRef, baseBranchRef);
 	if (mergeBaseResult.exitCode !== 0) return null;
 	const mergeBase = mergeBaseResult.stdout.trim();
 	if (!mergeBase) return null;
 
 	// Cumulative patch-id for the entire branch range
-	const cumulativeResult = await Bun.$`git -C ${repoDir} diff ${mergeBase}..HEAD | git patch-id --stable`
+	const cumulativeResult = await Bun.$`git -C ${repoDir} diff ${mergeBase}..${branchRef} | git patch-id --stable`
 		.quiet()
 		.nothrow();
 	if (cumulativeResult.exitCode !== 0) return null;

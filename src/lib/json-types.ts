@@ -19,6 +19,7 @@ export interface StatusJsonRepo {
 		ahead: number;
 		behind: number;
 		mergedIntoBase: "merge" | "squash" | null;
+		baseMergedIntoDefault: "merge" | "squash" | null;
 	} | null;
 	share: {
 		remote: string;

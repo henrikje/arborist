@@ -22,7 +22,7 @@ function makeRepo(overrides: Partial<RepoStatus> = {}): RepoStatus {
 			shallow: false,
 		},
 		local: { staged: 0, modified: 0, untracked: 0, conflicts: 0 },
-		base: { remote: "origin", ref: "main", ahead: 0, behind: 0, mergedIntoBase: null },
+		base: { remote: "origin", ref: "main", ahead: 0, behind: 0, mergedIntoBase: null, baseMergedIntoDefault: null },
 		share: {
 			remote: "origin",
 			ref: "origin/feature",
@@ -53,6 +53,7 @@ describe("computeFlags", () => {
 			isGone: false,
 			isShallow: false,
 			isMerged: false,
+			isBaseMerged: false,
 		});
 	});
 
@@ -90,7 +91,7 @@ describe("computeFlags", () => {
 		const flags = computeFlags(
 			makeRepo({
 				share: { remote: "origin", ref: null, refMode: "noRef", toPush: null, toPull: null, rebased: null },
-				base: { remote: "origin", ref: "main", ahead: 3, behind: 0, mergedIntoBase: null },
+				base: { remote: "origin", ref: "main", ahead: 3, behind: 0, mergedIntoBase: null, baseMergedIntoDefault: null },
 			}),
 			"feature",
 		);
@@ -101,7 +102,7 @@ describe("computeFlags", () => {
 		const flags = computeFlags(
 			makeRepo({
 				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
-				base: { remote: "origin", ref: "main", ahead: 3, behind: 0, mergedIntoBase: null },
+				base: { remote: "origin", ref: "main", ahead: 3, behind: 0, mergedIntoBase: null, baseMergedIntoDefault: null },
 			}),
 			"feature",
 		);
@@ -131,7 +132,9 @@ describe("computeFlags", () => {
 
 	test("needsRebase when behind base", () => {
 		const flags = computeFlags(
-			makeRepo({ base: { remote: "origin", ref: "main", ahead: 0, behind: 2, mergedIntoBase: null } }),
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 0, behind: 2, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
 			"feature",
 		);
 		expect(flags.needsRebase).toBe(true);
@@ -139,7 +142,9 @@ describe("computeFlags", () => {
 
 	test("isDiverged when both ahead and behind base", () => {
 		const flags = computeFlags(
-			makeRepo({ base: { remote: "origin", ref: "main", ahead: 2, behind: 3, mergedIntoBase: null } }),
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 2, behind: 3, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
 			"feature",
 		);
 		expect(flags.isDiverged).toBe(true);
@@ -147,7 +152,9 @@ describe("computeFlags", () => {
 
 	test("not isDiverged when only behind base", () => {
 		const flags = computeFlags(
-			makeRepo({ base: { remote: "origin", ref: "main", ahead: 0, behind: 2, mergedIntoBase: null } }),
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 0, behind: 2, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
 			"feature",
 		);
 		expect(flags.isDiverged).toBe(false);
@@ -155,7 +162,9 @@ describe("computeFlags", () => {
 
 	test("not isDiverged when only ahead of base", () => {
 		const flags = computeFlags(
-			makeRepo({ base: { remote: "origin", ref: "main", ahead: 3, behind: 0, mergedIntoBase: null } }),
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 3, behind: 0, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
 			"feature",
 		);
 		expect(flags.isDiverged).toBe(false);
@@ -223,7 +232,16 @@ describe("computeFlags", () => {
 
 	test("isMerged when mergedIntoBase is ancestor", () => {
 		const flags = computeFlags(
-			makeRepo({ base: { remote: "origin", ref: "main", ahead: 0, behind: 0, mergedIntoBase: "merge" } }),
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					ahead: 0,
+					behind: 0,
+					mergedIntoBase: "merge",
+					baseMergedIntoDefault: null,
+				},
+			}),
 			"feature",
 		);
 		expect(flags.isMerged).toBe(true);
@@ -231,7 +249,16 @@ describe("computeFlags", () => {
 
 	test("isMerged when mergedIntoBase is squash", () => {
 		const flags = computeFlags(
-			makeRepo({ base: { remote: "origin", ref: "main", ahead: 2, behind: 0, mergedIntoBase: "squash" } }),
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					ahead: 2,
+					behind: 0,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: null,
+				},
+			}),
 			"feature",
 		);
 		expect(flags.isMerged).toBe(true);
@@ -245,6 +272,50 @@ describe("computeFlags", () => {
 	test("not isMerged when base is null", () => {
 		const flags = computeFlags(makeRepo({ base: null }), "feature");
 		expect(flags.isMerged).toBe(false);
+	});
+
+	test("isBaseMerged when baseMergedIntoDefault is merge", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "feat/auth",
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: "merge",
+				},
+			}),
+			"feature",
+		);
+		expect(flags.isBaseMerged).toBe(true);
+	});
+
+	test("isBaseMerged when baseMergedIntoDefault is squash", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "feat/auth",
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: "squash",
+				},
+			}),
+			"feature",
+		);
+		expect(flags.isBaseMerged).toBe(true);
+	});
+
+	test("not isBaseMerged when baseMergedIntoDefault is null", () => {
+		const flags = computeFlags(makeRepo(), "feature");
+		expect(flags.isBaseMerged).toBe(false);
+	});
+
+	test("not isBaseMerged when base is null", () => {
+		const flags = computeFlags(makeRepo({ base: null }), "feature");
+		expect(flags.isBaseMerged).toBe(false);
 	});
 });
 
@@ -271,7 +342,9 @@ describe("needsAttention", () => {
 
 	test("returns true when needsRebase", () => {
 		const flags = computeFlags(
-			makeRepo({ base: { remote: "origin", ref: "main", ahead: 0, behind: 1, mergedIntoBase: null } }),
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 0, behind: 1, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
 			"feature",
 		);
 		expect(needsAttention(flags)).toBe(true);
@@ -279,7 +352,9 @@ describe("needsAttention", () => {
 
 	test("returns true when isDiverged", () => {
 		const flags = computeFlags(
-			makeRepo({ base: { remote: "origin", ref: "main", ahead: 2, behind: 3, mergedIntoBase: null } }),
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 2, behind: 3, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
 			"feature",
 		);
 		expect(needsAttention(flags)).toBe(true);
@@ -287,10 +362,36 @@ describe("needsAttention", () => {
 
 	test("returns false when only isMerged", () => {
 		const flags = computeFlags(
-			makeRepo({ base: { remote: "origin", ref: "main", ahead: 0, behind: 0, mergedIntoBase: "squash" } }),
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					ahead: 0,
+					behind: 0,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: null,
+				},
+			}),
 			"feature",
 		);
 		expect(needsAttention(flags)).toBe(false);
+	});
+
+	test("returns true when isBaseMerged", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "feat/auth",
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: "merge",
+				},
+			}),
+			"feature",
+		);
+		expect(needsAttention(flags)).toBe(true);
 	});
 });
 
@@ -316,7 +417,7 @@ describe("flagLabels", () => {
 			makeRepo({
 				identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "feature" }, shallow: true },
 				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
-				base: { remote: "origin", ref: "main", ahead: 0, behind: 2, mergedIntoBase: null },
+				base: { remote: "origin", ref: "main", ahead: 0, behind: 2, mergedIntoBase: null, baseMergedIntoDefault: null },
 				operation: "rebase",
 			}),
 			"feature",
@@ -326,7 +427,9 @@ describe("flagLabels", () => {
 
 	test("returns diverged label when both ahead and behind base", () => {
 		const flags = computeFlags(
-			makeRepo({ base: { remote: "origin", ref: "main", ahead: 2, behind: 3, mergedIntoBase: null } }),
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 2, behind: 3, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
 			"feature",
 		);
 		expect(flagLabels(flags)).toEqual(["behind base", "diverged"]);
@@ -334,10 +437,36 @@ describe("flagLabels", () => {
 
 	test("includes merged label when isMerged", () => {
 		const flags = computeFlags(
-			makeRepo({ base: { remote: "origin", ref: "main", ahead: 0, behind: 0, mergedIntoBase: "squash" } }),
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					ahead: 0,
+					behind: 0,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: null,
+				},
+			}),
 			"feature",
 		);
 		expect(flagLabels(flags)).toContain("merged");
+	});
+
+	test("includes base merged label when isBaseMerged", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "feat/auth",
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: "merge",
+				},
+			}),
+			"feature",
+		);
+		expect(flagLabels(flags)).toContain("base merged");
 	});
 });
 
@@ -399,7 +528,9 @@ describe("wouldLoseWork", () => {
 
 	test("returns false when only needsRebase", () => {
 		const flags = computeFlags(
-			makeRepo({ base: { remote: "origin", ref: "main", ahead: 0, behind: 2, mergedIntoBase: null } }),
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 0, behind: 2, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
 			"feature",
 		);
 		expect(wouldLoseWork(flags)).toBe(false);
@@ -407,7 +538,9 @@ describe("wouldLoseWork", () => {
 
 	test("returns false when isDiverged", () => {
 		const flags = computeFlags(
-			makeRepo({ base: { remote: "origin", ref: "main", ahead: 2, behind: 3, mergedIntoBase: null } }),
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 2, behind: 3, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
 			"feature",
 		);
 		expect(wouldLoseWork(flags)).toBe(false);
@@ -432,7 +565,7 @@ describe("wouldLoseWork", () => {
 		const flags = computeFlags(
 			makeRepo({
 				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
-				base: { remote: "origin", ref: "main", ahead: 0, behind: 0, mergedIntoBase: null },
+				base: { remote: "origin", ref: "main", ahead: 0, behind: 0, mergedIntoBase: null, baseMergedIntoDefault: null },
 			}),
 			"feature",
 		);
@@ -456,13 +589,17 @@ describe("validateWhere", () => {
 	test("returns null for all valid terms", () => {
 		expect(
 			validateWhere(
-				"dirty,unpushed,behind-share,behind-base,diverged,drifted,detached,operation,local,gone,shallow,merged,at-risk",
+				"dirty,unpushed,behind-share,behind-base,diverged,drifted,detached,operation,local,gone,shallow,merged,base-merged,at-risk",
 			),
 		).toBeNull();
 	});
 
 	test("returns null for merged term", () => {
 		expect(validateWhere("merged")).toBeNull();
+	});
+
+	test("returns null for base-merged term", () => {
+		expect(validateWhere("base-merged")).toBeNull();
 	});
 
 	test("returns error for invalid term", () => {
@@ -549,8 +686,32 @@ describe("repoMatchesWhere", () => {
 					},
 				},
 			],
-			["behind-base", { base: { remote: "origin", ref: "main", ahead: 0, behind: 2, mergedIntoBase: null } }],
-			["diverged", { base: { remote: "origin", ref: "main", ahead: 2, behind: 3, mergedIntoBase: null } }],
+			[
+				"behind-base",
+				{
+					base: {
+						remote: "origin",
+						ref: "main",
+						ahead: 0,
+						behind: 2,
+						mergedIntoBase: null,
+						baseMergedIntoDefault: null,
+					},
+				},
+			],
+			[
+				"diverged",
+				{
+					base: {
+						remote: "origin",
+						ref: "main",
+						ahead: 2,
+						behind: 3,
+						mergedIntoBase: null,
+						baseMergedIntoDefault: null,
+					},
+				},
+			],
 			[
 				"drifted",
 				{ identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false } },
@@ -563,7 +724,32 @@ describe("repoMatchesWhere", () => {
 				"shallow",
 				{ identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "feature" }, shallow: true } },
 			],
-			["merged", { base: { remote: "origin", ref: "main", ahead: 0, behind: 0, mergedIntoBase: "squash" } }],
+			[
+				"merged",
+				{
+					base: {
+						remote: "origin",
+						ref: "main",
+						ahead: 0,
+						behind: 0,
+						mergedIntoBase: "squash",
+						baseMergedIntoDefault: null,
+					},
+				},
+			],
+			[
+				"base-merged",
+				{
+					base: {
+						remote: "origin",
+						ref: "feat/auth",
+						ahead: 0,
+						behind: 3,
+						mergedIntoBase: null,
+						baseMergedIntoDefault: "merge",
+					},
+				},
+			],
 		];
 		for (const [term, overrides] of cases) {
 			const flags = computeFlags(makeRepo(overrides), "feature");
@@ -624,7 +810,7 @@ describe("isWorkspaceSafe", () => {
 			makeRepo({
 				name: "local-with-commits",
 				share: null,
-				base: { remote: "origin", ref: "main", ahead: 3, behind: 0, mergedIntoBase: null },
+				base: { remote: "origin", ref: "main", ahead: 3, behind: 0, mergedIntoBase: null, baseMergedIntoDefault: null },
 			}),
 		];
 		expect(isWorkspaceSafe(repos, "feature")).toBe(false);
@@ -632,7 +818,10 @@ describe("isWorkspaceSafe", () => {
 
 	test("returns true when repos are behind base (safe to remove)", () => {
 		const repos = [
-			makeRepo({ name: "behind", base: { remote: "origin", ref: "main", ahead: 0, behind: 5, mergedIntoBase: null } }),
+			makeRepo({
+				name: "behind",
+				base: { remote: "origin", ref: "main", ahead: 0, behind: 5, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
 		];
 		expect(isWorkspaceSafe(repos, "feature")).toBe(true);
 	});
