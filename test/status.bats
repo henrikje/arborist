@@ -1213,3 +1213,139 @@ assert r['base']['behind'] == 1, f'expected behind=1, got {r[\"base\"][\"behind\
     [[ "$output" == *"(squash)"* ]]
 }
 
+# ── --json --verbose ─────────────────────────────────────────────
+
+@test "arb status --json --verbose outputs valid JSON with verbose field" {
+    arb create my-feature repo-a
+    echo "new" > "$TEST_DIR/project/my-feature/repo-a/newfile.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --json --verbose
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+r = d['repos'][0]
+assert 'verbose' in r, 'verbose field should be present'
+assert 'untracked' in r['verbose'], 'untracked should be in verbose'
+assert 'newfile.txt' in r['verbose']['untracked']
+"
+}
+
+@test "arb status --json --verbose includes staged files" {
+    arb create my-feature repo-a
+    echo "staged" > "$TEST_DIR/project/my-feature/repo-a/staged.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add staged.txt >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --json --verbose
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+r = d['repos'][0]
+v = r['verbose']
+assert 'staged' in v, 'staged should be in verbose'
+assert any(f['file'] == 'staged.txt' for f in v['staged'])
+assert any(f['type'] == 'new file' for f in v['staged'])
+"
+}
+
+@test "arb status --json --verbose includes aheadOfBase commits" {
+    arb create my-feature repo-a
+    echo "new" > "$TEST_DIR/project/my-feature/repo-a/new.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add new.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "ahead commit" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --json --verbose
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+r = d['repos'][0]
+v = r['verbose']
+assert 'aheadOfBase' in v, 'aheadOfBase should be in verbose'
+assert len(v['aheadOfBase']) == 1
+assert v['aheadOfBase'][0]['subject'] == 'ahead commit'
+assert len(v['aheadOfBase'][0]['hash']) == 40, 'hash should be full-length'
+"
+}
+
+@test "arb status --json --verbose includes unpushed commits" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "first push" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    echo "unpushed" > "$TEST_DIR/project/my-feature/repo-a/g.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add g.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "unpushed commit" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status --json --verbose
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+r = d['repos'][0]
+v = r['verbose']
+assert 'unpushed' in v, 'unpushed should be in verbose'
+assert len(v['unpushed']) == 1
+assert v['unpushed'][0]['subject'] == 'unpushed commit'
+assert 'rebased' in v['unpushed'][0]
+assert v['unpushed'][0]['rebased'] == False
+"
+}
+
+@test "arb status --json without --verbose has no verbose field" {
+    arb create my-feature repo-a
+    echo "new" > "$TEST_DIR/project/my-feature/repo-a/newfile.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --json
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+r = d['repos'][0]
+assert 'verbose' not in r, 'verbose field should NOT be present without --verbose flag'
+"
+}
+
+@test "arb status --json --verbose --where dirty filters correctly" {
+    arb create my-feature repo-a repo-b
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --json --verbose --where dirty
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+assert d['total'] == 1, f'expected 1 repo, got {d[\"total\"]}'
+assert d['repos'][0]['name'] == 'repo-a'
+assert 'verbose' in d['repos'][0]
+assert 'untracked' in d['repos'][0]['verbose']
+"
+}
+
+@test "arb status --json --verbose includes unstaged files" {
+    arb create my-feature repo-a
+    echo "orig" > "$TEST_DIR/project/my-feature/repo-a/tracked.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add tracked.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "add tracked" >/dev/null 2>&1
+    echo "changed" > "$TEST_DIR/project/my-feature/repo-a/tracked.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --json --verbose
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+r = d['repos'][0]
+v = r['verbose']
+assert 'unstaged' in v, 'unstaged should be in verbose'
+assert any(f['file'] == 'tracked.txt' and f['type'] == 'modified' for f in v['unstaged'])
+"
+}
+
+@test "arb status --json --verbose omits verbose when repo is clean and equal" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --json --verbose
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+r = d['repos'][0]
+assert r.get('verbose') is None, 'verbose should be null/omitted for clean repo'
+"
+}
+
