@@ -581,7 +581,7 @@ SCRIPT
 }
 
 @test "arb status shows gone for deleted remote branch" {
-    arb create gone-status repo-a repo-b
+    arb create gone-status repo-a
     push_then_delete_remote gone-status repo-a
 
     cd "$TEST_DIR/project/gone-status"
