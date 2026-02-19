@@ -43,6 +43,13 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 				}
 			}
 
+			// Check if command exists in PATH
+			const which = Bun.spawnSync(["which", args[0] ?? ""], { cwd: wsDir });
+			if (which.exitCode !== 0) {
+				error(`'${args[0]}' not found in PATH`);
+				process.exit(1);
+			}
+
 			const execOk: string[] = [];
 			const execFailed: string[] = [];
 			const skipped: string[] = [];
