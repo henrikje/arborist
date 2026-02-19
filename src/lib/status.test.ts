@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import type { RepoStatus } from "./status";
 import {
+	AT_RISK_FLAGS,
+	LOSE_WORK_FLAGS,
 	computeFlags,
 	computeSummaryAggregates,
 	flagLabels,
-	formatIssueCounts,
+	formatStatusCounts,
+	isAtRisk,
 	isWorkspaceSafe,
-	needsAttention,
 	repoMatchesWhere,
 	validateWhere,
 	workspaceMatchesWhere,
@@ -380,15 +382,15 @@ describe("computeFlags", () => {
 	});
 });
 
-describe("needsAttention", () => {
+describe("isAtRisk", () => {
 	test("returns false when all flags are false", () => {
 		const flags = computeFlags(makeRepo(), "feature");
-		expect(needsAttention(flags)).toBe(false);
+		expect(isAtRisk(flags)).toBe(false);
 	});
 
 	test("returns true when isDirty", () => {
 		const flags = computeFlags(makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }), "feature");
-		expect(needsAttention(flags)).toBe(true);
+		expect(isAtRisk(flags)).toBe(true);
 	});
 
 	test("returns true when isShallow", () => {
@@ -398,10 +400,10 @@ describe("needsAttention", () => {
 			}),
 			"feature",
 		);
-		expect(needsAttention(flags)).toBe(true);
+		expect(isAtRisk(flags)).toBe(true);
 	});
 
-	test("returns true when needsRebase", () => {
+	test("returns false when only needsRebase (stale, not at-risk)", () => {
 		const flags = computeFlags(
 			makeRepo({
 				base: {
@@ -416,10 +418,10 @@ describe("needsAttention", () => {
 			}),
 			"feature",
 		);
-		expect(needsAttention(flags)).toBe(true);
+		expect(isAtRisk(flags)).toBe(false);
 	});
 
-	test("returns true when isDiverged", () => {
+	test("returns false when only isDiverged (stale, not at-risk)", () => {
 		const flags = computeFlags(
 			makeRepo({
 				base: {
@@ -434,7 +436,27 @@ describe("needsAttention", () => {
 			}),
 			"feature",
 		);
-		expect(needsAttention(flags)).toBe(true);
+		expect(isAtRisk(flags)).toBe(false);
+	});
+
+	test("returns false when only needsPull (stale, not at-risk)", () => {
+		const flags = computeFlags(
+			makeRepo({
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
+			}),
+			"feature",
+		);
+		expect(isAtRisk(flags)).toBe(false);
+	});
+
+	test("returns false when only isGone (lifecycle, not at-risk)", () => {
+		const flags = computeFlags(
+			makeRepo({
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+			}),
+			"feature",
+		);
+		expect(isAtRisk(flags)).toBe(false);
 	});
 
 	test("returns false when only isMerged", () => {
@@ -452,7 +474,7 @@ describe("needsAttention", () => {
 			}),
 			"feature",
 		);
-		expect(needsAttention(flags)).toBe(false);
+		expect(isAtRisk(flags)).toBe(false);
 	});
 
 	test("returns true when isBaseMerged", () => {
@@ -470,7 +492,7 @@ describe("needsAttention", () => {
 			}),
 			"feature",
 		);
-		expect(needsAttention(flags)).toBe(true);
+		expect(isAtRisk(flags)).toBe(true);
 	});
 });
 
@@ -710,9 +732,13 @@ describe("validateWhere", () => {
 	test("returns null for all valid terms", () => {
 		expect(
 			validateWhere(
-				"dirty,unpushed,behind-share,behind-base,diverged,drifted,detached,operation,local,gone,shallow,merged,base-merged,base-missing,at-risk",
+				"dirty,unpushed,behind-share,behind-base,diverged,drifted,detached,operation,local,gone,shallow,merged,base-merged,base-missing,at-risk,stale",
 			),
 		).toBeNull();
+	});
+
+	test("returns null for stale term", () => {
+		expect(validateWhere("stale")).toBeNull();
 	});
 
 	test("returns null for merged term", () => {
@@ -911,12 +937,23 @@ describe("workspaceMatchesWhere", () => {
 		expect(workspaceMatchesWhere(repos, "feature", "dirty")).toBe(false);
 	});
 
-	test("matches at-risk across repos", () => {
+	test("at-risk does not match workspace with only gone repos", () => {
 		const repos = [
 			makeRepo({ name: "clean-repo" }),
 			makeRepo({
 				name: "gone-repo",
 				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+			}),
+		];
+		expect(workspaceMatchesWhere(repos, "feature", "at-risk")).toBe(false);
+	});
+
+	test("matches at-risk across repos when dirty", () => {
+		const repos = [
+			makeRepo({ name: "clean-repo" }),
+			makeRepo({
+				name: "dirty-repo",
+				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
 			}),
 		];
 		expect(workspaceMatchesWhere(repos, "feature", "at-risk")).toBe(true);
@@ -1022,6 +1059,66 @@ describe("isWorkspaceSafe", () => {
 	});
 });
 
+describe("computeSummaryAggregates decoupled display gate", () => {
+	test("statusCounts includes stale flags even when not at-risk", () => {
+		const repos = [
+			makeRepo({
+				name: "behind-base",
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 2,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+				},
+			}),
+		];
+		const result = computeSummaryAggregates(repos, "feature");
+		expect(result.atRiskCount).toBe(0);
+		expect(result.statusCounts.some((c) => c.key === "needsRebase")).toBe(true);
+		expect(result.statusLabels).toContain("behind base");
+	});
+
+	test("statusCounts includes gone flag even when not at-risk", () => {
+		const repos = [
+			makeRepo({
+				name: "gone-repo",
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+			}),
+		];
+		const result = computeSummaryAggregates(repos, "feature");
+		expect(result.atRiskCount).toBe(0);
+		expect(result.statusCounts.some((c) => c.key === "isGone")).toBe(true);
+		expect(result.statusLabels).toContain("gone");
+	});
+
+	test("atRiskCount only counts repos with at-risk flags", () => {
+		const repos = [
+			makeRepo({
+				name: "dirty",
+				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
+			}),
+			makeRepo({
+				name: "behind-base",
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 2,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+				},
+			}),
+		];
+		const result = computeSummaryAggregates(repos, "feature");
+		expect(result.atRiskCount).toBe(1);
+		expect(result.statusCounts.length).toBe(2); // dirty + behind base
+	});
+});
+
 describe("computeSummaryAggregates rebasedOnlyCount", () => {
 	test("returns 0 when no repos are rebased", () => {
 		const repos = [
@@ -1061,30 +1158,108 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
 	});
 });
 
-describe("formatIssueCounts with rebased", () => {
+describe("formatStatusCounts with rebased", () => {
 	test("shows yellow unpushed when no rebased repos", () => {
-		const issueCounts = [{ label: "unpushed", count: 3, key: "isUnpushed" as const }];
-		const result = formatIssueCounts(issueCounts, 0);
+		const statusCounts = [{ label: "unpushed", count: 3, key: "isUnpushed" as const }];
+		const result = formatStatusCounts(statusCounts, 0);
 		expect(result).toContain("unpushed");
 	});
 
 	test("shows rebased instead of unpushed when all are rebased-only", () => {
-		const issueCounts = [{ label: "unpushed", count: 3, key: "isUnpushed" as const }];
-		const result = formatIssueCounts(issueCounts, 3);
+		const statusCounts = [{ label: "unpushed", count: 3, key: "isUnpushed" as const }];
+		const result = formatStatusCounts(statusCounts, 3);
 		expect(result).toBe("rebased");
 	});
 
 	test("shows both unpushed and rebased when mixed", () => {
-		const issueCounts = [{ label: "unpushed", count: 3, key: "isUnpushed" as const }];
-		const result = formatIssueCounts(issueCounts, 2);
+		const statusCounts = [{ label: "unpushed", count: 3, key: "isUnpushed" as const }];
+		const result = formatStatusCounts(statusCounts, 2);
 		expect(result).toContain("unpushed");
 		expect(result).toContain("rebased");
 	});
 
 	test("does not affect non-unpushed labels", () => {
-		const issueCounts = [{ label: "dirty", count: 2, key: "isDirty" as const }];
-		const result = formatIssueCounts(issueCounts, 1);
+		const statusCounts = [{ label: "dirty", count: 2, key: "isDirty" as const }];
+		const result = formatStatusCounts(statusCounts, 1);
 		expect(result).toContain("dirty");
 		expect(result).not.toContain("rebased");
+	});
+
+	test("uses custom yellowKeys when provided", () => {
+		const statusCounts = [
+			{ label: "dirty", count: 1, key: "isDirty" as const },
+			{ label: "shallow", count: 1, key: "isShallow" as const },
+		];
+		// LOSE_WORK_FLAGS includes isDirty but not isShallow
+		const result = formatStatusCounts(statusCounts, 0, LOSE_WORK_FLAGS);
+		// dirty should be yellow (contains ANSI), shallow should be plain
+		expect(result).toContain("dirty");
+		expect(result).toContain("shallow");
+	});
+});
+
+describe("flag set alignment", () => {
+	test("LOSE_WORK_FLAGS is a subset of AT_RISK_FLAGS", () => {
+		for (const flag of LOSE_WORK_FLAGS) {
+			expect(AT_RISK_FLAGS.has(flag)).toBe(true);
+		}
+	});
+});
+
+describe("stale filter", () => {
+	test("matches needsPull", () => {
+		const flags = computeFlags(
+			makeRepo({
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
+			}),
+			"feature",
+		);
+		expect(repoMatchesWhere(flags, "stale")).toBe(true);
+	});
+
+	test("matches needsRebase", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 2,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+				},
+			}),
+			"feature",
+		);
+		expect(repoMatchesWhere(flags, "stale")).toBe(true);
+	});
+
+	test("matches isDiverged", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 2,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+				},
+			}),
+			"feature",
+		);
+		expect(repoMatchesWhere(flags, "stale")).toBe(true);
+	});
+
+	test("does not match clean repo", () => {
+		const flags = computeFlags(makeRepo(), "feature");
+		expect(repoMatchesWhere(flags, "stale")).toBe(false);
+	});
+
+	test("does not match dirty repo", () => {
+		const flags = computeFlags(makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }), "feature");
+		expect(repoMatchesWhere(flags, "stale")).toBe(false);
 	});
 });

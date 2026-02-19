@@ -21,7 +21,7 @@ This is especially useful in scripted or AI-driven workflows where you want to i
 
 ## Machine-readable output
 
-`arb list --json` writes a JSON array of workspace objects to stdout with aggregate issue counts, labels (`withIssues`, `issueLabels`), and last commit date (`lastCommit` as ISO 8601). Combine with `--quick` to skip status gathering:
+`arb list --json` writes a JSON array of workspace objects to stdout with aggregate status counts, labels (`atRiskCount`, `statusLabels`), and last commit date (`lastCommit` as ISO 8601). Combine with `--quick` to skip status gathering:
 
 ```bash
 arb list --json | jq '[.[] | select(.active)]'

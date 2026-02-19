@@ -70,7 +70,7 @@ __arb_repo_names() {
 }
 
 __arb_where_filters() {
-    printf '%s\n' dirty unpushed behind-remote behind-base drifted detached operation local gone shallow at-risk
+    printf '%s\n' dirty unpushed behind-remote behind-base drifted detached operation local gone shallow at-risk stale
 }
 
 __arb_template_names() {

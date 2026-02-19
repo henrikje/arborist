@@ -46,7 +46,8 @@ _arb_where_filter() {
         'local[Repos with no remote]' \
         'gone[Repos whose remote branch was deleted]' \
         'shallow[Repos that are shallow clones]' \
-        'at-risk[Repos needing any kind of attention]'
+        'at-risk[Repos with data safety or infrastructure concerns]' \
+        'stale[Repos that are behind their base or share branch]'
 }
 
 _arb_template_names() {

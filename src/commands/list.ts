@@ -9,7 +9,7 @@ import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, listWorkspaces, workspaceRepoDirs } from "../lib/repos";
 import {
 	type WorkspaceSummary,
-	formatIssueCounts,
+	formatStatusCounts,
 	gatherWorkspaceSummary,
 	validateWhere,
 	workspaceMatchesWhere,
@@ -42,7 +42,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		.command("list")
 		.summary("List all workspaces")
 		.description(
-			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --where <filter> to filter workspaces by status flags (any workspace with at least one matching repo is shown): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic. Use --quick to skip per-repo status gathering for faster output. Use --fetch to fetch all repos before listing for fresh remote data. Use --json for machine-readable output.",
+			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --where <filter> to filter workspaces by status flags (any workspace with at least one matching repo is shown): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk, stale. Comma-separated values use OR logic. Use --quick to skip per-repo status gathering for faster output. Use --fetch to fetch all repos before listing for fresh remote data. Use --json for machine-readable output.",
 		)
 		.option("-f, --fetch", "Fetch all repos before listing")
 		.option("-q, --quick", "Skip per-repo status (faster for large setups)")
@@ -204,9 +204,9 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					summaryMap.set(index, summary);
 					const entry = jsonEntries[index];
 					if (entry && entry.status === null) {
-						entry.withIssues = summary.withIssues;
-						entry.issueLabels = summary.issueLabels;
-						entry.issueCounts = summary.issueCounts.map(({ label, count }) => ({ label, count }));
+						entry.atRiskCount = summary.atRiskCount;
+						entry.statusLabels = summary.statusLabels;
+						entry.statusCounts = summary.statusCounts.map(({ label, count }) => ({ label, count }));
 						entry.lastCommit = summary.lastCommit;
 					}
 				}
@@ -403,10 +403,10 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 }
 
 function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
-	if (summary.withIssues === 0) {
+	if (summary.statusCounts.length === 0) {
 		row.statusColored = "no issues";
 	} else {
-		row.statusColored = formatIssueCounts(summary.issueCounts, summary.rebasedOnlyCount);
+		row.statusColored = formatStatusCounts(summary.statusCounts, summary.rebasedOnlyCount);
 	}
 	row.lastCommit = summary.lastCommit;
 	row.baseFellBack = summary.repos.some((r) => r.base?.configuredRef != null);

@@ -48,8 +48,8 @@ export interface StatusJsonOutput {
 	base: string | null;
 	repos: StatusJsonRepo[];
 	total: number;
-	withIssues: number;
-	issueLabels: string[];
+	atRiskCount: number;
+	statusLabels: string[];
 	lastCommit: string | null;
 }
 
@@ -60,8 +60,8 @@ export interface ListJsonEntry {
 	base: string | null;
 	repoCount: number | null;
 	status: "config-missing" | "empty" | null;
-	withIssues?: number;
-	issueLabels?: string[];
-	issueCounts?: { label: string; count: number }[];
+	atRiskCount?: number;
+	statusLabels?: string[];
+	statusCounts?: { label: string; count: number }[];
 	lastCommit?: string | null;
 }

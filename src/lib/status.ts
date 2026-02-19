@@ -68,6 +68,36 @@ export interface RepoFlags {
 	baseFellBack: boolean;
 }
 
+// ── Named flag sets ──
+
+export const LOSE_WORK_FLAGS = new Set<keyof RepoFlags>([
+	"isDirty",
+	"isUnpushed",
+	"isDetached",
+	"isDrifted",
+	"hasOperation",
+]);
+
+export const AT_RISK_FLAGS = new Set<keyof RepoFlags>([
+	...LOSE_WORK_FLAGS,
+	"isShallow",
+	"isBaseMerged",
+	"baseFellBack",
+]);
+
+const STALE_FLAGS = new Set<keyof RepoFlags>(["needsPull", "needsRebase", "isDiverged"]);
+
+function hasAnyFlag(flags: RepoFlags, set: Set<keyof RepoFlags>): boolean {
+	for (const key of set) {
+		if (flags[key]) return true;
+	}
+	return false;
+}
+
+export function isAtRisk(flags: RepoFlags): boolean {
+	return hasAnyFlag(flags, AT_RISK_FLAGS);
+}
+
 export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlags {
 	const localDirty =
 		repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0;
@@ -129,23 +159,6 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 	};
 }
 
-export function needsAttention(flags: RepoFlags): boolean {
-	return (
-		flags.isDetached ||
-		flags.isDrifted ||
-		flags.hasOperation ||
-		flags.isDirty ||
-		flags.isUnpushed ||
-		flags.isGone ||
-		flags.needsPull ||
-		flags.needsRebase ||
-		flags.isDiverged ||
-		flags.isShallow ||
-		flags.isBaseMerged ||
-		flags.baseFellBack
-	);
-}
-
 const FLAG_LABELS: { key: keyof RepoFlags; label: string }[] = [
 	{ key: "isDirty", label: "dirty" },
 	{ key: "isUnpushed", label: "unpushed" },
@@ -167,20 +180,12 @@ export function flagLabels(flags: RepoFlags): string[] {
 	return FLAG_LABELS.filter(({ key }) => flags[key]).map(({ label }) => label);
 }
 
-const YELLOW_FLAGS = new Set<keyof RepoFlags>([
-	"isDirty",
-	"isUnpushed",
-	"isDrifted",
-	"isDetached",
-	"hasOperation",
-	"isLocal",
-	"isShallow",
-	"isBaseMerged",
-	"baseFellBack",
-]);
-
-export function formatIssueCounts(issueCounts: WorkspaceSummary["issueCounts"], rebasedOnlyCount = 0): string {
-	return issueCounts
+export function formatStatusCounts(
+	statusCounts: WorkspaceSummary["statusCounts"],
+	rebasedOnlyCount = 0,
+	yellowKeys: Set<keyof RepoFlags> = AT_RISK_FLAGS,
+): string {
+	return statusCounts
 		.flatMap(({ label, key, count }) => {
 			if (key === "isUnpushed" && rebasedOnlyCount > 0) {
 				const genuine = count - rebasedOnlyCount;
@@ -189,13 +194,13 @@ export function formatIssueCounts(issueCounts: WorkspaceSummary["issueCounts"], 
 				parts.push("rebased");
 				return parts;
 			}
-			return [YELLOW_FLAGS.has(key) ? yellow(label) : label];
+			return [yellowKeys.has(key) ? yellow(label) : label];
 		})
 		.join(", ");
 }
 
 export function wouldLoseWork(flags: RepoFlags): boolean {
-	return flags.isDirty || flags.isUnpushed || flags.isDetached || flags.isDrifted || flags.hasOperation;
+	return hasAnyFlag(flags, LOSE_WORK_FLAGS);
 }
 
 // ── Where Filtering ──
@@ -215,7 +220,8 @@ const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
 	merged: (f) => f.isMerged,
 	"base-merged": (f) => f.isBaseMerged,
 	"base-missing": (f) => f.baseFellBack,
-	"at-risk": (f) => needsAttention(f),
+	"at-risk": (f) => isAtRisk(f),
+	stale: (f) => hasAnyFlag(f, STALE_FLAGS),
 };
 
 const VALID_TERMS = Object.keys(FILTER_TERMS);
@@ -258,10 +264,10 @@ export interface WorkspaceSummary {
 	base: string | null;
 	repos: RepoStatus[];
 	total: number;
-	withIssues: number;
+	atRiskCount: number;
 	rebasedOnlyCount: number;
-	issueLabels: string[];
-	issueCounts: { label: string; count: number; key: keyof RepoFlags }[];
+	statusLabels: string[];
+	statusCounts: { label: string; count: number; key: keyof RepoFlags }[];
 	lastCommit: string | null;
 }
 
@@ -269,27 +275,27 @@ export function computeSummaryAggregates(
 	repos: RepoStatus[],
 	branch: string,
 ): {
-	withIssues: number;
+	atRiskCount: number;
 	rebasedOnlyCount: number;
-	issueLabels: string[];
-	issueCounts: WorkspaceSummary["issueCounts"];
+	statusLabels: string[];
+	statusCounts: WorkspaceSummary["statusCounts"];
 } {
-	let withIssues = 0;
+	let atRiskCount = 0;
 	const allLabels = new Set<string>();
 	const flagCounts = new Map<keyof RepoFlags, number>();
 	for (const repo of repos) {
 		const flags = computeFlags(repo, branch);
-		if (needsAttention(flags)) {
-			withIssues++;
-			for (const { key, label } of FLAG_LABELS) {
-				if (flags[key]) {
-					allLabels.add(label);
-					flagCounts.set(key, (flagCounts.get(key) ?? 0) + 1);
-				}
+		if (isAtRisk(flags)) {
+			atRiskCount++;
+		}
+		for (const { key, label } of FLAG_LABELS) {
+			if (flags[key]) {
+				allLabels.add(label);
+				flagCounts.set(key, (flagCounts.get(key) ?? 0) + 1);
 			}
 		}
 	}
-	const issueCounts = FLAG_LABELS.filter(({ key }) => flagCounts.has(key)).map(({ key, label }) => ({
+	const statusCounts = FLAG_LABELS.filter(({ key }) => flagCounts.has(key)).map(({ key, label }) => ({
 		label,
 		count: flagCounts.get(key) ?? 0,
 		key,
@@ -303,7 +309,7 @@ export function computeSummaryAggregates(
 		}
 	}
 
-	return { withIssues, rebasedOnlyCount, issueLabels: [...allLabels], issueCounts };
+	return { atRiskCount, rebasedOnlyCount, statusLabels: [...allLabels], statusCounts };
 }
 
 // ── Status Gathering ──
@@ -567,7 +573,7 @@ export async function gatherWorkspaceSummary(
 		return r.status;
 	});
 
-	const { withIssues, rebasedOnlyCount, issueLabels, issueCounts } = computeSummaryAggregates(repos, branch);
+	const { atRiskCount, rebasedOnlyCount, statusLabels, statusCounts } = computeSummaryAggregates(repos, branch);
 
 	const lastCommit = latestCommitDate(repoResults.map((r) => r.commitDate));
 
@@ -577,10 +583,10 @@ export async function gatherWorkspaceSummary(
 		base: configBase,
 		repos,
 		total: repos.length,
-		withIssues,
+		atRiskCount,
 		rebasedOnlyCount,
-		issueLabels,
-		issueCounts,
+		statusLabels,
+		statusCounts,
 		lastCommit,
 	};
 }

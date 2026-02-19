@@ -145,7 +145,7 @@ The parallel pre-fetch also serves a performance purpose: `parallelFetch()` fetc
 
 ### Canonical status model
 
-`status.ts` defines Arborist's view of reality for repository state. The `RepoStatus` type is a 5-section model (identity, local, base, share, operation) that captures everything git tells us about a repo. `RepoFlags` computes 10 independent boolean flags from that model. Shared functions (`computeFlags`, `needsAttention`, `flagLabels`) derive decisions and display text from those flags.
+`status.ts` defines Arborist's view of reality for repository state. The `RepoStatus` type is a 5-section model (identity, local, base, share, operation) that captures everything git tells us about a repo. `RepoFlags` computes independent boolean flags from that model. Named flag sets (`AT_RISK_FLAGS`, `LOSE_WORK_FLAGS`, `STALE_FLAGS`) group flags by concern. Shared functions (`computeFlags`, `isAtRisk`, `wouldLoseWork`, `flagLabels`) derive decisions and display text from those flags and sets.
 
 **Terminology: remote roles vs status sections.** The two remote roles are `upstream` (integration) and `share` (sharing), defined in `RepoRemotes`. The corresponding status sections are `base` and `share` in `RepoStatus`. The user-facing column headers are `BASE` and `SHARE`. Flag labels are `behind base` and `behind share`. When writing code or documentation, use `upstream`/`share` for git remote names, `base`/`share` for status model sections.
 
@@ -155,9 +155,9 @@ The parallel pre-fetch also serves a performance purpose: `parallelFetch()` fetc
 1. Add the observation to `RepoStatus` if it's raw git state.
 2. Add a flag to `RepoFlags` if it represents a condition that needs attention.
 3. Add the flag to `computeFlags()` and the label to `FLAG_LABELS`.
-4. All existing consumers (status display, list aggregation, remove safety checks, etc.) automatically pick it up through `needsAttention()` and `flagLabels()`.
+4. All existing consumers (status display, list aggregation, remove safety checks, etc.) automatically pick it up through `isAtRisk()` and `flagLabels()`.
 
-**Rendering and derived decisions should be centralized.** Functions like `needsAttention()` (used for row coloring, filtering, and aggregate counts) and `flagLabels()` (used for summary lines in both `status` and `list`) exist so that the same logic governs every place a repo's state is evaluated. Commands should call these shared functions rather than re-deriving the same conclusions from raw fields.
+**Rendering and derived decisions should be centralized.** Functions like `isAtRisk()` (used for filtering and aggregate counts) and `flagLabels()` (used for summary lines in both `status` and `list`) exist so that the same logic governs every place a repo's state is evaluated. Commands should call these shared functions rather than re-deriving the same conclusions from raw fields.
 
 ### Repo classification: local vs remote
 
