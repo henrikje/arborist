@@ -32,6 +32,7 @@ interface PullAssessment {
 	skipReason?: string;
 	behind: number;
 	toPush: number;
+	rebased: number;
 	pullMode: "rebase" | "merge";
 	headSha: string;
 	conflictPrediction?: "clean" | "conflict" | null;
@@ -223,6 +224,7 @@ async function assessPullRepo(
 		outcome: "skip",
 		behind: 0,
 		toPush: 0,
+		rebased: 0,
 		pullMode: "merge",
 		headSha,
 	};
@@ -255,6 +257,11 @@ async function assessPullRepo(
 		return { ...base, skipReason: "remote branch gone" };
 	}
 
+	// Already merged into base
+	if (status.base?.mergedIntoBase != null) {
+		return { ...base, skipReason: `already merged into ${status.base.ref}` };
+	}
+
 	// Determine pull mode
 	const pullMode = flagMode ?? (await detectPullMode(repoDir, branch));
 
@@ -264,8 +271,14 @@ async function assessPullRepo(
 		return { ...base, outcome: "up-to-date", pullMode };
 	}
 
+	// Skip if all to-pull commits are rebased locally
+	const rebased = status.share.rebased ?? 0;
+	if (rebased > 0 && rebased >= toPull) {
+		return { ...base, skipReason: "rebased locally (push --force instead)" };
+	}
+
 	const toPush = status.share.toPush ?? 0;
-	return { ...base, outcome: "will-pull", behind: toPull, toPush, pullMode };
+	return { ...base, outcome: "will-pull", behind: toPull, toPush, rebased, pullMode };
 }
 
 function formatPullPlan(assessments: PullAssessment[], remotesMap: Map<string, RepoRemotes>): string {
@@ -281,7 +294,8 @@ function formatPullPlan(assessments: PullAssessment[], remotesMap: Map<string, R
 			} else if (a.conflictPrediction === "clean") {
 				conflictHint = ", conflict unlikely";
 			}
-			out += `  ${a.repo}   ${plural(a.behind, "commit")} to pull (${a.pullMode}${conflictHint})${forkSuffix}${headStr}\n`;
+			const rebasedHint = a.rebased > 0 ? `, ${a.rebased} rebased` : "";
+			out += `  ${a.repo}   ${plural(a.behind, "commit")} to pull (${a.pullMode}${rebasedHint}${conflictHint})${forkSuffix}${headStr}\n`;
 		} else if (a.outcome === "up-to-date") {
 			out += `  ${a.repo}   up to date\n`;
 		} else {

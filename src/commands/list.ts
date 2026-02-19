@@ -401,7 +401,7 @@ function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
 	if (summary.withIssues === 0) {
 		row.statusColored = "no issues";
 	} else {
-		row.statusColored = formatIssueCounts(summary.issueCounts);
+		row.statusColored = formatIssueCounts(summary.issueCounts, summary.rebasedOnlyCount);
 	}
 	row.lastCommit = summary.lastCommit;
 }

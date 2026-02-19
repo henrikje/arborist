@@ -601,3 +601,230 @@ load test_helper/common-setup
     [[ "$output" == *"repo-a"*"skipped"* ]]
 }
 
+
+# ── stacked base merge detection ─────────────────────────────────
+
+@test "arb status detects base branch merged (not deleted)" {
+    # Create feat/auth branch in repo-a with a commit
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+
+    # Add a commit on the stacked branch
+    echo "ui" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui feature" >/dev/null 2>&1
+
+    # Merge feat/auth into main via merge commit (do NOT delete feat/auth)
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge" && git merge origin/feat/auth --no-ff -m "merge feat/auth" && git push) >/dev/null 2>&1
+
+    # Fetch in the stacked workspace
+    cd "$TEST_DIR/project/stacked"
+    arb fetch >/dev/null 2>&1
+
+    # Status should show "base merged"
+    run arb status
+    [[ "$output" == *"base merged"* ]]
+
+    # --where base-merged should show the repo
+    run arb status --where base-merged
+    [[ "$output" == *"repo-a"* ]]
+}
+
+@test "arb status detects base branch squash-merged (not deleted)" {
+    # Create feat/auth branch in repo-a with commits
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+
+    # Add a commit on the stacked branch
+    echo "ui" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui feature" >/dev/null 2>&1
+
+    # Squash merge feat/auth into main (do NOT delete feat/auth)
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge" && git merge --squash origin/feat/auth && git commit -m "squash: auth" && git push) >/dev/null 2>&1
+
+    # Fetch in the stacked workspace
+    cd "$TEST_DIR/project/stacked"
+    arb fetch >/dev/null 2>&1
+
+    # Status should show "base merged"
+    run arb status
+    [[ "$output" == *"base merged"* ]]
+}
+
+@test "arb rebase skips repo when base branch is merged" {
+    # Create feat/auth branch
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+
+    # Add a commit
+    echo "ui" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui feature" >/dev/null 2>&1
+
+    # Merge feat/auth into main
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge" && git merge origin/feat/auth --no-ff -m "merge feat/auth" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/stacked"
+    run arb rebase --yes
+    [[ "$output" == *"was merged into default"* ]]
+    [[ "$output" == *"--retarget"* ]]
+    [[ "$output" == *"skipped"* ]]
+}
+
+@test "arb rebase --retarget rebases onto default branch (merge commit)" {
+    # Create feat/auth branch
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+
+    # Add a commit on the stacked branch
+    echo "ui" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui feature" >/dev/null 2>&1
+
+    # Merge feat/auth into main via merge commit
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge" && git merge origin/feat/auth --no-ff -m "merge feat/auth" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/stacked"
+    run arb rebase --retarget --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"retarget"* ]]
+    [[ "$output" == *"Retargeted"* ]]
+
+    # Verify the ui commit is on top of main
+    run git -C "$TEST_DIR/project/stacked/repo-a" log --oneline
+    [[ "$output" == *"ui feature"* ]]
+    [[ "$output" == *"merge feat/auth"* ]]
+
+    # Verify config no longer has base = feat/auth
+    run cat "$TEST_DIR/project/stacked/.arbws/config"
+    [[ "$output" != *"base = feat/auth"* ]]
+}
+
+@test "arb rebase --retarget uses --onto for squash-merged base" {
+    # Create feat/auth branch with commits
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+
+    # Add a commit on the stacked branch
+    echo "ui" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui feature" >/dev/null 2>&1
+
+    # Squash merge feat/auth into main (do NOT delete feat/auth)
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge" && git merge --squash origin/feat/auth && git commit -m "squash: auth" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/stacked"
+    run arb rebase --retarget --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"retarget"* ]]
+
+    # Verify the ui commit is on top of main
+    run git -C "$TEST_DIR/project/stacked/repo-a" log --oneline
+    [[ "$output" == *"ui feature"* ]]
+    [[ "$output" == *"squash: auth"* ]]
+
+    # Verify feat/auth's original commits are NOT in the branch history
+    # (the --onto flag should have excluded them)
+    run git -C "$TEST_DIR/project/stacked/repo-a" log --oneline
+    # "auth feature" should NOT appear because --onto replayed only the stacked commits
+    [[ "$output" != *"auth feature"* ]]
+
+    # Verify config updated
+    run cat "$TEST_DIR/project/stacked/.arbws/config"
+    [[ "$output" != *"base = feat/auth"* ]]
+}
+
+@test "arb status --json includes baseMergedIntoDefault" {
+    # Create feat/auth branch
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+
+    # Merge feat/auth into main
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge" && git merge origin/feat/auth --no-ff -m "merge feat/auth" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/stacked"
+    arb fetch >/dev/null 2>&1
+    run arb status --json
+    [[ "$output" == *"baseMergedIntoDefault"* ]]
+    [[ "$output" == *'"merge"'* ]]
+}
+
+@test "arb list shows base-merged in workspace summary" {
+    # Create feat/auth branch in repo-a with a commit
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+
+    # Merge feat/auth into main via merge commit (do NOT delete feat/auth)
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge" && git merge origin/feat/auth --no-ff -m "merge feat/auth" && git push) >/dev/null 2>&1
+
+    # Fetch to pick up the merge
+    cd "$TEST_DIR/project/stacked"
+    arb fetch >/dev/null 2>&1
+
+    # arb list should show "base merged" in the status column
+    cd "$TEST_DIR/project"
+    run arb list
+    [[ "$output" == *"base merged"* ]]
+
+    # --where base-merged should include the workspace
+    run arb list -w base-merged
+    [[ "$output" == *"stacked"* ]]
+}
+

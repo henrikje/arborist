@@ -3,7 +3,9 @@ import { configGet } from "./config";
 import {
 	type GitOperation,
 	branchExistsLocally,
+	detectBranchMerged,
 	detectOperation,
+	detectRebasedCommits,
 	getDefaultBranch,
 	getHeadCommitDate,
 	git,
@@ -33,6 +35,8 @@ export interface RepoStatus {
 		ref: string;
 		ahead: number;
 		behind: number;
+		mergedIntoBase: "merge" | "squash" | null;
+		baseMergedIntoDefault: "merge" | "squash" | null;
 	} | null;
 	share: {
 		remote: string;
@@ -40,6 +44,7 @@ export interface RepoStatus {
 		refMode: "noRef" | "implicit" | "configured" | "gone";
 		toPush: number | null; // null = unknown
 		toPull: number | null; // null = unknown
+		rebased: number | null; // count of patch-id-matched commits between push/pull sets
 	} | null; // null when no remote
 	operation: GitOperation;
 	lastCommit: string | null;
@@ -57,6 +62,8 @@ export interface RepoFlags {
 	isLocal: boolean;
 	isGone: boolean;
 	isShallow: boolean;
+	isMerged: boolean;
+	isBaseMerged: boolean;
 }
 
 export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlags {
@@ -96,6 +103,10 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 		isDrifted = repo.identity.headMode.branch !== expectedBranch;
 	}
 
+	const isMerged = repo.base?.mergedIntoBase != null;
+
+	const isBaseMerged = repo.base?.baseMergedIntoDefault != null;
+
 	return {
 		isDirty: localDirty,
 		isUnpushed,
@@ -108,6 +119,8 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 		isLocal,
 		isGone,
 		isShallow: repo.identity.shallow,
+		isMerged,
+		isBaseMerged,
 	};
 }
 
@@ -122,7 +135,8 @@ export function needsAttention(flags: RepoFlags): boolean {
 		flags.needsPull ||
 		flags.needsRebase ||
 		flags.isDiverged ||
-		flags.isShallow
+		flags.isShallow ||
+		flags.isBaseMerged
 	);
 }
 
@@ -138,6 +152,8 @@ const FLAG_LABELS: { key: keyof RepoFlags; label: string }[] = [
 	{ key: "isLocal", label: "local" },
 	{ key: "isGone", label: "gone" },
 	{ key: "isShallow", label: "shallow" },
+	{ key: "isMerged", label: "merged" },
+	{ key: "isBaseMerged", label: "base merged" },
 ];
 
 export function flagLabels(flags: RepoFlags): string[] {
@@ -152,12 +168,20 @@ const YELLOW_FLAGS = new Set<keyof RepoFlags>([
 	"hasOperation",
 	"isLocal",
 	"isShallow",
+	"isBaseMerged",
 ]);
 
-export function formatIssueCounts(issueCounts: WorkspaceSummary["issueCounts"]): string {
+export function formatIssueCounts(issueCounts: WorkspaceSummary["issueCounts"], rebasedOnlyCount = 0): string {
 	return issueCounts
-		.map(({ label, key }) => {
-			return YELLOW_FLAGS.has(key) ? yellow(label) : label;
+		.flatMap(({ label, key, count }) => {
+			if (key === "isUnpushed" && rebasedOnlyCount > 0) {
+				const genuine = count - rebasedOnlyCount;
+				const parts: string[] = [];
+				if (genuine > 0) parts.push(yellow(label));
+				parts.push("rebased");
+				return parts;
+			}
+			return [YELLOW_FLAGS.has(key) ? yellow(label) : label];
 		})
 		.join(", ");
 }
@@ -180,6 +204,8 @@ const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
 	local: (f) => f.isLocal,
 	gone: (f) => f.isGone,
 	shallow: (f) => f.isShallow,
+	merged: (f) => f.isMerged,
+	"base-merged": (f) => f.isBaseMerged,
 	"at-risk": (f) => needsAttention(f),
 };
 
@@ -224,6 +250,7 @@ export interface WorkspaceSummary {
 	repos: RepoStatus[];
 	total: number;
 	withIssues: number;
+	rebasedOnlyCount: number;
 	issueLabels: string[];
 	issueCounts: { label: string; count: number; key: keyof RepoFlags }[];
 	lastCommit: string | null;
@@ -232,7 +259,12 @@ export interface WorkspaceSummary {
 export function computeSummaryAggregates(
 	repos: RepoStatus[],
 	branch: string,
-): { withIssues: number; issueLabels: string[]; issueCounts: WorkspaceSummary["issueCounts"] } {
+): {
+	withIssues: number;
+	rebasedOnlyCount: number;
+	issueLabels: string[];
+	issueCounts: WorkspaceSummary["issueCounts"];
+} {
 	let withIssues = 0;
 	const allLabels = new Set<string>();
 	const flagCounts = new Map<keyof RepoFlags, number>();
@@ -253,7 +285,16 @@ export function computeSummaryAggregates(
 		count: flagCounts.get(key) ?? 0,
 		key,
 	}));
-	return { withIssues, issueLabels: [...allLabels], issueCounts };
+
+	let rebasedOnlyCount = 0;
+	for (const repo of repos) {
+		if (repo.share?.rebased != null && repo.share.rebased > 0) {
+			const netNew = (repo.share.toPush ?? 0) - repo.share.rebased;
+			if (netNew <= 0) rebasedOnlyCount++;
+		}
+	}
+
+	return { withIssues, rebasedOnlyCount, issueLabels: [...allLabels], issueCounts };
 }
 
 // ── Status Gathering ──
@@ -322,7 +363,14 @@ export async function gatherRepoStatus(
 				const parts = lr.stdout.trim().split(/\s+/);
 				const behind = Number.parseInt(parts[0] ?? "0", 10);
 				const ahead = Number.parseInt(parts[1] ?? "0", 10);
-				baseStatus = { remote: upstreamRemote, ref: defaultBranch, ahead, behind };
+				baseStatus = {
+					remote: upstreamRemote,
+					ref: defaultBranch,
+					ahead,
+					behind,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+				};
 			}
 		}
 	}
@@ -344,16 +392,23 @@ export async function gatherRepoStatus(
 				toPull = Number.parseInt(parts[0] ?? "0", 10);
 				toPush = Number.parseInt(parts[1] ?? "0", 10);
 			}
+			let rebased: number | null = null;
+			if (toPush !== null && toPush > 0 && toPull !== null && toPull > 0) {
+				const result = await detectRebasedCommits(repoDir, trackingRef);
+				rebased = result?.count ?? null;
+			}
 			shareStatus = {
 				remote: shareRemote,
 				ref: trackingRef,
 				refMode: "configured",
 				toPush,
 				toPull,
+				rebased,
 			};
 		} else if (await remoteBranchExists(repoDir, actualBranch, shareRemote)) {
 			// Step 2: No tracking config but remote ref exists → implicit
-			const pushLr = await git(repoDir, "rev-list", "--left-right", "--count", `${shareRemote}/${actualBranch}...HEAD`);
+			const implicitRef = `${shareRemote}/${actualBranch}`;
+			const pushLr = await git(repoDir, "rev-list", "--left-right", "--count", `${implicitRef}...HEAD`);
 			let toPush: number | null = null;
 			let toPull: number | null = null;
 			if (pushLr.exitCode === 0) {
@@ -361,12 +416,18 @@ export async function gatherRepoStatus(
 				toPull = Number.parseInt(parts[0] ?? "0", 10);
 				toPush = Number.parseInt(parts[1] ?? "0", 10);
 			}
+			let rebased: number | null = null;
+			if (toPush !== null && toPush > 0 && toPull !== null && toPull > 0) {
+				const result = await detectRebasedCommits(repoDir, implicitRef);
+				rebased = result?.count ?? null;
+			}
 			shareStatus = {
 				remote: shareRemote,
-				ref: `${shareRemote}/${actualBranch}`,
+				ref: implicitRef,
 				refMode: "implicit",
 				toPush,
 				toPull,
+				rebased,
 			};
 		} else {
 			// Step 3: Check if tracking config exists (→ gone) or not (→ noRef)
@@ -378,6 +439,7 @@ export async function gatherRepoStatus(
 				refMode: isGone ? "gone" : "noRef",
 				toPush: null,
 				toPull: null,
+				rebased: null,
 			};
 		}
 	} else if (!repoHasRemote) {
@@ -391,7 +453,41 @@ export async function gatherRepoStatus(
 			refMode: "noRef",
 			toPush: null,
 			toPull: null,
+			rebased: null,
 		};
+	}
+
+	// ── Merge detection ──
+	// Skip when branch is at the exact same point as base (ahead=0, behind=0) — nothing to detect.
+	// Ancestor check is cheap (single git command), always run when there's divergence.
+	// Squash check is more expensive — only run when branch is gone OR share is up to date.
+	const hasWork = baseStatus !== null && (baseStatus.ahead > 0 || baseStatus.behind > 0);
+	if (baseStatus !== null && !detached && hasWork) {
+		const compareRef = repoHasRemote ? `${upstreamRemote}/${baseStatus.ref}` : baseStatus.ref;
+		const shareUpToDate =
+			shareStatus !== null && shareStatus.toPush === 0 && shareStatus.toPull === 0 && shareStatus.refMode !== "noRef";
+		const shouldCheckSquash = (shareStatus !== null && shareStatus.refMode === "gone") || shareUpToDate;
+
+		// Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
+		const ancestorResult = await git(repoDir, "merge-base", "--is-ancestor", "HEAD", compareRef);
+		if (ancestorResult.exitCode === 0) {
+			baseStatus.mergedIntoBase = "merge";
+		} else if (shouldCheckSquash) {
+			// Phase 2: Squash merge detection via cumulative patch-id
+			baseStatus.mergedIntoBase = await detectBranchMerged(repoDir, compareRef);
+		}
+	}
+
+	// ── Stacked base merge detection ──
+	// When configBase is set and resolved, check if the base branch itself
+	// has been merged into the repo's true default branch.
+	if (configBase && baseStatus !== null && baseStatus.ref === configBase && repoHasRemote && !detached) {
+		const trueDefault = await getDefaultBranch(repoPath, upstreamRemote);
+		if (trueDefault && trueDefault !== configBase) {
+			const configBaseRef = `${upstreamRemote}/${configBase}`;
+			const defaultRef = `${upstreamRemote}/${trueDefault}`;
+			baseStatus.baseMergedIntoDefault = await detectBranchMerged(repoDir, defaultRef, 200, configBaseRef);
+		}
 	}
 
 	return {
@@ -449,7 +545,7 @@ export async function gatherWorkspaceSummary(
 		return r.status;
 	});
 
-	const { withIssues, issueLabels, issueCounts } = computeSummaryAggregates(repos, branch);
+	const { withIssues, rebasedOnlyCount, issueLabels, issueCounts } = computeSummaryAggregates(repos, branch);
 
 	const lastCommit = latestCommitDate(repoResults.map((r) => r.commitDate));
 
@@ -460,6 +556,7 @@ export async function gatherWorkspaceSummary(
 		repos,
 		total: repos.length,
 		withIssues,
+		rebasedOnlyCount,
 		issueLabels,
 		issueCounts,
 		lastCommit,

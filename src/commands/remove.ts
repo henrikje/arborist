@@ -159,7 +159,7 @@ function displayRemoveTable(assessments: WorkspaceAssessment[]): void {
 		if (a.summary.withIssues === 0) {
 			line += "    no issues";
 		} else {
-			line += `    ${formatIssueCounts(a.summary.issueCounts)}`;
+			line += `    ${formatIssueCounts(a.summary.issueCounts, a.summary.rebasedOnlyCount)}`;
 		}
 
 		process.stderr.write(`${line}\n`);

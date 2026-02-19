@@ -971,6 +971,94 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     [[ "$output" == *"equal"* ]]
 }
 
+# ── status rebased detection ──────────────────────────────────────
+
+@test "arb status shows rebased instead of push/pull after rebase" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Advance main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    # Rebase feature onto advanced main
+    cd "$TEST_DIR/project/my-feature"
+    arb rebase --yes >/dev/null 2>&1
+
+    arb fetch >/dev/null 2>&1
+    run arb status
+    # Should show "rebased" instead of misleading "to push, to pull"
+    [[ "$output" == *"rebased"* ]]
+    [[ "$output" != *"to pull"* ]]
+}
+
+@test "arb status -v shows (rebased) annotations on commits" {
+    arb create my-feature repo-a
+    echo "first" > "$TEST_DIR/project/my-feature/repo-a/first.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add first.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "first feature" >/dev/null 2>&1
+    echo "second" > "$TEST_DIR/project/my-feature/repo-a/second.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add second.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "second feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Advance main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    # Rebase
+    cd "$TEST_DIR/project/my-feature"
+    arb rebase --yes >/dev/null 2>&1
+
+    arb fetch >/dev/null 2>&1
+    run arb status -v
+    # Verbose output should annotate rebased commits
+    [[ "$output" == *"(rebased)"* ]]
+    [[ "$output" == *"first feature"* ]]
+    [[ "$output" == *"second feature"* ]]
+}
+
+@test "arb status --json includes rebased field in share" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Advance main and rebase
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb rebase --yes >/dev/null 2>&1
+
+    arb fetch >/dev/null 2>&1
+    run arb status --json
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+r = d['repos'][0]
+assert 'rebased' in r['share'], 'share should have rebased field'
+assert r['share']['rebased'] == 1, f'expected rebased=1, got {r[\"share\"][\"rebased\"]}'
+"
+}
+
+@test "arb status --json rebased is null when not diverged" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "commit" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    run arb status --json
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+r = d['repos'][0]
+assert r['share']['rebased'] is None, f'expected rebased=null, got {r[\"share\"][\"rebased\"]}'
+"
+}
+
 @test "arb status --json unaffected by conflict prediction" {
     arb create my-feature repo-a
 
@@ -1001,5 +1089,34 @@ r = d['repos'][0]
 assert r['base']['ahead'] == 1, f'expected ahead=1, got {r[\"base\"][\"ahead\"]}'
 assert r['base']['behind'] == 1, f'expected behind=1, got {r[\"base\"][\"behind\"]}'
 "
+}
+
+@test "arb status -v shows merge strategy for merged branch" {
+    arb create merged-verbose repo-a
+    local wt="$TEST_DIR/project/merged-verbose/repo-a"
+
+    # Make feature work and push
+    echo "feature content" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    cd "$TEST_DIR/project/merged-verbose"
+    arb push --yes >/dev/null 2>&1
+
+    # Squash merge
+    local bare="$TEST_DIR/origin/repo-a.git"
+    local tmp="$TEST_DIR/tmp-verbose"
+    git clone "$bare" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && git merge --squash origin/merged-verbose && git commit -m "squash merge") >/dev/null 2>&1
+    (cd "$tmp" && git push origin main) >/dev/null 2>&1
+    rm -rf "$tmp"
+    git -C "$bare" branch -D merged-verbose >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch --prune >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/merged-verbose"
+    arb fetch >/dev/null 2>&1
+    run arb status -v
+    [[ "$output" == *"merged (gone)"* ]]
+    [[ "$output" == *"Branch merged into"* ]]
+    [[ "$output" == *"(squash)"* ]]
 }
 

@@ -240,3 +240,95 @@ export async function getCommitsBetween(
 			};
 		});
 }
+
+export async function getCommitsBetweenFull(
+	repoDir: string,
+	ref1: string,
+	ref2: string,
+): Promise<{ shortHash: string; fullHash: string; subject: string }[]> {
+	const result = await git(repoDir, "log", "--format=%h %H %s", `${ref1}..${ref2}`);
+	if (result.exitCode !== 0) return [];
+	return result.stdout
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => {
+			const first = line.indexOf(" ");
+			const second = line.indexOf(" ", first + 1);
+			return {
+				shortHash: line.slice(0, first),
+				fullHash: line.slice(first + 1, second),
+				subject: line.slice(second + 1),
+			};
+		});
+}
+
+export async function detectBranchMerged(
+	repoDir: string,
+	baseBranchRef: string,
+	commitLimit = 200,
+	branchRef = "HEAD",
+): Promise<"merge" | "squash" | null> {
+	// Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
+	const ancestor = await git(repoDir, "merge-base", "--is-ancestor", branchRef, baseBranchRef);
+	if (ancestor.exitCode === 0) return "merge";
+
+	// Phase 2: Squash check — cumulative patch-id comparison
+	const mergeBaseResult = await git(repoDir, "merge-base", branchRef, baseBranchRef);
+	if (mergeBaseResult.exitCode !== 0) return null;
+	const mergeBase = mergeBaseResult.stdout.trim();
+	if (!mergeBase) return null;
+
+	// Cumulative patch-id for the entire branch range
+	const cumulativeResult = await Bun.$`git -C ${repoDir} diff ${mergeBase}..${branchRef} | git patch-id --stable`
+		.quiet()
+		.nothrow();
+	if (cumulativeResult.exitCode !== 0) return null;
+	const cumulativeLine = cumulativeResult.text().trim();
+	if (!cumulativeLine) return null;
+	const cumulativePatchId = cumulativeLine.split(" ")[0];
+	if (!cumulativePatchId) return null;
+
+	// Per-commit patch-ids for recent base commits
+	const perCommitResult =
+		await Bun.$`git -C ${repoDir} log -p --max-count=${commitLimit} ${mergeBase}..${baseBranchRef} | git patch-id --stable`
+			.quiet()
+			.nothrow();
+	if (perCommitResult.exitCode !== 0) return null;
+
+	for (const line of perCommitResult.text().split("\n")) {
+		const patchId = line.split(" ")[0];
+		if (patchId === cumulativePatchId) return "squash";
+	}
+
+	return null;
+}
+
+export async function detectRebasedCommits(
+	repoDir: string,
+	trackingRef: string,
+): Promise<{ count: number; rebasedLocalHashes: Set<string> } | null> {
+	const [localResult, remoteResult] = await Promise.all([
+		Bun.$`git -C ${repoDir} log -p ${trackingRef}..HEAD | git patch-id --stable`.quiet().nothrow(),
+		Bun.$`git -C ${repoDir} log -p HEAD..${trackingRef} | git patch-id --stable`.quiet().nothrow(),
+	]);
+
+	if (localResult.exitCode !== 0 || remoteResult.exitCode !== 0) return null;
+
+	const parse = (text: string) => {
+		const map = new Map<string, string>(); // patchId → commitHash
+		for (const line of text.split("\n")) {
+			const [patchId, hash] = line.split(" ");
+			if (patchId && hash) map.set(patchId, hash);
+		}
+		return map;
+	};
+
+	const localMap = parse(localResult.text());
+	const remoteIds = new Set(parse(remoteResult.text()).keys());
+
+	const rebasedLocalHashes = new Set<string>();
+	for (const [patchId, hash] of localMap) {
+		if (remoteIds.has(patchId)) rebasedLocalHashes.add(hash);
+	}
+	return { count: rebasedLocalHashes.size, rebasedLocalHashes };
+}
