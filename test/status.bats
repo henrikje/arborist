@@ -273,6 +273,15 @@ load test_helper/common-setup
     [[ "$output" == *"repo-a"* ]]
 }
 
+@test "arb status -v shows file details (short alias for --verbose)" {
+    arb create my-feature repo-a
+    echo "new" > "$TEST_DIR/project/my-feature/repo-a/newfile.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb status -v
+    [[ "$output" == *"Untracked files:"* ]]
+    [[ "$output" == *"newfile.txt"* ]]
+}
+
 @test "arb status --verbose shows file details for dirty repos" {
     arb create my-feature repo-a
     echo "new" > "$TEST_DIR/project/my-feature/repo-a/newfile.txt"

@@ -177,7 +177,7 @@ _arb() {
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only show dirty repos]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '(-f --fetch)'{-f,--fetch}'[Fetch before showing status]' \
-                        '--verbose[Show file-level detail]' \
+                        '(-v --verbose)'{-v,--verbose}'[Show file-level detail]' \
                         '--json[Output structured JSON]'
                     ;;
                 exec)

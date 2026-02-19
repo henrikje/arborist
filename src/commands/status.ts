@@ -30,7 +30,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("-d, --dirty", "Only show repos with local changes (shorthand for --where dirty)")
 		.option("-w, --where <filter>", "Filter repos by status flags (comma-separated, OR logic)")
 		.option("-f, --fetch", "Fetch from all remotes before showing status")
-		.option("--verbose", "Show file-level detail for each repo")
+		.option("-v, --verbose", "Show file-level detail for each repo")
 		.option("--json", "Output structured JSON")
 		.summary("Show workspace status")
 		.description(
