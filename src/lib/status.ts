@@ -33,6 +33,7 @@ export interface RepoStatus {
 	base: {
 		remote: string;
 		ref: string;
+		configuredRef: string | null;
 		ahead: number;
 		behind: number;
 		mergedIntoBase: "merge" | "squash" | null;
@@ -64,6 +65,7 @@ export interface RepoFlags {
 	isShallow: boolean;
 	isMerged: boolean;
 	isBaseMerged: boolean;
+	baseFellBack: boolean;
 }
 
 export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlags {
@@ -107,6 +109,8 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 
 	const isBaseMerged = repo.base?.baseMergedIntoDefault != null;
 
+	const baseFellBack = repo.base?.configuredRef != null;
+
 	return {
 		isDirty: localDirty,
 		isUnpushed,
@@ -121,6 +125,7 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 		isShallow: repo.identity.shallow,
 		isMerged,
 		isBaseMerged,
+		baseFellBack,
 	};
 }
 
@@ -136,7 +141,8 @@ export function needsAttention(flags: RepoFlags): boolean {
 		flags.needsRebase ||
 		flags.isDiverged ||
 		flags.isShallow ||
-		flags.isBaseMerged
+		flags.isBaseMerged ||
+		flags.baseFellBack
 	);
 }
 
@@ -154,6 +160,7 @@ const FLAG_LABELS: { key: keyof RepoFlags; label: string }[] = [
 	{ key: "isShallow", label: "shallow" },
 	{ key: "isMerged", label: "merged" },
 	{ key: "isBaseMerged", label: "base merged" },
+	{ key: "baseFellBack", label: "base missing" },
 ];
 
 export function flagLabels(flags: RepoFlags): string[] {
@@ -169,6 +176,7 @@ const YELLOW_FLAGS = new Set<keyof RepoFlags>([
 	"isLocal",
 	"isShallow",
 	"isBaseMerged",
+	"baseFellBack",
 ]);
 
 export function formatIssueCounts(issueCounts: WorkspaceSummary["issueCounts"], rebasedOnlyCount = 0): string {
@@ -206,6 +214,7 @@ const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
 	shallow: (f) => f.isShallow,
 	merged: (f) => f.isMerged,
 	"base-merged": (f) => f.isBaseMerged,
+	"base-missing": (f) => f.baseFellBack,
 	"at-risk": (f) => needsAttention(f),
 };
 
@@ -344,6 +353,7 @@ export async function gatherRepoStatus(
 	if (!detached) {
 		// Base branch resolution
 		let defaultBranch: string | null = null;
+		let fellBack = false;
 		if (configBase) {
 			const baseExists = repoHasRemote
 				? await remoteBranchExists(repoPath, configBase, upstreamRemote)
@@ -354,6 +364,7 @@ export async function gatherRepoStatus(
 		}
 		if (!defaultBranch && repoHasRemote) {
 			defaultBranch = await getDefaultBranch(repoPath, upstreamRemote);
+			if (configBase && defaultBranch) fellBack = true;
 		}
 
 		if (defaultBranch) {
@@ -366,6 +377,7 @@ export async function gatherRepoStatus(
 				baseStatus = {
 					remote: upstreamRemote,
 					ref: defaultBranch,
+					configuredRef: fellBack ? configBase : null,
 					ahead,
 					behind,
 					mergedIntoBase: null,

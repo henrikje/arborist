@@ -16,6 +16,7 @@ export interface StatusJsonRepo {
 	base: {
 		remote: string;
 		ref: string;
+		configuredRef: string | null;
 		ahead: number;
 		behind: number;
 		mergedIntoBase: "merge" | "squash" | null;
