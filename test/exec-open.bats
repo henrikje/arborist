@@ -37,6 +37,14 @@ load test_helper/common-setup
     [[ "$output" == *"missing required argument"* ]]
 }
 
+@test "arb exec with nonexistent command fails cleanly" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb exec nonexistent-command-xyz
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not found in PATH"* ]]
+}
+
 @test "arb exec without workspace context fails" {
     run arb exec echo hi
     [ "$status" -ne 0 ]
