@@ -25,6 +25,7 @@ export interface StatusJsonRepo {
 		refMode: "noRef" | "implicit" | "configured" | "gone";
 		toPush: number | null;
 		toPull: number | null;
+		rebased: number | null;
 	} | null;
 	operation: GitOperation;
 	lastCommit: string | null;
