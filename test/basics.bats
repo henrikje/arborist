@@ -29,26 +29,33 @@ load test_helper/common-setup
     [[ "$output" == *"Commands:"* ]]
 }
 
-# ── repos ─────────────────────────────────────────────────────────
+# ── repo list ────────────────────────────────────────────────────
 
-@test "arb repos lists cloned repo names" {
-    run arb repos
+@test "arb repo list lists cloned repo names" {
+    run arb repo list
     [ "$status" -eq 0 ]
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" == *"repo-b"* ]]
 }
 
-@test "arb repos outputs one repo per line" {
-    run arb repos
+@test "arb repo list outputs header plus one repo per line" {
+    run arb repo list
     [ "$status" -eq 0 ]
     local count
     count="$(echo "$output" | wc -l | tr -d ' ')"
-    [ "$count" -eq 2 ]
+    [ "$count" -eq 3 ]
 }
 
-@test "arb repos outside arb root fails" {
+@test "arb repo list shows remote URL for each repo" {
+    run arb repo list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"origin/repo-a.git"* ]]
+    [[ "$output" == *"origin/repo-b.git"* ]]
+}
+
+@test "arb repo list outside arb root fails" {
     cd /tmp
-    run arb repos
+    run arb repo list
     [ "$status" -ne 0 ]
     [[ "$output" == *"Not inside an arb root"* ]]
 }
@@ -59,7 +66,7 @@ load test_helper/common-setup
     run arb help
     [ "$status" -eq 0 ]
     [[ "$output" == *"Usage:"* ]]
-    [[ "$output" == *"repos"* ]]
+    [[ "$output" == *"repo"* ]]
 }
 
 @test "arb --help shows usage" {
@@ -97,7 +104,7 @@ load test_helper/common-setup
     [ "$status" -eq 0 ]
     [ -d "$dir/.arb" ]
     [ -d "$dir/.arb/repos" ]
-    [[ "$output" == *"arb clone"* ]]
+    [[ "$output" == *"arb repo clone"* ]]
     [[ "$output" == *"arb create"* ]]
 }
 
@@ -122,30 +129,30 @@ load test_helper/common-setup
     [[ "$output" == *"inside existing arb root"* ]]
 }
 
-# ── clone ────────────────────────────────────────────────────────
+# ── repo clone ───────────────────────────────────────────────────
 
-@test "arb clone clones a repo into repos/" {
-    run arb clone "$TEST_DIR/origin/repo-a.git" clone-test
+@test "arb repo clone clones a repo into repos/" {
+    run arb repo clone "$TEST_DIR/origin/repo-a.git" clone-test
     [ "$status" -eq 0 ]
     [ -d "$TEST_DIR/project/.arb/repos/clone-test/.git" ]
 }
 
-@test "arb clone derives name from URL" {
+@test "arb repo clone derives name from URL" {
     git init --bare "$TEST_DIR/origin/derived-name.git" -b main >/dev/null 2>&1
-    run arb clone "$TEST_DIR/origin/derived-name.git"
+    run arb repo clone "$TEST_DIR/origin/derived-name.git"
     [ "$status" -eq 0 ]
     [ -d "$TEST_DIR/project/.arb/repos/derived-name/.git" ]
 }
 
-@test "arb clone detaches HEAD in canonical repo" {
-    run arb clone "$TEST_DIR/origin/repo-a.git" detach-test
+@test "arb repo clone detaches HEAD in canonical repo" {
+    run arb repo clone "$TEST_DIR/origin/repo-a.git" detach-test
     [ "$status" -eq 0 ]
     run git -C "$TEST_DIR/project/.arb/repos/detach-test" status
     [[ "$output" == *"HEAD detached"* ]]
 }
 
-@test "arb clone allows workspace on default branch" {
-    run arb clone "$TEST_DIR/origin/repo-a.git" main-test
+@test "arb repo clone allows workspace on default branch" {
+    run arb repo clone "$TEST_DIR/origin/repo-a.git" main-test
     [ "$status" -eq 0 ]
     # Creating a workspace on main should succeed because HEAD is detached
     run arb create main-ws --branch main main-test
@@ -156,21 +163,20 @@ load test_helper/common-setup
     [ "$branch" = "main" ]
 }
 
-@test "arb clone fails if repo already exists" {
-    run arb clone "$TEST_DIR/origin/repo-a.git" repo-a
+@test "arb repo clone fails if repo already exists" {
+    run arb repo clone "$TEST_DIR/origin/repo-a.git" repo-a
     [ "$status" -ne 0 ]
     [[ "$output" == *"already cloned"* ]]
 }
 
-@test "arb clone fails with invalid path" {
-    run arb clone "/nonexistent/path/repo.git"
+@test "arb repo clone fails with invalid path" {
+    run arb repo clone "/nonexistent/path/repo.git"
     [ "$status" -ne 0 ]
     [[ "$output" == *"Clone failed"* ]]
 }
 
-@test "arb clone without args fails" {
-    run arb clone
+@test "arb repo clone without args fails" {
+    run arb repo clone
     [ "$status" -ne 0 ]
     [[ "$output" == *"missing required argument"* ]]
 }
-

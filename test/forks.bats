@@ -4,7 +4,7 @@ load test_helper/common-setup
 
 # ── fork workflow (multiple remotes) ─────────────────────────────
 
-@test "arb clone --upstream sets up fork layout" {
+@test "arb repo clone --upstream sets up fork layout" {
     git init --bare "$TEST_DIR/upstream/clone-fork.git" -b main >/dev/null 2>&1
     local tmp_clone="$TEST_DIR/tmp-clone-fork"
     git clone "$TEST_DIR/upstream/clone-fork.git" "$tmp_clone" >/dev/null 2>&1
@@ -12,7 +12,7 @@ load test_helper/common-setup
     rm -rf "$tmp_clone"
     git clone --bare "$TEST_DIR/upstream/clone-fork.git" "$TEST_DIR/fork/clone-fork.git" >/dev/null 2>&1
 
-    run arb clone "$TEST_DIR/fork/clone-fork.git" clone-fork --upstream "$TEST_DIR/upstream/clone-fork.git"
+    run arb repo clone "$TEST_DIR/fork/clone-fork.git" clone-fork --upstream "$TEST_DIR/upstream/clone-fork.git"
     [ "$status" -eq 0 ]
     [ -d "$TEST_DIR/project/.arb/repos/clone-fork/.git" ]
 
@@ -323,15 +323,14 @@ load test_helper/common-setup
     [ -f "$TEST_DIR/project/fork-add/repo-b-fork/file.txt" ]
 }
 
-@test "fork: clone --upstream fails gracefully with bad upstream URL" {
+@test "fork: repo clone --upstream fails gracefully with bad upstream URL" {
     git init --bare "$TEST_DIR/fork/bad-upstream.git" -b main >/dev/null 2>&1
     local tmp_clone="$TEST_DIR/tmp-bad-upstream"
     git clone "$TEST_DIR/fork/bad-upstream.git" "$tmp_clone" >/dev/null 2>&1
     (cd "$tmp_clone" && git commit --allow-empty -m "init" && git push) >/dev/null 2>&1
     rm -rf "$tmp_clone"
 
-    run arb clone "$TEST_DIR/fork/bad-upstream.git" bad-upstream --upstream "/nonexistent/path/repo.git"
+    run arb repo clone "$TEST_DIR/fork/bad-upstream.git" bad-upstream --upstream "/nonexistent/path/repo.git"
     [ "$status" -ne 0 ]
     [[ "$output" == *"Failed to fetch upstream"* ]]
 }
-

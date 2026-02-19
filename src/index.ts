@@ -3,7 +3,6 @@ import { resolve } from "node:path";
 import { Command, type Help } from "commander";
 import { registerAddCommand } from "./commands/add";
 import { registerCdCommand } from "./commands/cd";
-import { registerCloneCommand } from "./commands/clone";
 import { registerCreateCommand } from "./commands/create";
 import { registerDropCommand } from "./commands/drop";
 import { registerExecCommand } from "./commands/exec";
@@ -17,7 +16,7 @@ import { registerPullCommand } from "./commands/pull";
 import { registerPushCommand } from "./commands/push";
 import { registerRebaseCommand } from "./commands/rebase";
 import { registerRemoveCommand } from "./commands/remove";
-import { registerReposCommand } from "./commands/repos";
+import { registerRepoCommand } from "./commands/repo";
 import { registerStatusCommand } from "./commands/status";
 import { registerTemplateCommand } from "./commands/template";
 import { detectBaseDir, detectWorkspace } from "./lib/base-dir";
@@ -32,7 +31,7 @@ function helpDim(str: string): string {
 	return process.stdout.isTTY ? `\x1b[2m${str}\x1b[0m` : str;
 }
 
-const SETUP_COMMANDS = new Set(["init", "clone", "repos", "template", "help"]);
+const SETUP_COMMANDS = new Set(["init", "repo", "template", "help"]);
 const WORKTREE_COMMANDS = new Set([
 	"add",
 	"drop",
@@ -188,8 +187,7 @@ program.hook("preAction", () => {
 
 // Register all commands
 registerInitCommand(program);
-registerCloneCommand(program, getCtx);
-registerReposCommand(program, getCtx);
+registerRepoCommand(program, getCtx);
 registerCreateCommand(program, getCtx);
 registerRemoveCommand(program, getCtx);
 registerListCommand(program, getCtx);

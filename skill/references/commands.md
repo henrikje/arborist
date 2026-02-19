@@ -27,15 +27,23 @@ Creates the `.arb/` marker directory and scaffolding. The current directory (or 
 
 ---
 
-### clone
+### repo
 
-Clone a repository into `.arb/repos/`.
+Manage canonical repos.
 
 ```
-arb clone <url> [name] [--upstream <url>]
+arb repo <subcommand>
 ```
 
-Clones a git repository into `.arb/repos/<name>` as a canonical copy. These permanent clones are never worked in directly — arb creates worktrees that point back to them. The repo name is derived from the URL if not specified.
+Subcommands for managing the canonical repository clones in `.arb/repos/`. These permanent clones are never worked in directly — arb creates worktrees that point back to them.
+
+#### repo clone
+
+```
+arb repo clone <url> [name] [--upstream <url>]
+```
+
+Clone a git repository into `.arb/repos/<name>` as a canonical copy. The repo name is derived from the URL if not specified.
 
 **Arguments:**
 - `<url>` — Git repository URL (required)
@@ -44,17 +52,13 @@ Clones a git repository into `.arb/repos/<name>` as a canonical copy. These perm
 **Flags:**
 - `--upstream <url>` — Add an upstream remote for fork workflows. Use this when cloning your fork so arb knows where to fetch the canonical branch from.
 
----
-
-### repos
-
-List all cloned repositories.
+#### repo list
 
 ```
-arb repos
+arb repo list
 ```
 
-Lists all repositories in `.arb/repos/`. No flags.
+List all repositories in `.arb/repos/`. No flags.
 
 ---
 
@@ -315,7 +319,7 @@ Removes worktrees from the workspace without deleting the workspace itself.
 Show workspace status.
 
 ```
-arb status [-d] [-w <filter>] [-f] [--verbose] [--json]
+arb status [-d] [-w <filter>] [-f] [-v] [--json]
 ```
 
 Shows each worktree's position relative to the base branch, push status, and local changes. The summary includes the workspace's last commit date (most recent author date across all repos).
@@ -324,7 +328,7 @@ Shows each worktree's position relative to the base branch, push status, and loc
 - `-d, --dirty` — Only show repos with local changes (shorthand for `--where dirty`)
 - `-w, --where <filter>` — Filter repos by status flags (comma-separated, OR logic): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk
 - `-f, --fetch` — Fetch remotes before showing status
-- `--verbose` — Show file-level detail
+- `-v, --verbose` — Show file-level detail
 - `--json` — Machine-readable JSON output (filtered when `--where` is active)
 
 **JSON output structure:**

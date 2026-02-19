@@ -407,7 +407,7 @@ assert data == []
 
 @test "arb -C targets the given directory" {
     cd /tmp
-    run arb -C "$TEST_DIR/project" repos
+    run arb -C "$TEST_DIR/project" repo list
     [ "$status" -eq 0 ]
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" == *"repo-b"* ]]
@@ -415,13 +415,13 @@ assert data == []
 
 @test "arb -C resolves relative paths" {
     cd "$TEST_DIR"
-    run arb -C project repos
+    run arb -C project repo list
     [ "$status" -eq 0 ]
     [[ "$output" == *"repo-a"* ]]
 }
 
 @test "arb -C with non-existent directory fails" {
-    run arb -C /no/such/directory repos
+    run arb -C /no/such/directory repo list
     [ "$status" -ne 0 ]
     [[ "$output" == *"Cannot change to"* ]]
     [[ "$output" == *"no such directory"* ]]

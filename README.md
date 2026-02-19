@@ -58,9 +58,9 @@ This will be the top-level directory that holds all your workspaces. A `.arb` di
 ### 3. Clone repositories
 
 ```bash
-arb clone https://github.com/example/frontend.git
-arb clone https://github.com/example/backend.git
-arb clone https://github.com/example/shared.git
+arb repo clone https://github.com/example/frontend.git
+arb repo clone https://github.com/example/backend.git
+arb repo clone https://github.com/example/shared.git
 ```
 
 Canonical clones are stored in `.arb/repos`. They are managed by arb, and you never touch them directly.

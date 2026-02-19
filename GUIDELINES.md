@@ -57,6 +57,10 @@ Scope: `push`, `pull`, `rebase`, `merge`.
 
 Accept optional `[repos...]` to narrow scope; default to all repos in the workspace. Follow the five-phase workflow: assess → plan → confirm → execute → summarize. Each defines a typed assessment interface (e.g. `PushAssessment`) classifying repos into will-operate / up-to-date / skip-with-reason. This separates decision-making from execution and makes the plan display trivial.
 
+### Command groups for `.arb/` subsystems
+
+When multiple operations manage the same `.arb/` subsystem (repos, templates), group them under a singular noun (`repo`, `template`) with subcommands. The parent command shows help when invoked without a subcommand. Each subcommand has its own summary, description, options, and action. This keeps the top-level command list focused on workflows while grouping management operations by the resource they act on.
+
 ### Safety gates for destructive operations
 
 When an operation would cause data loss, Arborist refuses and explains why. The `remove` command detects at-risk workspaces (unpushed commits, uncommitted changes) and will not delete them without `--force`. Use `--yes` to skip the confirmation prompt without overriding safety checks. The plan display always shows what's at risk and why, so the developer can make an informed decision.

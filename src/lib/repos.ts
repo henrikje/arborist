@@ -60,7 +60,7 @@ export async function selectInteractive(items: string[], message: string): Promi
 export async function selectReposInteractive(reposDir: string): Promise<string[]> {
 	const repos = listRepos(reposDir);
 	if (repos.length === 0) {
-		throw new Error("No repos found. Clone a repo first: arb clone <url>");
+		throw new Error("No repos found. Clone a repo first: arb repo clone <url>");
 	}
 	return selectInteractive(repos, "Select repos to include");
 }

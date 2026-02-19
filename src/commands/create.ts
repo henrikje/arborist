@@ -29,7 +29,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				const ctx = getCtx();
 
 				if (listRepos(ctx.reposDir).length === 0) {
-					error("No repos found. Clone a repo first: arb clone <url>");
+					error("No repos found. Clone a repo first: arb repo clone <url>");
 					process.exit(1);
 				}
 
