@@ -209,8 +209,8 @@ load test_helper/common-setup
     # repo-a: should compare against feat/auth (1 ahead, not 3 ahead which it would be vs main)
     [[ "$output" == *"repo-a"*"feat/auth"*"1 ahead"* ]]
 
-    # repo-b: base branch feat/auth doesn't exist — should fall back to main
-    [[ "$output" == *"repo-b"*"main"*"1 ahead"* ]]
+    # repo-b: base branch feat/auth doesn't exist — should show configured base with "not found"
+    [[ "$output" == *"repo-b"*"feat/auth"*"not found"* ]]
 }
 
 @test "default branch detection with master" {
@@ -570,8 +570,101 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     run arb status
     # repo-a should show feat/auth as base
     [[ "$output" == *"repo-a"*"feat/auth"* ]]
-    # repo-b should show main (fell back) — base name still appears
-    [[ "$output" == *"repo-b"*"main"* ]]
+    # repo-b should show configured base (feat/auth) with "not found" instead of fallback
+    [[ "$output" == *"repo-b"*"feat/auth"*"not found"* ]]
+}
+
+@test "arb status --where base-missing filters to repos with missing configured base" {
+    # repo-a has feat/auth, repo-b does NOT
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a repo-b
+    cd "$TEST_DIR/project/stacked"
+    arb fetch >/dev/null 2>&1
+    run arb status --where base-missing
+    # Only repo-b should appear (its configured base is missing)
+    [[ "$output" == *"repo-b"* ]]
+    [[ "$output" != *"repo-a"* ]]
+}
+
+@test "arb status --json includes configuredRef when base falls back" {
+    # repo-a has feat/auth, repo-b does NOT
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a repo-b
+    cd "$TEST_DIR/project/stacked"
+    arb fetch >/dev/null 2>&1
+    run arb status --json
+    echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+repos = {r['name']: r for r in d['repos']}
+# repo-a: base exists, configuredRef should be null
+assert repos['repo-a']['base']['configuredRef'] is None, 'repo-a should have null configuredRef'
+# repo-b: base fell back, configuredRef should be feat/auth
+assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configuredRef should be feat/auth, got {repos[\"repo-b\"][\"base\"][\"configuredRef\"]}'
+"
+}
+
+@test "arb status -v shows explanation when configured base not found" {
+    # repo-a has feat/auth, repo-b does NOT
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a repo-b
+
+    # Add a commit in repo-b so it would have ahead count against fallback
+    echo "ui-change" > "$TEST_DIR/project/stacked/repo-b/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-b" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-b" commit -m "ui change" >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/stacked"
+    arb fetch >/dev/null 2>&1
+    run arb status -v
+    # Should show the explanation for repo-b
+    [[ "$output" == *"Configured base branch feat/auth not found on origin"* ]]
+    # Should suggest --retarget
+    [[ "$output" == *"arb rebase --retarget"* ]]
+}
+
+@test "arb status -v suppresses ahead/behind sections when base fell back" {
+    # repo-a has feat/auth, repo-b does NOT
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a repo-b
+
+    # Add a commit in repo-b so there would be ahead count against fallback main
+    echo "ui-change" > "$TEST_DIR/project/stacked/repo-b/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-b" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-b" commit -m "ui change" >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/stacked"
+    arb fetch >/dev/null 2>&1
+    run arb status -v
+    # Should NOT show "Ahead of origin/main" for repo-b (suppressed because base fell back)
+    # repo-a may show ahead of feat/auth — that's fine
+    # Extract only lines after repo-b to check
+    repo_b_section=$(echo "$output" | sed -n '/repo-b/,$ p')
+    [[ "$repo_b_section" != *"Ahead of origin/main"* ]]
 }
 
 @test "arb status with fresh workspace shows not pushed and clean" {

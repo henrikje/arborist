@@ -41,7 +41,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("--json", "Output structured JSON")
 		.summary("Show workspace status")
 		.description(
-			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, merged, base-merged, at-risk. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
+			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, merged, base-merged, base-missing, at-risk. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
 		)
 		.action(
 			async (options: {
@@ -233,17 +233,18 @@ async function runStatus(
 		// Col 3: Base name
 		let baseNameColored: string;
 		if (cell.baseName) {
-			const baseFellBack = summary.base !== null && repo.base !== null && repo.base.ref !== summary.base;
 			const baseMerged = repo.base?.baseMergedIntoDefault != null;
-			baseNameColored = baseFellBack || baseMerged ? yellow(cell.baseName) : cell.baseName;
+			baseNameColored = flags.baseFellBack || baseMerged ? yellow(cell.baseName) : cell.baseName;
 		} else {
 			baseNameColored = "";
 		}
 		const baseNamePad = maxBaseName - cell.baseName.length;
 
-		// Col 4: Base diff — yellow when merge-tree predicts a conflict or base is merged into default
+		// Col 4: Base diff — yellow when merge-tree predicts a conflict, base is merged into default, or base fell back
 		const baseDiffColored =
-			conflictRepos.has(repo.name) || repo.base?.baseMergedIntoDefault != null ? yellow(cell.baseDiff) : cell.baseDiff;
+			conflictRepos.has(repo.name) || repo.base?.baseMergedIntoDefault != null || flags.baseFellBack
+				? yellow(cell.baseDiff)
+				: cell.baseDiff;
 		const baseDiffPad = maxBaseDiff - cell.baseDiff.length;
 
 		// Col 5: Remote name
@@ -353,7 +354,9 @@ function plainCells(repo: RepoStatus): CellData {
 	// Col 3: base name — always show remote/ref for clarity
 	let baseName: string;
 	if (repo.base) {
-		baseName = `${repo.base.remote}/${repo.base.ref}`;
+		baseName = repo.base.configuredRef
+			? `${repo.base.remote}/${repo.base.configuredRef}`
+			: `${repo.base.remote}/${repo.base.ref}`;
 	} else {
 		baseName = "";
 	}
@@ -363,6 +366,8 @@ function plainCells(repo: RepoStatus): CellData {
 	if (repo.base) {
 		if (isDetached) {
 			baseDiff = "";
+		} else if (repo.base.configuredRef) {
+			baseDiff = "not found";
 		} else {
 			baseDiff = plainBaseDiff(repo.base);
 		}
@@ -511,8 +516,15 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 		);
 	}
 
-	// Ahead of base
-	if (repo.base && repo.base.ahead > 0) {
+	// Configured base not found (fell back to default)
+	if (repo.base?.configuredRef) {
+		let section = `\n${SECTION_INDENT}Configured base branch ${repo.base.configuredRef} not found on ${repo.base.remote}\n`;
+		section += `${SECTION_INDENT}Run 'arb rebase --retarget' to rebase onto the default branch\n`;
+		sections.push(section);
+	}
+
+	// Ahead of base (suppress when base fell back — numbers are against the fallback, not the configured base)
+	if (repo.base && repo.base.ahead > 0 && !repo.base.configuredRef) {
 		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
 		const commits = await getCommitsBetween(repoDir, baseRef, "HEAD");
 		if (commits.length > 0) {
@@ -524,8 +536,8 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 		}
 	}
 
-	// Behind base
-	if (repo.base && repo.base.behind > 0) {
+	// Behind base (suppress when base fell back)
+	if (repo.base && repo.base.behind > 0 && !repo.base.configuredRef) {
 		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
 		const commits = await getCommitsBetween(repoDir, "HEAD", baseRef);
 		if (commits.length > 0) {
