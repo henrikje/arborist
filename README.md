@@ -46,6 +46,12 @@ Arborist's synchronization commands handle this across all repos at once.
 
 Arborist requires Git and works on macOS and Linux. It currently needs [Bun](https://bun.sh) to build from source, but pre-built binaries are coming. :-)
 
+**Homebrew** (macOS and Linux):
+```
+brew install henrikje/tap/arb
+```
+
+**From source** (requires [Bun](https://bun.sh)):
 ```
 git clone https://github.com/henrikje/arborist
 cd arborist
