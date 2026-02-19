@@ -160,7 +160,7 @@ CRITICAL: Claude runs without a TTY. Always follow these rules:
 - `arb list -q` for fast workspace listing without status computation.
 - Exit codes: 0 = success, 1 = expected failure (conflicts, nothing to do), 2 = unexpected error.
 
-Commands that do NOT need `-y`: `init`, `clone`, `repos`, `create`, `list`, `path`, `cd`, `add`, `drop`, `status`, `fetch`, `exec`, `open`.
+Commands that do NOT need `-y`: `init`, `repo clone`, `repo list`, `create`, `list`, `path`, `cd`, `add`, `drop`, `status`, `fetch`, `exec`, `open`.
 
 ## Safety Rules
 
@@ -179,8 +179,8 @@ Commands that do NOT need `-y`: `init`, `clone`, `repos`, `create`, `list`, `pat
 | Command | Description |
 |---------|-------------|
 | `arb init [path]` | Initialize a new arb root |
-| `arb clone <url> [name]` | Clone a repo into `.arb/repos/` |
-| `arb repos` | List all cloned repos |
+| `arb repo clone <url> [name]` | Clone a repo into `.arb/repos/` |
+| `arb repo list` | List all cloned repos |
 | `arb template add <file>` | Capture a file as a template |
 | `arb template remove <file>` | Remove a template file |
 | `arb template list` | List all defined templates |

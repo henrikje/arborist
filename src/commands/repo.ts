@@ -1,11 +1,22 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { error, info, success } from "../lib/output";
+import { dim, error, info, success } from "../lib/output";
+import { getRemoteUrl } from "../lib/remotes";
+import { listRepos } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
 
-export function registerCloneCommand(program: Command, getCtx: () => ArbContext): void {
-	program
+export function registerRepoCommand(program: Command, getCtx: () => ArbContext): void {
+	const repo = program
+		.command("repo")
+		.summary("Manage canonical repos")
+		.description(
+			"Manage the canonical repository clones in .arb/repos/. These permanent clones are never worked in directly — instead, arb creates worktrees that point back to them. Use subcommands to clone new repos or list existing ones.",
+		);
+
+	// ── repo clone ──────────────────────────────────────────────────
+
+	repo
 		.command("clone <url> [name]")
 		.option("--upstream <url>", "Add an upstream remote (for fork workflows)")
 		.summary("Clone a repo into .arb/repos/")
@@ -17,7 +28,7 @@ export function registerCloneCommand(program: Command, getCtx: () => ArbContext)
 			const repoName = nameArg || basename(url).replace(/\.git$/, "");
 
 			if (!repoName) {
-				error("Could not derive repo name from URL. Specify one: arb clone <url> <name>");
+				error("Could not derive repo name from URL. Specify one: arb repo clone <url> <name>");
 				process.exit(1);
 			}
 
@@ -62,6 +73,35 @@ export function registerCloneCommand(program: Command, getCtx: () => ArbContext)
 				success(`Cloned repo ${repoName}`);
 			} else {
 				success(`Cloned repo ${repoName}`);
+			}
+		});
+
+	// ── repo list ───────────────────────────────────────────────────
+
+	repo
+		.command("list")
+		.summary("List cloned repos")
+		.description(
+			"List all repositories that have been cloned into .arb/repos/. These are the canonical clones that workspaces create worktrees from.",
+		)
+		.action(async () => {
+			const ctx = getCtx();
+			const repos = listRepos(ctx.reposDir);
+			if (repos.length === 0) return;
+
+			const entries: { name: string; url: string }[] = [];
+			for (const r of repos) {
+				const repoDir = `${ctx.reposDir}/${r}`;
+				const url = await getRemoteUrl(repoDir, "origin");
+				entries.push({ name: r, url: url ?? "" });
+			}
+
+			const maxRepo = Math.max(4, ...entries.map((e) => e.name.length));
+
+			process.stdout.write(`  ${dim("REPO")}${" ".repeat(maxRepo - 4)}    ${dim("URL")}\n`);
+			for (const { name, url } of entries) {
+				const urlDisplay = url || dim("(local)");
+				process.stdout.write(`  ${name.padEnd(maxRepo)}    ${urlDisplay}\n`);
 			}
 		});
 }
