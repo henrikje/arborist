@@ -99,7 +99,7 @@ Key signals in status output:
 ### Sharing Changes
 
 1. Run `arb status` first to understand what will be pushed
-2. `arb push -y` — Push all repos with unpushed commits
+2. `arb push -y` — Push all repos with unpushed commits. The plan highlights repos behind base with a hint to rebase first
 3. `arb push -f` — Force push with lease (required after rebase)
 4. `arb push repo1 repo2 -y` — Push only specific repos
 
