@@ -58,7 +58,7 @@ Each command exports a `register*Command(program, getCtx)` function. The `getCtx
 ### Testing
 
 - **Unit tests**: Bun's native test runner, files colocated as `*.test.ts`. Intended for code that can be tested without spawning git processes or filesystem operations.
-- **Integration tests**: BATS framework in `test/arb.bats`, tests the compiled binary end-to-end. Should provide a comprehensive coverage of the CLI's behavior.
+- **Integration tests**: BATS framework in `test/*.bats`, tests the compiled binary end-to-end. Split into domain-based files (basics, workspace-membership, list-nav, status, sync, integrate, exec-open, templates, forks) with shared helpers in `test/test_helper/common-setup.bash`. Run all with `bun run test:integration` or target a single file with `bun run build && bats test/<file>.bats`.
 
 ## Post-Change Checklist
 
