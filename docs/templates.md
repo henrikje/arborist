@@ -62,7 +62,7 @@ Files ending with `.arbtemplate` undergo placeholder substitution when seeded. T
 
 | Placeholder | Value | Scope |
 |---|---|---|
-| `__ARB_ROOT_PATH__` | Absolute path to the arb root | all |
+| `__ROOT_PATH__` | Absolute path to the arb root | all |
 | `__WORKSPACE_NAME__` | Workspace directory name | all |
 | `__WORKSPACE_PATH__` | Absolute path to the workspace | all |
 | `__WORKTREE_NAME__` | Repo/worktree directory name | repo only |

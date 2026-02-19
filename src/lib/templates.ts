@@ -14,7 +14,7 @@ import { basename, dirname, join, relative } from "node:path";
 export const ARBTEMPLATE_EXT = ".arbtemplate";
 
 export interface TemplateContext {
-	arbRootPath: string;
+	rootPath: string;
 	workspaceName: string;
 	workspacePath: string;
 	worktreeName?: string;
@@ -23,7 +23,7 @@ export interface TemplateContext {
 
 export function substitutePlaceholders(content: string, ctx: TemplateContext): string {
 	let result = content;
-	result = result.replaceAll("__ARB_ROOT_PATH__", ctx.arbRootPath);
+	result = result.replaceAll("__ROOT_PATH__", ctx.rootPath);
 	result = result.replaceAll("__WORKSPACE_NAME__", ctx.workspaceName);
 	result = result.replaceAll("__WORKSPACE_PATH__", ctx.workspacePath);
 	if (ctx.worktreeName !== undefined) {
@@ -117,7 +117,7 @@ export function overlayDirectory(srcDir: string, destDir: string, ctx?: Template
 export function applyWorkspaceTemplates(baseDir: string, wsDir: string): OverlayResult {
 	const templateDir = join(baseDir, ".arb", "templates", "workspace");
 	const ctx: TemplateContext = {
-		arbRootPath: baseDir,
+		rootPath: baseDir,
 		workspaceName: basename(wsDir),
 		workspacePath: wsDir,
 	};
@@ -134,7 +134,7 @@ export function applyRepoTemplates(baseDir: string, wsDir: string, repos: string
 		if (!existsSync(templateDir) || !existsSync(repoDir)) continue;
 
 		const ctx: TemplateContext = {
-			arbRootPath: baseDir,
+			rootPath: baseDir,
 			workspaceName: basename(wsDir),
 			workspacePath: wsDir,
 			worktreeName: repo,
@@ -203,7 +203,7 @@ export function diffTemplates(baseDir: string, wsDir: string, repos: string[]): 
 
 	const wsTemplateDir = join(baseDir, ".arb", "templates", "workspace");
 	const wsCtx: TemplateContext = {
-		arbRootPath: baseDir,
+		rootPath: baseDir,
 		workspaceName: basename(wsDir),
 		workspacePath: wsDir,
 	};
@@ -217,7 +217,7 @@ export function diffTemplates(baseDir: string, wsDir: string, repos: string[]): 
 		if (!existsSync(repoDir)) continue;
 
 		const repoCtx: TemplateContext = {
-			arbRootPath: baseDir,
+			rootPath: baseDir,
 			workspaceName: basename(wsDir),
 			workspacePath: wsDir,
 			worktreeName: repo,
@@ -449,7 +449,7 @@ export function forceOverlayDirectory(srcDir: string, destDir: string, ctx?: Tem
 export function forceApplyWorkspaceTemplates(baseDir: string, wsDir: string): ForceOverlayResult {
 	const templateDir = join(baseDir, ".arb", "templates", "workspace");
 	const ctx: TemplateContext = {
-		arbRootPath: baseDir,
+		rootPath: baseDir,
 		workspaceName: basename(wsDir),
 		workspacePath: wsDir,
 	};
@@ -466,7 +466,7 @@ export function forceApplyRepoTemplates(baseDir: string, wsDir: string, repos: s
 		if (!existsSync(templateDir) || !existsSync(repoDir)) continue;
 
 		const ctx: TemplateContext = {
-			arbRootPath: baseDir,
+			rootPath: baseDir,
 			workspaceName: basename(wsDir),
 			workspacePath: wsDir,
 			worktreeName: repo,
