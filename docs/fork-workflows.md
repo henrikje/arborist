@@ -13,10 +13,10 @@ For single-remote repos, both roles typically resolve to `origin`. For fork setu
 
 ## Setting up a fork
 
-Use `arb clone` with `--upstream` to clone a fork and register the canonical repo in one step:
+Use `arb repo clone` with `--upstream` to clone a fork and register the canonical repo in one step:
 
 ```bash
-arb clone https://github.com/you/api.git --upstream https://github.com/org/api.git
+arb repo clone https://github.com/you/api.git --upstream https://github.com/org/api.git
 ```
 
 This clones your fork as `origin`, adds the canonical repo as `upstream`, sets `remote.pushDefault = origin`, and fetches both remotes.

@@ -37,7 +37,7 @@ export function registerInitCommand(program: Command): void {
 			info(`  ${dim(target)}`);
 			info("");
 			info("Next steps:");
-			info(`  arb clone <url>    ${dim("Clone repos into the project")}`);
-			info(`  arb create <name>  ${dim("Create a workspace with worktrees")}`);
+			info(`  arb repo clone <url>  ${dim("Clone repos into the project")}`);
+			info(`  arb create <name>     ${dim("Create a workspace with worktrees")}`);
 		});
 }
