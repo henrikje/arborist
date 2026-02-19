@@ -10,7 +10,8 @@
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"typecheck": "tsc --noEmit",
-		"check": "bun run lint && bun run typecheck && bun run test && bun run test:integration"
+		"check": "bun run lint && bun run typecheck && bun run test && bun run test:integration",
+		"build:release": "bun run scripts/build-release.ts"
 	},
 	"dependencies": {
 		"@inquirer/checkbox": "^5.0.4",

@@ -25,4 +25,7 @@ jobs:
 
       - run: bun install
 
+      - name: Validate commit messages
+        run: bunx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }}
+
       - run: bun run check
