@@ -484,5 +484,57 @@ describe("git repo functions", () => {
 			const full = await detectBranchMerged(repoDir, defaultBranch);
 			expect(full).toBe("squash");
 		});
+
+		test("detects merge commit with explicit branchRef", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+
+			// Create a base branch with a commit
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feat/auth"]);
+			writeFileSync(join(repoDir, "auth.txt"), "auth content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "auth.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "auth feature"]);
+
+			// Merge feat/auth into main via merge commit
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			Bun.spawnSync(["git", "-C", repoDir, "merge", "feat/auth", "--no-ff", "-m", "merge auth"]);
+
+			// Check if feat/auth has been merged into main using explicit branchRef
+			const result = await detectBranchMerged(repoDir, defaultBranch, 200, "feat/auth");
+			expect(result).toBe("merge");
+		});
+
+		test("detects squash merge with explicit branchRef", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+
+			// Create a base branch with commits
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feat/auth"]);
+			writeFileSync(join(repoDir, "auth.txt"), "auth content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "auth.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "auth feature"]);
+
+			// Squash merge feat/auth into main
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			Bun.spawnSync(["git", "-C", repoDir, "merge", "--squash", "feat/auth"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "squash: auth"]);
+
+			// Check if feat/auth has been squash-merged into main using explicit branchRef
+			const result = await detectBranchMerged(repoDir, defaultBranch, 200, "feat/auth");
+			expect(result).toBe("squash");
+		});
+
+		test("returns null with explicit branchRef when not merged", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+
+			// Create a base branch with a commit (not merged into main)
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feat/auth"]);
+			writeFileSync(join(repoDir, "auth.txt"), "auth content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "auth.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "auth feature"]);
+
+			// Check from main — feat/auth is NOT merged
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			const result = await detectBranchMerged(repoDir, defaultBranch, 200, "feat/auth");
+			expect(result).toBeNull();
+		});
 	});
 });
