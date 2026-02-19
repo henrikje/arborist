@@ -30,6 +30,7 @@ interface ListRow {
 	marker: boolean;
 	branch: string;
 	base: string;
+	baseFellBack: boolean;
 	repos: string;
 	statusColored: string;
 	lastCommit: string | null;
@@ -109,6 +110,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						marker,
 						branch: "",
 						base: "",
+						baseFellBack: false,
 						repos: "",
 						statusColored: red("(config missing)"),
 						lastCommit: null,
@@ -135,6 +137,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						marker,
 						branch,
 						base,
+						baseFellBack: false,
 						repos: reposText,
 						statusColored: yellow("(empty)"),
 						lastCommit: null,
@@ -152,6 +155,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					marker,
 					branch,
 					base,
+					baseFellBack: false,
 					repos: reposText,
 					statusColored: dim("..."),
 					lastCommit: null,
@@ -275,7 +279,8 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				let line = `${prefix}${paddedName}`;
 				line += `    ${row.branch.padEnd(maxBranch)}`;
 				if (hasAnyBase) {
-					line += `    ${row.base.padEnd(maxBase)}`;
+					const baseText = row.baseFellBack ? yellow(row.base.padEnd(maxBase)) : row.base.padEnd(maxBase);
+					line += `    ${baseText}`;
 				}
 				line += `    ${row.repos.padEnd(maxRepos)}`;
 				if (showStatus) {
@@ -404,4 +409,5 @@ function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
 		row.statusColored = formatIssueCounts(summary.issueCounts, summary.rebasedOnlyCount);
 	}
 	row.lastCommit = summary.lastCommit;
+	row.baseFellBack = summary.repos.some((r) => r.base?.configuredRef != null);
 }

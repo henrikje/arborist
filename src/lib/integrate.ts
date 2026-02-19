@@ -1,6 +1,6 @@
 import confirm from "@inquirer/confirm";
 import { configGet, writeConfig } from "./config";
-import { getDefaultBranch, getShortHead, git, predictMergeConflict } from "./git";
+import { getDefaultBranch, getShortHead, git, predictMergeConflict, remoteBranchExists } from "./git";
 import {
 	clearLines,
 	countLines,
@@ -155,8 +155,9 @@ export async function integrate(
 
 		let result: { exitCode: number; stdout: string };
 		if (a.retargetFrom) {
-			const oldBaseRef = `${a.upstreamRemote}/${a.retargetFrom}`;
-			const progressMsg = `retargeting ${branch} onto ${ref} from ${a.retargetFrom}`;
+			const remoteRefExists = await remoteBranchExists(a.repoDir, a.retargetFrom, a.upstreamRemote);
+			const oldBaseRef = remoteRefExists ? `${a.upstreamRemote}/${a.retargetFrom}` : a.retargetFrom;
+			const progressMsg = `rebasing ${branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
 			inlineStart(a.repo, progressMsg);
 			result = await git(a.repoDir, "rebase", "--onto", ref, oldBaseRef);
 		} else {
@@ -168,7 +169,7 @@ export async function integrate(
 		if (result.exitCode === 0) {
 			let doneMsg: string;
 			if (a.retargetFrom) {
-				doneMsg = `retargeted ${branch} onto ${ref} from ${a.retargetFrom}`;
+				doneMsg = `rebased ${branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
 			} else {
 				doneMsg = mode === "rebase" ? `rebased ${branch} onto ${ref}` : `merged ${ref} into ${branch}`;
 			}
@@ -237,7 +238,7 @@ function formatIntegratePlan(assessments: RepoAssessment[], mode: IntegrateMode,
 
 			if (a.retargetFrom) {
 				// Retarget display
-				out += `  ${a.repo}   retarget onto ${baseRef} from ${a.retargetFrom}`;
+				out += `  ${a.repo}   rebase onto ${baseRef} from ${a.retargetFrom} (retarget)`;
 				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 				out += `${headStr}\n`;
 			} else {
@@ -367,7 +368,7 @@ async function assessRepo(
 		if (!retarget) {
 			return {
 				...base,
-				skipReason: `base branch ${status.base.ref} was merged into default (use --retarget)`,
+				skipReason: `base branch ${status.base.configuredRef ?? status.base.ref} was merged into default (use --retarget)`,
 			};
 		}
 
@@ -390,7 +391,7 @@ async function assessRepo(
 			...base,
 			outcome: "will-operate",
 			baseBranch: trueDefault,
-			retargetFrom: status.base.ref,
+			retargetFrom: status.base.configuredRef ?? status.base.ref,
 			retargetTo: trueDefault,
 			behind: status.base.behind,
 			ahead: status.base.ahead,
