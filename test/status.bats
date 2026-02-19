@@ -1091,3 +1091,32 @@ assert r['base']['behind'] == 1, f'expected behind=1, got {r[\"base\"][\"behind\
 "
 }
 
+@test "arb status -v shows merge strategy for merged branch" {
+    arb create merged-verbose repo-a
+    local wt="$TEST_DIR/project/merged-verbose/repo-a"
+
+    # Make feature work and push
+    echo "feature content" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    cd "$TEST_DIR/project/merged-verbose"
+    arb push --yes >/dev/null 2>&1
+
+    # Squash merge
+    local bare="$TEST_DIR/origin/repo-a.git"
+    local tmp="$TEST_DIR/tmp-verbose"
+    git clone "$bare" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && git merge --squash origin/merged-verbose && git commit -m "squash merge") >/dev/null 2>&1
+    (cd "$tmp" && git push origin main) >/dev/null 2>&1
+    rm -rf "$tmp"
+    git -C "$bare" branch -D merged-verbose >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch --prune >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/merged-verbose"
+    arb fetch >/dev/null 2>&1
+    run arb status -v
+    [[ "$output" == *"merged (gone)"* ]]
+    [[ "$output" == *"Branch merged into"* ]]
+    [[ "$output" == *"(squash)"* ]]
+}
+

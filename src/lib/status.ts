@@ -3,6 +3,7 @@ import { configGet } from "./config";
 import {
 	type GitOperation,
 	branchExistsLocally,
+	detectBranchMerged,
 	detectOperation,
 	detectRebasedCommits,
 	getDefaultBranch,
@@ -34,6 +35,7 @@ export interface RepoStatus {
 		ref: string;
 		ahead: number;
 		behind: number;
+		mergedIntoBase: "merge" | "squash" | null;
 	} | null;
 	share: {
 		remote: string;
@@ -59,6 +61,7 @@ export interface RepoFlags {
 	isLocal: boolean;
 	isGone: boolean;
 	isShallow: boolean;
+	isMerged: boolean;
 }
 
 export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlags {
@@ -98,6 +101,8 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 		isDrifted = repo.identity.headMode.branch !== expectedBranch;
 	}
 
+	const isMerged = repo.base?.mergedIntoBase != null;
+
 	return {
 		isDirty: localDirty,
 		isUnpushed,
@@ -110,6 +115,7 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 		isLocal,
 		isGone,
 		isShallow: repo.identity.shallow,
+		isMerged,
 	};
 }
 
@@ -140,6 +146,7 @@ const FLAG_LABELS: { key: keyof RepoFlags; label: string }[] = [
 	{ key: "isLocal", label: "local" },
 	{ key: "isGone", label: "gone" },
 	{ key: "isShallow", label: "shallow" },
+	{ key: "isMerged", label: "merged" },
 ];
 
 export function flagLabels(flags: RepoFlags): string[] {
@@ -189,6 +196,7 @@ const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
 	local: (f) => f.isLocal,
 	gone: (f) => f.isGone,
 	shallow: (f) => f.isShallow,
+	merged: (f) => f.isMerged,
 	"at-risk": (f) => needsAttention(f),
 };
 
@@ -346,7 +354,7 @@ export async function gatherRepoStatus(
 				const parts = lr.stdout.trim().split(/\s+/);
 				const behind = Number.parseInt(parts[0] ?? "0", 10);
 				const ahead = Number.parseInt(parts[1] ?? "0", 10);
-				baseStatus = { remote: upstreamRemote, ref: defaultBranch, ahead, behind };
+				baseStatus = { remote: upstreamRemote, ref: defaultBranch, ahead, behind, mergedIntoBase: null };
 			}
 		}
 	}
@@ -431,6 +439,27 @@ export async function gatherRepoStatus(
 			toPull: null,
 			rebased: null,
 		};
+	}
+
+	// ── Merge detection ──
+	// Skip when branch is at the exact same point as base (ahead=0, behind=0) — nothing to detect.
+	// Ancestor check is cheap (single git command), always run when there's divergence.
+	// Squash check is more expensive — only run when branch is gone OR share is up to date.
+	const hasWork = baseStatus !== null && (baseStatus.ahead > 0 || baseStatus.behind > 0);
+	if (baseStatus !== null && !detached && hasWork) {
+		const compareRef = repoHasRemote ? `${upstreamRemote}/${baseStatus.ref}` : baseStatus.ref;
+		const shareUpToDate =
+			shareStatus !== null && shareStatus.toPush === 0 && shareStatus.toPull === 0 && shareStatus.refMode !== "noRef";
+		const shouldCheckSquash = (shareStatus !== null && shareStatus.refMode === "gone") || shareUpToDate;
+
+		// Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
+		const ancestorResult = await git(repoDir, "merge-base", "--is-ancestor", "HEAD", compareRef);
+		if (ancestorResult.exitCode === 0) {
+			baseStatus.mergedIntoBase = "merge";
+		} else if (shouldCheckSquash) {
+			// Phase 2: Squash merge detection via cumulative patch-id
+			baseStatus.mergedIntoBase = await detectBranchMerged(repoDir, compareRef);
+		}
 	}
 
 	return {

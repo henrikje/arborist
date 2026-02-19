@@ -41,7 +41,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("--json", "Output structured JSON")
 		.summary("Show workspace status")
 		.description(
-			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
+			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, merged, at-risk. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
 		)
 		.action(
 			async (options: {
@@ -403,12 +403,18 @@ function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
 function plainRemoteDiff(repo: RepoStatus): string {
 	if (repo.share === null) return "";
 
+	const merged = repo.base?.mergedIntoBase != null;
+
 	if (repo.share.refMode === "gone") {
+		if (merged) return "merged (gone)";
 		if (repo.base !== null && repo.base.ahead > 0) {
 			return `gone, ${repo.base.ahead} to push`;
 		}
 		return "gone";
 	}
+
+	if (merged) return "merged";
+
 	if (repo.share.refMode === "noRef") {
 		if (repo.base !== null && repo.base.ahead > 0) {
 			return `${repo.base.ahead} to push`;
@@ -486,6 +492,13 @@ const ITEM_INDENT = "          ";
 async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void> {
 	const repoDir = `${wsDir}/${repo.name}`;
 	const sections: string[] = [];
+
+	// Merged into base
+	if (repo.base?.mergedIntoBase) {
+		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
+		const strategy = repo.base.mergedIntoBase === "squash" ? "squash" : "merge";
+		sections.push(`\n${SECTION_INDENT}Branch merged into ${baseRef} (${strategy})\n`);
+	}
 
 	// Ahead of base
 	if (repo.base && repo.base.ahead > 0) {

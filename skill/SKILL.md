@@ -65,6 +65,7 @@ To detect context programmatically, check for `.arb/` or `.arbws/` in the curren
 - `arb status -d` — Only show repos with uncommitted changes
 - `arb status -w at-risk` — Only show repos that need attention (unpushed, drifted, dirty, etc)
 - `arb status -w gone` — Only show repos with deleted remote branches
+- `arb status -w merged` — Only show repos whose branches have been merged into the base branch
 - `arb list` — Shows all workspaces with a LAST COMMIT column indicating when work last happened
 - `arb list -w at-risk` — Only show workspaces with at least one repo needing attention
 
@@ -75,6 +76,7 @@ Key signals in status output:
 - **diverged** — Both ahead of and behind base branch; rebase/merge will replay commits and may produce conflicts
 - **behind share** — Remote feature branch has commits you don't have; consider pulling
 - **rebased** — Local branch has been rebased; remote has the old commits with different hashes but identical content. Use `arb push --force` to update the remote
+- **merged** — Branch has been merged into the base branch (detected via ancestor check for merge commits, or cumulative patch-id for squash merges). Independent of "gone" — a branch can be merged without being deleted, or deleted without being merged
 - **drifted** — Worktree is on the wrong branch (rare, usually manual intervention)
 - **last commit** — Most recent commit author date across all repos; helps gauge workspace staleness
 

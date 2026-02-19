@@ -257,6 +257,11 @@ async function assessPullRepo(
 		return { ...base, skipReason: "remote branch gone" };
 	}
 
+	// Already merged into base
+	if (status.base?.mergedIntoBase != null) {
+		return { ...base, skipReason: `already merged into ${status.base.ref}` };
+	}
+
 	// Determine pull mode
 	const pullMode = flagMode ?? (await detectPullMode(repoDir, branch));
 
