@@ -5,6 +5,8 @@ import { join } from "node:path";
 import {
 	branchExistsLocally,
 	checkBranchMatch,
+	detectRebasedCommits,
+	getCommitsBetweenFull,
 	getDefaultBranch,
 	hasRemote,
 	isRepoDirty,
@@ -235,6 +237,109 @@ describe("git repo functions", () => {
 		test("returns null for invalid ref", async () => {
 			const result = await predictMergeConflict(repoDir, "nonexistent-ref");
 			expect(result).toBeNull();
+		});
+	});
+
+	describe("detectRebasedCommits", () => {
+		test("detects rebased commits after rebase onto advanced main", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+
+			// Create feature branch with two commits
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content a");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add a"]);
+			writeFileSync(join(repoDir, "b.txt"), "content b");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "b.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add b"]);
+
+			// Push feature to origin
+			Bun.spawnSync(["git", "-C", repoDir, "push", "-u", "origin", "feature"]);
+
+			// Advance main with a new commit
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			writeFileSync(join(repoDir, "main-new.txt"), "main advance");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "main-new.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "advance main"]);
+			Bun.spawnSync(["git", "-C", repoDir, "push", "origin", defaultBranch]);
+
+			// Rebase feature onto advanced main
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+			Bun.spawnSync(["git", "-C", repoDir, "rebase", defaultBranch]);
+
+			// Now local feature has rebased commits, origin/feature has old ones
+			const result = await detectRebasedCommits(repoDir, "origin/feature");
+			expect(result).not.toBeNull();
+			if (!result) throw new Error("expected non-null result");
+			expect(result.count).toBe(2);
+			expect(result.rebasedLocalHashes.size).toBe(2);
+		});
+
+		test("returns zero for genuinely different commits", async () => {
+			// Create feature branch with a commit
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "feature.txt"), "feature content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "feature.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "feature commit"]);
+
+			// Push feature
+			Bun.spawnSync(["git", "-C", repoDir, "push", "-u", "origin", "feature"]);
+
+			// Add different commit locally (not a rebase)
+			writeFileSync(join(repoDir, "new.txt"), "new content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "new.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "new local commit"]);
+
+			// Add different commit on the remote side (simulate via bare)
+			const bare = join(tmpDir, "bare.git");
+			const tmpClone = join(tmpDir, "tmpclone");
+			Bun.spawnSync(["git", "clone", bare, tmpClone]);
+			Bun.spawnSync(["git", "-C", tmpClone, "checkout", "feature"]);
+			writeFileSync(join(tmpClone, "remote-new.txt"), "remote content");
+			Bun.spawnSync(["git", "-C", tmpClone, "add", "remote-new.txt"]);
+			Bun.spawnSync(["git", "-C", tmpClone, "commit", "-m", "remote commit"]);
+			Bun.spawnSync(["git", "-C", tmpClone, "push", "origin", "feature"]);
+
+			// Fetch in our working repo
+			Bun.spawnSync(["git", "-C", repoDir, "fetch", "origin"]);
+
+			const result = await detectRebasedCommits(repoDir, "origin/feature");
+			expect(result).not.toBeNull();
+			if (!result) throw new Error("expected non-null result");
+			expect(result.count).toBe(0);
+			expect(result.rebasedLocalHashes.size).toBe(0);
+		});
+
+		test("returns zero or null for invalid ref", async () => {
+			const result = await detectRebasedCommits(repoDir, "nonexistent-ref");
+			// Piped commands may succeed with empty output or fail — either is acceptable
+			if (result !== null) {
+				expect(result.count).toBe(0);
+				expect(result.rebasedLocalHashes.size).toBe(0);
+			}
+		});
+	});
+
+	describe("getCommitsBetweenFull", () => {
+		test("returns short and full hashes with subjects", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+
+			// Create a feature branch with commits
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "x.txt"), "x");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "x.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add x"]);
+
+			const commits = await getCommitsBetweenFull(repoDir, defaultBranch, "feature");
+			expect(commits.length).toBe(1);
+			expect(commits[0]?.shortHash.length).toBeGreaterThan(0);
+			expect(commits[0]?.fullHash.length).toBe(40);
+			expect(commits[0]?.subject).toBe("add x");
+		});
+
+		test("returns empty array for equal refs", async () => {
+			const commits = await getCommitsBetweenFull(repoDir, "HEAD", "HEAD");
+			expect(commits).toEqual([]);
 		});
 	});
 });

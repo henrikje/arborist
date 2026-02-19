@@ -362,7 +362,8 @@ Shows each worktree's position relative to the base branch, push status, and loc
         "ref": "origin/feature-login",
         "refMode": "configured",
         "toPush": 0,
-        "toPull": 0
+        "toPull": 0,
+        "rebased": null
       },
       "operation": null
     }

@@ -74,6 +74,7 @@ Key signals in status output:
 - **behind base** — Base branch (e.g., main) has moved ahead; consider rebasing
 - **diverged** — Both ahead of and behind base branch; rebase/merge will replay commits and may produce conflicts
 - **behind share** — Remote feature branch has commits you don't have; consider pulling
+- **rebased** — Local branch has been rebased; remote has the old commits with different hashes but identical content. Use `arb push --force` to update the remote
 - **drifted** — Worktree is on the wrong branch (rare, usually manual intervention)
 - **last commit** — Most recent commit author date across all repos; helps gauge workspace staleness
 

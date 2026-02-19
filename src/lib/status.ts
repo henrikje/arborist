@@ -4,6 +4,7 @@ import {
 	type GitOperation,
 	branchExistsLocally,
 	detectOperation,
+	detectRebasedCommits,
 	getDefaultBranch,
 	getHeadCommitDate,
 	git,
@@ -40,6 +41,7 @@ export interface RepoStatus {
 		refMode: "noRef" | "implicit" | "configured" | "gone";
 		toPush: number | null; // null = unknown
 		toPull: number | null; // null = unknown
+		rebased: number | null; // count of patch-id-matched commits between push/pull sets
 	} | null; // null when no remote
 	operation: GitOperation;
 	lastCommit: string | null;
@@ -154,10 +156,17 @@ const YELLOW_FLAGS = new Set<keyof RepoFlags>([
 	"isShallow",
 ]);
 
-export function formatIssueCounts(issueCounts: WorkspaceSummary["issueCounts"]): string {
+export function formatIssueCounts(issueCounts: WorkspaceSummary["issueCounts"], rebasedOnlyCount = 0): string {
 	return issueCounts
-		.map(({ label, key }) => {
-			return YELLOW_FLAGS.has(key) ? yellow(label) : label;
+		.flatMap(({ label, key, count }) => {
+			if (key === "isUnpushed" && rebasedOnlyCount > 0) {
+				const genuine = count - rebasedOnlyCount;
+				const parts: string[] = [];
+				if (genuine > 0) parts.push(yellow(label));
+				parts.push("rebased");
+				return parts;
+			}
+			return [YELLOW_FLAGS.has(key) ? yellow(label) : label];
 		})
 		.join(", ");
 }
@@ -224,6 +233,7 @@ export interface WorkspaceSummary {
 	repos: RepoStatus[];
 	total: number;
 	withIssues: number;
+	rebasedOnlyCount: number;
 	issueLabels: string[];
 	issueCounts: { label: string; count: number; key: keyof RepoFlags }[];
 	lastCommit: string | null;
@@ -232,7 +242,12 @@ export interface WorkspaceSummary {
 export function computeSummaryAggregates(
 	repos: RepoStatus[],
 	branch: string,
-): { withIssues: number; issueLabels: string[]; issueCounts: WorkspaceSummary["issueCounts"] } {
+): {
+	withIssues: number;
+	rebasedOnlyCount: number;
+	issueLabels: string[];
+	issueCounts: WorkspaceSummary["issueCounts"];
+} {
 	let withIssues = 0;
 	const allLabels = new Set<string>();
 	const flagCounts = new Map<keyof RepoFlags, number>();
@@ -253,7 +268,16 @@ export function computeSummaryAggregates(
 		count: flagCounts.get(key) ?? 0,
 		key,
 	}));
-	return { withIssues, issueLabels: [...allLabels], issueCounts };
+
+	let rebasedOnlyCount = 0;
+	for (const repo of repos) {
+		if (repo.share?.rebased != null && repo.share.rebased > 0) {
+			const netNew = (repo.share.toPush ?? 0) - repo.share.rebased;
+			if (netNew <= 0) rebasedOnlyCount++;
+		}
+	}
+
+	return { withIssues, rebasedOnlyCount, issueLabels: [...allLabels], issueCounts };
 }
 
 // ── Status Gathering ──
@@ -344,16 +368,23 @@ export async function gatherRepoStatus(
 				toPull = Number.parseInt(parts[0] ?? "0", 10);
 				toPush = Number.parseInt(parts[1] ?? "0", 10);
 			}
+			let rebased: number | null = null;
+			if (toPush !== null && toPush > 0 && toPull !== null && toPull > 0) {
+				const result = await detectRebasedCommits(repoDir, trackingRef);
+				rebased = result?.count ?? null;
+			}
 			shareStatus = {
 				remote: shareRemote,
 				ref: trackingRef,
 				refMode: "configured",
 				toPush,
 				toPull,
+				rebased,
 			};
 		} else if (await remoteBranchExists(repoDir, actualBranch, shareRemote)) {
 			// Step 2: No tracking config but remote ref exists → implicit
-			const pushLr = await git(repoDir, "rev-list", "--left-right", "--count", `${shareRemote}/${actualBranch}...HEAD`);
+			const implicitRef = `${shareRemote}/${actualBranch}`;
+			const pushLr = await git(repoDir, "rev-list", "--left-right", "--count", `${implicitRef}...HEAD`);
 			let toPush: number | null = null;
 			let toPull: number | null = null;
 			if (pushLr.exitCode === 0) {
@@ -361,12 +392,18 @@ export async function gatherRepoStatus(
 				toPull = Number.parseInt(parts[0] ?? "0", 10);
 				toPush = Number.parseInt(parts[1] ?? "0", 10);
 			}
+			let rebased: number | null = null;
+			if (toPush !== null && toPush > 0 && toPull !== null && toPull > 0) {
+				const result = await detectRebasedCommits(repoDir, implicitRef);
+				rebased = result?.count ?? null;
+			}
 			shareStatus = {
 				remote: shareRemote,
-				ref: `${shareRemote}/${actualBranch}`,
+				ref: implicitRef,
 				refMode: "implicit",
 				toPush,
 				toPull,
+				rebased,
 			};
 		} else {
 			// Step 3: Check if tracking config exists (→ gone) or not (→ noRef)
@@ -378,6 +415,7 @@ export async function gatherRepoStatus(
 				refMode: isGone ? "gone" : "noRef",
 				toPush: null,
 				toPull: null,
+				rebased: null,
 			};
 		}
 	} else if (!repoHasRemote) {
@@ -391,6 +429,7 @@ export async function gatherRepoStatus(
 			refMode: "noRef",
 			toPush: null,
 			toPull: null,
+			rebased: null,
 		};
 	}
 
@@ -449,7 +488,7 @@ export async function gatherWorkspaceSummary(
 		return r.status;
 	});
 
-	const { withIssues, issueLabels, issueCounts } = computeSummaryAggregates(repos, branch);
+	const { withIssues, rebasedOnlyCount, issueLabels, issueCounts } = computeSummaryAggregates(repos, branch);
 
 	const lastCommit = latestCommitDate(repoResults.map((r) => r.commitDate));
 
@@ -460,6 +499,7 @@ export async function gatherWorkspaceSummary(
 		repos,
 		total: repos.length,
 		withIssues,
+		rebasedOnlyCount,
 		issueLabels,
 		issueCounts,
 		lastCommit,

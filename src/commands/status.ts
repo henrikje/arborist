@@ -1,6 +1,13 @@
 import { resolve } from "node:path";
 import type { Command } from "commander";
-import { type FileChange, getCommitsBetween, parseGitStatusFiles, predictMergeConflict } from "../lib/git";
+import {
+	type FileChange,
+	detectRebasedCommits,
+	getCommitsBetween,
+	getCommitsBetweenFull,
+	parseGitStatusFiles,
+	predictMergeConflict,
+} from "../lib/git";
 import type { StatusJsonOutput } from "../lib/json-types";
 import { dim, green, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
@@ -267,7 +274,13 @@ async function runStatus(
 		) {
 			remoteDiffColored = cell.remoteDiff;
 		} else if (flags.isUnpushed) {
-			remoteDiffColored = yellow(cell.remoteDiff);
+			const rebased = repo.share?.rebased ?? 0;
+			const netNew = (repo.share?.toPush ?? 0) - rebased;
+			if (rebased > 0 && netNew <= 0) {
+				remoteDiffColored = cell.remoteDiff; // default color for rebased-only
+			} else {
+				remoteDiffColored = yellow(cell.remoteDiff);
+			}
 		} else {
 			remoteDiffColored = cell.remoteDiff;
 		}
@@ -406,6 +419,18 @@ function plainRemoteDiff(repo: RepoStatus): string {
 	const toPush = repo.share.toPush ?? 0;
 	const toPull = repo.share.toPull ?? 0;
 	if (toPush === 0 && toPull === 0) return "up to date";
+
+	const rebased = repo.share.rebased;
+	if (rebased !== null && rebased > 0) {
+		const newPush = Math.max(0, toPush - rebased);
+		const newPull = Math.max(0, toPull - rebased);
+		const parts: string[] = [];
+		if (newPush > 0) parts.push(`${newPush} to push`);
+		if (newPull > 0) parts.push(`${newPull} to pull`);
+		parts.push(`${rebased} rebased`);
+		return parts.join(", ");
+	}
+
 	const parts = [toPush > 0 && `${toPush} to push`, toPull > 0 && `${toPull} to pull`].filter(Boolean).join(", ");
 	return parts;
 }
@@ -490,12 +515,18 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 
 	// Unpushed to remote
 	if (repo.share !== null && repo.share.toPush !== null && repo.share.toPush > 0 && repo.share.ref) {
-		const commits = await getCommitsBetween(repoDir, repo.share.ref, "HEAD");
+		let rebasedHashes: Set<string> | null = null;
+		if (repo.share.rebased != null && repo.share.rebased > 0) {
+			const detection = await detectRebasedCommits(repoDir, repo.share.ref);
+			rebasedHashes = detection?.rebasedLocalHashes ?? null;
+		}
+		const commits = await getCommitsBetweenFull(repoDir, repo.share.ref, "HEAD");
 		if (commits.length > 0) {
 			const shareLabel = repo.share.remote;
 			let section = `\n${SECTION_INDENT}Unpushed to ${shareLabel}:\n`;
 			for (const c of commits) {
-				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
+				const tag = rebasedHashes?.has(c.fullHash) ? dim(" (rebased)") : "";
+				section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
 			}
 			sections.push(section);
 		}

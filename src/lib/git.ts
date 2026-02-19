@@ -240,3 +240,54 @@ export async function getCommitsBetween(
 			};
 		});
 }
+
+export async function getCommitsBetweenFull(
+	repoDir: string,
+	ref1: string,
+	ref2: string,
+): Promise<{ shortHash: string; fullHash: string; subject: string }[]> {
+	const result = await git(repoDir, "log", "--format=%h %H %s", `${ref1}..${ref2}`);
+	if (result.exitCode !== 0) return [];
+	return result.stdout
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => {
+			const first = line.indexOf(" ");
+			const second = line.indexOf(" ", first + 1);
+			return {
+				shortHash: line.slice(0, first),
+				fullHash: line.slice(first + 1, second),
+				subject: line.slice(second + 1),
+			};
+		});
+}
+
+export async function detectRebasedCommits(
+	repoDir: string,
+	trackingRef: string,
+): Promise<{ count: number; rebasedLocalHashes: Set<string> } | null> {
+	const [localResult, remoteResult] = await Promise.all([
+		Bun.$`git -C ${repoDir} log -p ${trackingRef}..HEAD | git patch-id --stable`.quiet().nothrow(),
+		Bun.$`git -C ${repoDir} log -p HEAD..${trackingRef} | git patch-id --stable`.quiet().nothrow(),
+	]);
+
+	if (localResult.exitCode !== 0 || remoteResult.exitCode !== 0) return null;
+
+	const parse = (text: string) => {
+		const map = new Map<string, string>(); // patchId → commitHash
+		for (const line of text.split("\n")) {
+			const [patchId, hash] = line.split(" ");
+			if (patchId && hash) map.set(patchId, hash);
+		}
+		return map;
+	};
+
+	const localMap = parse(localResult.text());
+	const remoteIds = new Set(parse(remoteResult.text()).keys());
+
+	const rebasedLocalHashes = new Set<string>();
+	for (const [patchId, hash] of localMap) {
+		if (remoteIds.has(patchId)) rebasedLocalHashes.add(hash);
+	}
+	return { count: rebasedLocalHashes.size, rebasedLocalHashes };
+}

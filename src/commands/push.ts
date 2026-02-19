@@ -31,6 +31,7 @@ interface PushAssessment {
 	skipReason?: string;
 	ahead: number;
 	behind: number;
+	rebased: number;
 	branch: string;
 	shareRemote: string;
 	newBranch: boolean;
@@ -73,7 +74,8 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 					for (const a of assessments) {
 						if (a.outcome === "will-force-push" && !options.force) {
 							a.outcome = "skip";
-							a.skipReason = `diverged from ${a.shareRemote} (use --force)`;
+							const rebasedHint = a.rebased > 0 ? `, ${a.rebased} rebased` : "";
+							a.skipReason = `diverged from ${a.shareRemote}${rebasedHint} (use --force)`;
 						}
 					}
 					return assessments;
@@ -191,7 +193,13 @@ function formatPushPlan(assessments: PushAssessment[], remotesMap: Map<string, R
 			const newBranchSuffix = a.recreate ? " (recreate)" : a.newBranch ? " (new branch)" : "";
 			out += `  ${a.repo}   ${plural(a.ahead, "commit")} to push${newBranchSuffix}${forkSuffix}${headStr}\n`;
 		} else if (a.outcome === "will-force-push") {
-			out += `  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.shareRemote})${headStr}\n`;
+			if (a.rebased > 0) {
+				const newCount = a.ahead - a.rebased;
+				const desc = newCount > 0 ? `${newCount} new + ${a.rebased} rebased` : `${a.rebased} rebased`;
+				out += `  ${a.repo}   ${desc} to push (force)${headStr}\n`;
+			} else {
+				out += `  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.shareRemote})${headStr}\n`;
+			}
 		} else if (a.outcome === "up-to-date") {
 			out += `  ${a.repo}   up to date\n`;
 		} else {
@@ -213,6 +221,7 @@ async function assessPushRepo(status: RepoStatus, repoDir: string, branch: strin
 		outcome: "skip",
 		ahead: 0,
 		behind: 0,
+		rebased: 0,
 		branch,
 		shareRemote,
 		newBranch: false,
@@ -258,7 +267,8 @@ async function assessPushRepo(status: RepoStatus, repoDir: string, branch: strin
 	}
 
 	if (toPush > 0 && toPull > 0) {
-		return { ...base, outcome: "will-force-push", ahead: toPush, behind: toPull };
+		const rebased = status.share.rebased ?? 0;
+		return { ...base, outcome: "will-force-push", ahead: toPush, behind: toPull, rebased };
 	}
 
 	return { ...base, outcome: "will-push", ahead: toPush };
