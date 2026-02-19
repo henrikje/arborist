@@ -1,8 +1,10 @@
 # Arborist (`arb`)
 
-Working on a feature that spans multiple repositories means juggling branches across all of them — and switching to a different task while one repo has uncommitted changes is a recipe for lost work.
+**Arborist** is a workspace manager that makes multi-repo development safe and simple.
 
-**Arborist** fixes this by creating workspaces backed by [Git worktrees](https://git-scm.com/docs/git-worktree). Each workspace groups several repos on the same feature branch, so you can work on multiple features in parallel without conflicts.
+It lets you work on multiple features across several repositories in parallel, without juggling branches, feeling lost, or losing changes.
+
+Based on [Git worktrees](https://git-scm.com/docs/git-worktree), Arborist does not replace Git but helps you coordinate across repositories.
 
 > **arborist** (noun) _ˈär-bə-rist_ — a specialist in the care and maintenance of trees
 
@@ -32,37 +34,28 @@ You work in the workspaces. Each workspace represents one feature or issue. It c
 
 Keeping your work in sync involves two axes: integrating upstream changes from the base branch (using `rebase` or `merge`) and sharing your feature branch with collaborators (using `push` and `pull`). Arborist's synchronization commands handle both across all repos at once.
 
-## Getting started
 
-### Install
+## 5-minute quickstart
 
-Clone the repo and run the installer:
+### 1. Install
 
-```bash
+```
 git clone https://github.com/henrikje/arborist
 cd arborist
 ./install.sh
-source ~/.zshrc # assuming you're running zsh
 ```
 
-This puts `arb` on your PATH and sets up zsh tab completion. If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed, the installer also adds an `arb` skill so Claude can manage workspaces on your behalf. (Just run the installer again to upgrade.)
-
-### Set up an arb root
-
-An arb root is the top-level directory that holds all your workspaces for a given project.
-
-Pick a directory to serve as the root and initialize it:
+### 2. Initialize an arb root
 
 ```bash
-mkdir ~/my-project && cd ~/my-project
+mkdir ~/my-project
+cd ~/my-project
 arb init
 ```
 
-This creates the `.arb/` marker directory. Repository clones go in `.arb/repos/` and your workspaces are created as top-level directories.
+This will be the top-level directory that holds all your workspaces. A `.arb` directory is created inside.
 
-### Clone some repos
-
-Now clone the repositories you work with in that project:
+### 3. Clone repositories
 
 ```bash
 arb clone https://github.com/example/frontend.git
@@ -70,499 +63,114 @@ arb clone https://github.com/example/backend.git
 arb clone https://github.com/example/shared.git
 ```
 
-Each repository ends up in `.arb/repos/<name>`. These are canonical clones — you never work in them directly. Instead, arb creates worktrees that point back to them.
+Canonical clones are stored in `.arb/repos`. They are managed by arb, and you never touch them directly.
 
-To see which repos have been cloned:
+### 4. Create a workspace
 
 ```bash
-arb repos
+arb create fix-login frontend backend
 ```
 
-## Quick walkthrough
+This creates a `fix-login` directory with worktrees for the `frontend` and `backend` repos with the `fix-login` branch checked out. Picking just the repos you need keeps the workspace focused and makes operations faster to perform.
 
-Here's the full lifecycle of a workspace — from creation to cleanup:
+### 5. Work normally
+
+You edit files, run builds, and use Git exactly as you normally would.
 
 ```bash
-# Create a workspace for your feature (auto-cds into it)
-arb create fix-login frontend backend
-
-# Work in individual repos
 arb cd fix-login/frontend
 # hack hack hack
-git add -p && git commit -m "Fix the login page"
+git commit -am "Fix the login page"
 
 arb cd fix-login/backend
 # hack hack hack
-git add -p && git commit -m "Fix the login endpoint"
-
-# Check status across all repos in the workspace
-arb status
-
-# Push all repos
-arb push
-
-# Rebase both repos onto the latest base branch, then force push
-arb rebase
-arb push --force
-
-# Done with the feature — clean up
-arb remove fix-login
+git commit -am "Fix the login endpoint"
 ```
 
-Every command that changes state shows a plan and asks for confirmation before proceeding.
-
-## Day-to-day usage
-
-The sections below go deeper on the commands you use when working in a workspace. See `arb help <command>` for all options.
-
-### Create a workspace
-
-You will create a new workspace for each feature or issue you work on. A workspace ties together one or more repos under a shared feature branch:
-
-```bash
-arb create fix-login frontend backend
-```
-
-This creates a `fix-login` workspace, checks out a `fix-login` branch in `frontend` and `backend`, and creates separate working directories for each under `fix-login/`. The branches are created if they do not exist. With the shell integration installed, your shell automatically `cd`s into the new workspace.
-
-Use `--branch` (`-b`) when the branch name differs from the workspace name, `--base` when you want to target a specific base branch (instead of each repo's default), and `--all-repos` (`-a`) to include every cloned repo:
-
-```bash
-arb create dark-mode --branch "feat/dark-mode" --base develop --all-repos
-```
-
-Running `arb create` without arguments walks you through it interactively. See `arb create --help` for all options.
-
-### Work in your repos as usual
-
-Each directory in a workspace is a regular Git worktree. You edit files, run builds, and use Git exactly as you normally would:
-
-```bash
-cd ~/my-project/fix-login/frontend
-# hack hack hack
-git add -p
-git commit -m "Fix the bug on the login page"
-```
-
-There is no `arb commit` — you commit in each repo individually.
-
-The commands below run from inside a workspace or worktree. You can also target a workspace from anywhere using `-C`:
-
-```bash
-arb -C ~/my-project status                    # run from the arb root
-arb -C ~/my-project/fix-login status          # target a specific workspace
-```
-
-`-C` works like `git -C` — it changes the working directory before any command runs.
-
-### Check status
-
-Once you've made some changes, you can check the status of your workspace:
+### 6. Check status
 
 ```bash
 arb status
 ```
 
-This shows the state of each worktree in a compact table with labeled columns:
+This shows the state of each worktree in a compact table with labeled columns.
 
 ```
-  REPO         BRANCH        BASE                     SHARE                          LOCAL
-  repo-a       my-feature    main  equal              origin/my-feature  up to date   clean
-  repo-b       my-feature    main  2 ahead            origin/my-feature  2 to push    1 staged, 1 modified
-  repo-c       experiment    main  2 ahead, 1 behind  origin/experiment  1 to pull    clean
-  local-lib    my-feature    main  equal              local                           clean
+  REPO        BRANCH       LAST COMMIT    BASE                              SHARE                          LOCAL
+* backend     fix-login    just now       origin/main  1 ahead              origin/fix-login  1 to push    1 untracked
+  frontend    fix-login    20 minutes     origin/main  1 ahead, 1 behind    origin/fix-login  1 to push    clean
 ```
 
-This view is designed to give you the full picture in one glance — repo name, current branch, how far you've drifted from the base branch, whether the share remote is ahead or behind, and what's uncommitted locally. Yellow highlights things that need attention: unpushed commits, local changes, repos on an unexpected branch (like `repo-c` above).
+This view is designed to give you the full picture in one glance. Yellow highlights brings focus to that which needs attention.
 
-See `arb status --help` for all options.
+### 7. Rebase and push
 
-### Stay in sync
-
-Arborist's synchronization commands — `push`, `pull`, `rebase`, and `merge` — keep your workspace current. They automatically fetch all repos before operating, so you always work against the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh. To fetch manually without making changes, use `arb fetch`.
-
-**Integration axis** — when the base branch has moved forward (e.g. teammates merged PRs to `main`), rebase your feature branches onto it:
+When teammates merge their work to the `main` branch:
 
 ```bash
 arb rebase
 ```
 
-If a rebase hits conflicts, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. This way you see the complete state of all repos in one pass instead of re-running for each conflict. If you re-run while a repo is still mid-rebase, it is automatically skipped. Prefer merge commits? Use `arb merge` instead — same workflow, uses `git merge`.
+You will see a plan of what will happen to each repo and ask for confirmation before proceeding.
 
-Arb auto-detects each repo's default branch, so repos using `main`, `master`, or `develop` coexist without extra configuration.
+```
+  backend    skipped — uncommitted changes
+  frontend   rebase fix-login onto origin/main — 1 behind, 1 ahead (conflict unlikely)  (HEAD 2502048)
 
-**Sharing axis** — pull teammate changes to your feature branch, or push your local commits:
+? Rebase 1 repo? (y/N)
+```
+
+And when you're ready to share your changes with others:
 
 ```bash
-arb pull
 arb push
-arb push --force    # after rebasing
 ```
 
-Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
+### 8. Remove the workspace
 
-All state-changing commands (`rebase`, `merge`, `push`, `pull`) automatically fetch before operating, ensuring they work with the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh. Read-only commands (`status`, `list`) do not fetch by default — use `--fetch` to opt in. If fetching fails (e.g. offline), the command warns and continues with stale data.
-
-All commands show a plan before proceeding. See `arb help <command>` for options.
-
-### Run commands across repos
-
-```bash
-arb exec git log --oneline -5
-arb exec npm install
-arb exec --repo api --repo web -- npm test   # only in specific repos
-arb exec --dirty git diff -d   # --dirty is arb's, -d goes to git diff
-```
-
-Runs the given command in each worktree sequentially. It supports running interactive commands. Each execution of the command uses the corresponding worktree as working directory. Arb flags (like `--dirty`) come before the command — everything after the command name passes through verbatim. See `arb exec --help` for all options.
-
-### Open in your editor
-
-```bash
-arb open code
-# expands to:
-# code /home/you/my-project/fix-login/frontend /home/you/my-project/fix-login/backend
-arb open --repo frontend code   # only open specific repos
-arb open code -n --add    # -n and --add are passed to code
-```
-
-Runs the given command with all worktree directories as arguments — useful for opening them in an editor like VS Code. All directories are specified as absolute paths. Arb flags come before the command — everything after the command name passes through verbatim. See `arb open --help` for all options.
-
-## Managing workspaces
-
-### List workspaces
-
-```bash
-arb list
-```
-
-Shows all workspaces with their branch, repo count, last commit date, and aggregate status:
-
-```
-  WORKSPACE    BRANCH          REPOS    LAST COMMIT    STATUS
-* ws-one       my-feature      2         3 days        no issues
-  ws-two       feat/payments   1         2 months      dirty, unpushed
-```
-
-The active workspace (the one you're currently inside) is marked with `*`. The LAST COMMIT column shows when work last happened (the most recent commit author date across all repos), helping you gauge workspace staleness.
-
-### Navigate
-
-`arb cd` changes into a workspace or worktree directory. It requires the shell integration installed by `install.sh`:
-
-```bash
-arb cd fix-login              # cd into workspace
-arb cd fix-login/frontend     # cd into a specific worktree
-arb cd                        # interactive workspace picker
-```
-
-`arb path` prints the absolute path to the arb root, a workspace, or a worktree — useful in scripts and shell pipelines:
-
-```bash
-arb path                       # /home/you/my-project (the arb root)
-arb path fix-login             # /home/you/my-project/fix-login
-arb path fix-login/frontend    # /home/you/my-project/fix-login/frontend
-```
-
-### Add and drop repos
-
-You can add more repos to an existing workspace at any time:
-
-```bash
-arb add shared
-arb add --all-repos
-```
-
-If the workspace has a configured base branch, new worktrees branch from it. Running without arguments opens an interactive repo picker.
-
-To remove a repo from a workspace without deleting the workspace itself:
-
-```bash
-arb drop shared
-```
-
-Arb refuses to drop repos with uncommitted changes unless you pass `--force`. See `arb drop --help` for all options.
-
-### Remove workspaces
-
-When a feature is done:
+When you're done with the feature, just delete the workspace.
 
 ```bash
 arb remove fix-login
 ```
 
-This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before removing the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-safe` to batch-remove every workspace with safe status. Combine `--all-safe -w gone` to target merged-and-safe workspaces specifically. See `arb remove --help` for all options.
+Done! You can now start a new feature on a fresh workspace.
 
-## Workspace templates
+## Core concepts
 
-Arborist can automatically seed files into new workspaces — `.env` files, Claude Code settings, IDE config, anything you want pre-provisioned. Put your templates in `.arb/templates/` and they are copied into every new workspace.
+Now that you've seen the basics, let's take a look at the ideas behind Arborist.
 
-### Template directory structure
+### Safety by default
 
-```
-.arb/
-  templates/
-    workspace/         # overlaid onto workspace root
-      .claude/
-        settings.local.json
-    repos/
-      api/             # overlaid onto api/ worktree
-        .env
-      web/             # overlaid onto web/ worktree
-        .env
-```
+Arborist is designed to be safe and predictable. It attempts to give you maximum visibility into your workspace. All operations that change your repository will show a plan and ask for confirmation, and risky actions are blocked unless forced.
 
-The template tree mirrors the workspace structure. `workspace/` files land at the workspace root, `repos/<name>/` files land inside the corresponding worktree.
+### Two synchronization axes
 
-### Copy-if-missing semantics
+Each repo in a workspace tracks two independent relationships: integration and sharing.
 
-Template files are only copied when the target doesn't already exist. Existing files are never overwritten — your customizations are always preserved. This makes templates safe to evolve over time: update the template and new workspaces get the latest version, while existing workspaces keep their current files.
+| Axis            | Purpose                               | Target                           | Commands          |
+|-----------------|---------------------------------------|----------------------------------|-------------------|
+| **Integration** | Keep your feature branch up to date   | Base branch, e.g. `main `        | `merge`, `rebase` |
+| **Sharing**     | Share your feature branch with others | Feature branch, e.g. `fix-login` | `push`, `pull`    |
 
-### When templates are applied
+All synchronization commands will fetch all repos to make sure they operate on fresh data. Like the `rebase` example above, they will also show you a plan of what will happen to each repository and ask for confirmation before proceeding.
 
-- **`arb create`** — seeds workspace templates + repo templates for all created repos
-- **`arb add`** — seeds repo templates for newly added repos only (workspace already set up)
-- **`arb remove`** — lists any template files that differ from their originals, so you can update templates before the workspace is gone
-- **No templates dir?** — silently skipped, zero noise
+### Alignment with conventions
 
-### Version-controlling templates
+Arborist builds on Git and tries to align with its conventions. It uses Git and the filesystem as the authoritative source of truth for workspace state, and does not store any additional internal metadata. 
 
-`arb init` creates `.arb/.gitignore` with a `repos/` entry, which means everything else in `.arb/` — including `templates/` — is version-controllable. You can commit your templates to a dotfiles repo, a team bootstrap repo, or just keep them local.
+## Further reading
 
-### Managing templates
+To learn more about Arborist, check out the following resources:
 
-Use `arb template` to manage templates without manually constructing paths:
-
-```bash
-# Capture a file from your workspace as a template
-cd my-feature/api
-arb template add .env                    # auto-detects repo scope from CWD
-arb template add .env --workspace        # override to workspace scope
-
-# See what templates exist
-arb template list
-
-# Check for drift between templates and workspace copies
-arb template diff
-
-# Re-seed templates into an existing workspace
-arb template apply                       # seeds only missing files (safe)
-arb template apply --force               # also resets drifted files
-
-# Remove a template
-arb template remove .env --repo api
-```
-
-All template commands support `--repo <name>` and `--workspace` flags for explicit scope control. See `arb template --help` for all options.
-
-### Example: setting up `.env` templates
-
-```bash
-# From inside a workspace, capture files as templates
-cd my-feature/api
-arb template add .env.example
-cd ../web
-arb template add .env.example
-
-# Every new workspace gets these automatically
-arb create my-feature --all-repos
-# → Seeded 2 template file(s)
-```
-
-### Example: sharing Claude Code permissions
-
-If your team uses Claude Code, you can template a `settings.local.json` so every workspace starts with the right permissions:
-
-```bash
-arb template add .claude/settings.local.json
-```
-
-New workspaces will get the settings file automatically.
-
-## Fork workflows
-
-Arborist has built-in support for fork-based development, where you push feature branches to your fork and rebase onto the canonical (upstream) repository.
-
-### Remote roles
-
-Arborist thinks in terms of two remote roles:
-
-- **upstream** — the source of base branches and the target for rebase/merge operations
-- **share** — where feature branches are pushed and pulled
-
-For single-remote repos, both roles typically resolve to `origin`. For fork setups, the upstream role maps to the canonical repository (often a remote named `upstream`), and the share role maps to your fork (often `origin`).
-
-### Setting up a fork
-
-Use `arb clone` with `--upstream` to clone a fork and register the canonical repo in one step:
-
-```bash
-arb clone https://github.com/you/api.git --upstream https://github.com/org/api.git
-```
-
-This clones your fork as `origin`, adds the canonical repo as `upstream`, sets `remote.pushDefault = origin`, and fetches both remotes.
-
-### Auto-detection
-
-Arborist reads `remote.pushDefault` and remote names from git config to determine roles automatically. No arborist-specific configuration is needed. Detection follows these rules:
-
-1. Single remote — used for both roles
-2. `remote.pushDefault` set — that remote is `share`, the other is `upstream`
-3. Remotes named `upstream` and `origin` — conventional fork layout
-4. Ambiguous — arb reports an error with guidance on how to configure `remote.pushDefault`
-
-### Per-repo flexibility
-
-Different repos in a workspace can have different remote layouts. Some repos might be forked while others use a single origin. Arborist resolves remotes independently per repo.
-
-### Status display
-
-In fork setups, `arb status` shows the upstream remote prefix in the BASE column so you can see where each repo's base branch lives:
-
-```
-  REPO      BRANCH        BASE                          SHARE                          LOCAL
-  api       my-feature    upstream/main  2 ahead        origin/my-feature  2 to push    clean
-  web       my-feature    main           equal          origin/my-feature  up to date   clean
-```
-
-Here `api` is a fork (base is `upstream/main`) while `web` uses a single origin (base is just `main`).
-
-### Two axes of synchronization
-
-Arborist tracks two independent relationships per repo, each mapped to a remote role:
-
-| Axis | Remote | Column | Commands | Flag | Auto-fetch |
-|------|--------|--------|----------|------|------------|
-| Integration | upstream | BASE | rebase, merge | behind base | yes |
-| Sharing | share | SHARE | push, pull | behind share | yes |
-
-For single-remote repos both roles point to `origin` and the distinction is invisible — it only matters for fork setups where each role maps to a different remote.
-
-## Scripting & automation
-
-### Non-interactive mode
-
-Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, `merge`, and `remove`. For `push` and `remove`, `--force` (`-f`) implies `--yes`. Without these flags, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
-
-```bash
-arb rebase --yes && arb push --force
-```
-
-### Dry run
-
-Use `--dry-run` (`-n`) to preview what a command would do without executing it. The command runs its normal fetch and assessment phases, displays the plan, then exits cleanly:
-
-```bash
-arb push --dry-run        # see what would be pushed
-arb push --yes            # looks good — go ahead
-```
-
-This is especially useful in scripted or AI-driven workflows where you want to inspect the plan before committing to it. The flag works on `push`, `pull`, `rebase`, `merge`, and `remove`.
-
-### Machine-readable output
-
-`arb list --json` writes a JSON array of workspace objects to stdout with aggregate issue counts, labels (`withIssues`, `issueLabels`), and last commit date (`lastCommit` as ISO 8601). Combine with `--quick` to skip status gathering:
-
-```bash
-arb list --json | jq '[.[] | select(.active)]'
-arb list --json --quick | jq '.[].workspace'
-```
-
-`arb status --json` writes structured JSON to stdout. Each repo includes branch state, base branch drift, remote push/pull status, local changes, and any in-progress operation:
-
-```bash
-arb status --json | jq '[.repos[] | select(.base.behind > 0) | .name]'
-```
-
-### Exit codes
-
-`0` means success, `1` means failure or issues detected, `130` means the user aborted a confirmation prompt. `arb status` returns `1` when any repo has issues, making it useful as a health check:
-
-```bash
-if arb -C my-feature status > /dev/null; then
-  echo "all clean"
-fi
-```
-
-### Output separation
-
-Human-facing output (progress, prompts, summaries) goes to stderr. Machine-parseable data (`--json`, `arb path`) goes to stdout. Colors are stripped automatically in non-TTY environments.
-
-## Tips
-
-### Browsing the default branch
-
-To view the latest default-branch code across all repos:
-
-```bash
-arb create main --all-repos  # assuming main is the default branch
-```
-
-_Note_: Creating a workspace for the default branch works because Arborist keeps the canonical clones in detached HEAD state.
-
-### Working with AI agents
-
-When using Claude Code or other AI coding agents, start them from the workspace directory rather than an individual worktree. This gives the agent visibility across all repos in the workspace.
-
-If you have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed, `install.sh` sets up an `arb` [skill](https://docs.anthropic.com/en/docs/claude-code/skills) that teaches Claude how to work with arb. Claude will automatically use the skill when it detects an arb workspace or when you mention arb-related tasks. It knows how to create and remove workspaces, check status, push, pull, rebase, and resolve conflicts — all using the correct flags for non-interactive mode. You can ask things like "create a workspace for the login feature across all repos" or "rebase and push everything" and Claude will handle the multi-repo coordination.
-
-You can also drive Claude across repos using `arb exec`:
-
-```bash
-arb exec --dirty claude -p "commit all changes"
-arb exec -w operation claude -p "resolve the rebase conflicts and run git rebase --continue"
-```
-
-### Multiple arb roots
-
-Each arb root is independent. Commands find the right one by walking up from the current directory looking for the `.arb/` marker. Feel free to create multiple roots for different projects:
-
-```bash
-cd ~/project-a && arb init
-cd ~/project-b && arb init
-```
-
-## How it works
-
-Arb uses marker directories and Git worktrees — no database, no daemon, no config outside the arb root.
-
-`arb init` creates an `.arb/` marker at the root. Every other command finds its context by walking up from the current directory.
-
-```
-~/my-project/
-├── .arb/
-│   └── repos/
-│       ├── frontend/            # canonical clone
-│       ├── backend/
-│       └── shared/
-├── fix-login/
-│   ├── .arbws/
-│   │   └── config               # branch = fix-login
-│   ├── frontend/                # git worktree → .arb/repos/frontend
-│   └── backend/
-└── dark-mode/
-    ├── .arbws/
-    │   └── config               # branch = feat/dark-mode
-    ├── frontend/
-    └── shared/
-```
-
-The canonical repos in `.arb/repos/` are kept in detached HEAD state. Git requires that no two worktrees share the same checked-out branch, so the canonical clone steps aside to let workspaces own the branches.
-
-Each workspace has a `.arbws/config` file that records the branch name (and optionally a base branch):
-
-```ini
-branch = fix-login
-```
-
-Arb auto-detects each repo's default branch by checking the upstream remote's HEAD ref (e.g. `refs/remotes/origin/HEAD` for single-remote repos, `refs/remotes/upstream/HEAD` for forks), falling back to the repo's local HEAD. Each repo resolves independently, so `main`, `master`, and `develop` can coexist across repos in the same workspace. To override a workspace's base branch explicitly, add it to the config:
-
-```ini
-branch = fix-login
-base = develop
-```
-
-Arborist does not record which repos belong to a workspace — it simply looks at which worktree directories exist inside it. If you `rm -rf` a single repo's worktree, arb will stop tracking it for that workspace. Git's internal worktree metadata is cleaned up automatically by `arb remove` or `git worktree prune`.
+- [Day-to-day usage](docs/daily-use.md), a deeper dive into the commands you use when working in a workspace.
+- [Managing workspaces](docs/workspaces.md), how to create, navigate, and remove workspaces.
+- [Workspace templates](docs/templates.md), a way to seed files into new workspaces.
+- [Fork workflows](docs/fork-workflows.md), how to use Arborist with fork-based development.
+- [Scripting and automation](docs/scripting-automation.md), using Arborist from scripts and pipelines.
+- [Working with AI agents](docs/ai-agents.md), how to use Claude Code to manage AI agents.
+- [Tips and tricks](docs/tips.md), useful tips and tricks for day-to-day usage.
+- [Under the hood](docs/under-the-hood.md), how Arborist works under the hood.
 
 ## License
 
