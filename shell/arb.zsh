@@ -73,7 +73,7 @@ _arb() {
     fi
 
     _arguments -C \
-        '(-w --workspace)'{-w,--workspace}'[Workspace name]:workspace:($ws_names)' \
+        '-C[Run as if arb was started in <directory>]:directory:_directories' \
         '(-h --help)'{-h,--help}'[Show help]' \
         '(-v --version)'{-v,--version}'[Show version]' \
         '1:command:->command' \
@@ -83,21 +83,24 @@ _arb() {
         command)
             local -a subcommands=(
                 'init:Initialize a directory as an arb root'
-                'clone:Clone a repo'
+                'clone:Clone a repo into .arb/repos/'
                 'repos:List cloned repos'
                 'create:Create a new workspace'
                 'remove:Remove a workspace'
                 'list:List all workspaces'
                 'path:Print the path to the arb root or a workspace'
-                'cd:Change to a workspace directory'
+                'cd:Navigate to a workspace directory'
                 'add:Add worktrees to the workspace'
                 'drop:Drop worktrees from the workspace'
-                'status:Show worktree status'
-                'fetch:Fetch from origin'
-                'pull:Pull the feature branch from origin'
-                'push:Push the feature branch to origin'
+                'status:Show workspace status'
+                'fetch:Fetch all repos from their remotes'
+                'pull:Pull the feature branch from the share remote'
+                'push:Push the feature branch to the share remote'
+                'rebase:Rebase feature branches onto the base branch'
+                'merge:Merge the base branch into feature branches'
                 'exec:Run a command in each worktree'
-                'open:Run a command with worktrees as arguments'
+                'open:Open worktrees in an application'
+                'template:Manage workspace templates'
                 'help:Show help'
             )
             _describe 'command' subcommands
@@ -136,6 +139,7 @@ _arb() {
                 create)
                     _arguments \
                         '(-b --branch)'{-b,--branch}'[Branch name]:branch:' \
+                        '--base[Base branch to branch from]:branch:' \
                         '(-a --all-repos)'{-a,--all-repos}'[Include all repos in this root]' \
                         '1:name:' \
                         '*:repo:($repo_names)'
@@ -153,7 +157,10 @@ _arb() {
                         '*:repo:($repo_names)'
                     ;;
                 clone)
-                    _arguments '1:url:' '2:name:'
+                    _arguments \
+                        '--upstream[Add an upstream remote (for fork workflows)]:url:' \
+                        '1:url:' \
+                        '2:name:'
                     ;;
                 init)
                     _arguments '1:path:_directories'
@@ -186,6 +193,78 @@ _arb() {
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only open dirty worktrees]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter worktrees by status flags]:filter:_arb_where_filter' \
                         '1:editor:(code cursor zed subl)'
+                    ;;
+                pull)
+                    _arguments \
+                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '(--merge)--rebase[Pull with rebase]' \
+                        '(--rebase)--merge[Pull with merge]' \
+                        '*:repo:($repo_names)'
+                    ;;
+                push)
+                    _arguments \
+                        '(-f --force)'{-f,--force}'[Force push with lease]' \
+                        '--no-fetch[Skip fetching before push]' \
+                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '*:repo:($repo_names)'
+                    ;;
+                rebase)
+                    _arguments \
+                        '(-F --no-fetch)'{-F,--no-fetch}'[Skip fetching before rebase]' \
+                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '*:repo:($repo_names)'
+                    ;;
+                merge)
+                    _arguments \
+                        '(-F --no-fetch)'{-F,--no-fetch}'[Skip fetching before merge]' \
+                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '*:repo:($repo_names)'
+                    ;;
+                template)
+                    local -a template_subcmds=(
+                        'add:Capture a file as a template'
+                        'remove:Remove a template file'
+                        'list:List all defined templates'
+                        'diff:Show template drift'
+                        'apply:Re-seed templates into the current workspace'
+                    )
+                    if (( CURRENT == 2 )); then
+                        _describe 'template command' template_subcmds
+                    else
+                        case "${words[2]}" in
+                            add)
+                                _arguments \
+                                    '*--repo[Target repo scope]:repo:($repo_names)' \
+                                    '--workspace[Target workspace scope]' \
+                                    '(-f --force)'{-f,--force}'[Overwrite existing template]' \
+                                    '1:file:_files'
+                                ;;
+                            remove)
+                                _arguments \
+                                    '*--repo[Target repo scope]:repo:($repo_names)' \
+                                    '--workspace[Target workspace scope]' \
+                                    '1:file:_files'
+                                ;;
+                            list) ;;
+                            diff)
+                                _arguments \
+                                    '*--repo[Filter to specific repo]:repo:($repo_names)' \
+                                    '--workspace[Filter to workspace templates only]' \
+                                    '1:file:_files'
+                                ;;
+                            apply)
+                                _arguments \
+                                    '*--repo[Apply only to specific repo]:repo:($repo_names)' \
+                                    '--workspace[Apply only workspace templates]' \
+                                    '(-f --force)'{-f,--force}'[Overwrite drifted files]' \
+                                    '1:file:_files'
+                                ;;
+                        esac
+                    fi
                     ;;
             esac
             ;;
