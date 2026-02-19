@@ -270,6 +270,21 @@ SCRIPT
     [[ "$output" != *"2 commit"* ]]
 }
 
+@test "arb push skips repo with no commits" {
+    arb create my-feature repo-a repo-b
+    # repo-a: no commits (fresh branch)
+    # repo-b: has a commit
+    echo "change" > "$TEST_DIR/project/my-feature/repo-b/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-b" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" commit -m "change" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"*"skipped"*"no commits"* ]]
+    [[ "$output" == *"repo-b"*"1 commit"* ]]
+    [[ "$output" == *"Pushed 1 repo"* ]]
+}
+
 @test "arb push fetches by default" {
     arb create my-feature repo-a
     echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
@@ -566,7 +581,7 @@ SCRIPT
 }
 
 @test "arb status shows gone for deleted remote branch" {
-    arb create gone-status repo-a repo-b
+    arb create gone-status repo-a
     push_then_delete_remote gone-status repo-a
 
     cd "$TEST_DIR/project/gone-status"
