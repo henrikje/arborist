@@ -1,6 +1,13 @@
 import { resolve } from "node:path";
 import type { Command } from "commander";
-import { type FileChange, getCommitsBetween, parseGitStatusFiles, predictMergeConflict } from "../lib/git";
+import {
+	type FileChange,
+	detectRebasedCommits,
+	getCommitsBetween,
+	getCommitsBetweenFull,
+	parseGitStatusFiles,
+	predictMergeConflict,
+} from "../lib/git";
 import type { StatusJsonOutput } from "../lib/json-types";
 import { dim, green, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
@@ -34,7 +41,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("--json", "Output structured JSON")
 		.summary("Show workspace status")
 		.description(
-			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
+			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, merged, base-merged, at-risk. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output.",
 		)
 		.action(
 			async (options: {
@@ -227,14 +234,16 @@ async function runStatus(
 		let baseNameColored: string;
 		if (cell.baseName) {
 			const baseFellBack = summary.base !== null && repo.base !== null && repo.base.ref !== summary.base;
-			baseNameColored = baseFellBack ? yellow(cell.baseName) : cell.baseName;
+			const baseMerged = repo.base?.baseMergedIntoDefault != null;
+			baseNameColored = baseFellBack || baseMerged ? yellow(cell.baseName) : cell.baseName;
 		} else {
 			baseNameColored = "";
 		}
 		const baseNamePad = maxBaseName - cell.baseName.length;
 
-		// Col 4: Base diff — yellow only when merge-tree predicts a conflict
-		const baseDiffColored = conflictRepos.has(repo.name) ? yellow(cell.baseDiff) : cell.baseDiff;
+		// Col 4: Base diff — yellow when merge-tree predicts a conflict or base is merged into default
+		const baseDiffColored =
+			conflictRepos.has(repo.name) || repo.base?.baseMergedIntoDefault != null ? yellow(cell.baseDiff) : cell.baseDiff;
 		const baseDiffPad = maxBaseDiff - cell.baseDiff.length;
 
 		// Col 5: Remote name
@@ -267,7 +276,13 @@ async function runStatus(
 		) {
 			remoteDiffColored = cell.remoteDiff;
 		} else if (flags.isUnpushed) {
-			remoteDiffColored = yellow(cell.remoteDiff);
+			const rebased = repo.share?.rebased ?? 0;
+			const netNew = (repo.share?.toPush ?? 0) - rebased;
+			if (rebased > 0 && netNew <= 0) {
+				remoteDiffColored = cell.remoteDiff; // default color for rebased-only
+			} else {
+				remoteDiffColored = yellow(cell.remoteDiff);
+			}
 		} else {
 			remoteDiffColored = cell.remoteDiff;
 		}
@@ -381,6 +396,7 @@ function plainCells(repo: RepoStatus): CellData {
 }
 
 function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
+	if (base.baseMergedIntoDefault != null) return "base merged";
 	const parts = [base.ahead > 0 && `${base.ahead} ahead`, base.behind > 0 && `${base.behind} behind`]
 		.filter(Boolean)
 		.join(", ");
@@ -390,12 +406,18 @@ function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
 function plainRemoteDiff(repo: RepoStatus): string {
 	if (repo.share === null) return "";
 
+	const merged = repo.base?.mergedIntoBase != null;
+
 	if (repo.share.refMode === "gone") {
+		if (merged) return "merged (gone)";
 		if (repo.base !== null && repo.base.ahead > 0) {
 			return `gone, ${repo.base.ahead} to push`;
 		}
 		return "gone";
 	}
+
+	if (merged) return "merged";
+
 	if (repo.share.refMode === "noRef") {
 		if (repo.base !== null && repo.base.ahead > 0) {
 			return `${repo.base.ahead} to push`;
@@ -406,6 +428,18 @@ function plainRemoteDiff(repo: RepoStatus): string {
 	const toPush = repo.share.toPush ?? 0;
 	const toPull = repo.share.toPull ?? 0;
 	if (toPush === 0 && toPull === 0) return "up to date";
+
+	const rebased = repo.share.rebased;
+	if (rebased !== null && rebased > 0) {
+		const newPush = Math.max(0, toPush - rebased);
+		const newPull = Math.max(0, toPull - rebased);
+		const parts: string[] = [];
+		if (newPush > 0) parts.push(`${newPush} to push`);
+		if (newPull > 0) parts.push(`${newPull} to pull`);
+		parts.push(`${rebased} rebased`);
+		return parts.join(", ");
+	}
+
 	const parts = [toPush > 0 && `${toPush} to push`, toPull > 0 && `${toPull} to pull`].filter(Boolean).join(", ");
 	return parts;
 }
@@ -462,6 +496,21 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 	const repoDir = `${wsDir}/${repo.name}`;
 	const sections: string[] = [];
 
+	// Merged into base
+	if (repo.base?.mergedIntoBase) {
+		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
+		const strategy = repo.base.mergedIntoBase === "squash" ? "squash" : "merge";
+		sections.push(`\n${SECTION_INDENT}Branch merged into ${baseRef} (${strategy})\n`);
+	}
+
+	// Base branch merged into default
+	if (repo.base?.baseMergedIntoDefault) {
+		const strategy = repo.base.baseMergedIntoDefault === "squash" ? "squash" : "merge";
+		sections.push(
+			`\n${SECTION_INDENT}Base branch ${repo.base.ref} has been merged into default (${strategy})\n${SECTION_INDENT}Run 'arb rebase --retarget' to rebase onto the default branch\n`,
+		);
+	}
+
 	// Ahead of base
 	if (repo.base && repo.base.ahead > 0) {
 		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
@@ -490,12 +539,18 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 
 	// Unpushed to remote
 	if (repo.share !== null && repo.share.toPush !== null && repo.share.toPush > 0 && repo.share.ref) {
-		const commits = await getCommitsBetween(repoDir, repo.share.ref, "HEAD");
+		let rebasedHashes: Set<string> | null = null;
+		if (repo.share.rebased != null && repo.share.rebased > 0) {
+			const detection = await detectRebasedCommits(repoDir, repo.share.ref);
+			rebasedHashes = detection?.rebasedLocalHashes ?? null;
+		}
+		const commits = await getCommitsBetweenFull(repoDir, repo.share.ref, "HEAD");
 		if (commits.length > 0) {
 			const shareLabel = repo.share.remote;
 			let section = `\n${SECTION_INDENT}Unpushed to ${shareLabel}:\n`;
 			for (const c of commits) {
-				section += `${ITEM_INDENT}${dim(c.hash)} ${c.subject}\n`;
+				const tag = rebasedHashes?.has(c.fullHash) ? dim(" (rebased)") : "";
+				section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
 			}
 			sections.push(section);
 		}

@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import type { RepoStatus } from "./status";
 import {
 	computeFlags,
+	computeSummaryAggregates,
 	flagLabels,
+	formatIssueCounts,
 	isWorkspaceSafe,
 	needsAttention,
 	repoMatchesWhere,
@@ -20,13 +22,14 @@ function makeRepo(overrides: Partial<RepoStatus> = {}): RepoStatus {
 			shallow: false,
 		},
 		local: { staged: 0, modified: 0, untracked: 0, conflicts: 0 },
-		base: { remote: "origin", ref: "main", ahead: 0, behind: 0 },
+		base: { remote: "origin", ref: "main", ahead: 0, behind: 0, mergedIntoBase: null, baseMergedIntoDefault: null },
 		share: {
 			remote: "origin",
 			ref: "origin/feature",
 			refMode: "configured",
 			toPush: 0,
 			toPull: 0,
+			rebased: null,
 		},
 		operation: null,
 		lastCommit: null,
@@ -49,6 +52,8 @@ describe("computeFlags", () => {
 			isLocal: false,
 			isGone: false,
 			isShallow: false,
+			isMerged: false,
+			isBaseMerged: false,
 		});
 	});
 
@@ -75,7 +80,7 @@ describe("computeFlags", () => {
 	test("isUnpushed when toPush > 0", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 },
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
 			}),
 			"feature",
 		);
@@ -85,8 +90,8 @@ describe("computeFlags", () => {
 	test("isUnpushed when noRef with base.ahead > 0", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "noRef", toPush: null, toPull: null },
-				base: { remote: "origin", ref: "main", ahead: 3, behind: 0 },
+				share: { remote: "origin", ref: null, refMode: "noRef", toPush: null, toPull: null, rebased: null },
+				base: { remote: "origin", ref: "main", ahead: 3, behind: 0, mergedIntoBase: null, baseMergedIntoDefault: null },
 			}),
 			"feature",
 		);
@@ -96,8 +101,8 @@ describe("computeFlags", () => {
 	test("not isUnpushed when gone even with base.ahead > 0", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
-				base: { remote: "origin", ref: "main", ahead: 3, behind: 0 },
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				base: { remote: "origin", ref: "main", ahead: 3, behind: 0, mergedIntoBase: null, baseMergedIntoDefault: null },
 			}),
 			"feature",
 		);
@@ -118,7 +123,7 @@ describe("computeFlags", () => {
 	test("needsPull when toPull > 0", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3 },
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
 			}),
 			"feature",
 		);
@@ -126,22 +131,42 @@ describe("computeFlags", () => {
 	});
 
 	test("needsRebase when behind base", () => {
-		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 0, behind: 2 } }), "feature");
+		const flags = computeFlags(
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 0, behind: 2, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
+			"feature",
+		);
 		expect(flags.needsRebase).toBe(true);
 	});
 
 	test("isDiverged when both ahead and behind base", () => {
-		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 2, behind: 3 } }), "feature");
+		const flags = computeFlags(
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 2, behind: 3, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
+			"feature",
+		);
 		expect(flags.isDiverged).toBe(true);
 	});
 
 	test("not isDiverged when only behind base", () => {
-		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 0, behind: 2 } }), "feature");
+		const flags = computeFlags(
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 0, behind: 2, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
+			"feature",
+		);
 		expect(flags.isDiverged).toBe(false);
 	});
 
 	test("not isDiverged when only ahead of base", () => {
-		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 3, behind: 0 } }), "feature");
+		const flags = computeFlags(
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 3, behind: 0, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
+			"feature",
+		);
 		expect(flags.isDiverged).toBe(false);
 	});
 
@@ -188,7 +213,7 @@ describe("computeFlags", () => {
 	test("isGone when refMode is gone", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
 			}),
 			"feature",
 		);
@@ -203,6 +228,94 @@ describe("computeFlags", () => {
 			"feature",
 		);
 		expect(flags.isShallow).toBe(true);
+	});
+
+	test("isMerged when mergedIntoBase is ancestor", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					ahead: 0,
+					behind: 0,
+					mergedIntoBase: "merge",
+					baseMergedIntoDefault: null,
+				},
+			}),
+			"feature",
+		);
+		expect(flags.isMerged).toBe(true);
+	});
+
+	test("isMerged when mergedIntoBase is squash", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					ahead: 2,
+					behind: 0,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: null,
+				},
+			}),
+			"feature",
+		);
+		expect(flags.isMerged).toBe(true);
+	});
+
+	test("not isMerged when mergedIntoBase is null", () => {
+		const flags = computeFlags(makeRepo(), "feature");
+		expect(flags.isMerged).toBe(false);
+	});
+
+	test("not isMerged when base is null", () => {
+		const flags = computeFlags(makeRepo({ base: null }), "feature");
+		expect(flags.isMerged).toBe(false);
+	});
+
+	test("isBaseMerged when baseMergedIntoDefault is merge", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "feat/auth",
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: "merge",
+				},
+			}),
+			"feature",
+		);
+		expect(flags.isBaseMerged).toBe(true);
+	});
+
+	test("isBaseMerged when baseMergedIntoDefault is squash", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "feat/auth",
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: "squash",
+				},
+			}),
+			"feature",
+		);
+		expect(flags.isBaseMerged).toBe(true);
+	});
+
+	test("not isBaseMerged when baseMergedIntoDefault is null", () => {
+		const flags = computeFlags(makeRepo(), "feature");
+		expect(flags.isBaseMerged).toBe(false);
+	});
+
+	test("not isBaseMerged when base is null", () => {
+		const flags = computeFlags(makeRepo({ base: null }), "feature");
+		expect(flags.isBaseMerged).toBe(false);
 	});
 });
 
@@ -228,12 +341,56 @@ describe("needsAttention", () => {
 	});
 
 	test("returns true when needsRebase", () => {
-		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 0, behind: 1 } }), "feature");
+		const flags = computeFlags(
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 0, behind: 1, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
+			"feature",
+		);
 		expect(needsAttention(flags)).toBe(true);
 	});
 
 	test("returns true when isDiverged", () => {
-		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 2, behind: 3 } }), "feature");
+		const flags = computeFlags(
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 2, behind: 3, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
+			"feature",
+		);
+		expect(needsAttention(flags)).toBe(true);
+	});
+
+	test("returns false when only isMerged", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					ahead: 0,
+					behind: 0,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: null,
+				},
+			}),
+			"feature",
+		);
+		expect(needsAttention(flags)).toBe(false);
+	});
+
+	test("returns true when isBaseMerged", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "feat/auth",
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: "merge",
+				},
+			}),
+			"feature",
+		);
 		expect(needsAttention(flags)).toBe(true);
 	});
 });
@@ -248,7 +405,7 @@ describe("flagLabels", () => {
 		const flags = computeFlags(
 			makeRepo({
 				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 },
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
 			}),
 			"feature",
 		);
@@ -260,7 +417,7 @@ describe("flagLabels", () => {
 			makeRepo({
 				identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "feature" }, shallow: true },
 				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
-				base: { remote: "origin", ref: "main", ahead: 0, behind: 2 },
+				base: { remote: "origin", ref: "main", ahead: 0, behind: 2, mergedIntoBase: null, baseMergedIntoDefault: null },
 				operation: "rebase",
 			}),
 			"feature",
@@ -269,8 +426,47 @@ describe("flagLabels", () => {
 	});
 
 	test("returns diverged label when both ahead and behind base", () => {
-		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 2, behind: 3 } }), "feature");
+		const flags = computeFlags(
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 2, behind: 3, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
+			"feature",
+		);
 		expect(flagLabels(flags)).toEqual(["behind base", "diverged"]);
+	});
+
+	test("includes merged label when isMerged", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					ahead: 0,
+					behind: 0,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: null,
+				},
+			}),
+			"feature",
+		);
+		expect(flagLabels(flags)).toContain("merged");
+	});
+
+	test("includes base merged label when isBaseMerged", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "feat/auth",
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: "merge",
+				},
+			}),
+			"feature",
+		);
+		expect(flagLabels(flags)).toContain("base merged");
 	});
 });
 
@@ -288,7 +484,7 @@ describe("wouldLoseWork", () => {
 	test("returns true when isUnpushed", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 },
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
 			}),
 			"feature",
 		);
@@ -323,7 +519,7 @@ describe("wouldLoseWork", () => {
 	test("returns false when only needsPull", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3 },
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
 			}),
 			"feature",
 		);
@@ -331,12 +527,22 @@ describe("wouldLoseWork", () => {
 	});
 
 	test("returns false when only needsRebase", () => {
-		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 0, behind: 2 } }), "feature");
+		const flags = computeFlags(
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 0, behind: 2, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
+			"feature",
+		);
 		expect(wouldLoseWork(flags)).toBe(false);
 	});
 
 	test("returns false when isDiverged", () => {
-		const flags = computeFlags(makeRepo({ base: { remote: "origin", ref: "main", ahead: 2, behind: 3 } }), "feature");
+		const flags = computeFlags(
+			makeRepo({
+				base: { remote: "origin", ref: "main", ahead: 2, behind: 3, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
+			"feature",
+		);
 		expect(wouldLoseWork(flags)).toBe(false);
 	});
 
@@ -358,8 +564,8 @@ describe("wouldLoseWork", () => {
 	test("returns false when isGone (without unpushed commits)", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
-				base: { remote: "origin", ref: "main", ahead: 0, behind: 0 },
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				base: { remote: "origin", ref: "main", ahead: 0, behind: 0, mergedIntoBase: null, baseMergedIntoDefault: null },
 			}),
 			"feature",
 		);
@@ -383,9 +589,17 @@ describe("validateWhere", () => {
 	test("returns null for all valid terms", () => {
 		expect(
 			validateWhere(
-				"dirty,unpushed,behind-share,behind-base,diverged,drifted,detached,operation,local,gone,shallow,at-risk",
+				"dirty,unpushed,behind-share,behind-base,diverged,drifted,detached,operation,local,gone,shallow,merged,base-merged,at-risk",
 			),
 		).toBeNull();
+	});
+
+	test("returns null for merged term", () => {
+		expect(validateWhere("merged")).toBeNull();
+	});
+
+	test("returns null for base-merged term", () => {
+		expect(validateWhere("base-merged")).toBeNull();
 	});
 
 	test("returns error for invalid term", () => {
@@ -423,7 +637,7 @@ describe("repoMatchesWhere", () => {
 
 	test("matches with comma OR — second term matches", () => {
 		const flags = computeFlags(
-			makeRepo({ share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null } }),
+			makeRepo({ share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null } }),
 			"feature",
 		);
 		expect(repoMatchesWhere(flags, "dirty,gone")).toBe(true);
@@ -446,13 +660,58 @@ describe("repoMatchesWhere", () => {
 
 	test("matches each raw flag term", () => {
 		const cases: [string, Partial<RepoStatus>][] = [
-			["unpushed", { share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 } }],
+			[
+				"unpushed",
+				{
+					share: {
+						remote: "origin",
+						ref: "origin/feature",
+						refMode: "configured",
+						toPush: 2,
+						toPull: 0,
+						rebased: null,
+					},
+				},
+			],
 			[
 				"behind-share",
-				{ share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3 } },
+				{
+					share: {
+						remote: "origin",
+						ref: "origin/feature",
+						refMode: "configured",
+						toPush: 0,
+						toPull: 3,
+						rebased: null,
+					},
+				},
 			],
-			["behind-base", { base: { remote: "origin", ref: "main", ahead: 0, behind: 2 } }],
-			["diverged", { base: { remote: "origin", ref: "main", ahead: 2, behind: 3 } }],
+			[
+				"behind-base",
+				{
+					base: {
+						remote: "origin",
+						ref: "main",
+						ahead: 0,
+						behind: 2,
+						mergedIntoBase: null,
+						baseMergedIntoDefault: null,
+					},
+				},
+			],
+			[
+				"diverged",
+				{
+					base: {
+						remote: "origin",
+						ref: "main",
+						ahead: 2,
+						behind: 3,
+						mergedIntoBase: null,
+						baseMergedIntoDefault: null,
+					},
+				},
+			],
 			[
 				"drifted",
 				{ identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false } },
@@ -460,10 +719,36 @@ describe("repoMatchesWhere", () => {
 			["detached", { identity: { worktreeKind: "linked", headMode: { kind: "detached" }, shallow: false } }],
 			["operation", { operation: "rebase" }],
 			["local", { share: null }],
-			["gone", { share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null } }],
+			["gone", { share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null } }],
 			[
 				"shallow",
 				{ identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "feature" }, shallow: true } },
+			],
+			[
+				"merged",
+				{
+					base: {
+						remote: "origin",
+						ref: "main",
+						ahead: 0,
+						behind: 0,
+						mergedIntoBase: "squash",
+						baseMergedIntoDefault: null,
+					},
+				},
+			],
+			[
+				"base-merged",
+				{
+					base: {
+						remote: "origin",
+						ref: "feat/auth",
+						ahead: 0,
+						behind: 3,
+						mergedIntoBase: null,
+						baseMergedIntoDefault: "merge",
+					},
+				},
 			],
 		];
 		for (const [term, overrides] of cases) {
@@ -492,7 +777,7 @@ describe("workspaceMatchesWhere", () => {
 			makeRepo({ name: "clean-repo" }),
 			makeRepo({
 				name: "gone-repo",
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
 			}),
 		];
 		expect(workspaceMatchesWhere(repos, "feature", "at-risk")).toBe(true);
@@ -514,7 +799,7 @@ describe("isWorkspaceSafe", () => {
 		const repos = [
 			makeRepo({
 				name: "unpushed",
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0 },
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
 			}),
 		];
 		expect(isWorkspaceSafe(repos, "feature")).toBe(false);
@@ -525,14 +810,19 @@ describe("isWorkspaceSafe", () => {
 			makeRepo({
 				name: "local-with-commits",
 				share: null,
-				base: { remote: "origin", ref: "main", ahead: 3, behind: 0 },
+				base: { remote: "origin", ref: "main", ahead: 3, behind: 0, mergedIntoBase: null, baseMergedIntoDefault: null },
 			}),
 		];
 		expect(isWorkspaceSafe(repos, "feature")).toBe(false);
 	});
 
 	test("returns true when repos are behind base (safe to remove)", () => {
-		const repos = [makeRepo({ name: "behind", base: { remote: "origin", ref: "main", ahead: 0, behind: 5 } })];
+		const repos = [
+			makeRepo({
+				name: "behind",
+				base: { remote: "origin", ref: "main", ahead: 0, behind: 5, mergedIntoBase: null, baseMergedIntoDefault: null },
+			}),
+		];
 		expect(isWorkspaceSafe(repos, "feature")).toBe(true);
 	});
 
@@ -540,7 +830,7 @@ describe("isWorkspaceSafe", () => {
 		const repos = [
 			makeRepo({
 				name: "gone",
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
 			}),
 		];
 		expect(isWorkspaceSafe(repos, "feature")).toBe(true);
@@ -574,5 +864,72 @@ describe("isWorkspaceSafe", () => {
 			}),
 		];
 		expect(isWorkspaceSafe(repos, "feature")).toBe(false);
+	});
+});
+
+describe("computeSummaryAggregates rebasedOnlyCount", () => {
+	test("returns 0 when no repos are rebased", () => {
+		const repos = [
+			makeRepo({
+				name: "a",
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+			}),
+		];
+		const result = computeSummaryAggregates(repos, "feature");
+		expect(result.rebasedOnlyCount).toBe(0);
+	});
+
+	test("counts repos where all unpushed commits are rebased", () => {
+		const repos = [
+			makeRepo({
+				name: "rebased-only",
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 2, rebased: 2 },
+			}),
+			makeRepo({
+				name: "has-new",
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 3, toPull: 2, rebased: 2 },
+			}),
+		];
+		const result = computeSummaryAggregates(repos, "feature");
+		expect(result.rebasedOnlyCount).toBe(1);
+	});
+
+	test("returns 0 when rebased is null", () => {
+		const repos = [
+			makeRepo({
+				name: "a",
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 2, rebased: null },
+			}),
+		];
+		const result = computeSummaryAggregates(repos, "feature");
+		expect(result.rebasedOnlyCount).toBe(0);
+	});
+});
+
+describe("formatIssueCounts with rebased", () => {
+	test("shows yellow unpushed when no rebased repos", () => {
+		const issueCounts = [{ label: "unpushed", count: 3, key: "isUnpushed" as const }];
+		const result = formatIssueCounts(issueCounts, 0);
+		expect(result).toContain("unpushed");
+	});
+
+	test("shows rebased instead of unpushed when all are rebased-only", () => {
+		const issueCounts = [{ label: "unpushed", count: 3, key: "isUnpushed" as const }];
+		const result = formatIssueCounts(issueCounts, 3);
+		expect(result).toBe("rebased");
+	});
+
+	test("shows both unpushed and rebased when mixed", () => {
+		const issueCounts = [{ label: "unpushed", count: 3, key: "isUnpushed" as const }];
+		const result = formatIssueCounts(issueCounts, 2);
+		expect(result).toContain("unpushed");
+		expect(result).toContain("rebased");
+	});
+
+	test("does not affect non-unpushed labels", () => {
+		const issueCounts = [{ label: "dirty", count: 2, key: "isDirty" as const }];
+		const result = formatIssueCounts(issueCounts, 1);
+		expect(result).toContain("dirty");
+		expect(result).not.toContain("rebased");
 	});
 });

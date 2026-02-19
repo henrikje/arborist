@@ -1,6 +1,6 @@
 import confirm from "@inquirer/confirm";
-import { configGet } from "./config";
-import { getShortHead, git, predictMergeConflict } from "./git";
+import { configGet, writeConfig } from "./config";
+import { getDefaultBranch, getShortHead, git, predictMergeConflict } from "./git";
 import {
 	clearLines,
 	countLines,
@@ -20,6 +20,7 @@ import { classifyRepos, resolveRepoSelection } from "./repos";
 import { type RepoStatus, computeFlags, gatherRepoStatus } from "./status";
 import { isTTY } from "./tty";
 import type { ArbContext } from "./types";
+import { workspaceBranch } from "./workspace-branch";
 import { requireBranch, requireWorkspace } from "./workspace-context";
 
 type IntegrateMode = "rebase" | "merge";
@@ -36,16 +37,19 @@ interface RepoAssessment {
 	headSha: string;
 	shallow: boolean;
 	conflictPrediction?: "clean" | "conflict" | null;
+	retargetFrom?: string;
+	retargetTo?: string;
 }
 
 export async function integrate(
 	ctx: ArbContext,
 	mode: IntegrateMode,
-	options: { fetch?: boolean; yes?: boolean; dryRun?: boolean },
+	options: { fetch?: boolean; yes?: boolean; dryRun?: boolean; retarget?: boolean },
 	repoArgs: string[],
 ): Promise<void> {
 	const verb = mode === "rebase" ? "Rebase" : "Merge";
 	const verbed = mode === "rebase" ? "Rebased" : "Merged";
+	const retarget = options.retarget === true && mode === "rebase";
 
 	// Phase 1: context & repo selection
 	const { wsDir, workspace } = requireWorkspace(ctx);
@@ -67,7 +71,7 @@ export async function integrate(
 		for (const repo of selectedRepos) {
 			const repoDir = `${wsDir}/${repo}`;
 			const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
-			assessments.push(await assessRepo(status, repoDir, branch, fetchFailed));
+			assessments.push(await assessRepo(status, repoDir, branch, fetchFailed, retarget));
 		}
 		return assessments;
 	};
@@ -148,12 +152,26 @@ export async function integrate(
 	const conflicted: { assessment: RepoAssessment; stdout: string }[] = [];
 	for (const a of willOperate) {
 		const ref = `${a.upstreamRemote}/${a.baseBranch}`;
-		const progressMsg = mode === "rebase" ? `rebasing ${branch} onto ${ref}` : `merging ${ref} into ${branch}`;
-		inlineStart(a.repo, progressMsg);
 
-		const result = await git(a.repoDir, mode, ref);
+		let result: { exitCode: number; stdout: string };
+		if (a.retargetFrom) {
+			const oldBaseRef = `${a.upstreamRemote}/${a.retargetFrom}`;
+			const progressMsg = `retargeting ${branch} onto ${ref} from ${a.retargetFrom}`;
+			inlineStart(a.repo, progressMsg);
+			result = await git(a.repoDir, "rebase", "--onto", ref, oldBaseRef);
+		} else {
+			const progressMsg = mode === "rebase" ? `rebasing ${branch} onto ${ref}` : `merging ${ref} into ${branch}`;
+			inlineStart(a.repo, progressMsg);
+			result = await git(a.repoDir, mode, ref);
+		}
+
 		if (result.exitCode === 0) {
-			const doneMsg = mode === "rebase" ? `rebased ${branch} onto ${ref}` : `merged ${ref} into ${branch}`;
+			let doneMsg: string;
+			if (a.retargetFrom) {
+				doneMsg = `retargeted ${branch} onto ${ref} from ${a.retargetFrom}`;
+			} else {
+				doneMsg = mode === "rebase" ? `rebased ${branch} onto ${ref}` : `merged ${ref} into ${branch}`;
+			}
 			inlineResult(a.repo, doneMsg);
 			succeeded++;
 		} else {
@@ -177,9 +195,29 @@ export async function integrate(
 		}
 	}
 
+	// Update config after successful retarget
+	const retargetAssessments = willOperate.filter((a) => a.retargetTo);
+	if (retargetAssessments.length > 0 && conflicted.length === 0) {
+		const retargetTo = retargetAssessments[0]?.retargetTo;
+		if (retargetTo) {
+			const configFile = `${wsDir}/.arbws/config`;
+			// Resolve the repo's default branch to check if retargetTo matches
+			// If retargeting to the default branch, remove the base key
+			const wb = await workspaceBranch(wsDir);
+			const wsBranch = wb?.branch ?? branch;
+			writeConfig(configFile, wsBranch, undefined);
+		}
+	}
+
 	// Phase 6: summary
 	process.stderr.write("\n");
-	const parts = [`${verbed} ${plural(succeeded, "repo")}`];
+	const retargetedCount = willOperate.filter(
+		(a) => a.retargetFrom && !conflicted.some((c) => c.assessment === a),
+	).length;
+	const normalCount = succeeded - retargetedCount;
+	const parts: string[] = [];
+	if (retargetedCount > 0) parts.push(`Retargeted ${plural(retargetedCount, "repo")}`);
+	if (normalCount > 0 || retargetedCount === 0) parts.push(`${verbed} ${plural(normalCount, "repo")}`);
 	if (conflicted.length > 0) parts.push(`${conflicted.length} conflicted`);
 	if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
 	if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
@@ -195,22 +233,30 @@ function formatIntegratePlan(assessments: RepoAssessment[], mode: IntegrateMode,
 	let out = "\n";
 	for (const a of assessments) {
 		if (a.outcome === "will-operate") {
-			const diffParts = [a.behind > 0 && `${a.behind} behind`, a.ahead > 0 && `${a.ahead} ahead`]
-				.filter(Boolean)
-				.join(", ");
-			const diffStr = diffParts ? ` \u2014 ${diffParts}` : "";
 			const baseRef = `${a.upstreamRemote}/${a.baseBranch}`;
-			const mergeType = mode === "merge" ? (a.ahead === 0 ? " (fast-forward)" : " (three-way)") : "";
-			const action =
-				mode === "rebase" ? `rebase ${branch} onto ${baseRef}` : `merge ${baseRef} into ${branch}${mergeType}`;
-			let conflictHint = "";
-			if (a.conflictPrediction === "conflict") {
-				conflictHint = mode === "merge" ? ` ${yellow("(will conflict)")}` : ` ${yellow("(conflict likely)")}`;
-			} else if (a.conflictPrediction === "clean") {
-				conflictHint = mode === "merge" ? " (no conflict)" : " (conflict unlikely)";
+
+			if (a.retargetFrom) {
+				// Retarget display
+				out += `  ${a.repo}   retarget onto ${baseRef} from ${a.retargetFrom}`;
+				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
+				out += `${headStr}\n`;
+			} else {
+				const diffParts = [a.behind > 0 && `${a.behind} behind`, a.ahead > 0 && `${a.ahead} ahead`]
+					.filter(Boolean)
+					.join(", ");
+				const diffStr = diffParts ? ` \u2014 ${diffParts}` : "";
+				const mergeType = mode === "merge" ? (a.ahead === 0 ? " (fast-forward)" : " (three-way)") : "";
+				const action =
+					mode === "rebase" ? `rebase ${branch} onto ${baseRef}` : `merge ${baseRef} into ${branch}${mergeType}`;
+				let conflictHint = "";
+				if (a.conflictPrediction === "conflict") {
+					conflictHint = mode === "merge" ? ` ${yellow("(will conflict)")}` : ` ${yellow("(conflict likely)")}`;
+				} else if (a.conflictPrediction === "clean") {
+					conflictHint = mode === "merge" ? " (no conflict)" : " (conflict unlikely)";
+				}
+				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
+				out += `  ${a.repo}   ${action}${diffStr}${conflictHint}${headStr}\n`;
 			}
-			const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
-			out += `  ${a.repo}   ${action}${diffStr}${conflictHint}${headStr}\n`;
 		} else if (a.outcome === "up-to-date") {
 			out += `  ${a.repo}   up to date\n`;
 		} else {
@@ -234,7 +280,7 @@ function formatIntegratePlan(assessments: RepoAssessment[], mode: IntegrateMode,
 async function predictIntegrateConflicts(assessments: RepoAssessment[]): Promise<void> {
 	await Promise.all(
 		assessments
-			.filter((a) => a.outcome === "will-operate")
+			.filter((a) => a.outcome === "will-operate" && !a.retargetFrom)
 			.map(async (a) => {
 				if (a.ahead > 0 && a.behind > 0) {
 					const ref = `${a.upstreamRemote}/${a.baseBranch}`;
@@ -265,6 +311,7 @@ async function assessRepo(
 	repoDir: string,
 	branch: string,
 	fetchFailed: string[],
+	retarget = false,
 ): Promise<RepoAssessment> {
 	const upstreamRemote = status.base?.remote ?? "origin";
 
@@ -313,6 +360,41 @@ async function assessRepo(
 	// No base branch resolved
 	if (status.base === null) {
 		return { ...base, skipReason: "no base branch" };
+	}
+
+	// Stacked base branch has been merged into default
+	if (status.base.baseMergedIntoDefault != null) {
+		if (!retarget) {
+			return {
+				...base,
+				skipReason: `base branch ${status.base.ref} was merged into default (use --retarget)`,
+			};
+		}
+
+		// Resolve the true default branch for retarget
+		const trueDefault = await getDefaultBranch(repoDir, upstreamRemote);
+		if (!trueDefault) {
+			return { ...base, skipReason: "cannot resolve default branch for retarget" };
+		}
+
+		// For squash-merged repos, check if already retargeted
+		if (status.base.baseMergedIntoDefault === "squash") {
+			const defaultRef = `${upstreamRemote}/${trueDefault}`;
+			const alreadyOnDefault = await git(repoDir, "merge-base", "--is-ancestor", defaultRef, "HEAD");
+			if (alreadyOnDefault.exitCode === 0) {
+				return { ...base, outcome: "up-to-date", baseBranch: trueDefault };
+			}
+		}
+
+		return {
+			...base,
+			outcome: "will-operate",
+			baseBranch: trueDefault,
+			retargetFrom: status.base.ref,
+			retargetTo: trueDefault,
+			behind: status.base.behind,
+			ahead: status.base.ahead,
+		};
 	}
 
 	// Up-to-date or will-operate

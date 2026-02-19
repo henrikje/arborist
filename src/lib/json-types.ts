@@ -18,6 +18,8 @@ export interface StatusJsonRepo {
 		ref: string;
 		ahead: number;
 		behind: number;
+		mergedIntoBase: "merge" | "squash" | null;
+		baseMergedIntoDefault: "merge" | "squash" | null;
 	} | null;
 	share: {
 		remote: string;
@@ -25,6 +27,7 @@ export interface StatusJsonRepo {
 		refMode: "noRef" | "implicit" | "configured" | "gone";
 		toPush: number | null;
 		toPull: number | null;
+		rebased: number | null;
 	} | null;
 	operation: GitOperation;
 	lastCommit: string | null;

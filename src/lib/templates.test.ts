@@ -573,18 +573,18 @@ describe("templates", () => {
 	describe("substitutePlaceholders", () => {
 		test("replaces all workspace placeholders", () => {
 			const ctx: TemplateContext = {
-				arbRootPath: "/projects/myapp",
+				rootPath: "/projects/myapp",
 				workspaceName: "feat-login",
 				workspacePath: "/projects/myapp/feat-login",
 			};
-			const input = "root=__ARB_ROOT_PATH__ ws=__WORKSPACE_NAME__ path=__WORKSPACE_PATH__";
+			const input = "root=__ROOT_PATH__ ws=__WORKSPACE_NAME__ path=__WORKSPACE_PATH__";
 			const result = substitutePlaceholders(input, ctx);
 			expect(result).toBe("root=/projects/myapp ws=feat-login path=/projects/myapp/feat-login");
 		});
 
 		test("replaces worktree placeholders when provided", () => {
 			const ctx: TemplateContext = {
-				arbRootPath: "/projects/myapp",
+				rootPath: "/projects/myapp",
 				workspaceName: "feat-login",
 				workspacePath: "/projects/myapp/feat-login",
 				worktreeName: "api",
@@ -597,7 +597,7 @@ describe("templates", () => {
 
 		test("leaves worktree placeholders as-is when not provided", () => {
 			const ctx: TemplateContext = {
-				arbRootPath: "/projects/myapp",
+				rootPath: "/projects/myapp",
 				workspaceName: "feat-login",
 				workspacePath: "/projects/myapp/feat-login",
 			};
@@ -608,7 +608,7 @@ describe("templates", () => {
 
 		test("handles multiple occurrences of the same placeholder", () => {
 			const ctx: TemplateContext = {
-				arbRootPath: "/root",
+				rootPath: "/root",
 				workspaceName: "ws",
 				workspacePath: "/root/ws",
 			};
@@ -619,7 +619,7 @@ describe("templates", () => {
 
 		test("handles content with no placeholders", () => {
 			const ctx: TemplateContext = {
-				arbRootPath: "/root",
+				rootPath: "/root",
 				workspaceName: "ws",
 				workspacePath: "/root/ws",
 			};
@@ -638,7 +638,7 @@ describe("templates", () => {
 			writeFileSync(join(src, `config.json${ARBTEMPLATE_EXT}`), '{"path": "__WORKSPACE_PATH__"}');
 
 			const ctx: TemplateContext = {
-				arbRootPath: tmpDir,
+				rootPath: tmpDir,
 				workspaceName: "my-ws",
 				workspacePath: dest,
 			};
@@ -657,7 +657,7 @@ describe("templates", () => {
 			writeFileSync(join(dest, "file.txt"), "existing");
 
 			const ctx: TemplateContext = {
-				arbRootPath: tmpDir,
+				rootPath: tmpDir,
 				workspaceName: "ws",
 				workspacePath: dest,
 			};
@@ -675,7 +675,7 @@ describe("templates", () => {
 			writeFileSync(join(src, "static.txt"), "plain content");
 
 			const ctx: TemplateContext = {
-				arbRootPath: tmpDir,
+				rootPath: tmpDir,
 				workspaceName: "ws",
 				workspacePath: dest,
 			};
@@ -695,7 +695,7 @@ describe("templates", () => {
 			writeFileSync(join(src, `file.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_PATH__");
 
 			const ctx: TemplateContext = {
-				arbRootPath: tmpDir,
+				rootPath: tmpDir,
 				workspaceName: "ws",
 				workspacePath: dest,
 			};
@@ -713,7 +713,7 @@ describe("templates", () => {
 			writeFileSync(join(dest, "file.json"), "ws");
 
 			const ctx: TemplateContext = {
-				arbRootPath: tmpDir,
+				rootPath: tmpDir,
 				workspaceName: "ws",
 				workspacePath: dest,
 			};
@@ -730,7 +730,7 @@ describe("templates", () => {
 			writeFileSync(join(dest, "file.json"), "old-value");
 
 			const ctx: TemplateContext = {
-				arbRootPath: tmpDir,
+				rootPath: tmpDir,
 				workspaceName: "ws",
 				workspacePath: dest,
 			};
@@ -885,7 +885,7 @@ describe("templates", () => {
 			writeFileSync(join(src, `config.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
 
 			const ctx: TemplateContext = {
-				arbRootPath: tmpDir,
+				rootPath: tmpDir,
 				workspaceName: "ws",
 				workspacePath: dest,
 			};
@@ -907,7 +907,7 @@ describe("templates", () => {
 			writeFileSync(join(src, `b.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
 
 			const ctx: TemplateContext = {
-				arbRootPath: tmpDir,
+				rootPath: tmpDir,
 				workspaceName: "ws",
 				workspacePath: dest,
 			};
@@ -927,7 +927,7 @@ describe("templates", () => {
 			writeFileSync(join(src, `config.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
 
 			const ctx: TemplateContext = {
-				arbRootPath: tmpDir,
+				rootPath: tmpDir,
 				workspaceName: "ws",
 				workspacePath: dest,
 			};
@@ -948,7 +948,7 @@ describe("templates", () => {
 			writeFileSync(join(src, `b.json${ARBTEMPLATE_EXT}`), "__WORKSPACE_NAME__");
 
 			const ctx: TemplateContext = {
-				arbRootPath: tmpDir,
+				rootPath: tmpDir,
 				workspaceName: "ws",
 				workspacePath: dest,
 			};

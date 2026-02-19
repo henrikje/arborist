@@ -65,6 +65,7 @@ To detect context programmatically, check for `.arb/` or `.arbws/` in the curren
 - `arb status -d` — Only show repos with uncommitted changes
 - `arb status -w at-risk` — Only show repos that need attention (unpushed, drifted, dirty, etc)
 - `arb status -w gone` — Only show repos with deleted remote branches
+- `arb status -w merged` — Only show repos whose branches have been merged into the base branch
 - `arb list` — Shows all workspaces with a LAST COMMIT column indicating when work last happened
 - `arb list -w at-risk` — Only show workspaces with at least one repo needing attention
 
@@ -74,6 +75,9 @@ Key signals in status output:
 - **behind base** — Base branch (e.g., main) has moved ahead; consider rebasing
 - **diverged** — Both ahead of and behind base branch; rebase/merge will replay commits and may produce conflicts
 - **behind share** — Remote feature branch has commits you don't have; consider pulling
+- **rebased** — Local branch has been rebased; remote has the old commits with different hashes but identical content. Use `arb push --force` to update the remote
+- **merged** — Branch has been merged into the base branch (detected via ancestor check for merge commits, or cumulative patch-id for squash merges). Independent of "gone" — a branch can be merged without being deleted, or deleted without being merged
+- **base merged** — The configured base branch (for stacked workspaces) has been merged into the repo's default branch. This means the foundation shifted — rebase will target a stale base. Use `arb rebase --retarget` to rebase onto the default branch and update the workspace config
 - **drifted** — Worktree is on the wrong branch (rare, usually manual intervention)
 - **last commit** — Most recent commit author date across all repos; helps gauge workspace staleness
 
@@ -82,14 +86,15 @@ Key signals in status output:
 1. Prefer `arb rebase -y` (cleaner history) unless user explicitly requests merge
 2. `arb merge -y` for merge-based workflows
 3. Both commands fetch first, then show a plan before proceeding
-4. On conflict, arb reports which repos have conflicts and continues with the rest
-5. To resolve conflicts in a specific repo:
+4. If a stacked workspace's base branch has been merged into the default, `arb rebase` skips with a hint to use `--retarget`. Run `arb rebase --retarget -y` to rebase onto the default branch and update the workspace config
+5. On conflict, arb reports which repos have conflicts and continues with the rest
+6. To resolve conflicts in a specific repo:
    - `cd` into that repo's worktree directory
    - Fix the conflicting files
    - `git add .`
    - `git rebase --continue` (or `git merge --continue`)
    - Return to workspace root
-6. After resolving all conflicts, `arb push -f` to force-push the rebased branches
+7. After resolving all conflicts, `arb push -f` to force-push the rebased branches
 
 ### Sharing Changes
 
