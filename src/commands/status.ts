@@ -40,7 +40,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("--json", "Output structured JSON (combine with --verbose for commit and file detail)")
 		.summary("Show workspace status")
 		.description(
-			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, merged, base-merged, base-missing, at-risk. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.",
+			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use --fetch to update remote tracking info first. Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.",
 		)
 		.action(
 			async (options: {
@@ -135,7 +135,7 @@ async function runStatus(
 			output = { ...filteredSummary, repos: reposWithVerbose };
 		}
 		process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
-		return filteredSummary.withIssues > 0 ? 1 : 0;
+		return filteredSummary.atRiskCount > 0 ? 1 : 0;
 	}
 
 	const repos = filteredSummary.repos;
@@ -344,7 +344,7 @@ async function runStatus(
 		}
 	}
 
-	return filteredSummary.withIssues > 0 ? 1 : 0;
+	return filteredSummary.atRiskCount > 0 ? 1 : 0;
 }
 
 // Plain-text cell computation (no ANSI codes) for width measurement

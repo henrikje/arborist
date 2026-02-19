@@ -592,13 +592,13 @@ SCRIPT
     [[ "$output" != *"not pushed"* ]]
 }
 
-@test "arb status exits 1 for gone repos with unpushed commits" {
+@test "arb status exits 0 for gone repos (gone is not at-risk)" {
     arb create gone-exit repo-a
     push_then_delete_remote gone-exit repo-a
 
     cd "$TEST_DIR/project/gone-exit"
     run arb status
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 0 ]
     [[ "$output" == *"gone"* ]]
     [[ "$output" == *"to push"* ]]
 }

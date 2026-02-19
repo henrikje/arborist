@@ -63,11 +63,13 @@ To detect context programmatically, check for `.arb/` or `.arbws/` in the curren
 - `arb status --json` — Machine-readable output for parsing (includes `lastCommit` ISO 8601 field)
 - `arb status --fetch` — Fetch remotes first for up-to-date info
 - `arb status -d` — Only show repos with uncommitted changes
-- `arb status -w at-risk` — Only show repos that need attention (unpushed, drifted, dirty, etc)
+- `arb status -w at-risk` — Only show repos with data safety or infrastructure concerns
+- `arb status -w stale` — Only show repos that are behind their base or share branch
 - `arb status -w gone` — Only show repos with deleted remote branches
 - `arb status -w merged` — Only show repos whose branches have been merged into the base branch
 - `arb list` — Shows all workspaces with a LAST COMMIT column indicating when work last happened
-- `arb list -w at-risk` — Only show workspaces with at least one repo needing attention
+- `arb list -w at-risk` — Only show workspaces with at least one at-risk repo
+- `arb list -w stale` — Only show workspaces with at least one stale repo
 
 Key signals in status output:
 - **dirty** — Staged, modified, or untracked files exist

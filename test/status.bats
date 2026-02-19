@@ -420,8 +420,8 @@ assert 'shallow' in r['identity']
 assert 'conflicts' in r['local']
 assert 'operation' in r
 assert 'remotes' not in r, 'remotes field should not be in JSON output'
-assert 'withIssues' in d
-assert 'issueLabels' in d
+assert 'atRiskCount' in d
+assert 'statusLabels' in d
 "
 }
 
@@ -1009,7 +1009,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
 
     arb fetch >/dev/null 2>&1
     run arb status
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 0 ]  # diverged is stale, not at-risk
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" == *"1 ahead"* ]]
     [[ "$output" == *"1 behind"* ]]
@@ -1030,7 +1030,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
     cd "$TEST_DIR/project/my-feature"
     arb fetch >/dev/null 2>&1
     run arb status
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 0 ]  # diverged is stale, not at-risk
     [[ "$output" == *"1 ahead"* ]]
     [[ "$output" == *"1 behind"* ]]
 }
@@ -1174,7 +1174,7 @@ assert r['share']['rebased'] is None, f'expected rebased=null, got {r[\"share\"]
 
     arb fetch >/dev/null 2>&1
     run arb status --json
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 0 ]  # diverged is stale, not at-risk
     echo "$output" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)

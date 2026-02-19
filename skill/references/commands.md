@@ -229,9 +229,9 @@ Lists all workspaces with aggregate status. The active workspace is marked with 
     "base": "main",
     "repoCount": 3,
     "status": null,
-    "withIssues": 1,
-    "issueLabels": ["dirty", "unpushed"],
-    "issueCounts": [
+    "atRiskCount": 1,
+    "statusLabels": ["dirty", "unpushed"],
+    "statusCounts": [
       { "label": "dirty", "count": 1 },
       { "label": "unpushed", "count": 1 }
     ],
@@ -240,7 +240,7 @@ Lists all workspaces with aggregate status. The active workspace is marked with 
 ]
 ```
 
-Fields `withIssues`, `issueLabels`, `issueCounts`, and `lastCommit` are omitted when `--quick` is used. The `issueCounts` array provides per-flag counts in display order. The `status` field is `null` for normal workspaces, `"config-missing"` if `.arbws/config` is absent, or `"empty"` if the workspace has no worktrees.
+Fields `atRiskCount`, `statusLabels`, `statusCounts`, and `lastCommit` are omitted when `--quick` is used. The `statusCounts` array provides per-flag counts in display order. The `status` field is `null` for normal workspaces, `"config-missing"` if `.arbws/config` is absent, or `"empty"` if the workspace has no worktrees.
 
 ---
 
@@ -326,7 +326,7 @@ Shows each worktree's position relative to the base branch, push status, and loc
 
 **Flags:**
 - `-d, --dirty` — Only show repos with local changes (shorthand for `--where dirty`)
-- `-w, --where <filter>` — Filter repos by status flags (comma-separated, OR logic): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, merged, base-merged, base-missing, at-risk
+- `-w, --where <filter>` — Filter repos by status flags (comma-separated, OR logic): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, merged, base-merged, base-missing, at-risk, stale
 - `-f, --fetch` — Fetch remotes before showing status
 - `-v, --verbose` — Show file-level detail
 - `--json` — Machine-readable JSON output (filtered when `--where` is active). Combine with `--verbose` to include commit lists and file-level detail in a `verbose` object per repo.
@@ -372,8 +372,8 @@ Shows each worktree's position relative to the base branch, push status, and loc
     }
   ],
   "total": 2,
-  "withIssues": 1,
-  "issueLabels": ["dirty"],
+  "atRiskCount": 1,
+  "statusLabels": ["dirty"],
   "lastCommit": "2025-01-15T10:30:00+01:00"
 }
 ```

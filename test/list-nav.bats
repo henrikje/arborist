@@ -209,8 +209,8 @@ assert ws['workspace'] == 'my-feature'
 assert ws['branch'] == 'my-feature'
 assert ws['repoCount'] == 2
 assert ws['status'] is None
-assert 'withIssues' in ws
-assert 'issueLabels' in ws
+assert 'atRiskCount' in ws
+assert 'statusLabels' in ws
 assert 'lastCommit' in ws
 assert isinstance(ws['lastCommit'], str), 'lastCommit should be an ISO date string'
 "
@@ -269,8 +269,8 @@ ws = data[0]
 assert ws['workspace'] == 'my-feature'
 assert ws['branch'] == 'my-feature'
 assert ws['repoCount'] == 1
-assert 'withIssues' not in ws
-assert 'issueLabels' not in ws
+assert 'atRiskCount' not in ws
+assert 'statusLabels' not in ws
 "
 }
 

@@ -18,9 +18,10 @@ import {
 import { resolveRemotes } from "../lib/remotes";
 import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import {
+	LOSE_WORK_FLAGS,
 	type WorkspaceSummary,
 	computeFlags,
-	formatIssueCounts,
+	formatStatusCounts,
 	gatherWorkspaceSummary,
 	isWorkspaceSafe,
 	validateWhere,
@@ -167,10 +168,10 @@ function displayRemoveTable(assessments: WorkspaceAssessment[]): void {
 		line += `    ${`${a.summary.total}`.padEnd(maxRepos)}`;
 
 		// Status
-		if (a.summary.withIssues === 0) {
+		if (a.summary.statusCounts.length === 0) {
 			line += "    no issues";
 		} else {
-			line += `    ${formatIssueCounts(a.summary.issueCounts, a.summary.rebasedOnlyCount)}`;
+			line += `    ${formatStatusCounts(a.summary.statusCounts, a.summary.rebasedOnlyCount, LOSE_WORK_FLAGS)}`;
 		}
 
 		process.stderr.write(`${line}\n`);
@@ -263,7 +264,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.summary("Remove one or more workspaces")
 		.description(
-			"Remove one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-remove all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Combine with --where <filter> to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). --where accepts: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk. Comma-separated values use OR logic.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.",
+			"Remove one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-remove all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Combine with --where <filter> to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). --where accepts: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk, stale. Comma-separated values use OR logic.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.",
 		)
 		.action(
 			async (
