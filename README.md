@@ -39,6 +39,12 @@ Keeping your work in sync involves two axes: integrating upstream changes from t
 
 ### 1. Install
 
+**Homebrew** (macOS and Linux):
+```
+brew install henrikje/tap/arb
+```
+
+**From source** (requires [Bun](https://bun.sh)):
 ```
 git clone https://github.com/henrikje/arborist
 cd arborist
