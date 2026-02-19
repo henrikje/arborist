@@ -38,12 +38,19 @@ load test_helper/common-setup
     [[ "$output" == *"repo-b"* ]]
 }
 
-@test "arb repos outputs one repo per line" {
+@test "arb repos outputs header plus one repo per line" {
     run arb repos
     [ "$status" -eq 0 ]
     local count
     count="$(echo "$output" | wc -l | tr -d ' ')"
-    [ "$count" -eq 2 ]
+    [ "$count" -eq 3 ]
+}
+
+@test "arb repos shows remote URL for each repo" {
+    run arb repos
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"origin/repo-a.git"* ]]
+    [[ "$output" == *"origin/repo-b.git"* ]]
 }
 
 @test "arb repos outside arb root fails" {
