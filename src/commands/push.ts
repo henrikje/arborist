@@ -39,6 +39,7 @@ interface PushAssessment {
 	newBranch: boolean;
 	headSha: string;
 	recreate: boolean;
+	behindBase: number;
 }
 
 export function registerPushCommand(program: Command, getCtx: () => ArbContext): void {
@@ -50,7 +51,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.summary("Push the feature branch to the share remote")
 		.description(
-			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. Skips repos without a remote and repos whose branches have been merged into the base branch. If a remote branch was deleted after merge, use --force to recreate it. Use --force after rebase or amend to force push with lease (implies --yes). Use --no-fetch to skip fetching when refs are known to be fresh.",
+			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos without a remote and repos whose branches have been merged into the base branch. If a remote branch was deleted after merge, use --force to recreate it. Use --force after rebase or amend to force push with lease (implies --yes). Use --no-fetch to skip fetching when refs are known to be fresh.",
 		)
 		.action(
 			async (repoArgs: string[], options: { force?: boolean; fetch?: boolean; yes?: boolean; dryRun?: boolean }) => {
@@ -196,16 +197,17 @@ function formatPushPlan(assessments: PushAssessment[], remotesMap: Map<string, R
 		const remotes = remotesMap.get(a.repo);
 		const forkSuffix = remotes && remotes.upstream !== remotes.share ? ` → ${a.shareRemote}` : "";
 		const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
+		const behindBaseSuffix = a.behindBase > 0 ? ` ${yellow(`(${a.behindBase} behind base)`)}` : "";
 		if (a.outcome === "will-push") {
 			const newBranchSuffix = a.recreate ? " (recreate)" : a.newBranch ? " (new branch)" : "";
-			out += `  ${a.repo}   ${plural(a.ahead, "commit")} to push${newBranchSuffix}${forkSuffix}${headStr}\n`;
+			out += `  ${a.repo}   ${plural(a.ahead, "commit")} to push${newBranchSuffix}${behindBaseSuffix}${forkSuffix}${headStr}\n`;
 		} else if (a.outcome === "will-force-push") {
 			if (a.rebased > 0) {
 				const newCount = a.ahead - a.rebased;
 				const desc = newCount > 0 ? `${newCount} new + ${a.rebased} rebased` : `${a.rebased} rebased`;
-				out += `  ${a.repo}   ${desc} to push (force)${headStr}\n`;
+				out += `  ${a.repo}   ${desc} to push (force)${behindBaseSuffix}${headStr}\n`;
 			} else {
-				out += `  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.shareRemote})${headStr}\n`;
+				out += `  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.shareRemote})${behindBaseSuffix}${headStr}\n`;
 			}
 		} else if (a.outcome === "up-to-date") {
 			out += `  ${a.repo}   up to date\n`;
@@ -213,6 +215,14 @@ function formatPushPlan(assessments: PushAssessment[], remotesMap: Map<string, R
 			out += `  ${yellow(`${a.repo}   skipped — ${a.skipReason}`)}\n`;
 		}
 	}
+
+	const behindBaseCount = assessments.filter(
+		(a) => (a.outcome === "will-push" || a.outcome === "will-force-push") && a.behindBase > 0,
+	).length;
+	if (behindBaseCount > 0) {
+		out += `  ${dim(`hint: ${plural(behindBaseCount, "repo")} behind base — consider 'arb rebase' before pushing`)}\n`;
+	}
+
 	out += "\n";
 	return out;
 }
@@ -227,6 +237,8 @@ async function assessPushRepo(
 
 	const headSha = await getShortHead(repoDir);
 
+	const behindBase = status.base?.behind ?? 0;
+
 	const base: PushAssessment = {
 		repo: status.name,
 		repoDir,
@@ -239,6 +251,7 @@ async function assessPushRepo(
 		newBranch: false,
 		headSha,
 		recreate: false,
+		behindBase,
 	};
 
 	// Local repo — no share remote

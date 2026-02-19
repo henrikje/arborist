@@ -437,7 +437,7 @@ Push the feature branch to the share remote.
 arb push [repos...] [-f] [--no-fetch] [-n] [-y]
 ```
 
-Fetches all repos, then pushes the feature branch. Sets up tracking on first push. Shows a plan before pushing. Skips repos without a remote and repos whose branches have been merged into the base branch (use `--force` to override).
+Fetches all repos, then pushes the feature branch. Sets up tracking on first push. Shows a plan before pushing. The plan annotates repos that are behind the base branch (e.g., "3 behind base") and shows a hint to consider `arb rebase` before pushing. Skips repos without a remote and repos whose branches have been merged into the base branch (use `--force` to override).
 
 **Arguments:**
 - `[repos...]` — Repos to push (all if not specified)

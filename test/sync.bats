@@ -810,6 +810,67 @@ assert r['base']['mergedIntoBase'] == 'squash', f'expected squash, got {r[\"base
 "
 }
 
+# ── push behind-base annotations ─────────────────────────────────
+
+@test "arb push plan shows behind-base annotation" {
+    arb create behind-base repo-a
+    local wt="$TEST_DIR/project/behind-base/repo-a"
+
+    # Make a feature commit
+    echo "feature" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+
+    # Advance main on the bare remote
+    local tmp="$TEST_DIR/tmp-advance-main"
+    git clone "$TEST_DIR/origin/repo-a.git" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && echo "upstream1" > u1.txt && git add u1.txt && git commit -m "upstream 1" && echo "upstream2" > u2.txt && git add u2.txt && git commit -m "upstream 2" && git push) >/dev/null 2>&1
+    rm -rf "$tmp"
+
+    cd "$TEST_DIR/project/behind-base"
+    run arb push --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"behind base"* ]]
+    [[ "$output" == *"2 behind base"* ]]
+}
+
+@test "arb push plan shows rebase hint when behind base" {
+    arb create rebase-hint repo-a
+    local wt="$TEST_DIR/project/rebase-hint/repo-a"
+
+    # Make a feature commit
+    echo "feature" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+
+    # Advance main on the bare remote
+    local tmp="$TEST_DIR/tmp-advance-hint"
+    git clone "$TEST_DIR/origin/repo-a.git" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && echo "upstream" > u.txt && git add u.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+    rm -rf "$tmp"
+
+    cd "$TEST_DIR/project/rebase-hint"
+    run arb push --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"consider 'arb rebase'"* ]]
+}
+
+@test "arb push plan does not show behind-base when up to date" {
+    arb create no-behind repo-a
+    local wt="$TEST_DIR/project/no-behind/repo-a"
+
+    # Make a feature commit (no main advancement)
+    echo "feature" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/no-behind"
+    run arb push --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"behind base"* ]]
+    [[ "$output" != *"consider 'arb rebase'"* ]]
+}
+
 @test "arb status --where merged filters correctly" {
     arb create where-merged repo-a repo-b
     local wt_a="$TEST_DIR/project/where-merged/repo-a"
