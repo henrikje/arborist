@@ -45,6 +45,8 @@ cd arborist
 ./install.sh
 ```
 
+The installer auto-configures **bash** and **zsh**. It builds from source, installs the `arb` binary to `~/.local/bin`, and adds shell integration (wrapper function + tab completion) to your shell profile.
+
 ### 2. Initialize an arb root
 
 ```bash
