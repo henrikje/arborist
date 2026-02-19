@@ -678,7 +678,7 @@ load test_helper/common-setup
 
 @test "arb create applies .arbtemplate with workspace placeholders" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '__WORKSPACE_NAME__:__WORKSPACE_PATH__:__ARB_ROOT_PATH__' \
+    printf '__WORKSPACE_NAME__:__WORKSPACE_PATH__:__ROOT_PATH__' \
         > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
 
     arb create tpl-sub-ws repo-a

@@ -275,7 +275,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 				if (isArbtpl) {
 					const repoDir = diff.scope === "repo" && diff.repo ? join(wsDir, diff.repo) : undefined;
 					const tplCtx: TemplateContext = {
-						arbRootPath: ctx.baseDir,
+						rootPath: ctx.baseDir,
 						workspaceName: basename(wsDir),
 						workspacePath: wsDir,
 						worktreeName: diff.scope === "repo" ? diff.repo : undefined,
@@ -411,7 +411,7 @@ function applyDefaultMode(
 			const scope = entry.scope === "workspace" ? "workspace" : (entry.repo ?? "");
 			const repoDir = entry.scope === "repo" && entry.repo ? join(wsDir, entry.repo) : undefined;
 			const tplCtx: TemplateContext = {
-				arbRootPath: ctx.baseDir,
+				rootPath: ctx.baseDir,
 				workspaceName: basename(wsDir),
 				workspacePath: wsDir,
 				worktreeName: entry.scope === "repo" ? entry.repo : undefined,
@@ -465,7 +465,7 @@ function applyForceMode(
 			const scope = entry.scope === "workspace" ? "workspace" : (entry.repo ?? "");
 			const repoDir = entry.scope === "repo" && entry.repo ? join(wsDir, entry.repo) : undefined;
 			const tplCtx: TemplateContext = {
-				arbRootPath: ctx.baseDir,
+				rootPath: ctx.baseDir,
 				workspaceName: basename(wsDir),
 				workspacePath: wsDir,
 				worktreeName: entry.scope === "repo" ? entry.repo : undefined,
