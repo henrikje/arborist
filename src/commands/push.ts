@@ -267,6 +267,9 @@ async function assessPushRepo(
 	// Never pushed (noRef) — new branch
 	if (status.share.refMode === "noRef") {
 		const ahead = status.base?.ahead ?? 1;
+		if (ahead === 0) {
+			return { ...base, outcome: "skip", skipReason: "no commits to push" };
+		}
 		return { ...base, outcome: "will-push", ahead, newBranch: true };
 	}
 
