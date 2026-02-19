@@ -247,6 +247,15 @@ async function assessPushRepo(
 		return { ...base, skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}` };
 	}
 
+	// Base branch merged into default — retarget before pushing
+	if (status.base?.baseMergedIntoDefault != null) {
+		const baseName = status.base.configuredRef ?? status.base.ref;
+		return {
+			...base,
+			skipReason: `base branch ${baseName} was merged into default (retarget first with 'arb rebase --retarget')`,
+		};
+	}
+
 	// Remote branch was deleted (gone)
 	if (status.share.refMode === "gone") {
 		if (status.base?.mergedIntoBase != null && !options?.force) {

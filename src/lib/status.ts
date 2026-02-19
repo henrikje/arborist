@@ -109,7 +109,7 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 
 	const isBaseMerged = repo.base?.baseMergedIntoDefault != null;
 
-	const baseFellBack = repo.base?.configuredRef != null;
+	const baseFellBack = repo.base?.configuredRef != null && repo.base?.baseMergedIntoDefault == null;
 
 	return {
 		isDirty: localDirty,
@@ -493,12 +493,22 @@ export async function gatherRepoStatus(
 	// ── Stacked base merge detection ──
 	// When configBase is set and resolved, check if the base branch itself
 	// has been merged into the repo's true default branch.
-	if (configBase && baseStatus !== null && baseStatus.ref === configBase && repoHasRemote && !detached) {
-		const trueDefault = await getDefaultBranch(repoPath, upstreamRemote);
-		if (trueDefault && trueDefault !== configBase) {
-			const configBaseRef = `${upstreamRemote}/${configBase}`;
-			const defaultRef = `${upstreamRemote}/${trueDefault}`;
-			baseStatus.baseMergedIntoDefault = await detectBranchMerged(repoDir, defaultRef, 200, configBaseRef);
+	if (configBase && baseStatus !== null && repoHasRemote && !detached) {
+		if (baseStatus.ref === configBase) {
+			// Base branch exists on remote — use remote ref for detection
+			const trueDefault = await getDefaultBranch(repoPath, upstreamRemote);
+			if (trueDefault && trueDefault !== configBase) {
+				const configBaseRef = `${upstreamRemote}/${configBase}`;
+				const defaultRef = `${upstreamRemote}/${trueDefault}`;
+				baseStatus.baseMergedIntoDefault = await detectBranchMerged(repoDir, defaultRef, 200, configBaseRef);
+			}
+		} else {
+			// Base branch gone from remote — try local branch ref for detection
+			const localExists = await branchExistsLocally(repoPath, configBase);
+			if (localExists) {
+				const defaultRef = `${upstreamRemote}/${baseStatus.ref}`;
+				baseStatus.baseMergedIntoDefault = await detectBranchMerged(repoDir, defaultRef, 200, configBase);
+			}
 		}
 	}
 

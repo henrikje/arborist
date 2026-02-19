@@ -366,7 +366,7 @@ function plainCells(repo: RepoStatus): CellData {
 	if (repo.base) {
 		if (isDetached) {
 			baseDiff = "";
-		} else if (repo.base.configuredRef) {
+		} else if (repo.base.configuredRef && repo.base.baseMergedIntoDefault == null) {
 			baseDiff = "not found";
 		} else {
 			baseDiff = plainBaseDiff(repo.base);
@@ -511,13 +511,14 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 	// Base branch merged into default
 	if (repo.base?.baseMergedIntoDefault) {
 		const strategy = repo.base.baseMergedIntoDefault === "squash" ? "squash" : "merge";
+		const baseName = repo.base.configuredRef ?? repo.base.ref;
 		sections.push(
-			`\n${SECTION_INDENT}Base branch ${repo.base.ref} has been merged into default (${strategy})\n${SECTION_INDENT}Run 'arb rebase --retarget' to rebase onto the default branch\n`,
+			`\n${SECTION_INDENT}Base branch ${baseName} has been merged into default (${strategy})\n${SECTION_INDENT}Run 'arb rebase --retarget' to rebase onto the default branch\n`,
 		);
 	}
 
-	// Configured base not found (fell back to default)
-	if (repo.base?.configuredRef) {
+	// Configured base not found (fell back to default) — skip when base merged already covers it
+	if (repo.base?.configuredRef && !repo.base.baseMergedIntoDefault) {
 		let section = `\n${SECTION_INDENT}Configured base branch ${repo.base.configuredRef} not found on ${repo.base.remote}\n`;
 		section += `${SECTION_INDENT}Run 'arb rebase --retarget' to rebase onto the default branch\n`;
 		sections.push(section);

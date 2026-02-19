@@ -257,6 +257,15 @@ async function assessPullRepo(
 		return { ...base, skipReason: "remote branch gone" };
 	}
 
+	// Base branch merged into default — retarget before pulling
+	if (status.base?.baseMergedIntoDefault != null) {
+		const baseName = status.base.configuredRef ?? status.base.ref;
+		return {
+			...base,
+			skipReason: `base branch ${baseName} was merged into default (retarget first with 'arb rebase --retarget')`,
+		};
+	}
+
 	// Already merged into base
 	if (status.base?.mergedIntoBase != null) {
 		return { ...base, skipReason: `already merged into ${status.base.ref}` };

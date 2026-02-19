@@ -263,6 +263,7 @@ _arb() {
                         '(-F --no-fetch)'{-F,--no-fetch}'[Skip fetching before rebase]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '--retarget[Rebase onto default branch when base branch was merged]' \
                         '*:repo:($repo_names)'
                     ;;
                 merge)
