@@ -1,10 +1,10 @@
 # Arborist (`arb`)
 
-**Arborist** is a workspace manager that makes multi-repo development safe and simple.
-
-It lets you work on multiple features across several repositories in parallel, without juggling branches, feeling lost, or losing changes.
+**Arborist** lets you work on multiple features across several repositories in parallel, without juggling branches, losing your place, or losing changes.
 
 Based on [Git worktrees](https://git-scm.com/docs/git-worktree), Arborist does not replace Git but helps you coordinate across repositories.
+
+_Arborist is under active development._
 
 > **arborist** (noun) _ˈär-bə-rist_ — a specialist in the care and maintenance of trees
 
@@ -33,10 +33,11 @@ You work in the workspaces. Each workspace represents one feature or issue. It c
 
 Keeping your work in sync involves two axes: integrating upstream changes from the base branch (using `rebase` or `merge`) and sharing your feature branch with collaborators (using `push` and `pull`). Arborist's synchronization commands handle both across all repos at once.
 
-
 ## A quick tour
 
 ### Setup
+
+Arborist requires Git and works on macOS and Linux. It currently needs [Bun](https://bun.sh) to build from source, but pre-built binaries are coming. :-)
 
 ```
 git clone https://github.com/henrikje/arborist
@@ -44,7 +45,7 @@ cd arborist
 ./install.sh
 ```
 
-The installer builds from source, installs the `arb` binary to `~/.local/bin`, and adds shell integration (wrapper function + tab completion) for bash and zsh.
+The installer puts the `arb` binary in `~/.local/bin`, and adds shell integration (wrapper function + tab completion) for bash and zsh.
 
 ```bash
 mkdir ~/my-project
@@ -123,7 +124,7 @@ Rebase to integrate the upstream changes:
 arb rebase
 ```
 
-Arb shows a plan and asks for confirmation before proceeding:
+Arb shows a plan, including a conflict prediction for each repo, and asks for confirmation before proceeding:
 
 ```
   backend    up to date
@@ -146,28 +147,107 @@ arb remove add-dark-mode
 
 Now you're ready to create new workspaces to tackle new tasks!
 
-## Core concepts
+## What else can Arborist do?
 
-Now that you've seen the basics, let's take a look at the ideas behind Arborist.
+The tour covered the essentials. Here are more capabilities worth knowing about.
 
-### Safety by default
+### Conflict prediction
 
-Arborist is designed to be safe and predictable. It attempts to give you maximum visibility into your workspace. All operations that change your repository will show a plan and ask for confirmation, and risky actions are blocked unless forced.
+Before a rebase or merge runs, Arborist performs a trial three-way merge in memory (using the same algorithm Git uses) against each repo to identify actual file-level conflicts. The result appears in the plan:
 
-### Two synchronization axes
+```
+  backend    up to date
+  frontend   rebase add-dark-mode onto origin/main — 1 behind, 1 ahead (conflict unlikely)
+```
 
-Each repo in a workspace tracks two independent relationships: integration and sharing.
+You see which repos will conflict before you commit to the operation. The same check runs for `pull` and appears in `arb status` when a repo's integration would conflict.
 
-| Axis            | Purpose                               | Target                           | Commands          |
-|-----------------|---------------------------------------|----------------------------------|-------------------|
-| **Integration** | Keep your feature branch up to date   | Base branch, e.g. `main `        | `merge`, `rebase` |
-| **Sharing**     | Share your feature branch with others | Feature branch, e.g. `fix-login` | `push`, `pull`    |
+### Conflict recovery
 
-All synchronization commands will fetch all repos to make sure they operate on fresh data. Like the `rebase` example above, they will also show you a plan of what will happen to each repository and ask for confirmation before proceeding.
+If a rebase or merge does hit a conflict, Arborist continues with the remaining repos and reports everything at the end. One conflicting repo never blocks the others. You see per-repo conflict details and resolution instructions in a single pass.
 
-### Alignment with conventions
+### Keeping in sync
 
-Arborist builds on Git and tries to align with its conventions. It uses Git and the filesystem as the authoritative source of truth for workspace state, and does not store any additional internal metadata. 
+Each repo in a workspace tracks two independent relationships:
+
+| Axis            | Commands          | Purpose                                                      |
+|-----------------|-------------------|--------------------------------------------------------------|
+| **Integration** | `rebase`, `merge` | Keep your feature branch up to date with the base branch     |
+| **Sharing**     | `push`, `pull`    | Share your feature branch with collaborators                 |
+
+Synchronization commands automatically fetch all repos in parallel before operating, so you always work against the latest remote state. Every command shows a plan of what will happen to each repo and asks for confirmation before proceeding.
+
+### Filter by status
+
+```bash
+arb status --where dirty,unpushed
+arb list --where at-risk
+```
+
+Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, drifted, and more. The `--where` flag lets you filter by any combination, and works across `status`, `list`, `exec`, `open`, and `remove` — so you can check which workspaces need attention, run commands only in dirty repos, or clean up safely. Use `--dirty` as a shorthand for `--where dirty`.
+
+### Run commands across repos
+
+```bash
+arb exec npm install
+arb exec --dirty git stash
+```
+
+`arb exec` runs any command in each worktree, using the worktree directory as working directory. Combine with `--dirty` or `--where` to narrow the scope. Arb flags come before the command — everything after passes through verbatim.
+
+### Open worktrees in your editor
+
+```bash
+arb open code
+arb open idea
+```
+
+`arb open` runs a command with all worktree paths as arguments — useful for editors like VS Code or IntelliJ that accept directories on the command line. Worktree directories change with every workspace, so remembering paths gets old fast. `arb open` always gives you the right ones.
+
+### Seed files into new workspaces
+
+```bash
+cd my-feature/api
+arb template add .env
+# from now on, every new workspace gets api/.env automatically
+```
+
+Templates let you capture files and have them seeded into every new workspace. Common uses include `.env` files, IDE settings, and AI agent config. Templates live in `.arb/templates/` and are version-controllable.
+
+### Branch from a feature branch
+
+```bash
+arb create auth-ui --base feat/auth --all-repos
+```
+
+The `--base` flag creates a workspace that branches from a specific base instead of the default, letting you stack feature branches. When the base branch is later merged into the default branch (e.g. via a PR), `arb status` detects this and shows "base merged" — preventing the common and painful mistake of rebasing onto a branch that's already been merged. Run `arb rebase --retarget` to cleanly rebase onto the default branch and update the workspace config.
+
+### Fork-based development
+
+```bash
+arb repo clone https://github.com/you/api.git --upstream https://github.com/org/api.git
+```
+
+One command clones your fork and registers the canonical repository. Arborist auto-detects remote roles from git config, so `rebase` targets upstream while `push` goes to your fork — no arb-specific configuration needed. Different repos in the same workspace can use different remote layouts — some forked, some single-origin — and arb resolves remote roles independently for each, so `rebase` targets the right upstream and `push` goes to the right fork without per-repo configuration.
+
+### Script-friendly by design
+
+```bash
+arb push --dry-run          # preview without executing
+arb rebase --yes            # skip confirmation
+arb status --json | jq ...  # machine-readable output
+```
+
+All state-changing commands support `--dry-run` to preview the plan and `--yes` to skip confirmation prompts. `status` and `list` support `--json` for structured output. Exit codes are meaningful: 0 for success, 1 for issues, 130 for user abort. Human-facing output goes to stderr, machine-parseable data to stdout — so piping works naturally.
+
+### Discover more with `--help`
+
+```bash
+arb --help              # list all commands
+arb create --help       # detailed usage for a specific command
+```
+
+Every command supports `--help`. If you're unsure what flags are available or how a command works, `--help` is the fastest way to find out.
 
 ## Further reading
 
