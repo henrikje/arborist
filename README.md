@@ -56,7 +56,13 @@ arb repo clone https://github.com/example/backend.git
 arb repo clone https://github.com/example/shared.git
 ```
 
-`arb init` creates the top-level directory that holds all your workspaces. The three `repo clone` commands store canonical clones in `.arb/repos` — they are managed by arb, and you never touch them directly.
+`arb init` creates the top-level directory that holds all your workspaces. The three `repo clone` commands store canonical clones in `.arb/repos` — they are managed by arb, and you never touch them directly. If a repo is no longer needed, remove it with `arb repo remove`:
+
+```bash
+arb repo remove shared
+```
+
+This deletes the canonical clone and any associated template files. Arb refuses to remove a repo that still has worktrees in any workspace — drop the worktrees first.
 
 ### Start a feature
 

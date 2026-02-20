@@ -234,6 +234,7 @@ _arb() {
                         local -a repo_subcmds=(
                             'clone:Clone a repo into .arb/repos/'
                             'list:List cloned repos'
+                            'remove:Remove canonical repos from .arb/repos/'
                         )
                         _describe 'repo command' repo_subcmds
                     else
@@ -244,6 +245,13 @@ _arb() {
                                     '--upstream[Add an upstream remote (for fork workflows)]:url:' \
                                     '1:url:' \
                                     '2:name:'
+                                ;;
+                            remove)
+                                shift words; (( CURRENT-- ))
+                                _arguments \
+                                    '(-a --all-repos)'{-a,--all-repos}'[Remove all canonical repos]' \
+                                    '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                                    '*:repo:($repo_names)'
                                 ;;
                             list) ;;
                         esac

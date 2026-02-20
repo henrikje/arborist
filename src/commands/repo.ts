@@ -1,9 +1,11 @@
-import { existsSync } from "node:fs";
-import { basename } from "node:path";
+import { existsSync, rmSync } from "node:fs";
+import { basename, join } from "node:path";
+import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
-import { dim, error, info, success } from "../lib/output";
+import { dim, error, info, plural, skipConfirmNotice, success } from "../lib/output";
 import { getRemoteUrl } from "../lib/remotes";
-import { listRepos } from "../lib/repos";
+import { findRepoUsage, listRepos, selectInteractive } from "../lib/repos";
+import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 
 export function registerRepoCommand(program: Command, getCtx: () => ArbContext): void {
@@ -11,7 +13,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 		.command("repo")
 		.summary("Manage canonical repos")
 		.description(
-			"Manage the canonical repository clones in .arb/repos/. These permanent clones are never worked in directly — instead, arb creates worktrees that point back to them. Use subcommands to clone new repos or list existing ones.",
+			"Manage the canonical repository clones in .arb/repos/. These permanent clones are never worked in directly — instead, arb creates worktrees that point back to them. Use subcommands to clone new repos, list existing ones, or remove repos that are no longer needed.",
 		);
 
 	// ── repo clone ──────────────────────────────────────────────────
@@ -102,6 +104,107 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 			for (const { name, url } of entries) {
 				const urlDisplay = url || dim("(local)");
 				process.stdout.write(`  ${name.padEnd(maxRepo)}    ${urlDisplay}\n`);
+			}
+		});
+
+	// ── repo remove ────────────────────────────────────────────────
+
+	repo
+		.command("remove [names...]")
+		.option("-a, --all-repos", "Remove all canonical repos")
+		.option("-y, --yes", "Skip confirmation prompt")
+		.summary("Remove canonical repos from .arb/repos/")
+		.description(
+			"Remove one or more canonical repository clones from .arb/repos/ and their associated template files from .arb/templates/repos/. This is the inverse of 'arb repo clone'.\n\nRefuses to remove repos that have worktrees in any workspace. Run 'arb drop <repo>' or 'arb remove <workspace>' first, then retry. Prompts with a repo picker when run without arguments.",
+		)
+		.action(async (nameArgs: string[], options: { allRepos?: boolean; yes?: boolean }) => {
+			const ctx = getCtx();
+			const allRepos = listRepos(ctx.reposDir);
+
+			let repos = nameArgs;
+			if (options.allRepos) {
+				if (allRepos.length === 0) {
+					error("No repos to remove.");
+					process.exit(1);
+				}
+				repos = allRepos;
+			} else if (repos.length === 0) {
+				if (!isTTY()) {
+					error("No repos specified. Pass repo names or use --all-repos.");
+					process.exit(1);
+				}
+				if (allRepos.length === 0) {
+					error("No repos to remove.");
+					process.exit(1);
+				}
+				repos = await selectInteractive(allRepos, "Select repos to remove");
+				if (repos.length === 0) {
+					error("No repos selected.");
+					process.exit(1);
+				}
+			}
+
+			// Validate all repos exist
+			for (const name of repos) {
+				if (!allRepos.includes(name)) {
+					error(`Repo '${name}' is not cloned.`);
+					process.exit(1);
+				}
+			}
+
+			// Check workspace usage — hard refuse if any repo is in use
+			for (const name of repos) {
+				const usedBy = findRepoUsage(ctx.baseDir, name);
+				if (usedBy.length > 0) {
+					error(
+						`Cannot remove ${name} — used by ${usedBy.length === 1 ? "workspace" : "workspaces"}: ${usedBy.join(", ")}`,
+					);
+					info(`  Run 'arb drop ${name}' in each workspace, or 'arb remove <workspace>' first.`);
+					process.exit(1);
+				}
+			}
+
+			// Display plan
+			for (const name of repos) {
+				const repoDir = `${ctx.reposDir}/${name}`;
+				const url = await getRemoteUrl(repoDir, "origin");
+				info(`  ${name}${url ? `  ${dim(url)}` : ""}`);
+			}
+			process.stderr.write("\n");
+
+			// Confirm
+			if (!options.yes) {
+				if (!isTTY()) {
+					error("Not a terminal. Use --yes to skip confirmation.");
+					process.exit(1);
+				}
+				const subject = repos.length === 1 ? `repo ${repos[0]}` : plural(repos.length, "repo");
+				const shouldRemove = await confirm(
+					{ message: `Remove ${subject}?`, default: false },
+					{ output: process.stderr },
+				);
+				if (!shouldRemove) {
+					process.stderr.write("Aborted.\n");
+					process.exit(130);
+				}
+			} else {
+				skipConfirmNotice("--yes");
+			}
+
+			// Execute
+			for (const name of repos) {
+				rmSync(`${ctx.reposDir}/${name}`, { recursive: true, force: true });
+				const templateDir = join(ctx.baseDir, ".arb", "templates", "repos", name);
+				if (existsSync(templateDir)) {
+					rmSync(templateDir, { recursive: true, force: true });
+				}
+			}
+
+			// Summarize
+			if (repos.length === 1) {
+				success(`Removed repo ${repos[0]}`);
+			} else {
+				success(`Removed ${plural(repos.length, "repo")}`);
 			}
 		});
 }

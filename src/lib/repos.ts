@@ -100,6 +100,19 @@ export function resolveRepoSelection(wsDir: string, repoArgs: string[]): string[
 	return allRepoNames;
 }
 
+export function findRepoUsage(baseDir: string, repoName: string): string[] {
+	const workspaces = listWorkspaces(baseDir);
+	const using: string[] = [];
+	for (const ws of workspaces) {
+		const wsDir = join(baseDir, ws);
+		const repos = workspaceRepoDirs(wsDir).map((d) => basename(d));
+		if (repos.includes(repoName)) {
+			using.push(ws);
+		}
+	}
+	return using;
+}
+
 export async function classifyRepos(
 	wsDir: string,
 	reposDir: string,
