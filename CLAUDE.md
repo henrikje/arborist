@@ -61,6 +61,12 @@ Each command exports a `register*Command(program, getCtx)` function. The `getCtx
 - **Integration tests**: BATS framework in `test/integration/*.bats`, tests the compiled binary end-to-end. Split into domain-based files (basics, workspace-membership, list-nav, status, sync, integrate, exec-open, templates, forks) with shared helpers in `test/integration/test_helper/common-setup.bash`. Run all with `bun run test:integration` or target a single file with `bun run build && bats test/integration/<file>.bats`.
 - **Playground scripts**: `test/playground/` contains setup scripts that create self-contained arb playgrounds for manual exploration. Run `test/playground/setup-walkthrough.sh` or `test/playground/setup-stacked.sh` to create a ready-to-explore environment.
 
+## Decision Records
+
+The `decisions/` directory contains records of significant design and product decisions. Each file captures the context, options considered, chosen approach, and reasoning. Read relevant decision records before proposing changes to features they cover — the reasoning for past choices may still apply.
+
+After implementing a feature whose plan involved a significant decision, distill a `decisions/NNNN-*.md` from the plan — stripping implementation details, keeping only context, options, decision, reasoning, and consequences. If the decision reveals a new enduring principle, add it to GUIDELINES.md and reference it from the decision record. See `decisions/README.md` for the template and heuristic on what warrants a record.
+
 ## Post-Change Checklist
 
 After each change, check whether the following need updating:
