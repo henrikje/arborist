@@ -36,12 +36,22 @@ arb cd fix-login/frontend     # cd into a specific worktree
 arb cd                        # interactive workspace picker
 ```
 
-`arb path` prints the absolute path to the arb root, a workspace, or a worktree — useful in scripts and shell pipelines:
+When run from inside a workspace, names are resolved as worktrees first — so you can switch between repos without typing the workspace name:
+
+```bash
+arb cd frontend               # cd into the frontend worktree (when inside a workspace)
+arb cd                        # interactive worktree picker (when inside a workspace)
+```
+
+If the name doesn't match a worktree, it falls back to workspace resolution. You can always use the explicit `workspace/repo` syntax to be unambiguous.
+
+`arb path` prints the absolute path to the arb root, a workspace, or a worktree — useful in scripts and shell pipelines. It follows the same scope-aware resolution as `arb cd`:
 
 ```bash
 arb path                       # /home/you/my-project (the arb root)
 arb path fix-login             # /home/you/my-project/fix-login
 arb path fix-login/frontend    # /home/you/my-project/fix-login/frontend
+arb path frontend              # /home/you/my-project/fix-login/frontend (when inside fix-login)
 ```
 
 ## Add and drop repos

@@ -152,7 +152,26 @@ _arb() {
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]'
                     ;;
                 path)
-                    _arguments '1:workspace:($ws_names)'
+                    # Detect if we're inside a workspace
+                    local _arb_ws=""
+                    if [[ -n "$base_dir" && "$PWD" == "$base_dir/"* ]]; then
+                        local _arb_rest="${PWD#$base_dir/}"
+                        local _arb_first="${_arb_rest%%/*}"
+                        [[ -n "$_arb_first" && -d "$base_dir/$_arb_first/.arbws" ]] && _arb_ws="$_arb_first"
+                    fi
+                    if [[ -n "$_arb_ws" ]]; then
+                        local -a wt_names=(${base_dir}/${_arb_ws}/*(N/:t))
+                        wt_names=(${wt_names:#.arbws})
+                        # Filter to dirs with .git
+                        local -a git_wt=()
+                        for _n in $wt_names; do
+                            [[ -e "$base_dir/$_arb_ws/$_n/.git" ]] && git_wt+=("$_n")
+                        done
+                        compadd -a git_wt
+                        compadd -S '/' -a ws_names
+                    else
+                        _arguments '1:workspace:($ws_names)'
+                    fi
                     ;;
                 cd)
                     local input="${words[2]:-}"
@@ -166,8 +185,27 @@ _arb() {
                             compadd -p "$ws_name/" -a wt_names
                         fi
                     else
-                        # Before slash: complete workspace names
-                        _arguments '1:workspace:($ws_names)'
+                        # Detect if we're inside a workspace
+                        local _arb_ws=""
+                        if [[ -n "$base_dir" && "$PWD" == "$base_dir/"* ]]; then
+                            local _arb_rest="${PWD#$base_dir/}"
+                            local _arb_first="${_arb_rest%%/*}"
+                            [[ -n "$_arb_first" && -d "$base_dir/$_arb_first/.arbws" ]] && _arb_ws="$_arb_first"
+                        fi
+                        if [[ -n "$_arb_ws" ]]; then
+                            # Inside a workspace: offer worktree names + workspace names with /
+                            local -a wt_names=(${base_dir}/${_arb_ws}/*(N/:t))
+                            wt_names=(${wt_names:#.arbws})
+                            local -a git_wt=()
+                            for _n in $wt_names; do
+                                [[ -e "$base_dir/$_arb_ws/$_n/.git" ]] && git_wt+=("$_n")
+                            done
+                            compadd -a git_wt
+                            compadd -S '/' -a ws_names
+                        else
+                            # Before slash: complete workspace names
+                            _arguments '1:workspace:($ws_names)'
+                        fi
                     fi
                     ;;
                 create)
