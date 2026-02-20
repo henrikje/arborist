@@ -133,15 +133,12 @@ Arb shows a plan, including a conflict prediction for each repo, and asks for co
 ? Rebase 1 repo? (y/N)
 ```
 
-Then push both repos:
+### Wrap up
+
+Then push both repos and clean up:
 
 ```bash
 arb push
-```
-
-### Clean up
-
-```bash
 arb remove add-dark-mode
 ```
 
