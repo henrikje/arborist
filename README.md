@@ -220,7 +220,7 @@ Templates let you capture files and have them seeded into every new workspace. C
 arb create auth-ui --base feat/auth --all-repos
 ```
 
-The `--base` flag creates a workspace that branches from a specific base instead of the default, letting you stack feature branches. When the base branch is later merged into the default branch (e.g. via a PR), `arb status` detects this and shows "base merged" — preventing the common and painful mistake of rebasing onto a branch that's already been merged. Run `arb rebase --retarget` to cleanly rebase onto the default branch and update the workspace config.
+The `--base` flag creates a workspace that branches from a specific base instead of the default, letting you stack feature branches. When the base branch is later merged into the default branch (e.g. via a PR), `arb status` detects this and shows "base merged" — preventing the common and painful mistake of rebasing onto a branch that's already been merged. Run `arb rebase --retarget` to cleanly rebase onto the default branch and update the workspace config. For deeper stacks (e.g. A → B → C), use `arb rebase --retarget feat/A` to retarget to a specific branch.
 
 ### Fork-based development
 

@@ -1,6 +1,14 @@
 import confirm from "@inquirer/confirm";
 import { configGet, writeConfig } from "./config";
-import { getDefaultBranch, getShortHead, git, predictMergeConflict, remoteBranchExists } from "./git";
+import {
+	branchExistsLocally,
+	detectBranchMerged,
+	getDefaultBranch,
+	getShortHead,
+	git,
+	predictMergeConflict,
+	remoteBranchExists,
+} from "./git";
 import {
 	clearLines,
 	countLines,
@@ -41,22 +49,36 @@ interface RepoAssessment {
 	conflictPrediction?: "clean" | "conflict" | null;
 	retargetFrom?: string;
 	retargetTo?: string;
+	retargetBlocked?: boolean;
+	retargetWarning?: string;
 }
 
 export async function integrate(
 	ctx: ArbContext,
 	mode: IntegrateMode,
-	options: { fetch?: boolean; yes?: boolean; dryRun?: boolean; retarget?: boolean },
+	options: { fetch?: boolean; yes?: boolean; dryRun?: boolean; retarget?: string | boolean },
 	repoArgs: string[],
 ): Promise<void> {
 	const verb = mode === "rebase" ? "Rebase" : "Merge";
 	const verbed = mode === "rebase" ? "Rebased" : "Merged";
-	const retarget = options.retarget === true && mode === "rebase";
+	const retargetExplicit = typeof options.retarget === "string" && mode === "rebase" ? options.retarget : null;
+	const retarget = (options.retarget === true || retargetExplicit !== null) && mode === "rebase";
 
 	// Phase 1: context & repo selection
 	const { wsDir, workspace } = requireWorkspace(ctx);
 	const branch = await requireBranch(wsDir, workspace);
 	const configBase = configGet(`${wsDir}/.arbws/config`, "base");
+
+	if (retargetExplicit) {
+		if (retargetExplicit === branch) {
+			error(`Cannot retarget to ${retargetExplicit} — that is the current feature branch.`);
+			process.exit(1);
+		}
+		if (retargetExplicit === configBase) {
+			error(`Cannot retarget to ${retargetExplicit} — that is already the configured base branch.`);
+			process.exit(1);
+		}
+	}
 
 	const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
 
@@ -73,7 +95,7 @@ export async function integrate(
 		for (const repo of selectedRepos) {
 			const repoDir = `${wsDir}/${repo}`;
 			const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
-			assessments.push(await assessRepo(status, repoDir, branch, fetchFailed, retarget));
+			assessments.push(await assessRepo(status, repoDir, branch, fetchFailed, retarget, retargetExplicit));
 		}
 		return assessments;
 	};
@@ -115,6 +137,23 @@ export async function integrate(
 		assessments = await assess([]);
 		await predictIntegrateConflicts(assessments);
 		process.stderr.write(formatIntegratePlan(assessments, mode, branch));
+	}
+
+	// All-or-nothing check: when retarget is active, any non-local skipped repo blocks the entire retarget
+	if (retarget) {
+		const hasRetargetWork = assessments.some((a) => a.retargetTo || a.retargetBlocked);
+		if (hasRetargetWork) {
+			const blockedRepos = assessments.filter(
+				(a) => a.outcome === "skip" && a.skipReason !== "local repo" && !a.skipReason?.startsWith("no base branch"),
+			);
+			if (blockedRepos.length > 0) {
+				error("Cannot retarget: some repos are blocked. Fix these issues and retry:");
+				for (const a of blockedRepos) {
+					process.stderr.write(`  ${a.repo} — ${a.skipReason}\n`);
+				}
+				process.exit(1);
+			}
+		}
 	}
 
 	// Phase 4: confirm
@@ -209,11 +248,20 @@ export async function integrate(
 		const retargetTo = retargetAssessments[0]?.retargetTo;
 		if (retargetTo) {
 			const configFile = `${wsDir}/.arbws/config`;
-			// Resolve the repo's default branch to check if retargetTo matches
-			// If retargeting to the default branch, remove the base key
 			const wb = await workspaceBranch(wsDir);
 			const wsBranch = wb?.branch ?? branch;
-			writeConfig(configFile, wsBranch, undefined);
+			// Resolve the repo's default branch to check if retargetTo matches
+			// If retargeting to the default branch, remove the base key
+			// If retargeting to a non-default branch, set it as the new base
+			const firstRetarget = retargetAssessments[0];
+			const repoDefault = firstRetarget
+				? await getDefaultBranch(firstRetarget.repoDir, firstRetarget.upstreamRemote)
+				: null;
+			if (repoDefault && retargetTo !== repoDefault) {
+				writeConfig(configFile, wsBranch, retargetTo);
+			} else {
+				writeConfig(configFile, wsBranch, undefined);
+			}
 		}
 	}
 
@@ -246,6 +294,9 @@ function formatIntegratePlan(assessments: RepoAssessment[], mode: IntegrateMode,
 			if (a.retargetFrom) {
 				// Retarget display
 				out += `  ${a.repo}   rebase onto ${baseRef} from ${a.retargetFrom} (retarget)`;
+				if (a.retargetWarning) {
+					out += ` ${yellow(`(${a.retargetWarning})`)}`;
+				}
 				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 				out += `${headStr}\n`;
 			} else {
@@ -320,6 +371,7 @@ async function assessRepo(
 	branch: string,
 	fetchFailed: string[],
 	retarget = false,
+	retargetExplicit: string | null = null,
 ): Promise<RepoAssessment> {
 	const upstreamRemote = status.base?.remote ?? "origin";
 
@@ -370,7 +422,72 @@ async function assessRepo(
 		return { ...base, skipReason: "no base branch" };
 	}
 
-	// Stacked base branch has been merged into default
+	// Explicit retarget to a specified branch
+	if (retargetExplicit) {
+		// Fell-back repos (never truly stacked) get a normal rebase, not a retarget
+		if (status.base.configuredRef !== null && status.base.baseMergedIntoDefault == null) {
+			// This repo fell back to its default branch — not truly stacked
+			if (status.base.behind === 0) {
+				return { ...base, outcome: "up-to-date", baseBranch: status.base.ref, behind: 0, ahead: status.base.ahead };
+			}
+			return {
+				...base,
+				outcome: "will-operate",
+				baseBranch: status.base.ref,
+				behind: status.base.behind,
+				ahead: status.base.ahead,
+			};
+		}
+
+		// Validate target branch exists on remote
+		const targetExists = await remoteBranchExists(repoDir, retargetExplicit, upstreamRemote);
+		if (!targetExists) {
+			return {
+				...base,
+				skipReason: `target branch ${retargetExplicit} not found on ${upstreamRemote}`,
+				retargetBlocked: true,
+			};
+		}
+
+		// Resolve old base ref (the branch we're retargeting away from)
+		const oldBaseName = status.base.configuredRef ?? status.base.ref;
+		const oldBaseRemoteExists = await remoteBranchExists(repoDir, oldBaseName, upstreamRemote);
+		const oldBaseLocalExists = !oldBaseRemoteExists ? await branchExistsLocally(repoDir, oldBaseName) : false;
+		if (!oldBaseRemoteExists && !oldBaseLocalExists) {
+			return {
+				...base,
+				skipReason: `base branch ${oldBaseName} not found — cannot determine rebase boundary`,
+				retargetBlocked: true,
+			};
+		}
+
+		// Per-repo merge detection
+		const targetRef = `${upstreamRemote}/${retargetExplicit}`;
+		const oldBaseRef = oldBaseRemoteExists ? `${upstreamRemote}/${oldBaseName}` : oldBaseName;
+		let retargetWarning: string | undefined;
+		const mergeResult = await detectBranchMerged(repoDir, targetRef, 200, oldBaseRef);
+		if (mergeResult === null) {
+			retargetWarning = `base branch ${oldBaseName} may not be merged`;
+		}
+
+		// Up-to-date check: already on target and 0 behind
+		if (status.base.ref === retargetExplicit && status.base.behind === 0) {
+			return { ...base, outcome: "up-to-date", baseBranch: retargetExplicit };
+		}
+
+		return {
+			...base,
+			outcome: "will-operate",
+			baseBranch: retargetExplicit,
+			retargetFrom: oldBaseName,
+			retargetTo: retargetExplicit,
+			retargetWarning,
+			behind: status.base.behind,
+			ahead: status.base.ahead,
+		};
+	}
+
+	// Stacked base branch has been merged into default (auto-detect)
 	if (status.base.baseMergedIntoDefault != null) {
 		if (!retarget) {
 			return {
