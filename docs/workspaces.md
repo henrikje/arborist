@@ -16,6 +16,16 @@ Shows all workspaces with their branch, repo count, last commit date, and aggreg
 
 The active workspace (the one you're currently inside) is marked with `*`. The LAST COMMIT column shows when work last happened (the most recent commit author date across all repos), helping you gauge workspace staleness.
 
+Use `--fetch` (`-f`) to fetch all repos before listing, ensuring the status reflects the latest remote state. Use `--where` (`-w`) to filter workspaces by repo status — only workspaces containing at least one repo matching the filter are shown:
+
+```bash
+arb list --fetch                   # fetch first, then list
+arb list --where at-risk           # workspaces with at-risk repos
+arb list --where stale             # workspaces that may need attention
+```
+
+See [Scripting & automation](scripting-automation.md#filtering) for the full list of filter terms.
+
 ## Navigate
 
 `arb cd` changes into a workspace or worktree directory. It requires the shell integration installed by `install.sh`:
@@ -49,9 +59,10 @@ To remove a repo from a workspace without deleting the workspace itself:
 
 ```bash
 arb drop shared
+arb drop shared --delete-branch    # also delete the local branch from the canonical repo
 ```
 
-Arb refuses to drop repos with uncommitted changes unless you pass `--force`. See `arb drop --help` for all options.
+Arb refuses to drop repos with uncommitted changes unless you pass `--force`. Use `--delete-branch` when you want a clean teardown — without it, the branch lingers in the canonical repo's ref list. See `arb drop --help` for all options.
 
 ## Remove workspaces
 
@@ -61,4 +72,14 @@ When a feature is done:
 arb remove fix-login
 ```
 
-This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before removing the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-safe` to batch-remove every workspace with safe status. Combine `--all-safe -w gone` to target merged-and-safe workspaces specifically. See `arb remove --help` for all options.
+This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before removing the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-safe` to batch-remove every workspace with safe status. Combine `--all-safe --where gone` to target merged-and-safe workspaces specifically. See `arb remove --help` for all options.
+
+## List repos
+
+To see which repositories have been cloned into the arb root:
+
+```bash
+arb repo list
+```
+
+This shows a table of repo names and their remote URLs. Useful when you've added repos over time and need a quick inventory of what's available for new workspaces.
