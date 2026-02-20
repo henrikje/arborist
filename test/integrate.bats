@@ -1092,3 +1092,324 @@ load test_helper/common-setup
     [[ "$output" != *"base = feat/auth"* ]]
 }
 
+# ── explicit retarget to non-default branch ──────────────────────
+
+@test "arb rebase --retarget <branch> retargets to a non-default branch" {
+    # Create feat/A branch in repo-a with a commit
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/A >/dev/null 2>&1
+    echo "A-content" > "$TEST_DIR/project/.arb/repos/repo-a/a.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add a.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "feat A" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/A >/dev/null 2>&1
+
+    # Create feat/B branch from feat/A
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/B >/dev/null 2>&1
+    echo "B-content" > "$TEST_DIR/project/.arb/repos/repo-a/b.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add b.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "feat B" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/B >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace C based on feat/B
+    arb create stacked-C --base feat/B -b feat/C repo-a
+
+    # Add a commit on feat/C
+    echo "C-content" > "$TEST_DIR/project/stacked-C/repo-a/c.txt"
+    git -C "$TEST_DIR/project/stacked-C/repo-a" add c.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked-C/repo-a" commit -m "feat C" >/dev/null 2>&1
+
+    # Merge feat/B into feat/A (simulating PR merge)
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge" && git checkout feat/A && git merge origin/feat/B --no-ff -m "merge feat/B into feat/A" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/stacked-C"
+    run arb rebase --retarget feat/A --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"retarget"* ]]
+    [[ "$output" == *"Retargeted"* ]]
+
+    # Verify feat/C commit is on top of feat/A
+    run git -C "$TEST_DIR/project/stacked-C/repo-a" log --oneline
+    [[ "$output" == *"feat C"* ]]
+    [[ "$output" == *"merge feat/B into feat/A"* ]]
+
+    # Verify config now has base = feat/A (not cleared, since feat/A is not default)
+    run cat "$TEST_DIR/project/stacked-C/.arbws/config"
+    [[ "$output" == *"base = feat/A"* ]]
+    [[ "$output" != *"base = feat/B"* ]]
+}
+
+@test "arb rebase --retarget main clears base config" {
+    # Create feat/auth branch in repo-a with a commit
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+
+    # Add a commit on the stacked branch
+    echo "ui" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui feature" >/dev/null 2>&1
+
+    # Merge feat/auth into main
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge" && git merge origin/feat/auth --no-ff -m "merge feat/auth" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/stacked"
+    run arb rebase --retarget main --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"retarget"* ]]
+    [[ "$output" == *"Retargeted"* ]]
+
+    # Verify config no longer has base key
+    run cat "$TEST_DIR/project/stacked/.arbws/config"
+    [[ "$output" != *"base ="* ]]
+}
+
+@test "arb rebase --retarget nonexistent target fails" {
+    # Create feat/auth branch in repo-a
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+
+    cd "$TEST_DIR/project/stacked"
+    run arb rebase --retarget nonexistent --yes
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not found"* ]]
+}
+
+@test "arb rebase --retarget shows warning for unmerged base" {
+    # Create feat/auth branch in repo-a
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+
+    # Create feat/B from feat/auth
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/B >/dev/null 2>&1
+    echo "B" > "$TEST_DIR/project/.arb/repos/repo-a/b.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add b.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "feat B" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/B >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace based on feat/B
+    arb create stacked --base feat/B -b feat/C repo-a
+
+    # Add a commit on feat/C
+    echo "C" > "$TEST_DIR/project/stacked/repo-a/c.txt"
+    git -C "$TEST_DIR/project/stacked/repo-a" add c.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "feat C" >/dev/null 2>&1
+
+    # Retarget to feat/auth WITHOUT merging feat/B into feat/auth
+    cd "$TEST_DIR/project/stacked"
+    run arb rebase --retarget feat/auth --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"may not be merged"* ]]
+}
+
+@test "arb rebase --retarget blocks when old base ref is missing in truly stacked repo" {
+    # Create feat/auth in both repos
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-b/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace with both repos
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a repo-b
+
+    # Add commits
+    echo "ui-a" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui a" >/dev/null 2>&1
+
+    # Delete feat/auth from repo-b's remote and prune (but leave repo-a's intact)
+    git -C "$TEST_DIR/origin/repo-b.git" branch -D feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" fetch --prune >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" branch -D feat/auth >/dev/null 2>&1 || true
+
+    # repo-a is truly stacked (base exists), repo-b's base is gone (fell back)
+    # Explicit retarget should work for repo-a but repo-b falls back to normal rebase
+    cd "$TEST_DIR/project/stacked"
+    run arb rebase --retarget main --yes
+    [ "$status" -eq 0 ]
+    # repo-a should be retargeted
+    [[ "$output" == *"retarget"* ]]
+    [[ "$output" == *"Retargeted"* ]]
+}
+
+@test "arb rebase --retarget refuses when a stacked repo is dirty" {
+    # Create feat/auth in both repos
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-b/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace with both repos
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a repo-b
+
+    # Add commits on both repos
+    echo "ui-a" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui a" >/dev/null 2>&1
+    echo "ui-b" > "$TEST_DIR/project/stacked/repo-b/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-b" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-b" commit -m "ui b" >/dev/null 2>&1
+
+    # Merge feat/auth into main for both
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge-a" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge-a" && git merge origin/feat/auth --no-ff -m "merge auth" && git push) >/dev/null 2>&1
+    git clone "$TEST_DIR/origin/repo-b.git" "$TEST_DIR/tmp-merge-b" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge-b" && git merge origin/feat/auth --no-ff -m "merge auth" && git push) >/dev/null 2>&1
+
+    # Make repo-b dirty
+    echo "dirty" > "$TEST_DIR/project/stacked/repo-b/dirty.txt"
+
+    cd "$TEST_DIR/project/stacked"
+    run arb rebase --retarget --yes
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot retarget"* ]]
+    [[ "$output" == *"repo-b"* ]]
+    [[ "$output" == *"uncommitted changes"* ]]
+}
+
+@test "arb rebase --retarget (auto-detect) is all-or-nothing" {
+    # Create feat/auth in repo-a only (single repo simplifies setup)
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-b/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace with both repos
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a repo-b
+
+    # Add commits on both
+    echo "ui-a" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui a" >/dev/null 2>&1
+    echo "ui-b" > "$TEST_DIR/project/stacked/repo-b/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-b" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-b" commit -m "ui b" >/dev/null 2>&1
+
+    # Merge feat/auth into main for repo-a only (via tmp clone)
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge" && git merge origin/feat/auth --no-ff -m "merge auth" && git push) >/dev/null 2>&1
+    rm -rf "$TEST_DIR/tmp-merge"
+
+    # Merge feat/auth into main for repo-b (via a fresh tmp clone)
+    git clone "$TEST_DIR/origin/repo-b.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge" && git merge origin/feat/auth --no-ff -m "merge auth" && git push) >/dev/null 2>&1
+    rm -rf "$TEST_DIR/tmp-merge"
+
+    # Make repo-a dirty so the all-or-nothing check blocks
+    echo "dirty" > "$TEST_DIR/project/stacked/repo-a/dirty.txt"
+
+    cd "$TEST_DIR/project/stacked"
+    run arb rebase --retarget --yes
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot retarget"* ]]
+    [[ "$output" == *"repo-a"* ]]
+}
+
+@test "existing auto-detect retarget still works unchanged" {
+    # This test ensures --retarget (no argument) still auto-detects as before
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+
+    echo "ui" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui feature" >/dev/null 2>&1
+
+    # Merge feat/auth into main
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge" && git merge origin/feat/auth --no-ff -m "merge feat/auth" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/stacked"
+    run arb rebase --retarget --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"retarget"* ]]
+    [[ "$output" == *"Retargeted"* ]]
+
+    # Config should have base cleared (retargeted to default)
+    run cat "$TEST_DIR/project/stacked/.arbws/config"
+    [[ "$output" != *"base = feat/auth"* ]]
+}
+
+@test "arb rebase --retarget rejects retargeting to the current feature branch" {
+    # Create stacked workspace
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+
+    cd "$TEST_DIR/project/stacked"
+    run arb rebase --retarget feat/auth-ui
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"current feature branch"* ]]
+}
+
+@test "arb rebase --retarget rejects retargeting to the current base branch" {
+    # Create stacked workspace
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+
+    cd "$TEST_DIR/project/stacked"
+    run arb rebase --retarget feat/auth
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"already the configured base"* ]]
+}

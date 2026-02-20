@@ -68,3 +68,5 @@ arb create auth-ui --base feat/auth -b feat/auth-ui -a
 This creates a workspace where all repos branch from `feat/auth` instead of the default branch. `arb rebase` and `arb merge` target `feat/auth` as the base.
 
 When the base branch is merged into the default branch (e.g. via a PR), `arb status` shows **base merged** and `arb rebase` skips the affected repos with a hint. Use `arb rebase --retarget` to rebase onto the default branch and update the workspace config. For squash merges, `--retarget` uses `git rebase --onto` to avoid replaying the base branch's commits.
+
+For deeper stacks (e.g. A → B → C), when B is merged into A but A is not the default branch, use `arb rebase --retarget feat/A` to retarget C from B to A. The workspace config is updated to set `feat/A` as the new base. Retarget is all-or-nothing across stacked repos — if any stacked repo is blocked, the entire operation is refused so the workspace config stays consistent.
