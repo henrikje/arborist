@@ -26,6 +26,10 @@ Arborist uses marker directories (`.arb/`, `.arbws/`) and filesystem scanning in
 
 If Arborist can detect a bad situation, it should warn, prevent, or compensate — don't wait for the developer to discover problems on their own. This goes beyond visibility (showing honest state) and safety gates (blocking destructive operations). It means actively watching for conditions that signal trouble and responding before they cause harm. Examples: refusing to remove workspaces with unpushed commits, detecting when a base branch has been merged and suggesting `--retarget`, warning when a repo has drifted onto an unexpected branch, automatically skipping repos mid-rebase, and providing per-repo conflict recovery instructions instead of stopping at the first failure.
 
+### Record significant decisions
+
+When a feature or change involves weighing multiple meaningful options, the reasoning should be preserved in a decision record (`decisions/NNNN-*.md`). After implementation, distill the Claude plan into the decision record format — stripping implementation details, keeping only context, options, decision, reasoning, and consequences. If the decision reveals a new enduring principle, add it to GUIDELINES.md and reference it from the decision record. See `decisions/README.md` for the template and heuristic on what warrants a record.
+
 ---
 
 ## UX Guidelines
