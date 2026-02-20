@@ -22,6 +22,10 @@ Arborist operates across many repositories, so clarity is non-negotiable. The de
 
 Arborist uses marker directories (`.arb/`, `.arbws/`) and filesystem scanning instead of databases, registries, or config files beyond what's needed. If something can be discovered from the directory tree, it should be.
 
+### Detect, warn, and protect
+
+If Arborist can detect a bad situation, it should warn, prevent, or compensate — don't wait for the developer to discover problems on their own. This goes beyond visibility (showing honest state) and safety gates (blocking destructive operations). It means actively watching for conditions that signal trouble and responding before they cause harm. Examples: refusing to remove workspaces with unpushed commits, detecting when a base branch has been merged and suggesting `--retarget`, warning when a repo has drifted onto an unexpected branch, automatically skipping repos mid-rebase, and providing per-repo conflict recovery instructions instead of stopping at the first failure.
+
 ---
 
 ## UX Guidelines
