@@ -216,7 +216,7 @@ arb exec --dirty git stash
 
 ```bash
 arb open code
-arb open idea
+arb open --dirty idea
 ```
 
 `arb open` runs a command with all worktree paths as arguments — useful for editors like VS Code or IntelliJ that accept directories on the command line. Worktree directories change with every workspace, so remembering paths gets old fast. `arb open` always gives you the right ones.
