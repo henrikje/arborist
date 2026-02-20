@@ -53,6 +53,33 @@ export interface StatusJsonOutput {
 	lastCommit: string | null;
 }
 
+// ── Log JSON types ──
+
+export type LogJsonRepoStatus = "ok" | "detached" | "drifted" | "no-base" | "fallback-base";
+
+export interface LogJsonCommit {
+	hash: string;
+	shortHash: string;
+	subject: string;
+}
+
+export interface LogJsonRepo {
+	name: string;
+	status: LogJsonRepoStatus;
+	reason?: string;
+	commits: LogJsonCommit[];
+}
+
+export interface LogJsonOutput {
+	workspace: string;
+	branch: string;
+	base: string | null;
+	repos: LogJsonRepo[];
+	totalCommits: number;
+}
+
+// ── List JSON types ──
+
 export interface ListJsonEntry {
 	workspace: string;
 	active: boolean;

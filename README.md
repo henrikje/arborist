@@ -141,6 +141,22 @@ Arb shows a plan, including a conflict prediction for each repo, and asks for co
 
 ### Wrap up
 
+Before pushing, review what you've done across both repos:
+
+```bash
+arb log
+```
+
+```
+==> backend <==
+a1b2c3d Add dark mode API endpoint
+
+==> frontend <==
+e4f5g6h Add dark mode toggle to navbar
+
+Logged 2 repos (2 commits)
+```
+
 Then push both repos and clean up:
 
 ```bash
