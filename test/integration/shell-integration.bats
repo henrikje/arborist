@@ -3,7 +3,7 @@
 load test_helper/common-setup
 
 # Path to the bash shell integration file (relative to repo root)
-SHELL_FILE="$BATS_TEST_DIRNAME/../shell/arb.bash"
+SHELL_FILE="$BATS_TEST_DIRNAME/../../shell/arb.bash"
 
 # ── wrapper function ─────────────────────────────────────────────
 
