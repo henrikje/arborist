@@ -1,7 +1,7 @@
 setup() {
     TEST_DIR="$(mktemp -d)"
     TEST_DIR="$(cd "$TEST_DIR" && pwd -P)"
-    export PATH="$BATS_TEST_DIRNAME/../dist:$PATH"
+    export PATH="$BATS_TEST_DIRNAME/../../dist:$PATH"
 
     # Initialize arb root first
     mkdir -p "$TEST_DIR/project"
