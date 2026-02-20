@@ -51,6 +51,30 @@ __arb_find_base_dir() {
     done
 }
 
+__arb_detect_workspace() {
+    local base_dir="$1"
+    [[ -z "$base_dir" ]] && return
+    local prefix="$base_dir/"
+    [[ "$PWD" != "$prefix"* ]] && return
+    local rest="${PWD#"$prefix"}"
+    local first="${rest%%/*}"
+    [[ -z "$first" ]] && return
+    [[ -d "$base_dir/$first/.arbws" ]] && printf '%s' "$first"
+}
+
+__arb_worktree_names() {
+    local ws_dir="$1"
+    [[ -z "$ws_dir" || ! -d "$ws_dir" ]] && return
+    local d
+    for d in "$ws_dir"/*/; do
+        [[ -d "$d" ]] || continue
+        local name="${d%/}"
+        name="${name##*/}"
+        [[ "$name" == ".arbws" ]] && continue
+        [[ -e "$d.git" ]] && printf '%s\n' "$name"
+    done
+}
+
 __arb_workspace_names() {
     local base_dir="$1"
     [[ -z "$base_dir" ]] && return
@@ -200,7 +224,24 @@ __arb_complete_list() {
 
 __arb_complete_path() {
     local base_dir="$1" cur="$2"
-    COMPREPLY=($(compgen -W "$(__arb_workspace_names "$base_dir")" -- "$cur"))
+    local ws
+    ws="$(__arb_detect_workspace "$base_dir")"
+    if [[ -n "$ws" ]]; then
+        # Offer worktree names (bare) + workspace names (with / suffix)
+        local -a completions=()
+        local wt
+        while IFS= read -r wt; do
+            [[ -n "$wt" ]] && completions+=("$wt")
+        done < <(__arb_worktree_names "$base_dir/$ws")
+        local w
+        while IFS= read -r w; do
+            [[ -n "$w" ]] && completions+=("$w/")
+        done < <(__arb_workspace_names "$base_dir")
+        COMPREPLY=($(compgen -W "${completions[*]}" -- "$cur"))
+        type compopt &>/dev/null && compopt -o nospace
+    else
+        COMPREPLY=($(compgen -W "$(__arb_workspace_names "$base_dir")" -- "$cur"))
+    fi
 }
 
 __arb_complete_cd() {
@@ -222,15 +263,32 @@ __arb_complete_cd() {
             COMPREPLY=($(compgen -W "${wt_names[*]}" -- "$cur"))
         fi
     else
-        # Before slash: complete workspace names, append /
-        local -a ws=()
-        local w
-        while IFS= read -r w; do
-            [[ -n "$w" ]] && ws+=("$w/")
-        done < <(__arb_workspace_names "$base_dir")
-        COMPREPLY=($(compgen -W "${ws[*]}" -- "$cur"))
-        # Suppress trailing space so user can continue with repo name
-        type compopt &>/dev/null && compopt -o nospace
+        local ws
+        ws="$(__arb_detect_workspace "$base_dir")"
+        if [[ -n "$ws" ]]; then
+            # Inside a workspace: offer worktree names (bare) + workspace names (with / suffix)
+            local -a completions=()
+            local wt
+            while IFS= read -r wt; do
+                [[ -n "$wt" ]] && completions+=("$wt")
+            done < <(__arb_worktree_names "$base_dir/$ws")
+            local w
+            while IFS= read -r w; do
+                [[ -n "$w" ]] && completions+=("$w/")
+            done < <(__arb_workspace_names "$base_dir")
+            COMPREPLY=($(compgen -W "${completions[*]}" -- "$cur"))
+            type compopt &>/dev/null && compopt -o nospace
+        else
+            # Not in a workspace: complete workspace names with / suffix
+            local -a ws_list=()
+            local w
+            while IFS= read -r w; do
+                [[ -n "$w" ]] && ws_list+=("$w/")
+            done < <(__arb_workspace_names "$base_dir")
+            COMPREPLY=($(compgen -W "${ws_list[*]}" -- "$cur"))
+            # Suppress trailing space so user can continue with repo name
+            type compopt &>/dev/null && compopt -o nospace
+        fi
     fi
 }
 

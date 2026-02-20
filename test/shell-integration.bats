@@ -251,6 +251,51 @@ SHELL_FILE="$BATS_TEST_DIRNAME/../shell/arb.bash"
     [[ "$output" == *"apply"* ]]
 }
 
+# ── completion: scope-aware cd ───────────────────────────────────
+
+@test "bash completion: cd inside workspace completes worktree names" {
+    arb create my-feature repo-a repo-b
+    run bash -c "
+        source '$SHELL_FILE'
+        cd '$TEST_DIR/project/my-feature'
+        COMP_WORDS=(arb cd repo)
+        COMP_CWORD=2
+        _arb
+        echo \"\${COMPREPLY[*]}\"
+    "
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"repo-b"* ]]
+}
+
+@test "bash completion: cd inside workspace also completes workspace names" {
+    arb create ws-alpha repo-a
+    arb create ws-beta repo-b
+    run bash -c "
+        source '$SHELL_FILE'
+        cd '$TEST_DIR/project/ws-alpha'
+        COMP_WORDS=(arb cd ws-)
+        COMP_CWORD=2
+        _arb
+        echo \"\${COMPREPLY[*]}\"
+    "
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-alpha/"* ]]
+    [[ "$output" == *"ws-beta/"* ]]
+}
+
+@test "bash wrapper: arb cd with worktree name changes directory when inside workspace" {
+    arb create my-feature repo-a repo-b
+    run bash -c "
+        source '$SHELL_FILE'
+        cd '$TEST_DIR/project/my-feature/repo-a'
+        arb cd repo-b
+        echo \"\$PWD\"
+    "
+    [ "$status" -eq 0 ]
+    [[ "${lines[-1]}" == "$TEST_DIR/project/my-feature/repo-b" ]]
+}
+
 # ── completion: cd slash pattern ─────────────────────────────────
 
 @test "bash completion: cd completes repo names after workspace/" {

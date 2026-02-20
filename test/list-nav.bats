@@ -402,6 +402,98 @@ assert data == []
     [ "$_arb_dir" = "$TEST_DIR/project/my-feature/repo-a" ]
 }
 
+# ── cd scope-aware ───────────────────────────────────────────────
+
+@test "arb cd resolves worktree name when inside a workspace" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb cd repo-a
+    [ "$status" -eq 0 ]
+    [ "$output" = "$TEST_DIR/project/my-feature/repo-a" ]
+}
+
+@test "arb cd resolves worktree from a nested worktree directory" {
+    arb create my-feature repo-a repo-b
+    mkdir -p "$TEST_DIR/project/my-feature/repo-a/src"
+    cd "$TEST_DIR/project/my-feature/repo-a/src"
+    run arb cd repo-b
+    [ "$status" -eq 0 ]
+    [ "$output" = "$TEST_DIR/project/my-feature/repo-b" ]
+}
+
+@test "arb cd falls back to workspace when name is not a worktree" {
+    arb create ws-alpha repo-a
+    arb create ws-beta repo-b
+    cd "$TEST_DIR/project/ws-alpha"
+    run arb cd ws-beta
+    [ "$status" -eq 0 ]
+    [ "$output" = "$TEST_DIR/project/ws-beta" ]
+}
+
+@test "arb cd prefers worktree over workspace when ambiguous" {
+    # Create a workspace named "repo-a" AND a worktree named "repo-a" in another workspace
+    arb create repo-a repo-b
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb cd repo-a
+    [ "$status" -eq 0 ]
+    # Should resolve to the worktree, not the workspace
+    [ "$output" = "$TEST_DIR/project/my-feature/repo-a" ]
+}
+
+@test "arb cd explicit ws/repo syntax still works from inside a workspace" {
+    arb create ws-alpha repo-a
+    arb create ws-beta repo-b
+    cd "$TEST_DIR/project/ws-alpha"
+    run arb cd ws-beta/repo-b
+    [ "$status" -eq 0 ]
+    [ "$output" = "$TEST_DIR/project/ws-beta/repo-b" ]
+}
+
+@test "arb cd error when name matches neither worktree nor workspace" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb cd nonexistent
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"is not a worktree in workspace"* ]]
+    [[ "$output" == *"or a workspace"* ]]
+}
+
+@test "arb cd behavior unchanged when at arb root" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project"
+    run arb cd my-feature
+    [ "$status" -eq 0 ]
+    [ "$output" = "$TEST_DIR/project/my-feature" ]
+}
+
+# ── path scope-aware ─────────────────────────────────────────────
+
+@test "arb path resolves worktree name when inside a workspace" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb path repo-a
+    [ "$status" -eq 0 ]
+    [ "$output" = "$TEST_DIR/project/my-feature/repo-a" ]
+}
+
+@test "arb path falls back to workspace when not a worktree" {
+    arb create ws-alpha repo-a
+    arb create ws-beta repo-b
+    cd "$TEST_DIR/project/ws-alpha"
+    run arb path ws-beta
+    [ "$status" -eq 0 ]
+    [ "$output" = "$TEST_DIR/project/ws-beta" ]
+}
+
+@test "arb path prefers worktree over workspace when ambiguous" {
+    arb create repo-a repo-b
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb path repo-a
+    [ "$status" -eq 0 ]
+    [ "$output" = "$TEST_DIR/project/my-feature/repo-a" ]
+}
 
 # ── -C / --chdir ─────────────────────────────────────────────────
 
