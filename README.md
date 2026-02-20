@@ -258,7 +258,6 @@ To learn more about Arborist, check out the following resources:
 - [Workspace templates](docs/templates.md), a way to seed files into new workspaces.
 - [Fork workflows](docs/fork-workflows.md), how to use Arborist with fork-based development.
 - [Scripting and automation](docs/scripting-automation.md), using Arborist from scripts and pipelines.
-- [Working with AI agents](docs/ai-agents.md), how to use Claude Code to manage AI agents.
 - [Tips and tricks](docs/tips.md), useful tips and tricks for day-to-day usage.
 - [Under the hood](docs/under-the-hood.md), how Arborist works under the hood.
 

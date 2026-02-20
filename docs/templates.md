@@ -45,8 +45,7 @@ Template files are only copied when the target doesn't already exist. Existing f
 .arb/
   templates/
     workspace/         # overlaid onto workspace root
-      .claude/
-        settings.local.json
+      .editorconfig
     repos/
       api/             # overlaid onto api/ worktree
         .env
@@ -90,40 +89,3 @@ arb create my-feature --all-repos
 # → Seeded 2 template file(s)
 ```
 
-## Example: sharing Claude Code permissions
-
-If your team uses Claude Code, you can template a `settings.local.json` with workspace-specific paths using placeholder substitution.
-
-For workspace-scoped settings, create the template at:
-
-```
-.arb/templates/workspace/.claude/settings.local.json.arbtemplate
-```
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "Bash(ls __WORKSPACE_PATH__)"
-    ]
-  }
-}
-```
-
-For repo-scoped settings with worktree paths:
-
-```
-.arb/templates/repos/api/.claude/settings.local.json.arbtemplate
-```
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "Bash(git -C __WORKTREE_PATH__ status)"
-    ]
-  }
-}
-```
-
-New workspaces will get the settings file with concrete paths automatically.
