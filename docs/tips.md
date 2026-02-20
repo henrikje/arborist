@@ -18,3 +18,55 @@ Each arb root is independent. Commands find the right one by walking up from the
 cd ~/project-a && arb init
 cd ~/project-b && arb init
 ```
+
+## Preview before committing
+
+Use `--dry-run` to see what a command would do, then `--yes` to execute without a second confirmation prompt:
+
+```bash
+arb push --dry-run        # inspect the plan
+arb push --yes            # looks good — go ahead
+```
+
+This pattern is especially useful in scripted or AI-driven workflows.
+
+## Target specific repos with `--where`
+
+Most commands accept `--where` to filter by repo status. This is handy for surgical operations across a workspace:
+
+```bash
+arb status --where dirty              # which repos have uncommitted changes?
+arb exec --where unpushed git stash   # stash only in repos with unpushed work
+arb open --where dirty code           # open only dirty repos in your editor
+```
+
+Multiple terms are comma-separated with OR logic: `--where dirty,unpushed`. See [Scripting & automation](scripting-automation.md#filtering) for the full term list.
+
+## Batch cleanup of merged workspaces
+
+After PRs are merged, clean up in one pass:
+
+```bash
+arb remove --all-safe --where gone    # remove workspaces whose branches are gone from the remote
+```
+
+Add `--delete-remote` to also delete the remote branches if they haven't been cleaned up by the merge.
+
+## Run the same command everywhere
+
+`arb exec` runs a command in every worktree. Combine with `--dirty` to scope it:
+
+```bash
+arb exec npm install                  # install deps in every repo
+arb exec --dirty git commit -m "wip"  # quick WIP commit only where you have changes
+arb exec git checkout -- .            # discard all unstaged changes across repos
+```
+
+## Quick workspace triage
+
+Use `arb list` with `--fetch` and `--where` to triage across all workspaces:
+
+```bash
+arb list --fetch --where at-risk      # which workspaces might lose work?
+arb list --where stale                # which workspaces haven't been touched lately?
+```

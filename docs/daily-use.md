@@ -53,20 +53,38 @@ arb status
 This shows the state of each worktree in a compact table with labeled columns:
 
 ```
-  REPO         BRANCH        BASE                     SHARE                          LOCAL
-  repo-a       my-feature    main  equal              origin/my-feature  up to date   clean
-  repo-b       my-feature    main  2 ahead            origin/my-feature  2 to push    1 staged, 1 modified
-  repo-c       experiment    main  2 ahead, 1 behind  origin/experiment  1 to pull    clean
-  local-lib    my-feature    main  equal              local                           clean
+  REPO         BRANCH        LAST COMMIT    BASE                     SHARE                          LOCAL
+  repo-a       my-feature     3 days        main  equal              origin/my-feature  up to date   clean
+  repo-b       my-feature     2 hours       main  2 ahead            origin/my-feature  2 to push    1 staged, 1 modified
+  repo-c       experiment     5 days        main  2 ahead, 1 behind  origin/experiment  1 to pull    clean
+  local-lib    my-feature     1 day         main  equal              local                           clean
 ```
 
-This view is designed to give you the full picture in one glance — repo name, current branch, how far you've drifted from the base branch, whether the share remote is ahead or behind, and what's uncommitted locally. Yellow highlights things that need attention: unpushed commits, local changes, repos on an unexpected branch (like `repo-c` above).
+This view is designed to give you the full picture in one glance — repo name, current branch, when work last happened, how far you've drifted from the base branch, whether the share remote is ahead or behind, and what's uncommitted locally. Yellow highlights things that need attention: unpushed commits, local changes, repos on an unexpected branch (like `repo-c` above).
+
+Use `--verbose` (`-v`) to see file-level detail — staged files, modified files, untracked files, and the actual commits that are ahead or behind:
+
+```bash
+arb status --verbose
+```
+
+Use `--where` (`-w`) to filter the table to repos matching a condition:
+
+```bash
+arb status --where dirty              # only repos with uncommitted changes
+arb status --where unpushed           # only repos with commits to push
+arb status --where behind-base        # only repos that need rebasing
+```
+
+Multiple terms can be comma-separated (OR logic): `--where dirty,unpushed`. See [Scripting & automation](scripting-automation.md#filtering) for the full list of filter terms.
 
 See `arb status --help` for all options.
 
 ## Stay in sync
 
-Arborist's synchronization commands — `push`, `pull`, `rebase`, and `merge` — keep your workspace current. They automatically fetch all repos before operating, so you always work against the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh. To fetch manually without making changes, use `arb fetch`.
+Arborist's synchronization commands — `push`, `pull`, `rebase`, and `merge` — keep your workspace current. They automatically fetch all repos before operating, so you always work against the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh.
+
+To fetch manually without making changes, use `arb fetch`. It fetches from all configured remotes for every repo in the workspace in parallel. Nothing is merged — this updates remote tracking refs so you can see what's changed before deciding what to do.
 
 **Integration axis** — when the base branch has moved forward (e.g. teammates merged PRs to `main`), rebase your feature branches onto it:
 
@@ -82,8 +100,10 @@ Arb auto-detects each repo's default branch, so repos using `main`, `master`, or
 
 ```bash
 arb pull
+arb pull --rebase     # pull with rebase instead of the default fast-forward
+arb pull --merge      # pull with merge commit
 arb push
-arb push --force    # after rebasing
+arb push --force      # after rebasing
 ```
 
 Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
@@ -98,10 +118,11 @@ All commands show a plan before proceeding. See `arb help <command>` for options
 arb exec git log --oneline -5
 arb exec npm install
 arb exec --repo api --repo web -- npm test   # only in specific repos
-arb exec --dirty git diff -d   # --dirty is arb's, -d goes to git diff
+arb exec --dirty git diff -d                 # --dirty is arb's, -d goes to git diff
+arb exec --where unpushed git stash          # only repos with unpushed commits
 ```
 
-Runs the given command in each worktree sequentially. It supports running interactive commands. Each execution of the command uses the corresponding worktree as working directory. Arb flags (like `--dirty`) come before the command — everything after the command name passes through verbatim. See `arb exec --help` for all options.
+Runs the given command in each worktree sequentially. It supports running interactive commands. Each execution of the command uses the corresponding worktree as working directory. Use `--dirty` (`-d`) to limit to repos with uncommitted changes, or `--where` (`-w`) for any status filter. Arb flags come before the command — everything after the command name passes through verbatim. See `arb exec --help` for all options.
 
 ## Open in your editor
 
@@ -109,8 +130,10 @@ Runs the given command in each worktree sequentially. It supports running intera
 arb open code
 # expands to:
 # code /home/you/my-project/fix-login/frontend /home/you/my-project/fix-login/backend
-arb open --repo frontend code   # only open specific repos
-arb open code -n --add    # -n and --add are passed to code
+arb open --repo frontend code     # only open specific repos
+arb open --dirty code             # only open repos with uncommitted changes
+arb open --where unpushed code    # only open repos matching a status filter
+arb open code -n --add            # -n and --add are passed to code
 ```
 
-Runs the given command with all worktree directories as arguments — useful for opening them in an editor like VS Code. All directories are specified as absolute paths. Arb flags come before the command — everything after the command name passes through verbatim. See `arb open --help` for all options.
+Runs the given command with all worktree directories as arguments — useful for opening them in an editor like VS Code. All directories are specified as absolute paths. Use `--dirty` (`-d`) or `--where` (`-w`) to limit which repos are opened. Arb flags come before the command — everything after the command name passes through verbatim. See `arb open --help` for all options.
