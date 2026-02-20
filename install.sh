@@ -102,19 +102,6 @@ case "$USER_SHELL" in
         ;;
 esac
 
-# ── Install Claude Code skill ────────────────────────────────────
-
-CLAUDE_DIR="$HOME/.claude"
-if [[ -d "$CLAUDE_DIR" ]]; then
-    SKILL_DIR="$CLAUDE_DIR/skills/arb"
-    mkdir -p "$SKILL_DIR/references"
-    cp "$BASE_DIR/skill/SKILL.md" "$SKILL_DIR/SKILL.md"
-    cp "$BASE_DIR/skill/references/commands.md" "$SKILL_DIR/references/commands.md"
-    log "Installed Claude Code skill to $SKILL_DIR"
-else
-    log "Skipping Claude Code skill (no ~/.claude directory detected)"
-fi
-
 # ── Done ──────────────────────────────────────────────────────────
 
 echo ""
