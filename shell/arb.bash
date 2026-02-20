@@ -168,7 +168,7 @@ __arb_complete_repo() {
     done
 
     if ((COMP_CWORD == sub_pos)); then
-        COMPREPLY=($(compgen -W "clone list" -- "$cur"))
+        COMPREPLY=($(compgen -W "clone list remove" -- "$cur"))
         return
     fi
 
@@ -179,6 +179,15 @@ __arb_complete_repo() {
                 return  # URL, no completion
             fi
             COMPREPLY=($(compgen -W "--upstream" -- "$cur"))
+            ;;
+        remove)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "--all-repos --yes" -- "$cur"))
+            else
+                local repo_names
+                repo_names=$(__arb_repo_names "$base_dir")
+                COMPREPLY=($(compgen -W "$repo_names" -- "$cur"))
+            fi
             ;;
         list) ;;
     esac

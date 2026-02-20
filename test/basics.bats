@@ -180,3 +180,69 @@ load test_helper/common-setup
     [ "$status" -ne 0 ]
     [[ "$output" == *"missing required argument"* ]]
 }
+
+# ── repo remove ──────────────────────────────────────────────────
+
+@test "arb repo remove deletes a canonical repo" {
+    run arb repo clone "$TEST_DIR/origin/repo-a.git" remove-me
+    [ "$status" -eq 0 ]
+    [ -d "$TEST_DIR/project/.arb/repos/remove-me/.git" ]
+    run arb repo remove remove-me --yes
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/.arb/repos/remove-me" ]
+    [[ "$output" == *"Removed repo remove-me"* ]]
+}
+
+@test "arb repo remove cleans up template directory" {
+    run arb repo clone "$TEST_DIR/origin/repo-a.git" tpl-rm
+    [ "$status" -eq 0 ]
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/tpl-rm"
+    echo "content" > "$TEST_DIR/project/.arb/templates/repos/tpl-rm/.env"
+    run arb repo remove tpl-rm --yes
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/.arb/templates/repos/tpl-rm" ]
+}
+
+@test "arb repo remove refuses when workspace uses repo" {
+    run arb create ws-using-repo -a
+    [ "$status" -eq 0 ]
+    run arb repo remove repo-a --yes
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot remove repo-a"* ]]
+    [[ "$output" == *"ws-using-repo"* ]]
+    # Repo still exists
+    [ -d "$TEST_DIR/project/.arb/repos/repo-a/.git" ]
+}
+
+@test "arb repo remove fails for nonexistent repo" {
+    run arb repo remove does-not-exist --yes
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not cloned"* ]]
+}
+
+@test "arb repo remove removes multiple repos" {
+    run arb repo clone "$TEST_DIR/origin/repo-a.git" multi-a
+    [ "$status" -eq 0 ]
+    run arb repo clone "$TEST_DIR/origin/repo-b.git" multi-b
+    [ "$status" -eq 0 ]
+    run arb repo remove multi-a multi-b --yes
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/.arb/repos/multi-a" ]
+    [ ! -d "$TEST_DIR/project/.arb/repos/multi-b" ]
+    [[ "$output" == *"Removed 2 repos"* ]]
+}
+
+@test "arb repo remove --all-repos removes all repos" {
+    # Remove the default repos (not used by any workspace)
+    run arb repo remove --all-repos --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Removed"* ]]
+    run arb repo list
+    [ -z "$output" ]
+}
+
+@test "arb repo remove without args in non-TTY fails" {
+    run arb repo remove </dev/null
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"No repos specified"* ]]
+}
