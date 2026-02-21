@@ -157,12 +157,6 @@ e4f5g6h Add dark mode toggle to navbar
 Logged 2 repos (2 commits)
 ```
 
-Want to see the full change set instead of just commits? Use `arb diff` for a summary, or `arb diff` without `--stat` for the full diff:
-
-```bash
-arb diff --stat
-```
-
 Then push both repos and clean up:
 
 ```bash
