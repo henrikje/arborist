@@ -57,7 +57,7 @@ Tell the user *what happened*, not just *that it happened*. Instead of a generic
 
 - Push/pull: include the commit count from the assessment — "pushed 3 commits", "pulled 2 commits".
 - Rebase/merge: past-tense of the action — "rebased onto origin/main", "merged onto origin/main".
-- Attach/create (worktrees): past-tense — "created".
+- Attach/create (repos): past-tense — "created".
 - Detach: past-tense — "detached", "branch deleted".
 - Fetch: describe what changed — "3 refs updated" or "up to date".
 
@@ -91,7 +91,7 @@ Colors, progress indicators, and interactive prompts only appear when stderr is 
 
 ### Inline progress with line replacement
 
-Scope: all sequential multi-repo commands that suppress git output (push, pull, rebase, merge, detach, attach/create worktrees).
+Scope: all sequential multi-repo commands that suppress git output (push, pull, rebase, merge, detach, attach/create repos).
 
 In TTY mode: write `  [repo] verb...` as a progress indicator, then on completion use `\r` + ANSI clear to replace the entire line with `  [repo] <descriptive result>`. In non-TTY mode: skip the progress line, write only the result line. Result uses default color (not green) — green is reserved for the final summary line.
 
