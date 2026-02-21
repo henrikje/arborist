@@ -97,7 +97,7 @@ cd frontend
 # hack hack hack
 git commit -am "Fix null pointer in login flow"
 arb push
-arb remove fix-login-crash
+arb delete fix-login-crash
 ```
 
 ### Back to the feature
@@ -155,7 +155,7 @@ Then push both repos and clean up:
 
 ```bash
 arb push
-arb remove add-dark-mode
+arb delete add-dark-mode
 ```
 
 Now you're ready to create new workspaces to tackle new tasks!
@@ -195,7 +195,7 @@ arb status --where dirty,unpushed
 arb list --where at-risk
 ```
 
-Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, drifted, and more. The `--where` flag lets you filter by any combination, and works across `status`, `list`, `exec`, `open`, and `remove` — so you can check which workspaces need attention, run commands only in dirty repos, or clean up safely. Use `--dirty` as a shorthand for `--where dirty`.
+Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, drifted, and more. The `--where` flag lets you filter by any combination, and works across `status`, `list`, `exec`, `open`, and `delete` — so you can check which workspaces need attention, run commands only in dirty repos, or clean up safely. Use `--dirty` as a shorthand for `--where dirty`.
 
 ### Run commands across repos
 

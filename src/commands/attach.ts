@@ -9,13 +9,13 @@ import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 import { addWorktrees } from "../lib/worktrees";
 
-export function registerAddCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerAttachCommand(program: Command, getCtx: () => ArbContext): void {
 	program
-		.command("add [repos...]")
-		.option("-a, --all-repos", "Add all remaining repos")
-		.summary("Add worktrees to the workspace")
+		.command("attach [repos...]")
+		.option("-a, --all-repos", "Attach all remaining repos")
+		.summary("Attach worktrees to the workspace")
 		.description(
-			"Add worktrees for one or more repos to the current workspace on the workspace's feature branch. If the workspace has a configured base branch, new worktrees branch from it. Automatically seeds files from .arb/templates/repos/ into newly added worktrees. Prompts with a repo picker when run without arguments. Use --all-repos to add all repos not yet in the workspace.",
+			"Attach worktrees for one or more repos to the current workspace on the workspace's feature branch. If the workspace has a configured base branch, new worktrees branch from it. Automatically seeds files from .arb/templates/repos/ into newly attached worktrees. Prompts with a repo picker when run without arguments. Use --all-repos to attach all repos not yet in the workspace.",
 		)
 		.action(async (repoArgs: string[], options: { allRepos?: boolean }) => {
 			const ctx = getCtx();
@@ -41,7 +41,7 @@ export function registerAddCommand(program: Command, getCtx: () => ArbContext): 
 					error("All repos are already in this workspace.");
 					process.exit(1);
 				}
-				repos = await selectInteractive(available, "Select repos to add");
+				repos = await selectInteractive(available, "Select repos to attach");
 				if (repos.length === 0) {
 					error("No repos selected.");
 					process.exit(1);
@@ -63,11 +63,11 @@ export function registerAddCommand(program: Command, getCtx: () => ArbContext): 
 
 			process.stderr.write("\n");
 			if (result.failed.length === 0 && result.skipped.length === 0) {
-				success(`Added ${plural(result.created.length, "repo")} to ${ctx.currentWorkspace}`);
+				success(`Attached ${plural(result.created.length, "repo")} to ${ctx.currentWorkspace}`);
 			} else {
-				if (result.created.length > 0) info(`  added:   ${result.created.join(" ")}`);
-				if (result.skipped.length > 0) warn(`  skipped: ${result.skipped.join(" ")}`);
-				if (result.failed.length > 0) error(`  failed:  ${result.failed.join(" ")}`);
+				if (result.created.length > 0) info(`  attached: ${result.created.join(" ")}`);
+				if (result.skipped.length > 0) warn(`  skipped:  ${result.skipped.join(" ")}`);
+				if (result.failed.length > 0) error(`  failed:   ${result.failed.join(" ")}`);
 			}
 		});
 }

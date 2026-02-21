@@ -54,35 +54,35 @@ arb path fix-login/frontend    # /home/you/my-project/fix-login/frontend
 arb path frontend              # /home/you/my-project/fix-login/frontend (when inside fix-login)
 ```
 
-## Add and drop repos
+## Attach and detach repos
 
-You can add more repos to an existing workspace at any time:
+You can attach more repos to an existing workspace at any time:
 
 ```bash
-arb add shared
-arb add --all-repos
+arb attach shared
+arb attach --all-repos
 ```
 
 If the workspace has a configured base branch, new worktrees branch from it. Running without arguments opens an interactive repo picker.
 
-To remove a repo from a workspace without deleting the workspace itself:
+To detach a repo from a workspace without deleting the workspace itself:
 
 ```bash
-arb drop shared
-arb drop shared --delete-branch    # also delete the local branch from the canonical repo
+arb detach shared
+arb detach shared --delete-branch    # also delete the local branch from the canonical repo
 ```
 
-Arb refuses to drop repos with uncommitted changes unless you pass `--force`. Use `--delete-branch` when you want a clean teardown — without it, the branch lingers in the canonical repo's ref list. See `arb drop --help` for all options.
+Arb refuses to detach repos with uncommitted changes unless you pass `--force`. Use `--delete-branch` when you want a clean teardown — without it, the branch lingers in the canonical repo's ref list. See `arb detach --help` for all options.
 
-## Remove workspaces
+## Delete workspaces
 
 When a feature is done:
 
 ```bash
-arb remove fix-login
+arb delete fix-login
 ```
 
-This shows the status of each worktree and walks you through removal. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before removing the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-safe` to batch-remove every workspace with safe status. Combine `--all-safe --where gone` to target merged-and-safe workspaces specifically. See `arb remove --help` for all options.
+This shows the status of each worktree and walks you through deletion. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before deleting the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-safe` to batch-delete every workspace with safe status. Combine `--all-safe --where gone` to target merged-and-safe workspaces specifically. See `arb delete --help` for all options.
 
 ## List repos
 

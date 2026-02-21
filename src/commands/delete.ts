@@ -123,7 +123,7 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 	};
 }
 
-function displayRemoveTable(assessments: WorkspaceAssessment[]): void {
+function displayDeleteTable(assessments: WorkspaceAssessment[]): void {
 	// Compute column widths
 	let maxName = "WORKSPACE".length;
 	let maxRepos = "REPOS".length;
@@ -202,7 +202,7 @@ function displayRemoveTable(assessments: WorkspaceAssessment[]): void {
 	}
 }
 
-async function executeRemoval(
+async function executeDelete(
 	assessment: WorkspaceAssessment,
 	ctx: ArbContext,
 	deleteRemote: boolean,
@@ -247,24 +247,24 @@ async function executeRemoval(
 function buildConfirmMessage(count: number, singleName: string | undefined, deleteRemote: boolean): string {
 	const subject = count === 1 && singleName ? `workspace ${singleName}` : plural(count, "workspace");
 	const remoteSuffix = deleteRemote ? " and delete remote branches" : "";
-	return `Remove ${subject}${remoteSuffix}?`;
+	return `Delete ${subject}${remoteSuffix}?`;
 }
 
-export function registerRemoveCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerDeleteCommand(program: Command, getCtx: () => ArbContext): void {
 	program
-		.command("remove [names...]")
+		.command("delete [names...]")
 		.option("-y, --yes", "Skip confirmation prompt")
-		.option("-f, --force", "Force removal of at-risk workspaces (implies --yes)")
+		.option("-f, --force", "Force deletion of at-risk workspaces (implies --yes)")
 		.option("-d, --delete-remote", "Delete remote branches")
 		.option(
 			"-a, --all-safe",
-			"Remove all safe workspaces (no uncommitted changes, unpushed commits, or branch drift; behind base is fine)",
+			"Delete all safe workspaces (no uncommitted changes, unpushed commits, or branch drift; behind base is fine)",
 		)
 		.option("-w, --where <filter>", "Filter workspaces by repo status flags (comma-separated, OR logic)")
 		.option("-n, --dry-run", "Show what would happen without executing")
-		.summary("Remove one or more workspaces")
+		.summary("Delete one or more workspaces")
 		.description(
-			"Remove one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-remove all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Combine with --where <filter> to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). --where accepts: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk, stale. Comma-separated values use OR logic.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.",
+			"Delete one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-delete all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Combine with --where <filter> to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). --where accepts: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk, stale. Comma-separated values use OR logic.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.",
 		)
 		.action(
 			async (
@@ -329,7 +329,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 						return;
 					}
 
-					displayRemoveTable(safeEntries);
+					displayDeleteTable(safeEntries);
 
 					if (deleteRemote) {
 						process.stderr.write("  Remote branches will also be deleted.\n\n");
@@ -345,14 +345,14 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 							error("Not a terminal. Use --yes to skip confirmation.");
 							process.exit(1);
 						}
-						const shouldRemove = await confirm(
+						const shouldDelete = await confirm(
 							{
 								message: buildConfirmMessage(safeEntries.length, undefined, deleteRemote),
 								default: false,
 							},
 							{ output: process.stderr },
 						);
-						if (!shouldRemove) {
+						if (!shouldDelete) {
 							process.stderr.write("Aborted.\n");
 							process.exit(130);
 						}
@@ -361,14 +361,14 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 					}
 
 					for (const entry of safeEntries) {
-						inlineStart(entry.name, "removing");
-						const failedRemoteDeletes = await executeRemoval(entry, ctx, deleteRemote);
+						inlineStart(entry.name, "deleting");
+						const failedRemoteDeletes = await executeDelete(entry, ctx, deleteRemote);
 						const remoteSuffix = failedRemoteDeletes.length > 0 ? " (failed to delete remote branch)" : "";
-						inlineResult(entry.name, `removed${remoteSuffix}`);
+						inlineResult(entry.name, `deleted${remoteSuffix}`);
 					}
 
 					process.stderr.write("\n");
-					success(`Removed ${plural(safeEntries.length, "workspace")}`);
+					success(`Deleted ${plural(safeEntries.length, "workspace")}`);
 					return;
 				}
 
@@ -383,7 +383,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 						error("No workspaces found.");
 						process.exit(1);
 					}
-					names = await selectInteractive(workspaces, "Select workspaces to remove");
+					names = await selectInteractive(workspaces, "Select workspaces to delete");
 					if (names.length === 0) {
 						error("No workspaces selected.");
 						process.exit(1);
@@ -405,7 +405,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 				if (assessments.length === 0) return;
 
 				// Display columnar status table
-				displayRemoveTable(assessments);
+				displayDeleteTable(assessments);
 
 				// Check for at-risk across all workspaces
 				const atRiskWorkspaces = assessments.filter((a) => a.hasAtRisk);
@@ -413,7 +413,7 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 				if (atRiskWorkspaces.length > 0 && !forceAtRisk) {
 					const atRiskNames = atRiskWorkspaces.map((a) => a.name).join(", ");
 					error(
-						`Refusing to remove: ${atRiskNames} ${atRiskWorkspaces.length === 1 ? "has" : "have"} work that would be lost. Use --force to override.`,
+						`Refusing to delete: ${atRiskNames} ${atRiskWorkspaces.length === 1 ? "has" : "have"} work that would be lost. Use --force to override.`,
 					);
 					process.exit(1);
 				}
@@ -434,14 +434,14 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 						process.exit(1);
 					}
 
-					const shouldRemove = await confirm(
+					const shouldDelete = await confirm(
 						{
 							message: buildConfirmMessage(assessments.length, assessments[0]?.name, deleteRemote),
 							default: false,
 						},
 						{ output: process.stderr },
 					);
-					if (!shouldRemove) {
+					if (!shouldDelete) {
 						process.stderr.write("Aborted.\n");
 						process.exit(130);
 					}
@@ -452,22 +452,22 @@ export function registerRemoveCommand(program: Command, getCtx: () => ArbContext
 				// Execute
 				const isSingle = assessments.length === 1;
 				for (const assessment of assessments) {
-					if (!isSingle) inlineStart(assessment.name, "removing");
-					const failedRemoteDeletes = await executeRemoval(assessment, ctx, deleteRemote);
+					if (!isSingle) inlineStart(assessment.name, "deleting");
+					const failedRemoteDeletes = await executeDelete(assessment, ctx, deleteRemote);
 					if (!isSingle) {
 						const suffix = failedRemoteDeletes.length > 0 ? " (failed to delete remote branch)" : "";
-						inlineResult(assessment.name, `removed${suffix}`);
+						inlineResult(assessment.name, `deleted${suffix}`);
 					} else if (failedRemoteDeletes.length > 0) {
-						warn("removed (failed to delete remote branch)");
+						warn("deleted (failed to delete remote branch)");
 					}
 				}
 
 				// Summarize
 				if (isSingle) {
-					success(`Removed workspace ${assessments[0]?.name}`);
+					success(`Deleted workspace ${assessments[0]?.name}`);
 				} else {
 					process.stderr.write("\n");
-					success(`Removed ${plural(assessments.length, "workspace")}`);
+					success(`Deleted ${plural(assessments.length, "workspace")}`);
 				}
 			},
 		);

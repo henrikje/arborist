@@ -625,11 +625,11 @@ SCRIPT
     [[ "$output" == *"remote branch gone"* ]]
 }
 
-@test "arb remove treats gone repos as safe" {
+@test "arb delete treats gone repos as safe" {
     arb create gone-remove repo-a
     push_then_delete_remote gone-remove repo-a
 
-    run arb remove gone-remove --force
+    run arb delete gone-remove --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/gone-remove" ]
 }

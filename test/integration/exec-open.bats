@@ -303,10 +303,10 @@ SCRIPT
     [[ "$output" == *"skipped"* ]]
 }
 
-@test "arb remove cleans up local repo without attempting remote operations" {
+@test "arb delete cleans up local repo without attempting remote operations" {
     setup_local_repo
     arb create local-ws local-lib
-    arb remove local-ws --force
+    arb delete local-ws --force
     [ ! -d "$TEST_DIR/project/local-ws" ]
     # Branch should be deleted from canonical repo
     run git -C "$TEST_DIR/project/.arb/repos/local-lib" show-ref --verify "refs/heads/local-ws"
@@ -434,33 +434,33 @@ SCRIPT
     [[ "$output" != *"upstream"* ]]
 }
 
-@test "arb remove --dry-run shows status without removing" {
+@test "arb delete --dry-run shows status without removing" {
     arb create my-feature repo-a repo-b
     cd "$TEST_DIR/project"
-    run arb remove my-feature --dry-run
+    run arb delete my-feature --dry-run
     [ "$status" -eq 0 ]
     [[ "$output" == *"my-feature"* ]]
     [[ "$output" == *"WORKSPACE"* ]]
     [[ "$output" == *"Dry run"* ]]
     # Must NOT contain the execution summary
-    [[ "$output" != *"Removed"* ]]
+    [[ "$output" != *"Deleted"* ]]
     # Verify the workspace still exists
     [ -d "$TEST_DIR/project/my-feature" ]
 }
 
-@test "arb remove --all-safe --dry-run shows workspaces without removing" {
+@test "arb delete --all-safe --dry-run shows workspaces without removing" {
     arb create ws-one repo-a
     git -C "$TEST_DIR/project/ws-one/repo-a" push -u origin ws-one >/dev/null 2>&1
     arb create ws-two repo-b
     git -C "$TEST_DIR/project/ws-two/repo-b" push -u origin ws-two >/dev/null 2>&1
     cd "$TEST_DIR/project"
-    run arb remove --all-safe --dry-run
+    run arb delete --all-safe --dry-run
     [ "$status" -eq 0 ]
     [[ "$output" == *"ws-one"* ]]
     [[ "$output" == *"ws-two"* ]]
     [[ "$output" == *"Dry run"* ]]
     # Must NOT contain the execution summary
-    [[ "$output" != *"Removed"* ]]
+    [[ "$output" != *"Deleted"* ]]
     # Verify both workspaces still exist
     [ -d "$TEST_DIR/project/ws-one" ]
     [ -d "$TEST_DIR/project/ws-two" ]

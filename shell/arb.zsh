@@ -120,12 +120,12 @@ _arb() {
                 'init:Initialize a directory as an arb root'
                 'repo:Manage canonical repos'
                 'create:Create a new workspace'
-                'remove:Remove a workspace'
+                'delete:Remove a workspace'
                 'list:List all workspaces'
                 'path:Print the path to the arb root or a workspace'
                 'cd:Navigate to a workspace directory'
-                'add:Add worktrees to the workspace'
-                'drop:Drop worktrees from the workspace'
+                'attach:Add worktrees to the workspace'
+                'detach:Drop worktrees from the workspace'
                 'status:Show workspace status'
                 'fetch:Fetch all repos from their remotes'
                 'pull:Pull the feature branch from the share remote'
@@ -141,7 +141,7 @@ _arb() {
             ;;
         args)
             case "${words[1]}" in
-                remove)
+                delete)
                     _arguments \
                         '*:workspace:($ws_names)' \
                         '(-f --force)'{-f,--force}'[Force removal]' \
@@ -216,12 +216,12 @@ _arb() {
                         '1:name:' \
                         '*:repo:($repo_names)'
                     ;;
-                add)
+                attach)
                     _arguments \
                         '(-a --all-repos)'{-a,--all-repos}'[Add all remaining repos]' \
                         '*:repo:($repo_names)'
                     ;;
-                drop)
+                detach)
                     _arguments \
                         '(-f --force)'{-f,--force}'[Force removal even with uncommitted changes]' \
                         '(-a --all-repos)'{-a,--all-repos}'[Drop all repos from the workspace]' \

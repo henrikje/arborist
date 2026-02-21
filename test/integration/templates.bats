@@ -56,7 +56,7 @@ load test_helper/common-setup
     mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-b"
     echo "b-env" > "$TEST_DIR/project/.arb/templates/repos/repo-b/.env"
     cd "$TEST_DIR/project/tpl-nooverwrite"
-    arb add repo-b
+    arb attach repo-b
 
     # repo-a's file should still have the custom content
     run cat "$TEST_DIR/project/tpl-nooverwrite/repo-a/.env"
@@ -70,20 +70,20 @@ load test_helper/common-setup
     [ -d "$TEST_DIR/project/tpl-none-test/repo-a" ]
 }
 
-@test "arb add applies repo templates for newly added repos" {
+@test "arb attach applies repo templates for newly added repos" {
     mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-b"
     echo "ADDED=true" > "$TEST_DIR/project/.arb/templates/repos/repo-b/.env"
 
     arb create tpl-add-test repo-a
     cd "$TEST_DIR/project/tpl-add-test"
-    arb add repo-b
+    arb attach repo-b
 
     [ -f "$TEST_DIR/project/tpl-add-test/repo-b/.env" ]
     run cat "$TEST_DIR/project/tpl-add-test/repo-b/.env"
     [[ "$output" == "ADDED=true" ]]
 }
 
-@test "arb add does not reapply workspace templates" {
+@test "arb attach does not reapply workspace templates" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
     echo "ws-only" > "$TEST_DIR/project/.arb/templates/workspace/marker.txt"
 
@@ -92,9 +92,9 @@ load test_helper/common-setup
     rm "$TEST_DIR/project/tpl-add-nows/marker.txt"
 
     cd "$TEST_DIR/project/tpl-add-nows"
-    arb add repo-b
+    arb attach repo-b
 
-    # The file should NOT be re-seeded by arb add
+    # The file should NOT be re-seeded by arb attach
     [ ! -f "$TEST_DIR/project/tpl-add-nows/marker.txt" ]
 }
 
@@ -128,50 +128,50 @@ load test_helper/common-setup
     [[ "$output" == *"Seeded 2 template files"* ]]
 }
 
-@test "arb remove --all-safe --force produces per-workspace output" {
+@test "arb delete --all-safe --force produces per-workspace output" {
     arb create ws-one repo-a
     arb create ws-two repo-a
     git -C "$TEST_DIR/project/ws-one/repo-a" push -u origin ws-one >/dev/null 2>&1
     git -C "$TEST_DIR/project/ws-two/repo-a" push -u origin ws-two >/dev/null 2>&1
 
-    run arb remove --all-safe --force
+    run arb delete --all-safe --force
     [ "$status" -eq 0 ]
     # Should have columnar table with workspace names
     [[ "$output" == *"ws-one"* ]]
     [[ "$output" == *"ws-two"* ]]
     [[ "$output" == *"no issues"* ]]
     # Should have compact inline results during execution
-    [[ "$output" == *"[ws-one] removed"* ]]
-    [[ "$output" == *"[ws-two] removed"* ]]
-    [[ "$output" == *"Removed 2 workspaces"* ]]
+    [[ "$output" == *"[ws-one] deleted"* ]]
+    [[ "$output" == *"[ws-two] deleted"* ]]
+    [[ "$output" == *"Deleted 2 workspaces"* ]]
 }
 
-@test "arb remove multiple names --force shows unified plan then compact execution" {
+@test "arb delete multiple names --force shows unified plan then compact execution" {
     arb create ws-x repo-a
     arb create ws-y repo-b
 
-    run arb remove ws-x ws-y --force
+    run arb delete ws-x ws-y --force
     [ "$status" -eq 0 ]
     # Unified plan: columnar table with workspace names
     [[ "$output" == *"ws-x"* ]]
     [[ "$output" == *"ws-y"* ]]
     # Compact execution lines
-    [[ "$output" == *"[ws-x] removed"* ]]
-    [[ "$output" == *"[ws-y] removed"* ]]
-    [[ "$output" == *"Removed 2 workspaces"* ]]
+    [[ "$output" == *"[ws-x] deleted"* ]]
+    [[ "$output" == *"[ws-y] deleted"* ]]
+    [[ "$output" == *"Deleted 2 workspaces"* ]]
 }
 
-@test "arb remove single name --force keeps detailed output" {
+@test "arb delete single name --force keeps detailed output" {
     arb create ws-solo repo-a
 
-    run arb remove ws-solo --force
+    run arb delete ws-solo --force
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Removed workspace ws-solo"* ]]
+    [[ "$output" == *"Deleted workspace ws-solo"* ]]
 }
 
 # ── remove: template drift detection ─────────────────────────────
 
-@test "arb remove shows template drift info for modified repo template" {
+@test "arb delete shows template drift info for modified repo template" {
     mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
     echo "DB=localhost" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
 
@@ -179,38 +179,38 @@ load test_helper/common-setup
     # Modify the template-seeded file
     echo "DB=production" > "$TEST_DIR/project/tpl-drift/repo-a/.env"
 
-    run arb remove tpl-drift --force
+    run arb delete tpl-drift --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"Template files modified"* ]]
     [[ "$output" == *"[repo-a] .env"* ]]
 }
 
-@test "arb remove shows template drift info for modified workspace template" {
+@test "arb delete shows template drift info for modified workspace template" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
     echo "WS=original" > "$TEST_DIR/project/.arb/templates/workspace/.env"
 
     arb create tpl-drift-ws repo-a
     echo "WS=modified" > "$TEST_DIR/project/tpl-drift-ws/.env"
 
-    run arb remove tpl-drift-ws --force
+    run arb delete tpl-drift-ws --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"Template files modified"* ]]
     [[ "$output" == *".env"* ]]
 }
 
-@test "arb remove shows no template drift when files are unchanged" {
+@test "arb delete shows no template drift when files are unchanged" {
     mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
     echo "DB=localhost" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
 
     arb create tpl-nodrift repo-a
     # Don't modify the file
 
-    run arb remove tpl-nodrift --force
+    run arb delete tpl-nodrift --force
     [ "$status" -eq 0 ]
     [[ "$output" != *"Template files modified"* ]]
 }
 
-@test "arb remove multi-workspace shows unified plan with template drift" {
+@test "arb delete multi-workspace shows unified plan with template drift" {
     mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
     echo "DB=localhost" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
 
@@ -218,33 +218,33 @@ load test_helper/common-setup
     arb create tpl-multi-b repo-a
     echo "DB=custom" > "$TEST_DIR/project/tpl-multi-a/repo-a/.env"
 
-    run arb remove tpl-multi-a tpl-multi-b --force
+    run arb delete tpl-multi-a tpl-multi-b --force
     [ "$status" -eq 0 ]
     # Should show columnar table with workspace names
     [[ "$output" == *"tpl-multi-a"* ]]
     [[ "$output" == *"tpl-multi-b"* ]]
     # Only tpl-multi-a has drift
     [[ "$output" == *"Template files modified"* ]]
-    [[ "$output" == *"Removed 2 workspaces"* ]]
+    [[ "$output" == *"Deleted 2 workspaces"* ]]
 }
 
-@test "arb remove multi-workspace refuses all when one is at-risk" {
+@test "arb delete multi-workspace refuses all when one is at-risk" {
     arb create at-risk-a repo-a
     arb create at-risk-b repo-a
 
     # Make at-risk-a dirty
     echo "uncommitted" > "$TEST_DIR/project/at-risk-a/repo-a/dirty.txt"
 
-    run arb remove at-risk-a at-risk-b
+    run arb delete at-risk-a at-risk-b
     [ "$status" -ne 0 ]
-    [[ "$output" == *"Refusing to remove"* ]]
+    [[ "$output" == *"Refusing to delete"* ]]
     [[ "$output" == *"at-risk-a"* ]]
     # Both workspaces should still exist
     [ -d "$TEST_DIR/project/at-risk-a" ]
     [ -d "$TEST_DIR/project/at-risk-b" ]
 }
 
-@test "arb remove --all-safe shows template drift in status table" {
+@test "arb delete --all-safe shows template drift in status table" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
     echo "WS=original" > "$TEST_DIR/project/.arb/templates/workspace/.env"
 
@@ -253,67 +253,67 @@ load test_helper/common-setup
     # Modify workspace-level template file (outside git repos, doesn't affect dirty status)
     echo "WS=modified" > "$TEST_DIR/project/tpl-allok/.env"
 
-    run arb remove --all-safe --force
+    run arb delete --all-safe --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"Template files modified"* ]]
     [ ! -d "$TEST_DIR/project/tpl-allok" ]
 }
 
-@test "arb remove --force succeeds when cwd is inside the workspace being removed" {
+@test "arb delete --force succeeds when cwd is inside the workspace being removed" {
     arb create doomed repo-a repo-b
 
     cd "$TEST_DIR/project/doomed"
-    run arb remove doomed --force
+    run arb delete doomed --force
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Removed workspace doomed"* ]]
+    [[ "$output" == *"Deleted workspace doomed"* ]]
     [ ! -d "$TEST_DIR/project/doomed" ]
 }
 
-@test "arb remove --yes skips confirmation for clean workspace" {
+@test "arb delete --yes skips confirmation for clean workspace" {
     arb create ws-yes repo-a
     git -C "$TEST_DIR/project/ws-yes/repo-a" push -u origin ws-yes >/dev/null 2>&1
 
-    run arb remove ws-yes --yes
+    run arb delete ws-yes --yes
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-yes" ]
-    [[ "$output" == *"Removed workspace ws-yes"* ]]
+    [[ "$output" == *"Deleted workspace ws-yes"* ]]
     [[ "$output" == *"Skipping confirmation"* ]]
 }
 
-@test "arb remove -y skips confirmation for clean workspace" {
+@test "arb delete -y skips confirmation for clean workspace" {
     arb create ws-yshort repo-a
     git -C "$TEST_DIR/project/ws-yshort/repo-a" push -u origin ws-yshort >/dev/null 2>&1
 
-    run arb remove ws-yshort -y
+    run arb delete ws-yshort -y
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-yshort" ]
 }
 
-@test "arb remove --yes still refuses at-risk workspace" {
+@test "arb delete --yes still refuses at-risk workspace" {
     arb create ws-atrisk repo-a
     echo "uncommitted" > "$TEST_DIR/project/ws-atrisk/repo-a/dirty.txt"
 
-    run arb remove ws-atrisk --yes
+    run arb delete ws-atrisk --yes
     [ "$status" -ne 0 ]
-    [[ "$output" == *"Refusing to remove"* ]]
+    [[ "$output" == *"Refusing to delete"* ]]
     [ -d "$TEST_DIR/project/ws-atrisk" ]
 }
 
-@test "arb remove --force implies --yes" {
+@test "arb delete --force implies --yes" {
     arb create ws-fy repo-a
     echo "uncommitted" > "$TEST_DIR/project/ws-fy/repo-a/dirty.txt"
 
-    run arb remove ws-fy --force
+    run arb delete ws-fy --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-fy" ]
     [[ "$output" == *"Skipping confirmation"* ]]
 }
 
-@test "arb remove -d shows remote deletion notice in plan" {
+@test "arb delete -d shows remote deletion notice in plan" {
     arb create ws-dnotice repo-a
     git -C "$TEST_DIR/project/ws-dnotice/repo-a" push -u origin ws-dnotice >/dev/null 2>&1
 
-    run arb remove ws-dnotice -y -d
+    run arb delete ws-dnotice -y -d
     [ "$status" -eq 0 ]
     [[ "$output" == *"Remote branches will also be deleted"* ]]
     [ ! -d "$TEST_DIR/project/ws-dnotice" ]
@@ -322,21 +322,21 @@ load test_helper/common-setup
     [ "$status" -ne 0 ]
 }
 
-@test "arb remove --all-safe --yes skips confirmation" {
+@test "arb delete --all-safe --yes skips confirmation" {
     arb create ws-allok-y repo-a
     git -C "$TEST_DIR/project/ws-allok-y/repo-a" push -u origin ws-allok-y >/dev/null 2>&1
 
-    run arb remove --all-safe --yes
+    run arb delete --all-safe --yes
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-allok-y" ]
     [[ "$output" == *"Skipping confirmation"* ]]
 }
 
-@test "arb remove --all-safe -d shows remote deletion notice" {
+@test "arb delete --all-safe -d shows remote deletion notice" {
     arb create ws-allok-d repo-a
     git -C "$TEST_DIR/project/ws-allok-d/repo-a" push -u origin ws-allok-d >/dev/null 2>&1
 
-    run arb remove --all-safe --yes -d
+    run arb delete --all-safe --yes -d
     [ "$status" -eq 0 ]
     [[ "$output" == *"Remote branches will also be deleted"* ]]
     [ ! -d "$TEST_DIR/project/ws-allok-d" ]
@@ -524,7 +524,7 @@ load test_helper/common-setup
     [[ "$output" != *"ws-clean"* ]]
 }
 
-@test "arb remove --all-safe --where gone narrows to safe-and-gone" {
+@test "arb delete --all-safe --where gone narrows to safe-and-gone" {
     arb create ws-gone repo-a
     arb create ws-safe repo-a
     # Make ws-gone have a gone remote (push then delete remote branch)
@@ -540,7 +540,7 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/ws-safe/repo-a" commit -m "commit" >/dev/null 2>&1
     git -C "$TEST_DIR/project/ws-safe/repo-a" push -u origin ws-safe >/dev/null 2>&1
     cd "$TEST_DIR/project"
-    run arb remove --all-safe --where gone --force
+    run arb delete --all-safe --where gone --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-gone" ]
     [ -d "$TEST_DIR/project/ws-safe" ]

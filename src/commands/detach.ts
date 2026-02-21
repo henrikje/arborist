@@ -7,15 +7,15 @@ import { selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
-export function registerDropCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerDetachCommand(program: Command, getCtx: () => ArbContext): void {
 	program
-		.command("drop [repos...]")
-		.option("-f, --force", "Force removal even with uncommitted changes")
-		.option("-a, --all-repos", "Drop all repos from the workspace")
+		.command("detach [repos...]")
+		.option("-f, --force", "Force detach even with uncommitted changes")
+		.option("-a, --all-repos", "Detach all repos from the workspace")
 		.option("--delete-branch", "Delete the local branch from the canonical repo")
-		.summary("Drop worktrees from the workspace")
+		.summary("Detach worktrees from the workspace")
 		.description(
-			"Remove worktrees from the current workspace without deleting the workspace itself. Skips worktrees with uncommitted changes unless --force is used. Use --all-repos to drop all repos. Use --delete-branch to also delete the local branch from the canonical repo.",
+			"Detach worktrees from the current workspace without deleting the workspace itself. Skips worktrees with uncommitted changes unless --force is used. Use --all-repos to detach all repos. Use --delete-branch to also delete the local branch from the canonical repo.",
 		)
 		.action(async (repoArgs: string[], options: { force?: boolean; allRepos?: boolean; deleteBranch?: boolean }) => {
 			const ctx = getCtx();
@@ -39,7 +39,7 @@ export function registerDropCommand(program: Command, getCtx: () => ArbContext):
 					error("No repos in this workspace.");
 					process.exit(1);
 				}
-				repos = await selectInteractive(currentRepos, "Select repos to drop");
+				repos = await selectInteractive(currentRepos, "Select repos to detach");
 				if (repos.length === 0) {
 					error("No repos selected.");
 					process.exit(1);
@@ -47,7 +47,7 @@ export function registerDropCommand(program: Command, getCtx: () => ArbContext):
 			}
 			const branch = await requireBranch(wsDir, workspace);
 
-			const dropped: string[] = [];
+			const detached: string[] = [];
 			const skipped: string[] = [];
 
 			for (const repo of repos) {
@@ -69,7 +69,7 @@ export function registerDropCommand(program: Command, getCtx: () => ArbContext):
 					}
 				}
 
-				inlineStart(repo, "removing worktree");
+				inlineStart(repo, "detaching worktree");
 				const removeArgs = ["worktree", "remove"];
 				if (options.force) removeArgs.push("--force");
 				removeArgs.push(wtPath);
@@ -79,7 +79,7 @@ export function registerDropCommand(program: Command, getCtx: () => ArbContext):
 					rmSync(wtPath, { recursive: true, force: true });
 					await git(`${ctx.reposDir}/${repo}`, "worktree", "prune");
 				}
-				inlineResult(repo, "removed");
+				inlineResult(repo, "detached");
 
 				if (options.deleteBranch) {
 					if (await isRepoDirty(`${ctx.reposDir}/${repo}`)) {
@@ -96,11 +96,11 @@ export function registerDropCommand(program: Command, getCtx: () => ArbContext):
 					}
 				}
 
-				dropped.push(repo);
+				detached.push(repo);
 			}
 
 			process.stderr.write("\n");
-			if (dropped.length > 0) success(`Dropped ${plural(dropped.length, "repo")} from ${ctx.currentWorkspace}`);
+			if (detached.length > 0) success(`Detached ${plural(detached.length, "repo")} from ${ctx.currentWorkspace}`);
 			if (skipped.length > 0) warn(`Skipped: ${skipped.join(" ")}`);
 		});
 }
