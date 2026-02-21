@@ -5,12 +5,13 @@ import type { ArbContext } from "../lib/types";
 export function registerMergeCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("merge [repos...]")
-		.option("-F, --no-fetch", "Skip fetching before merge")
+		.option("-F, --fetch", "Fetch from all remotes before merge (default)")
+		.option("--no-fetch", "Skip fetching before merge")
 		.option("-y, --yes", "Skip confirmation prompt")
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.summary("Merge the base branch into feature branches")
 		.description(
-			"Fetches all repos, then merges the base branch (e.g. main) into the feature branch for all repos, or only the named repos. Shows a plan and asks for confirmation before proceeding. Repos with uncommitted changes or that are already up to date are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. Use --no-fetch to skip fetching when refs are known to be fresh.",
+			"Fetches all repos, then merges the base branch (e.g. main) into the feature branch for all repos, or only the named repos. Shows a plan and asks for confirmation before proceeding. Repos with uncommitted changes or that are already up to date are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. Use -F/--fetch to fetch explicitly (default); use --no-fetch to skip fetching when refs are known to be fresh.",
 		)
 		.action(async (repoArgs: string[], options: { fetch?: boolean; yes?: boolean; dryRun?: boolean }) => {
 			const ctx = getCtx();

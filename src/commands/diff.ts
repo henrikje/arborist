@@ -3,7 +3,9 @@ import { configGet } from "../lib/config";
 import { git, parseGitNumstat } from "../lib/git";
 import type { DiffJsonFileStat, DiffJsonOutput, DiffJsonRepo } from "../lib/json-types";
 import { bold, dim, error, plural, stdout, success, yellow } from "../lib/output";
-import { resolveRepoSelection } from "../lib/repos";
+import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
+import { resolveRemotesMap } from "../lib/remotes";
+import { classifyRepos, resolveRepoSelection } from "../lib/repos";
 import {
 	type RepoStatus,
 	computeFlags,
@@ -38,19 +40,33 @@ const NO_BASE_FALLBACK_LIMIT = 10;
 export function registerDiffCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("diff [repos...]")
+		.option("-F, --fetch", "Fetch from all remotes before showing diff")
+		.option("--no-fetch", "Skip fetching (default)", false)
 		.option("--stat", "Show diffstat summary instead of full diff")
 		.option("--json", "Output structured JSON to stdout")
 		.option("-d, --dirty", "Only diff dirty repos (shorthand for --where dirty)")
 		.option("-w, --where <filter>", "Only diff repos matching status filter (comma-separated, OR logic)")
 		.summary("Show feature branch diff across repos")
 		.description(
-			"Show the cumulative diff of the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what has this feature branch changed?' by showing the total change set.\n\nUses the three-dot merge-base diff (base...HEAD) to show what the feature branch introduced, matching what a PR reviewer would see. Use --stat for a summary of changed files. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Use --where to filter by status flags. Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
+			"Show the cumulative diff of the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what has this feature branch changed?' by showing the total change set.\n\nUses the three-dot merge-base diff (base...HEAD) to show what the feature branch introduced, matching what a PR reviewer would see. Use -F/--fetch to fetch before showing diff (skip with --no-fetch). Use --stat for a summary of changed files. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Use --where to filter by status flags. Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
 		)
 		.action(
-			async (repoArgs: string[], options: { stat?: boolean; json?: boolean; dirty?: boolean; where?: string }) => {
+			async (
+				repoArgs: string[],
+				options: { stat?: boolean; json?: boolean; dirty?: boolean; where?: string; fetch?: boolean },
+			) => {
 				const ctx = getCtx();
 				const { wsDir, workspace } = requireWorkspace(ctx);
 				const branch = await requireBranch(wsDir, workspace);
+
+				if (options.fetch) {
+					const { repos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
+					const remoteRepos = repos.filter((r) => !localRepos.includes(r));
+					const remotesMap = await resolveRemotesMap(remoteRepos, ctx.reposDir);
+					const results = await parallelFetch(fetchDirs, undefined, remotesMap);
+					const failed = reportFetchFailures(repos, localRepos, results);
+					if (failed.length > 0) process.exit(1);
+				}
 
 				const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
 

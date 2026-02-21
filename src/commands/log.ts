@@ -2,7 +2,9 @@ import type { Command } from "commander";
 import { getCommitsBetweenFull, git } from "../lib/git";
 import type { LogJsonOutput, LogJsonRepo } from "../lib/json-types";
 import { bold, dim, error, plural, stdout, success, yellow } from "../lib/output";
-import { resolveRepoSelection } from "../lib/repos";
+import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
+import { resolveRemotesMap } from "../lib/remotes";
+import { classifyRepos, resolveRepoSelection } from "../lib/repos";
 import { type RepoStatus, computeFlags, gatherWorkspaceSummary } from "../lib/status";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
@@ -29,16 +31,27 @@ const NO_BASE_FALLBACK_LIMIT = 10;
 export function registerLogCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("log [repos...]")
+		.option("-F, --fetch", "Fetch from all remotes before showing log")
+		.option("--no-fetch", "Skip fetching (default)", false)
 		.option("-n, --max-count <count>", "Limit commits shown per repo")
 		.option("--json", "Output structured JSON to stdout")
 		.summary("Show feature branch commits across repos")
 		.description(
-			"Show commits on the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what have I done in this workspace?' by showing only the commits that belong to the current feature.\n\nShows commits in the range base..HEAD for each repo. Use -n to limit how many commits are shown per repo. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
+			"Show commits on the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what have I done in this workspace?' by showing only the commits that belong to the current feature.\n\nShows commits in the range base..HEAD for each repo. Use -F/--fetch to fetch before showing log (skip with --no-fetch). Use -n to limit how many commits are shown per repo. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
 		)
-		.action(async (repoArgs: string[], options: { maxCount?: string; json?: boolean }) => {
+		.action(async (repoArgs: string[], options: { maxCount?: string; json?: boolean; fetch?: boolean }) => {
 			const ctx = getCtx();
 			const { wsDir, workspace } = requireWorkspace(ctx);
 			const branch = await requireBranch(wsDir, workspace);
+
+			if (options.fetch) {
+				const { repos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
+				const remoteRepos = repos.filter((r) => !localRepos.includes(r));
+				const remotesMap = await resolveRemotesMap(remoteRepos, ctx.reposDir);
+				const results = await parallelFetch(fetchDirs, undefined, remotesMap);
+				const failed = reportFetchFailures(repos, localRepos, results);
+				if (failed.length > 0) process.exit(1);
+			}
 
 			const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
 			const maxCount = options.maxCount ? Number.parseInt(options.maxCount, 10) : undefined;

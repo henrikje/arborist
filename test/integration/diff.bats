@@ -286,3 +286,19 @@ load test_helper/common-setup
     # Should contain diff content for repo-a
     [[ "$result" == *"file.txt"* ]]
 }
+
+@test "arb diff --fetch fetches before showing diff" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb diff --fetch
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Fetched"* ]]
+}
+
+@test "arb diff -F fetches before showing diff (short for --fetch)" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb diff -F
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Fetched"* ]]
+}

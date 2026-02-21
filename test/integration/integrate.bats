@@ -249,16 +249,15 @@ load test_helper/common-setup
     [[ "$output" == *"Rebased"* ]]
 }
 
-@test "arb rebase -F skips fetching" {
+@test "arb rebase -F fetches (short for --fetch)" {
     arb create my-feature repo-a
 
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     run arb rebase -F --yes
     [ "$status" -eq 0 ]
-    [[ "$output" != *"Fetched"* ]]
+    [[ "$output" == *"Fetched"* ]]
     [[ "$output" == *"Rebased"* ]]
 }
 
@@ -372,16 +371,15 @@ load test_helper/common-setup
     [[ "$output" == *"Merged 1 repo, 1 conflicted"* ]]
 }
 
-@test "arb merge -F skips fetching" {
+@test "arb merge -F fetches (short for --fetch)" {
     arb create my-feature repo-a
 
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     run arb merge -F --yes
     [ "$status" -eq 0 ]
-    [[ "$output" != *"Fetched"* ]]
+    [[ "$output" == *"Fetched"* ]]
     [[ "$output" == *"Merged"* ]]
 }
 
