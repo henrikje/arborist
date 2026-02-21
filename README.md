@@ -166,7 +166,7 @@ The tour covered the essentials. Here are more capabilities worth knowing about.
 
 ### Conflict prediction and recovery
 
-Before a rebase or merge runs, Arborist performs a trial three-way merge in memory (using the same algorithm Git uses) against each repo to identify actual file-level conflicts. The result appears in the plan:
+Before a rebase or merge runs, Arborist performs a trial three-way merge in memory (using the same algorithm Git uses) against each repo to identify actual file-level conflicts. It can identify when earlier commits have been merged, rebased, and even squash merged. The result appears in the plan:
 
 ```
   backend    up to date
