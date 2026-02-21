@@ -13,9 +13,9 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 		.option("-f, --force", "Force detach even with uncommitted changes")
 		.option("-a, --all-repos", "Detach all repos from the workspace")
 		.option("--delete-branch", "Delete the local branch from the canonical repo")
-		.summary("Detach worktrees from the workspace")
+		.summary("Detach repos from the workspace")
 		.description(
-			"Detach worktrees from the current workspace without deleting the workspace itself. Skips worktrees with uncommitted changes unless --force is used. Use --all-repos to detach all repos. Use --delete-branch to also delete the local branch from the canonical repo.",
+			"Detach one or more repos from the current workspace without deleting the workspace itself. Skips repos with uncommitted changes unless --force is used. Use --all-repos to detach all repos. Use --delete-branch to also delete the local branch from the canonical repo.",
 		)
 		.action(async (repoArgs: string[], options: { force?: boolean; allRepos?: boolean; deleteBranch?: boolean }) => {
 			const ctx = getCtx();
