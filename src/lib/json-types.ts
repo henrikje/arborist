@@ -78,6 +78,34 @@ export interface LogJsonOutput {
 	totalCommits: number;
 }
 
+// ── Diff JSON types ──
+
+export type DiffJsonRepoStatus = "ok" | "detached" | "drifted" | "no-base" | "fallback-base" | "clean";
+
+export interface DiffJsonFileStat {
+	file: string;
+	insertions: number;
+	deletions: number;
+}
+
+export interface DiffJsonRepo {
+	name: string;
+	status: DiffJsonRepoStatus;
+	reason?: string;
+	stat: { files: number; insertions: number; deletions: number };
+	fileStat?: DiffJsonFileStat[];
+}
+
+export interface DiffJsonOutput {
+	workspace: string;
+	branch: string;
+	base: string | null;
+	repos: DiffJsonRepo[];
+	totalFiles: number;
+	totalInsertions: number;
+	totalDeletions: number;
+}
+
 // ── List JSON types ──
 
 export interface ListJsonEntry {

@@ -24,20 +24,18 @@ interface RepoLogResult {
 	commits: LogCommit[];
 }
 
-const DEFAULT_ALL_LIMIT = 20;
 const NO_BASE_FALLBACK_LIMIT = 10;
 
 export function registerLogCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("log [repos...]")
 		.option("-n, --max-count <count>", "Limit commits shown per repo")
-		.option("--all", "Show full git log, not just feature branch commits")
 		.option("--json", "Output structured JSON to stdout")
 		.summary("Show feature branch commits across repos")
 		.description(
-			"Show commits on the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what have I done in this workspace?' by showing only the commits that belong to the current feature.\n\nBy default, shows commits in the range base..HEAD for each repo. Use --all to show a standard git log instead of branch-scoped commits. Use -n to limit how many commits are shown per repo. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
+			"Show commits on the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what have I done in this workspace?' by showing only the commits that belong to the current feature.\n\nShows commits in the range base..HEAD for each repo. Use -n to limit how many commits are shown per repo. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
 		)
-		.action(async (repoArgs: string[], options: { maxCount?: string; all?: boolean; json?: boolean }) => {
+		.action(async (repoArgs: string[], options: { maxCount?: string; json?: boolean }) => {
 			const ctx = getCtx();
 			const { wsDir, workspace } = requireWorkspace(ctx);
 			const branch = await requireBranch(wsDir, workspace);
@@ -55,11 +53,9 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 			const repos = summary.repos.filter((r) => selectedSet.has(r.name));
 
 			if (!options.json && isTTY()) {
-				await outputTTY(repos, wsDir, branch, options.all, maxCount);
+				await outputTTY(repos, wsDir, branch, maxCount);
 			} else {
-				const results = await Promise.all(
-					repos.map((repo) => gatherRepoLog(repo, wsDir, branch, options.all, maxCount)),
-				);
+				const results = await Promise.all(repos.map((repo) => gatherRepoLog(repo, wsDir, branch, maxCount)));
 				if (options.json) {
 					outputJson(summary.workspace, summary.branch, summary.base, results);
 				} else {
@@ -71,13 +67,7 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 
 // ── TTY output: delegate to git for commit rendering ─────────────
 
-async function outputTTY(
-	repos: RepoStatus[],
-	wsDir: string,
-	branch: string,
-	allMode?: boolean,
-	maxCount?: number,
-): Promise<void> {
+async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, maxCount?: number): Promise<void> {
 	let totalCommits = 0;
 
 	for (let i = 0; i < repos.length; i++) {
@@ -108,9 +98,7 @@ async function outputTTY(
 		const gitArgs: string[] = [];
 		let note = "";
 
-		if (allMode) {
-			gitArgs.push("-n", `${maxCount ?? DEFAULT_ALL_LIMIT}`, "HEAD");
-		} else if (!repo.base) {
+		if (!repo.base) {
 			gitArgs.push("-n", `${maxCount ?? NO_BASE_FALLBACK_LIMIT}`, "HEAD");
 			note = "no base branch, showing recent";
 		} else {
@@ -155,7 +143,6 @@ async function gatherRepoLog(
 	repo: RepoStatus,
 	wsDir: string,
 	branch: string,
-	allMode?: boolean,
 	maxCount?: number,
 ): Promise<RepoLogResult> {
 	const repoDir = `${wsDir}/${repo.name}`;
@@ -180,12 +167,6 @@ async function gatherRepoLog(
 			annotation: `on ${actual}, expected ${branch} \u2014 skipping`,
 			commits: [],
 		};
-	}
-
-	if (allMode) {
-		const limit = maxCount ?? DEFAULT_ALL_LIMIT;
-		const commits = await getRecentCommits(repoDir, limit);
-		return { name: repo.name, status: "ok", annotation: plural(commits.length, "commit"), commits };
 	}
 
 	if (!repo.base) {
