@@ -4,6 +4,7 @@ import { Command, type Help } from "commander";
 import { registerAddCommand } from "./commands/add";
 import { registerCdCommand } from "./commands/cd";
 import { registerCreateCommand } from "./commands/create";
+import { registerDiffCommand } from "./commands/diff";
 import { registerDropCommand } from "./commands/drop";
 import { registerExecCommand } from "./commands/exec";
 import { registerFetchCommand } from "./commands/fetch";
@@ -45,6 +46,7 @@ const WORKTREE_COMMANDS = new Set([
 	"exec",
 	"open",
 	"log",
+	"diff",
 ]);
 
 function arbFormatHelp(cmd: Command, helper: Help): string {
@@ -205,6 +207,7 @@ registerRebaseCommand(program, getCtx);
 registerMergeCommand(program, getCtx);
 registerExecCommand(program, getCtx);
 registerLogCommand(program, getCtx);
+registerDiffCommand(program, getCtx);
 registerOpenCommand(program, getCtx);
 registerTemplateCommand(program, getCtx);
 

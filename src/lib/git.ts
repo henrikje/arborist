@@ -262,6 +262,25 @@ export async function getCommitsBetweenFull(
 		});
 }
 
+export function parseGitNumstat(output: string): { file: string; insertions: number; deletions: number }[] {
+	return output
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => {
+			const parts = line.split("\t");
+			if (parts.length < 3) return null;
+			const [ins, del, ...fileParts] = parts;
+			const file = fileParts.join("\t"); // Handle filenames with tabs (renames show as "old => new")
+			// Binary files show as "-\t-\tfile"
+			return {
+				file: file ?? "",
+				insertions: ins === "-" ? 0 : Number.parseInt(ins ?? "0", 10),
+				deletions: del === "-" ? 0 : Number.parseInt(del ?? "0", 10),
+			};
+		})
+		.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+}
+
 export async function detectBranchMerged(
 	repoDir: string,
 	baseBranchRef: string,

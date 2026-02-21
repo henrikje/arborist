@@ -18,6 +18,14 @@ Commands, flags, and terminology mirror Git wherever possible. A developer who k
 
 Arborist operates across many repositories, so clarity is non-negotiable. The developer must always have a complete, honest view of the workspace — what changed, what drifted, what is at risk — and nothing mutates without explicit approval. The user is never left guessing about the current state or the consequences of an action. Features such as a fast, information-dense, and scannable `arb status`, along with preview–confirm–execute workflows for state changes, are expressions of this principle: visibility first, control always in the developer's hands.
 
+### Coordination and overview, not authoring
+
+Arborist coordinates multi-repo operations (fetch, push, rebase, merge) and provides workspace-level overview (status, log, diff). It does not replace Git for authoring operations. Committing, staging, interactive rebase, and PR creation belong to the developer's direct interaction with each repository. `arb exec` bridges the gap for any per-repo operation Arborist doesn't cover.
+
+### Do one thing and do it well
+
+Each command has a clear, single purpose. Avoid adding flags or modes that expand a command's scope beyond its core question. When a use case falls outside a command's purpose, `arb exec` is the escape hatch — not a new flag.
+
 ### Convention over configuration
 
 Arborist uses marker directories (`.arb/`, `.arbws/`) and filesystem scanning instead of databases, registries, or config files beyond what's needed. If something can be discovered from the directory tree, it should be.
@@ -68,6 +76,10 @@ Accept optional `[repos...]` to narrow scope; default to all repos in the worksp
 ### Command groups for `.arb/` subsystems
 
 When multiple operations manage the same `.arb/` subsystem (repos, templates), group them under a singular noun (`repo`, `template`) with subcommands. The parent command shows help when invoked without a subcommand. Each subcommand has its own summary, description, options, and action. This keeps the top-level command list focused on workflows while grouping management operations by the resource they act on.
+
+### Overview commands
+
+Scope: `status`, `log`, `diff`. Read-only commands that provide workspace-level visibility. They do not fetch by default (stay fast, support `--fetch` opt-in). They scope to the feature branch by default using base branch resolution. They skip detached/drifted repos with explanation. They support `[repos...]` filtering, `--json` for structured output, and delegate to git for TTY rendering.
 
 ### Safety gates for destructive operations
 

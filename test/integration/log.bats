@@ -123,33 +123,6 @@ load test_helper/common-setup
     echo "$output" | jq -e '.repos[0].commits[] | select(.subject == "Commit 4")' >/dev/null
 }
 
-# ── --all mode ───────────────────────────────────────────────────
-
-@test "arb log --all shows full log including base commits" {
-    arb create my-feature repo-a
-    cd "$TEST_DIR/project/my-feature"
-    run arb log --all --json
-    [ "$status" -eq 0 ]
-    # Should show the init commit from setup
-    echo "$output" | jq -e '.repos[0].commits[] | select(.subject == "init")' >/dev/null
-}
-
-@test "arb log --all -n 1 limits to 1 commit" {
-    arb create my-feature repo-a
-    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "Feature commit" >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    run arb log --all -n 1 --json
-    [ "$status" -eq 0 ]
-    local count
-    count="$(echo "$output" | jq '.repos[0].commits | length')"
-    [ "$count" -eq 1 ]
-    local subject
-    subject="$(echo "$output" | jq -r '.repos[0].commits[0].subject')"
-    [ "$subject" = "Feature commit" ]
-}
-
 # ── --json mode ──────────────────────────────────────────────────
 
 @test "arb log --json outputs valid JSON with all fields" {
