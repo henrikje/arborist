@@ -57,13 +57,13 @@ Tell the user *what happened*, not just *that it happened*. Instead of a generic
 
 - Push/pull: include the commit count from the assessment — "pushed 3 commits", "pulled 2 commits".
 - Rebase/merge: past-tense of the action — "rebased onto origin/main", "merged onto origin/main".
-- Add/create (worktrees): past-tense — "created".
-- Drop: past-tense — "removed", "branch deleted".
+- Attach/create (worktrees): past-tense — "created".
+- Detach: past-tense — "detached", "branch deleted".
 - Fetch: describe what changed — "3 refs updated" or "up to date".
 
 ### Membership-changing commands
 
-Scope: `add`, `drop`, `create` (and workspace selection in `remove`).
+Scope: `attach`, `detach`, `create` (and workspace selection in `delete`).
 
 Accept `[repos...]` args. When none given and stdin is a TTY, show an interactive picker. Offer `-a, --all-repos` for scripting. Non-TTY without args is an error with usage guidance.
 
@@ -83,7 +83,7 @@ Scope: `status`, `log`, `diff`. Read-only commands that provide workspace-level 
 
 ### Safety gates for destructive operations
 
-When an operation would cause data loss, Arborist refuses and explains why. The `remove` command detects at-risk workspaces (unpushed commits, uncommitted changes) and will not delete them without `--force`. Use `--yes` to skip the confirmation prompt without overriding safety checks. The plan display always shows what's at risk and why, so the developer can make an informed decision.
+When an operation would cause data loss, Arborist refuses and explains why. The `delete` command detects at-risk workspaces (unpushed commits, uncommitted changes) and will not delete them without `--force`. Use `--yes` to skip the confirmation prompt without overriding safety checks. The plan display always shows what's at risk and why, so the developer can make an informed decision.
 
 ### TTY-aware behavior
 
@@ -91,7 +91,7 @@ Colors, progress indicators, and interactive prompts only appear when stderr is 
 
 ### Inline progress with line replacement
 
-Scope: all sequential multi-repo commands that suppress git output (push, pull, rebase, merge, drop, add/create worktrees).
+Scope: all sequential multi-repo commands that suppress git output (push, pull, rebase, merge, detach, attach/create worktrees).
 
 In TTY mode: write `  [repo] verb...` as a progress indicator, then on completion use `\r` + ANSI clear to replace the entire line with `  [repo] <descriptive result>`. In non-TTY mode: skip the progress line, write only the result line. Result uses default color (not green) — green is reserved for the final summary line.
 

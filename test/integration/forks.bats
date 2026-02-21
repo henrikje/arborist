@@ -127,7 +127,7 @@ load test_helper/common-setup
     run git -C "$TEST_DIR/fork/repo-a.git" branch
     [[ "$output" == *"fork-remove"* ]]
 
-    run arb remove fork-remove --force --delete-remote
+    run arb delete fork-remove --force --delete-remote
     [ "$status" -eq 0 ]
 
     # Branch should be deleted from fork
@@ -288,7 +288,7 @@ load test_helper/common-setup
     [ -f "$TEST_DIR/project/fork-pull/repo-a/fork-change.txt" ]
 }
 
-@test "fork: arb add in fork workspace sets up remotes correctly" {
+@test "fork: arb attach in fork workspace sets up remotes correctly" {
     setup_fork_repo repo-a
 
     # Set up a second fork repo
@@ -315,7 +315,7 @@ load test_helper/common-setup
 
     # Add the second fork repo
     cd "$TEST_DIR/project/fork-add"
-    run arb add repo-b-fork
+    run arb attach repo-b-fork
     [ "$status" -eq 0 ]
     [ -d "$TEST_DIR/project/fork-add/repo-b-fork" ]
 

@@ -41,7 +41,7 @@ load test_helper/common-setup
     [[ "$output" == *"Invalid base branch name"* ]]
 }
 
-@test "arb add respects stored base branch" {
+@test "arb attach respects stored base branch" {
     # Create a base branch with unique content in both repos
     git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/base >/dev/null 2>&1
     echo "base-a" > "$TEST_DIR/project/.arb/repos/repo-a/base.txt"
@@ -63,7 +63,7 @@ load test_helper/common-setup
 
     # Now add repo-b — should also branch from feat/base
     cd "$TEST_DIR/project/stacked"
-    arb add repo-b
+    arb attach repo-b
     [ -f "$TEST_DIR/project/stacked/repo-b/base.txt" ]
     run cat "$TEST_DIR/project/stacked/repo-b/base.txt"
     [[ "$output" == *"base-b"* ]]
@@ -83,7 +83,7 @@ load test_helper/common-setup
     [ "$branch" = "feat/auth-ui" ]
 }
 
-@test "arb add falls back to default branch when workspace base missing in repo" {
+@test "arb attach falls back to default branch when workspace base missing in repo" {
     # Create workspace with a base that exists only in repo-a
     git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/base >/dev/null 2>&1
     echo "base-a" > "$TEST_DIR/project/.arb/repos/repo-a/base.txt"
@@ -97,7 +97,7 @@ load test_helper/common-setup
 
     # repo-b does NOT have feat/base — add should fall back with warning
     cd "$TEST_DIR/project/stacked"
-    run arb add repo-b
+    run arb attach repo-b
     [ "$status" -eq 0 ]
     [[ "$output" == *"base branch 'feat/base' not found"* ]]
     [ -d "$TEST_DIR/project/stacked/repo-b" ]

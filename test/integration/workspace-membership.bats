@@ -137,12 +137,12 @@ load test_helper/common-setup
     [[ "$output" == *"must not contain whitespace"* ]]
 }
 
-# ── add ──────────────────────────────────────────────────────────
+# ── attach ───────────────────────────────────────────────────────
 
-@test "arb add reads branch from config" {
+@test "arb attach reads branch from config" {
     arb create my-feature --branch feat/custom repo-b
     cd "$TEST_DIR/project/my-feature"
-    arb add repo-a
+    arb attach repo-a
     [ -d "$TEST_DIR/project/my-feature/repo-a" ]
     # Verify the worktree is on the correct branch
     local branch
@@ -150,60 +150,60 @@ load test_helper/common-setup
     [ "$branch" = "feat/custom" ]
 }
 
-@test "arb add skips repo already in workspace" {
+@test "arb attach skips repo already in workspace" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
-    run arb add repo-a
+    run arb attach repo-a
     [[ "$output" == *"already exists"* ]] || [[ "$output" == *"Skipping"* ]] || [[ "$output" == *"skipping"* ]] || [[ "$output" == *"Skipped"* ]]
 }
 
-@test "arb add with nonexistent repo fails" {
+@test "arb attach with nonexistent repo fails" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
-    run arb add no-such-repo
+    run arb attach no-such-repo
     [[ "$output" == *"not a git repo"* ]] || [[ "$output" == *"failed"* ]]
 }
 
-@test "arb add without workspace context fails" {
-    run arb add repo-a
+@test "arb attach without workspace context fails" {
+    run arb attach repo-a
     [ "$status" -ne 0 ]
     [[ "$output" == *"Not inside a workspace"* ]]
 }
 
-@test "arb add without args fails in non-TTY" {
+@test "arb attach without args fails in non-TTY" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
-    run arb add
+    run arb attach
     [ "$status" -ne 0 ]
     [[ "$output" == *"No repos specified"* ]]
     [[ "$output" == *"--all-repos"* ]]
 }
 
-@test "arb add -a adds all remaining repos" {
+@test "arb attach -a adds all remaining repos" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
-    run arb add -a
+    run arb attach -a
     [ "$status" -eq 0 ]
     [ -d "$TEST_DIR/project/my-feature/repo-b" ]
 }
 
-@test "arb add --all-repos adds all remaining repos" {
+@test "arb attach --all-repos adds all remaining repos" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
-    run arb add --all-repos
+    run arb attach --all-repos
     [ "$status" -eq 0 ]
     [ -d "$TEST_DIR/project/my-feature/repo-b" ]
 }
 
-@test "arb add -a when all repos already present errors" {
+@test "arb attach -a when all repos already present errors" {
     arb create my-feature repo-a repo-b
     cd "$TEST_DIR/project/my-feature"
-    run arb add -a
+    run arb attach -a
     [ "$status" -ne 0 ]
     [[ "$output" == *"All repos are already in this workspace"* ]]
 }
 
-@test "arb add recovers from stale worktree reference" {
+@test "arb attach recovers from stale worktree reference" {
     arb create my-feature repo-a repo-b
     # Remove workspace dir without git worktree remove (leaves stale reference)
     rm -rf "$TEST_DIR/project/my-feature"
@@ -211,143 +211,143 @@ load test_helper/common-setup
     mkdir -p "$TEST_DIR/project/my-feature/.arbws"
     echo "branch = my-feature" > "$TEST_DIR/project/my-feature/.arbws/config"
     cd "$TEST_DIR/project/my-feature"
-    run arb add repo-a repo-b
+    run arb attach repo-a repo-b
     [ "$status" -eq 0 ]
     [ -d "$TEST_DIR/project/my-feature/repo-a" ]
     [ -d "$TEST_DIR/project/my-feature/repo-b" ]
 }
 
-# ── drop ─────────────────────────────────────────────────────────
+# ── detach ───────────────────────────────────────────────────────
 
-@test "arb drop removes a repo from workspace" {
+@test "arb detach removes a repo from workspace" {
     arb create my-feature repo-a repo-b
     cd "$TEST_DIR/project/my-feature"
-    arb drop repo-b
+    arb detach repo-b
     [ ! -d "$TEST_DIR/project/my-feature/repo-b" ]
     [ -d "$TEST_DIR/project/my-feature/repo-a" ]
 }
 
-@test "arb drop skips repo with uncommitted changes without --force" {
+@test "arb detach skips repo with uncommitted changes without --force" {
     arb create my-feature repo-a repo-b
     echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
     cd "$TEST_DIR/project/my-feature"
-    run arb drop repo-a
+    run arb detach repo-a
     [[ "$output" == *"uncommitted changes"* ]]
     [ -d "$TEST_DIR/project/my-feature/repo-a" ]
 }
 
-@test "arb drop --force removes repo even with uncommitted changes" {
+@test "arb detach --force removes repo even with uncommitted changes" {
     arb create my-feature repo-a repo-b
     echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
     cd "$TEST_DIR/project/my-feature"
-    arb drop --force repo-a
+    arb detach --force repo-a
     [ ! -d "$TEST_DIR/project/my-feature/repo-a" ]
 }
 
-@test "arb drop -f removes repo even with uncommitted changes" {
+@test "arb detach -f removes repo even with uncommitted changes" {
     arb create my-feature repo-a repo-b
     echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
     cd "$TEST_DIR/project/my-feature"
-    arb drop -f repo-a
+    arb detach -f repo-a
     [ ! -d "$TEST_DIR/project/my-feature/repo-a" ]
 }
 
-@test "arb drop --delete-branch also deletes local branch" {
+@test "arb detach --delete-branch also deletes local branch" {
     arb create my-feature repo-a repo-b
     cd "$TEST_DIR/project/my-feature"
-    arb drop --delete-branch repo-b
+    arb detach --delete-branch repo-b
     [ ! -d "$TEST_DIR/project/my-feature/repo-b" ]
     run git -C "$TEST_DIR/project/.arb/repos/repo-b" show-ref --verify "refs/heads/my-feature"
     [ "$status" -ne 0 ]
 }
 
-@test "arb drop skips repo not in workspace" {
+@test "arb detach skips repo not in workspace" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
-    run arb drop repo-b
+    run arb detach repo-b
     [[ "$output" == *"not in this workspace"* ]]
 }
 
-@test "arb drop without args fails in non-TTY" {
+@test "arb detach without args fails in non-TTY" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
-    run arb drop
+    run arb detach
     [ "$status" -ne 0 ]
     [[ "$output" == *"No repos specified"* ]]
     [[ "$output" == *"--all-repos"* ]]
 }
 
-@test "arb drop -a drops all repos from workspace" {
+@test "arb detach -a detaches all repos from workspace" {
     arb create my-feature repo-a repo-b
     cd "$TEST_DIR/project/my-feature"
-    run arb drop -a
+    run arb detach -a
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/my-feature/repo-a" ]
     [ ! -d "$TEST_DIR/project/my-feature/repo-b" ]
 }
 
-@test "arb drop --all-repos drops all repos from workspace" {
+@test "arb detach --all-repos detaches all repos from workspace" {
     arb create my-feature repo-a repo-b
     cd "$TEST_DIR/project/my-feature"
-    run arb drop --all-repos
+    run arb detach --all-repos
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/my-feature/repo-a" ]
     [ ! -d "$TEST_DIR/project/my-feature/repo-b" ]
 }
 
-@test "arb drop -a on empty workspace errors" {
+@test "arb detach -a on empty workspace errors" {
     mkdir -p "$TEST_DIR/project/empty-ws/.arbws"
     echo "branch = empty" > "$TEST_DIR/project/empty-ws/.arbws/config"
     cd "$TEST_DIR/project/empty-ws"
-    run arb drop -a
+    run arb detach -a
     [ "$status" -ne 0 ]
     [[ "$output" == *"No repos in this workspace"* ]]
 }
 
-@test "arb drop without workspace context fails" {
-    run arb drop repo-a
+@test "arb detach without workspace context fails" {
+    run arb detach repo-a
     [ "$status" -ne 0 ]
     [[ "$output" == *"Not inside a workspace"* ]]
 }
 
-# ── remove ───────────────────────────────────────────────────────
+# ── delete ───────────────────────────────────────────────────────
 
-@test "arb remove --force removes worktrees, branches, workspace dir" {
+@test "arb delete --force removes worktrees, branches, workspace dir" {
     arb create my-feature repo-a repo-b
-    arb remove my-feature --force
+    arb delete my-feature --force
     [ ! -d "$TEST_DIR/project/my-feature" ]
     # Branch should be deleted from canonical repo
     run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/heads/my-feature"
     [ "$status" -ne 0 ]
 }
 
-@test "arb remove -f removes worktrees, branches, workspace dir" {
+@test "arb delete -f removes worktrees, branches, workspace dir" {
     arb create my-feature repo-a repo-b
-    arb remove my-feature -f
+    arb delete my-feature -f
     [ ! -d "$TEST_DIR/project/my-feature" ]
     run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/heads/my-feature"
     [ "$status" -ne 0 ]
 }
 
-@test "arb remove --force --delete-remote deletes remote branches" {
+@test "arb delete --force --delete-remote deletes remote branches" {
     arb create my-feature repo-a
     # Push the branch to the remote first
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    arb remove my-feature --force --delete-remote
+    arb delete my-feature --force --delete-remote
     # Remote branch should be gone
     run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/remotes/origin/my-feature"
     [ "$status" -ne 0 ]
 }
 
-@test "arb remove -f -d deletes remote branches" {
+@test "arb delete -f -d deletes remote branches" {
     arb create my-feature repo-a
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    arb remove my-feature -f -d
+    arb delete my-feature -f -d
     run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/remotes/origin/my-feature"
     [ "$status" -ne 0 ]
 }
 
-@test "arb remove --force --delete-remote reports failed remote delete" {
+@test "arb delete --force --delete-remote reports failed remote delete" {
     arb create my-feature repo-a repo-b
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
@@ -355,7 +355,7 @@ load test_helper/common-setup
     # Make repo-b's remote unreachable so the push --delete fails
     mv "$TEST_DIR/origin/repo-b.git" "$TEST_DIR/origin/repo-b.git.bak"
 
-    run arb remove my-feature --force --delete-remote
+    run arb delete my-feature --force --delete-remote
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/my-feature" ]
     [[ "$output" == *"failed to delete remote branch"* ]]
@@ -364,44 +364,44 @@ load test_helper/common-setup
     mv "$TEST_DIR/origin/repo-b.git.bak" "$TEST_DIR/origin/repo-b.git"
 }
 
-@test "arb remove aborts on non-interactive input" {
+@test "arb delete aborts on non-interactive input" {
     arb create my-feature repo-a
-    run bash -c 'echo "" | arb remove my-feature'
+    run bash -c 'echo "" | arb delete my-feature'
     [ "$status" -ne 0 ]
     [[ "$output" == *"Not a terminal"* ]]
     [[ "$output" == *"--yes"* ]]
 }
 
-@test "arb remove nonexistent workspace fails" {
-    run arb remove ghost --force
+@test "arb delete nonexistent workspace fails" {
+    run arb delete ghost --force
     [ "$status" -ne 0 ]
     [[ "$output" == *"No workspace found"* ]]
 }
 
-@test "arb remove without args fails in non-TTY" {
-    run arb remove
+@test "arb delete without args fails in non-TTY" {
+    run arb delete
     [ "$status" -ne 0 ]
     [[ "$output" == *"No workspace specified"* ]]
 }
 
-@test "arb remove multiple workspaces with --force" {
+@test "arb delete multiple workspaces with --force" {
     arb create ws-a repo-a
     arb create ws-b repo-b
-    arb remove ws-a ws-b --force
+    arb delete ws-a ws-b --force
     [ ! -d "$TEST_DIR/project/ws-a" ]
     [ ! -d "$TEST_DIR/project/ws-b" ]
 }
 
-@test "arb remove multiple workspaces removes all" {
+@test "arb delete multiple workspaces removes all" {
     arb create ws-one repo-a
     arb create ws-two repo-b
-    run arb remove ws-one ws-two --force
+    run arb delete ws-one ws-two --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-one" ]
     [ ! -d "$TEST_DIR/project/ws-two" ]
 }
 
-@test "arb remove refuses workspace with merge conflict" {
+@test "arb delete refuses workspace with merge conflict" {
     arb create my-feature repo-a
     local wt="$TEST_DIR/project/my-feature/repo-a"
 
@@ -430,20 +430,20 @@ load test_helper/common-setup
     [[ "$output" == *"conflicts"* ]]
 
     # Remove without --force should refuse (non-TTY exits before at-risk check)
-    run arb remove my-feature
+    run arb delete my-feature
     [ "$status" -ne 0 ]
     # Workspace should still exist
     [ -d "$TEST_DIR/project/my-feature" ]
 
     # Force remove should succeed
-    arb remove my-feature --force
+    arb delete my-feature --force
     [ ! -d "$TEST_DIR/project/my-feature" ]
 }
 
 
-# ── remove --all-safe ──────────────────────────────────────────────
+# ── delete --all-safe ──────────────────────────────────────────────
 
-@test "arb remove --all-safe removes safe workspaces, keeps dirty" {
+@test "arb delete --all-safe removes safe workspaces, keeps dirty" {
     arb create ws-clean repo-a
     arb create ws-dirty repo-a
 
@@ -454,65 +454,65 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/ws-dirty/repo-a" push -u origin ws-dirty >/dev/null 2>&1
     echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
 
-    run arb remove --all-safe --force
+    run arb delete --all-safe --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-clean" ]
     [ -d "$TEST_DIR/project/ws-dirty" ]
 }
 
-@test "arb remove --all-safe skips current workspace" {
+@test "arb delete --all-safe skips current workspace" {
     arb create ws-inside repo-a
     git -C "$TEST_DIR/project/ws-inside/repo-a" push -u origin ws-inside >/dev/null 2>&1
 
     cd "$TEST_DIR/project/ws-inside"
-    run arb remove --all-safe --force
+    run arb delete --all-safe --force
     [ "$status" -eq 0 ]
     [ -d "$TEST_DIR/project/ws-inside" ]
 }
 
-@test "arb remove --all-safe with no safe workspaces exits cleanly" {
+@test "arb delete --all-safe with no safe workspaces exits cleanly" {
     arb create ws-dirty repo-a
     git -C "$TEST_DIR/project/ws-dirty/repo-a" push -u origin ws-dirty >/dev/null 2>&1
     echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
 
-    run arb remove --all-safe --force
+    run arb delete --all-safe --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"No workspaces with safe status"* ]]
     [ -d "$TEST_DIR/project/ws-dirty" ]
 }
 
-@test "arb remove --all-safe with positional args errors" {
-    run arb remove --all-safe ws-a
+@test "arb delete --all-safe with positional args errors" {
+    run arb delete --all-safe ws-a
     [ "$status" -ne 0 ]
     [[ "$output" == *"Cannot combine --all-safe with workspace names."* ]]
 }
 
-@test "arb remove --all-safe --force skips confirmation" {
+@test "arb delete --all-safe --force skips confirmation" {
     arb create ws-ok repo-a
     git -C "$TEST_DIR/project/ws-ok/repo-a" push -u origin ws-ok >/dev/null 2>&1
 
-    run arb remove --all-safe --force
+    run arb delete --all-safe --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-ok" ]
 }
 
-@test "arb remove --all-safe skips config-missing workspaces" {
+@test "arb delete --all-safe skips config-missing workspaces" {
     arb create ws-broken repo-a
     git -C "$TEST_DIR/project/ws-broken/repo-a" push -u origin ws-broken >/dev/null 2>&1
     # Remove config to simulate config-missing state
     rm "$TEST_DIR/project/ws-broken/.arbws/config"
 
-    run arb remove --all-safe --force
+    run arb delete --all-safe --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"No workspaces with safe status"* ]]
     [ -d "$TEST_DIR/project/ws-broken" ]
 }
 
-@test "arb remove --all-safe --delete-remote composes correctly" {
+@test "arb delete --all-safe --delete-remote composes correctly" {
     arb create ws-rd repo-a
     git -C "$TEST_DIR/project/ws-rd/repo-a" push -u origin ws-rd >/dev/null 2>&1
 
-    run arb remove --all-safe --force --delete-remote
+    run arb delete --all-safe --force --delete-remote
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-rd" ]
     # Remote branch should be gone
@@ -520,7 +520,7 @@ load test_helper/common-setup
     [ "$status" -ne 0 ]
 }
 
-@test "arb remove --all-safe includes workspaces that are behind base" {
+@test "arb delete --all-safe includes workspaces that are behind base" {
     arb create ws-behind repo-a
     git -C "$TEST_DIR/project/ws-behind/repo-a" push -u origin ws-behind >/dev/null 2>&1
 
@@ -530,7 +530,7 @@ load test_helper/common-setup
     # Fetch so the workspace sees the new remote state
     git -C "$TEST_DIR/project/ws-behind/repo-a" fetch origin >/dev/null 2>&1
 
-    run arb remove --all-safe --force
+    run arb delete --all-safe --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-behind" ]
 }

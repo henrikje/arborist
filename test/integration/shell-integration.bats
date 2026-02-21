@@ -144,7 +144,7 @@ SHELL_FILE="$BATS_TEST_DIRNAME/../../shell/arb.bash"
     run bash -c "
         source '$SHELL_FILE'
         cd '$TEST_DIR/project'
-        COMP_WORDS=(arb remove ws)
+        COMP_WORDS=(arb delete ws)
         COMP_CWORD=2
         _arb
         echo \"\${COMPREPLY[*]}\"
@@ -175,7 +175,7 @@ SHELL_FILE="$BATS_TEST_DIRNAME/../../shell/arb.bash"
     run bash -c "
         source '$SHELL_FILE'
         cd '$TEST_DIR/project/my-feature'
-        COMP_WORDS=(arb add repo)
+        COMP_WORDS=(arb attach repo)
         COMP_CWORD=2
         _arb
         echo \"\${COMPREPLY[*]}\"

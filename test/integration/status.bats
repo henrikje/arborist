@@ -897,11 +897,11 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
     [[ "$output" == *"Config missing"* ]] || [[ "$output" == *"inferred branch"* ]]
 }
 
-@test "arb add works when worktrees exist but config is missing" {
+@test "arb attach works when worktrees exist but config is missing" {
     arb create my-feature repo-a
     delete_workspace_config my-feature
     cd "$TEST_DIR/project/my-feature"
-    run arb add repo-b
+    run arb attach repo-b
     [ "$status" -eq 0 ]
     [ -d "$TEST_DIR/project/my-feature/repo-b" ]
     # Verify repo-b is on the inferred branch
@@ -910,20 +910,20 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
     [ "$branch" = "my-feature" ]
 }
 
-@test "arb add fails when config is missing and no worktrees exist" {
+@test "arb attach fails when config is missing and no worktrees exist" {
     mkdir -p "$TEST_DIR/project/empty-ws/.arbws"
     echo "branch = empty-ws" > "$TEST_DIR/project/empty-ws/.arbws/config"
     delete_workspace_config empty-ws
     cd "$TEST_DIR/project/empty-ws"
-    run arb add repo-a
+    run arb attach repo-a
     [ "$status" -ne 0 ]
     [[ "$output" == *"No branch configured"* ]] || [[ "$output" == *"no worktrees to infer"* ]]
 }
 
-@test "arb remove --force works with missing config" {
+@test "arb delete --force works with missing config" {
     arb create my-feature repo-a repo-b
     delete_workspace_config my-feature
-    arb remove my-feature --force
+    arb delete my-feature --force
     [ ! -d "$TEST_DIR/project/my-feature" ]
     # Branch should still be cleaned up
     run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/heads/my-feature"

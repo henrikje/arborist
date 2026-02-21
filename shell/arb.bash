@@ -495,7 +495,7 @@ _arb() {
 
     # Completing the subcommand itself
     if ((COMP_CWORD <= cmd_pos)); then
-        local commands="init repo create remove list path cd add drop status fetch pull push rebase merge exec open template help"
+        local commands="init repo create delete list path cd attach detach status fetch pull push rebase merge exec open template help"
         # Also complete global flags
         if [[ "$cur" == -* ]]; then
             COMPREPLY=($(compgen -W "-C -h --help -v --version" -- "$cur"))
@@ -511,12 +511,12 @@ _arb() {
         init)     __arb_complete_init "$cur" ;;
         repo)     __arb_complete_repo "$base_dir" "$cur" ;;
         create)   __arb_complete_create "$base_dir" "$cur" ;;
-        remove)   __arb_complete_remove "$base_dir" "$cur" ;;
+        delete)   __arb_complete_remove "$base_dir" "$cur" ;;
         list)     __arb_complete_list "$cur" ;;
         path)     __arb_complete_path "$base_dir" "$cur" ;;
         cd)       __arb_complete_cd "$base_dir" "$cur" ;;
-        add)      __arb_complete_add "$base_dir" "$cur" ;;
-        drop)     __arb_complete_drop "$base_dir" "$cur" ;;
+        attach)   __arb_complete_add "$base_dir" "$cur" ;;
+        detach)   __arb_complete_drop "$base_dir" "$cur" ;;
         status)   __arb_complete_status "$cur" ;;
         fetch)    __arb_complete_fetch ;;
         pull)     __arb_complete_pull "$base_dir" "$cur" ;;

@@ -67,6 +67,8 @@ The `decisions/` directory contains records of significant design and product de
 
 After implementing a feature whose plan involved a significant decision, distill a `decisions/NNNN-*.md` from the plan — stripping implementation details, keeping only context, options, decision, reasoning, and consequences. If the decision reveals a new enduring principle, add it to GUIDELINES.md and reference it from the decision record. See `decisions/README.md` for the template and heuristic on what warrants a record.
 
+Existing decision files must never be modified. They are permanent records of past reasoning. If a decision is later revisited or reversed, write a new decision record that references the original.
+
 ## Post-Change Checklist
 
 After each change, check whether the following need updating:
