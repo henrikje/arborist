@@ -266,10 +266,10 @@ load test_helper/common-setup
     [[ "$output" == *"repo-a"* ]]
 }
 
-@test "arb status -f fetches before showing status" {
+@test "arb status -F fetches before showing status" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
-    run arb status -f
+    run arb status -F
     [[ "$output" == *"repo-a"* ]]
 }
 

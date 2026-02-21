@@ -42,9 +42,10 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		.command("list")
 		.summary("List all workspaces")
 		.description(
-			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --where <filter> to filter workspaces by status flags (any workspace with at least one matching repo is shown): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk, stale. Comma-separated values use OR logic. Use --quick to skip per-repo status gathering for faster output. Use --fetch to fetch all repos before listing for fresh remote data. Use --json for machine-readable output.",
+			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --where <filter> to filter workspaces by status flags (any workspace with at least one matching repo is shown): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk, stale. Comma-separated values use OR logic. Use --quick to skip per-repo status gathering for faster output. Use -F/--fetch to fetch all repos before listing for fresh remote data (skip with --no-fetch). Use --json for machine-readable output.",
 		)
-		.option("-f, --fetch", "Fetch all repos before listing")
+		.option("-F, --fetch", "Fetch all repos before listing")
+		.option("--no-fetch", "Skip fetching (default)", false)
 		.option("-q, --quick", "Skip per-repo status (faster for large setups)")
 		.option("-w, --where <filter>", "Filter workspaces by repo status flags (comma-separated, OR logic)")
 		.option("--json", "Output structured JSON")

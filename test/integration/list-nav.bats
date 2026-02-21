@@ -191,6 +191,15 @@ load test_helper/common-setup
     [[ "$output" == *"ws-one"* ]]
 }
 
+@test "arb list -F fetches before listing (short for --fetch)" {
+    arb create ws-one repo-a
+    cd "$TEST_DIR/project/ws-one"
+    run arb list -F
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Fetched"* ]]
+    [[ "$output" == *"ws-one"* ]]
+}
+
 @test "arb list --json outputs valid JSON" {
     arb create my-feature repo-a
     run arb list --json

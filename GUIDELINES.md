@@ -155,11 +155,15 @@ All human-facing output (progress lines, prompts, summaries, errors) goes to std
 
 Arborist maintains no state files beyond the `.arb/` marker directory, `.arbws/config` in each workspace, and git's own metadata. Workspaces are discovered by scanning for directories containing `.arbws`. Repos are discovered by scanning `.arb/repos/` for directories containing `.git`. This makes the state inspectable, debuggable, and impossible to corrupt through arb bugs alone.
 
-### Mutating commands fetch by default, read-only commands do not
+### Universal fetch flags
 
-State-changing commands (`pull`, `push`, `rebase`, `merge`) automatically fetch from all remotes before assessing the workspace. This ensures operations are based on the latest remote state, preventing mistakes like rebasing onto a stale base branch. Use `--no-fetch` to skip when refs are known to be fresh.
+All relevant commands expose both `-F, --fetch` and `--no-fetch`. The default is stated in each flag's help text, making behavior visible without reading docs. Short option assignments: `-F` → `--fetch` (arborist convention for fetch), `-f` → `--force` (universal, conventional), `--no-fetch` has no short (infrequent; short space is crowded).
 
-Read-only commands (`status`, `list`) do not fetch by default to stay fast for frequent use. Both support `--fetch` to opt in when fresh remote data is needed.
+**Sync commands** (`push`, `rebase`, `merge`) fetch by default. `-F, --fetch` is labeled "(default)" in help; `--no-fetch` skips the pre-fetch when refs are known to be fresh.
+
+**Overview commands** (`status`, `log`, `diff`) and **list** do not fetch by default to stay fast for frequent use. `-F, --fetch` opts in to a pre-fetch; `--no-fetch` makes the default explicit.
+
+`pull` is excluded: `git pull` inherently fetches, so a skip flag would be misleading even if the pre-fetch were skipped.
 
 The parallel pre-fetch also serves a performance purpose: `parallelFetch()` fetches all repos concurrently, while the subsequent mutation operations (pull, push, rebase, merge) run sequentially one repo at a time. Batching the network I/O upfront avoids per-repo fetch latency during the sequential phase.
 
