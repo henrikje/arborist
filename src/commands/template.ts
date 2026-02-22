@@ -1,6 +1,15 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+	copyFileSync,
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	readFileSync,
+	readdirSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import type { Command } from "commander";
 import { dim, error, info, plural, success, warn, yellow } from "../lib/output";
 import { collectRepo, workspaceRepoDirs } from "../lib/repos";
@@ -70,69 +79,100 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 	// ── template add ─────────────────────────────────────────────────
 
 	template
-		.command("add <file>")
+		.command("add <path>")
 		.option("--repo <name>", "Target repo scope (repeatable)", collectRepo, [])
 		.option("--workspace", "Target workspace scope")
 		.option("-f, --force", "Overwrite existing template")
-		.summary("Capture a file as a template")
+		.summary("Capture a file or directory as a template")
 		.description(
-			"Copy a file from the current workspace into .arb/templates/. The scope (workspace or repo) is auto-detected from your current directory. Use --repo or --workspace to override. The file must exist. If the template already exists with identical content, succeeds silently. If content differs, use --force to overwrite.",
+			"Copy a file or directory from the current workspace into .arb/templates/. If a directory is given, all files within it are added recursively. The scope (workspace or repo) is auto-detected from your current directory. Use --repo or --workspace to override. The path must exist. If the template already exists with identical content, succeeds silently. If content differs, use --force to overwrite.",
 		)
-		.action((file: string, options: { repo?: string[]; workspace?: boolean; force?: boolean }) => {
+		.action((path: string, options: { repo?: string[]; workspace?: boolean; force?: boolean }) => {
 			const ctx = getCtx();
 			const { scope, repos } = resolveScope(options, ctx);
-			const srcPath = resolve(file);
+			const srcPath = resolve(path);
 
 			if (!existsSync(srcPath)) {
-				error(`File not found: ${file}`);
+				error(`Path not found: ${path}`);
 				process.exit(1);
 			}
 
-			// Determine the relative path for the template
+			// Collect files to add: { filePath, relSuffix }
+			const stat = lstatSync(srcPath);
+			const files: { filePath: string; relSuffix: string }[] = [];
+
+			if (stat.isDirectory()) {
+				function walk(dir: string): void {
+					for (const entry of readdirSync(dir)) {
+						const entryPath = join(dir, entry);
+						const entryStat = lstatSync(entryPath);
+						if (entryStat.isSymbolicLink()) continue;
+						if (entryStat.isDirectory()) {
+							walk(entryPath);
+						} else if (entryStat.isFile()) {
+							files.push({ filePath: entryPath, relSuffix: relative(srcPath, entryPath) });
+						}
+					}
+				}
+				walk(srcPath);
+			} else {
+				files.push({ filePath: srcPath, relSuffix: "" });
+			}
+
+			if (files.length === 0) {
+				info("  No files found to add.");
+				return;
+			}
+
+			// Determine the base relative path for the template
 			const { wsDir } = requireWorkspace(ctx);
-			let relPath: string;
+			let baseRelPath: string;
 			if (scope === "workspace") {
 				const prefix = `${wsDir}/`;
 				if (srcPath.startsWith(prefix)) {
-					relPath = srcPath.slice(prefix.length);
+					baseRelPath = srcPath.slice(prefix.length);
 				} else {
-					relPath = basename(srcPath);
+					baseRelPath = basename(srcPath);
 				}
 			} else {
 				const firstRepo = repos?.[0] ?? "";
 				const repoDir = join(wsDir, firstRepo);
 				const prefix = `${repoDir}/`;
 				if (srcPath.startsWith(prefix)) {
-					relPath = srcPath.slice(prefix.length);
+					baseRelPath = srcPath.slice(prefix.length);
 				} else {
-					relPath = basename(srcPath);
+					baseRelPath = basename(srcPath);
 				}
 			}
 
 			const targetRepos: (string | undefined)[] = scope === "repo" && repos ? repos : [undefined];
 			let hasConflict = false;
-			for (const repo of targetRepos) {
-				const templatePath = templateFilePath(ctx.baseDir, scope, relPath, repo);
+			for (const { filePath, relSuffix } of files) {
+				const relPath = relSuffix ? join(baseRelPath, relSuffix) : baseRelPath;
 
-				if (existsSync(templatePath)) {
-					const existingContent = readFileSync(templatePath);
-					const newContent = readFileSync(srcPath);
-					if (existingContent.equals(newContent)) {
-						info(`  Template already up to date: ${relPath}${repo ? ` (repo: ${repo})` : ""}`);
-						continue;
+				for (const repo of targetRepos) {
+					const templatePath = templateFilePath(ctx.baseDir, scope, relPath, repo);
+
+					if (existsSync(templatePath)) {
+						const existingContent = readFileSync(templatePath);
+						const newContent = readFileSync(filePath);
+						if (existingContent.equals(newContent)) {
+							info(`  Template already up to date: ${relPath}${repo ? ` (repo: ${repo})` : ""}`);
+							continue;
+						}
+						if (!options.force) {
+							error(`Template already exists: ${relPath}${repo ? ` (repo: ${repo})` : ""}. Use --force to overwrite.`);
+							hasConflict = true;
+							continue;
+						}
+						mkdirSync(dirname(templatePath), { recursive: true });
+						copyFileSync(filePath, templatePath);
+						info(`  Updated template: ${relPath}${repo ? ` (repo: ${repo})` : ""}`);
+					} else {
+						mkdirSync(dirname(templatePath), { recursive: true });
+						copyFileSync(filePath, templatePath);
+						info(`  Added template: ${relPath}${repo ? ` (repo: ${repo})` : ""}`);
 					}
-					if (!options.force) {
-						error(`Template already exists: ${relPath}${repo ? ` (repo: ${repo})` : ""}. Use --force to overwrite.`);
-						hasConflict = true;
-						continue;
-					}
-					mkdirSync(dirname(templatePath), { recursive: true });
-					copyFileSync(srcPath, templatePath);
-					info(`  Updated template: ${relPath}${repo ? ` (repo: ${repo})` : ""}`);
-				} else {
-					mkdirSync(dirname(templatePath), { recursive: true });
-					copyFileSync(srcPath, templatePath);
-					info(`  Added template: ${relPath}${repo ? ` (repo: ${repo})` : ""}`);
 				}
 			}
 			if (hasConflict) process.exit(1);
