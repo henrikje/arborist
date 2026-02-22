@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
-import { getShortHead, predictMergeConflict } from "../lib/git";
+import { getShortHead, git, predictMergeConflict, predictStashPopConflict } from "../lib/git";
 import {
 	clearLines,
 	countLines,
@@ -22,7 +22,7 @@ import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import type { RepoRemotes } from "../lib/remotes";
 import { resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos, resolveRepoSelection } from "../lib/repos";
-import { type RepoStatus, gatherRepoStatus } from "../lib/status";
+import { type RepoStatus, computeFlags, gatherRepoStatus } from "../lib/status";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -38,6 +38,8 @@ interface PullAssessment {
 	pullMode: "rebase" | "merge";
 	headSha: string;
 	conflictPrediction?: "clean" | "conflict" | null;
+	needsStash?: boolean;
+	stashPopConflictFiles?: string[];
 }
 
 export function registerPullCommand(program: Command, getCtx: () => ArbContext): void {
@@ -47,12 +49,16 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.option("--rebase", "Pull with rebase")
 		.option("--merge", "Pull with merge")
+		.option("--autostash", "Stash uncommitted changes before pull, re-apply after")
 		.summary("Pull the feature branch from the share remote")
 		.description(
-			"Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos that haven't been pushed yet or where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end.",
+			"Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos with uncommitted changes are skipped unless --autostash is used. Repos that haven't been pushed yet or where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end. Use --autostash to stash uncommitted changes before pulling and re-apply them after.",
 		)
 		.action(
-			async (repoArgs: string[], options: { rebase?: boolean; merge?: boolean; yes?: boolean; dryRun?: boolean }) => {
+			async (
+				repoArgs: string[],
+				options: { rebase?: boolean; merge?: boolean; yes?: boolean; dryRun?: boolean; autostash?: boolean },
+			) => {
 				if (options.rebase && options.merge) {
 					error("Cannot use both --rebase and --merge");
 					process.exit(1);
@@ -77,13 +83,14 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				const repos = allRepos.filter((r) => selectedSet.has(r));
 				const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
 				const canTwoPhase = fetchDirs.length > 0 && isTTY();
+				const autostash = options.autostash === true;
 
 				const assess = async (fetchFailed: string[]) => {
 					const assessments: PullAssessment[] = [];
 					for (const repo of repos) {
 						const repoDir = `${wsDir}/${repo}`;
 						const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
-						assessments.push(await assessPullRepo(status, repoDir, branch, fetchFailed, flagMode));
+						assessments.push(await assessPullRepo(status, repoDir, branch, fetchFailed, flagMode, autostash));
 					}
 					return assessments;
 				};
@@ -167,21 +174,51 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				// Phase 5: execute
 				let pullOk = 0;
 				const conflicted: { assessment: PullAssessment; stdout: string }[] = [];
+				const stashPopFailed: PullAssessment[] = [];
 
 				for (const a of willPull) {
 					inlineStart(a.repo, `pulling (${a.pullMode})`);
 					const pullRemote = remotesMap.get(a.repo)?.share ?? "origin";
-					const pullFlag = a.pullMode === "rebase" ? "--rebase" : "--no-rebase";
-					const pullResult = await Bun.$`git -C ${a.repoDir} pull ${pullFlag} ${pullRemote} ${branch}`
-						.cwd(a.repoDir)
-						.quiet()
-						.nothrow();
-					if (pullResult.exitCode === 0) {
-						inlineResult(a.repo, `pulled ${plural(a.behind, "commit")} (${a.pullMode})`);
-						pullOk++;
+
+					if (a.pullMode === "rebase") {
+						// Rebase mode: pass --autostash to git pull --rebase when needed
+						const pullArgs = a.needsStash
+							? ["pull", "--rebase", "--autostash", pullRemote, branch]
+							: ["pull", "--rebase", pullRemote, branch];
+						const pullResult = await git(a.repoDir, ...pullArgs);
+						if (pullResult.exitCode === 0) {
+							inlineResult(a.repo, `pulled ${plural(a.behind, "commit")} (${a.pullMode})`);
+							pullOk++;
+						} else {
+							inlineResult(a.repo, yellow("conflict"));
+							conflicted.push({ assessment: a, stdout: pullResult.stdout });
+						}
 					} else {
-						inlineResult(a.repo, yellow("conflict"));
-						conflicted.push({ assessment: a, stdout: pullResult.stdout.toString() });
+						// Merge mode: manual stash cycle when needed
+						if (a.needsStash) {
+							await git(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
+						}
+						const pullResult = await git(a.repoDir, "pull", "--no-rebase", pullRemote, branch);
+						if (pullResult.exitCode === 0) {
+							let stashPopOk = true;
+							if (a.needsStash) {
+								const popResult = await git(a.repoDir, "stash", "pop");
+								if (popResult.exitCode !== 0) {
+									stashPopOk = false;
+									stashPopFailed.push(a);
+								}
+							}
+							let doneMsg = `pulled ${plural(a.behind, "commit")} (${a.pullMode})`;
+							if (!stashPopOk) {
+								doneMsg += ` ${yellow("(stash pop failed)")}`;
+							}
+							inlineResult(a.repo, doneMsg);
+							pullOk++;
+						} else {
+							// Do NOT pop stash if pull conflicted
+							inlineResult(a.repo, yellow("conflict"));
+							conflicted.push({ assessment: a, stdout: pullResult.stdout });
+						}
 					}
 				}
 
@@ -200,13 +237,26 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					}
 				}
 
+				// Stash pop failure report
+				if (stashPopFailed.length > 0) {
+					process.stderr.write(`\n  ${stashPopFailed.length} repo(s) need manual stash application:\n`);
+					for (const a of stashPopFailed) {
+						process.stderr.write(`\n    ${a.repo}\n`);
+						process.stderr.write("      Pull succeeded, but stash pop conflicted.\n");
+						process.stderr.write(`      cd ${a.repo}\n`);
+						process.stderr.write("      git stash pop    # re-apply and resolve conflicts\n");
+						process.stderr.write("      # or: git stash show  # inspect stashed changes\n");
+					}
+				}
+
 				// Phase 6: summary
 				process.stderr.write("\n");
 				const parts = [`Pulled ${plural(pullOk, "repo")}`];
 				if (conflicted.length > 0) parts.push(`${conflicted.length} conflicted`);
+				if (stashPopFailed.length > 0) parts.push(`${stashPopFailed.length} stash pop failed`);
 				if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
 				if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
-				if (conflicted.length > 0) {
+				if (conflicted.length > 0 || stashPopFailed.length > 0) {
 					warn(parts.join(", "));
 					process.exit(1);
 				} else {
@@ -222,6 +272,7 @@ async function assessPullRepo(
 	branch: string,
 	fetchFailed: string[],
 	flagMode: "rebase" | "merge" | undefined,
+	autostash = false,
 ): Promise<PullAssessment> {
 	const headSha = await getShortHead(repoDir);
 
@@ -252,6 +303,18 @@ async function assessPullRepo(
 	}
 	if (status.identity.headMode.branch !== branch) {
 		return { ...base, skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}` };
+	}
+
+	// Dirty check
+	const flags = computeFlags(status, branch);
+	if (flags.isDirty) {
+		if (!autostash) {
+			return { ...base, skipReason: "uncommitted changes (use --autostash)" };
+		}
+		// Only stash if there are staged or modified files (not untracked-only)
+		if (status.local.staged > 0 || status.local.modified > 0) {
+			base.needsStash = true;
+		}
 	}
 
 	// Not pushed yet
@@ -311,7 +374,17 @@ function formatPullPlan(assessments: PullAssessment[], remotesMap: Map<string, R
 				conflictHint = ", conflict unlikely";
 			}
 			const rebasedHint = a.rebased > 0 ? `, ${a.rebased} rebased` : "";
-			out += `  ${a.repo}   ${plural(a.behind, "commit")} to pull (${a.pullMode}${rebasedHint}${conflictHint})${forkSuffix}${headStr}\n`;
+			let stashHint = "";
+			if (a.needsStash) {
+				if (a.stashPopConflictFiles && a.stashPopConflictFiles.length > 0) {
+					stashHint = ` ${yellow("(autostash, stash pop conflict likely)")}`;
+				} else if (a.stashPopConflictFiles) {
+					stashHint = " (autostash, stash pop conflict unlikely)";
+				} else {
+					stashHint = " (autostash)";
+				}
+			}
+			out += `  ${a.repo}   ${plural(a.behind, "commit")} to pull (${a.pullMode}${rebasedHint}${conflictHint})${stashHint}${forkSuffix}${headStr}\n`;
 		} else if (a.outcome === "up-to-date") {
 			out += `  ${a.repo}   up to date\n`;
 		} else {
@@ -344,13 +417,17 @@ async function predictPullConflicts(
 		assessments
 			.filter((a) => a.outcome === "will-pull")
 			.map(async (a) => {
+				const shareRemote = remotesMap.get(a.repo)?.share ?? "origin";
+				const ref = `${shareRemote}/${branch}`;
 				if (a.behind > 0 && a.toPush > 0) {
-					const shareRemote = remotesMap.get(a.repo)?.share ?? "origin";
-					const ref = `${shareRemote}/${branch}`;
 					const prediction = await predictMergeConflict(a.repoDir, ref);
 					a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
 				} else {
 					a.conflictPrediction = "clean";
+				}
+				if (a.needsStash) {
+					const stashPrediction = await predictStashPopConflict(a.repoDir, ref);
+					a.stashPopConflictFiles = stashPrediction.overlapping;
 				}
 			}),
 	);

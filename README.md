@@ -173,7 +173,7 @@ Before a rebase or merge runs, Arborist performs a trial three-way merge in memo
   frontend   rebase add-dark-mode onto origin/main — 1 behind, 1 ahead (conflict unlikely)
 ```
 
-You see which repos will conflict before you commit to the operation. The same check runs for `pull` and appears in `arb status` when a repo's integration would conflict.
+You see which repos will conflict before you commit to the operation. The same check runs for `pull` and appears in `arb status` when a repo's integration would conflict. Dirty repos are normally skipped, but `--autostash` lets you operate on them without manual stashing.
 
 If a rebase or merge does hit a conflict, Arborist continues with the remaining repos and reports everything at the end. One conflicting repo never blocks the others. You see per-repo conflict details and resolution instructions in a single pass.
 
