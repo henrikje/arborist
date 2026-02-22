@@ -1,11 +1,9 @@
 import { basename } from "node:path";
-import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { configGet, writeConfig } from "../lib/config";
 import { branchExistsLocally, detectOperation, git, remoteBranchExists, validateBranchName } from "../lib/git";
+import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
 import {
-	clearLines,
-	countLines,
 	dim,
 	dryRunNotice,
 	error,
@@ -14,15 +12,12 @@ import {
 	inlineStart,
 	plural,
 	red,
-	skipConfirmNotice,
 	success,
 	warn,
 	yellow,
 } from "../lib/output";
-import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos, workspaceRepoDirs } from "../lib/repos";
-import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireWorkspace } from "../lib/workspace-context";
 
@@ -295,9 +290,8 @@ async function runRename(
 	const { fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
 
 	const shouldFetch = options.fetch !== false;
-	const canTwoPhase = shouldFetch && fetchDirs.length > 0 && isTTY();
 
-	const assess = async (): Promise<RepoAssessment[]> => {
+	const assess = async (_fetchFailed: string[]): Promise<RepoAssessment[]> => {
 		return Promise.all(
 			repoDirs.map((repoDir) => {
 				const repo = basename(repoDir);
@@ -309,38 +303,16 @@ async function runRename(
 		);
 	};
 
-	let assessments: RepoAssessment[];
-
-	if (canTwoPhase) {
-		// Two-phase: render stale plan immediately while fetch runs in background
-		const fetchPromise = parallelFetch(fetchDirs, undefined, fullRemotesMap, { silent: true });
-
-		assessments = await assess();
-		const stalePlan = formatPlan(assessments, oldBranch, newBranch, options.deleteRemoteOld ?? false);
-		const fetchingLine = `${dim(`Fetching ${plural(fetchDirs.length, "repo")}...`)}\n`;
-		const staleOutput = stalePlan + fetchingLine;
-		process.stderr.write(staleOutput);
-
-		const fetchResults = await fetchPromise;
-
-		// Re-assess with fresh refs
-		assessments = await assess();
-		const freshPlan = formatPlan(assessments, oldBranch, newBranch, options.deleteRemoteOld ?? false);
-		clearLines(countLines(staleOutput));
-		process.stderr.write(freshPlan);
-
-		reportFetchFailures(repos, localRepos, fetchResults);
-	} else if (shouldFetch && fetchDirs.length > 0) {
-		// Fallback: fetch with visible progress, then assess
-		const fetchResults = await parallelFetch(fetchDirs, undefined, fullRemotesMap);
-		reportFetchFailures(repos, localRepos, fetchResults);
-		assessments = await assess();
-		process.stderr.write(formatPlan(assessments, oldBranch, newBranch, options.deleteRemoteOld ?? false));
-	} else {
-		// No fetch (--no-fetch or no remote repos)
-		assessments = await assess();
-		process.stderr.write(formatPlan(assessments, oldBranch, newBranch, options.deleteRemoteOld ?? false));
-	}
+	const assessments = await runPlanFlow({
+		shouldFetch,
+		fetchDirs,
+		reposForFetchReport: repos,
+		localRepos,
+		remotesMap: fullRemotesMap,
+		assess,
+		formatPlan: (nextAssessments) =>
+			formatPlan(nextAssessments, oldBranch, newBranch, options.deleteRemoteOld ?? false),
+	});
 
 	const willRename = assessments.filter((a) => a.outcome === "will-rename");
 
@@ -355,22 +327,10 @@ async function runRename(
 	}
 
 	// Confirm
-	if (!options.yes) {
-		if (!isTTY()) {
-			error("Not a terminal. Use --yes to skip confirmation.");
-			process.exit(1);
-		}
-		const ok = await confirm(
-			{ message: `Rename branch in ${plural(willRename.length, "repo")}?`, default: false },
-			{ output: process.stderr },
-		);
-		if (!ok) {
-			process.stderr.write("Aborted.\n");
-			process.exit(130);
-		}
-	} else {
-		skipConfirmNotice("--yes");
-	}
+	await confirmOrExit({
+		yes: options.yes,
+		message: `Rename branch in ${plural(willRename.length, "repo")}?`,
+	});
 
 	process.stderr.write("\n");
 
@@ -499,22 +459,10 @@ async function runAbort(
 		return;
 	}
 
-	if (!options.yes) {
-		if (!isTTY()) {
-			error("Not a terminal. Use --yes to skip confirmation.");
-			process.exit(1);
-		}
-		const ok = await confirm(
-			{ message: `Roll back branch rename in ${plural(toRollBack.length, "repo")}?`, default: false },
-			{ output: process.stderr },
-		);
-		if (!ok) {
-			process.stderr.write("Aborted.\n");
-			process.exit(130);
-		}
-	} else {
-		skipConfirmNotice("--yes");
-	}
+	await confirmOrExit({
+		yes: options.yes,
+		message: `Roll back branch rename in ${plural(toRollBack.length, "repo")}?`,
+	});
 
 	process.stderr.write("\n");
 
