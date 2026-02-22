@@ -339,10 +339,10 @@ load test_helper/common-setup
     [ "$status" -ne 0 ]
 }
 
-@test "arb delete -f -d deletes remote branches" {
+@test "arb delete -f -r deletes remote branches" {
     arb create my-feature repo-a
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    arb delete my-feature -f -d
+    arb delete my-feature -f -r
     run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/remotes/origin/my-feature"
     [ "$status" -ne 0 ]
 }
@@ -533,5 +533,22 @@ load test_helper/common-setup
     run arb delete --all-safe --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-behind" ]
+}
+
+@test "arb delete --dirty filters to dirty workspaces" {
+    arb create ws-clean repo-a
+    arb create ws-dirty repo-a
+    echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
+    run arb delete ws-clean ws-dirty --dirty --force
+    [ "$status" -eq 0 ]
+    [ -d "$TEST_DIR/project/ws-clean" ]
+    [ ! -d "$TEST_DIR/project/ws-dirty" ]
+}
+
+@test "arb delete --dirty --where conflicts" {
+    arb create ws-one repo-a
+    run arb delete ws-one --dirty --where unpushed
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot combine --dirty with --where"* ]]
 }
 
