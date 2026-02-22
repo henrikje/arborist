@@ -38,6 +38,10 @@ If Arborist can detect a bad situation, it should warn, prevent, or compensate �
 
 When a feature or change involves weighing multiple meaningful options, the reasoning should be preserved in a decision record (`decisions/NNNN-*.md`). After implementation, distill the Claude plan into the decision record format — stripping implementation details, keeping only context, options, decision, reasoning, and consequences. If the decision reveals a new enduring principle, add it to GUIDELINES.md and reference it from the decision record. See `decisions/README.md` for the template and heuristic on what warrants a record.
 
+### Prefer correctness over backwards compatibility
+
+Arborist is in pre-release. The priority is getting the design right to form a cohesive, stable foundation — not preserving compatibility with earlier pre-release behavior. When a better approach is found, adopt it directly: rename commands, change defaults, restructure output, alter flag semantics. Breaking changes are expected and acceptable during this phase. Locking in suboptimal behavior early is more costly than any migration pain before 1.0.
+
 ---
 
 ## UX Guidelines
