@@ -225,6 +225,14 @@ arb template add .env
 
 Templates let you capture files and have them seeded into every new workspace. Common uses include `.env` files, IDE settings, and AI agent config. Templates live in `.arb/templates/` and are version-controllable.
 
+### Rename a workspace branch
+
+```bash
+arb rebranch feat/JIRA-123
+```
+
+Created a workspace with the wrong branch name? `arb rebranch` renames it across all repos and updates the workspace config in one step. If the rename fails partway through, migration state is preserved so you can resume with `--continue` or roll back with `--abort` — the same recovery model as `git rebase`. Use `--delete-remote-old` to clean up the old branch on the remote after renaming.
+
 ### Branch from a feature branch
 
 ```bash
