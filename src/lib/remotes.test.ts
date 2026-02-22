@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getRemoteNames, getRemoteUrl, resolveRemotes } from "./remotes";
+import { getRemoteNames, getRemoteUrl, resolveRemotes, resolveRemotesMap } from "./remotes";
 
 describe("remotes", () => {
 	let tmpDir: string;
@@ -150,6 +150,29 @@ describe("remotes", () => {
 			// Falls through to single-remote logic since pushDefault is not in remotes list
 			const result = await resolveRemotes(repoDir);
 			expect(result).toEqual({ upstream: "origin", share: "origin" });
+		});
+	});
+
+	describe("resolveRemotesMap", () => {
+		test("skips repos without remotes", async () => {
+			const local = join(tmpDir, "local");
+			Bun.spawnSync(["git", "init", local]);
+
+			const result = await resolveRemotesMap(["repo", "local"], tmpDir);
+
+			expect(result.get("repo")).toEqual({ upstream: "origin", share: "origin" });
+			expect(result.has("local")).toBe(false);
+		});
+
+		test("rethrows ambiguous remote configuration errors", async () => {
+			const upstreamBare = join(tmpDir, "upstream.git");
+			const stagingBare = join(tmpDir, "staging.git");
+			Bun.spawnSync(["git", "init", "--bare", upstreamBare]);
+			Bun.spawnSync(["git", "init", "--bare", stagingBare]);
+			Bun.spawnSync(["git", "-C", repoDir, "remote", "add", "upstream", upstreamBare]);
+			Bun.spawnSync(["git", "-C", repoDir, "remote", "add", "staging", stagingBare]);
+
+			expect(resolveRemotesMap(["repo"], tmpDir)).rejects.toThrow("Cannot determine remote roles");
 		});
 	});
 });

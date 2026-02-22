@@ -5,6 +5,17 @@ export interface RepoRemotes {
 	share: string; // Where feature branches are shared (push, pull, tracking)
 }
 
+export class NoRemotesConfiguredError extends Error {
+	constructor(repoDir: string) {
+		super(`No remotes configured for ${repoDir}`);
+		this.name = "NoRemotesConfiguredError";
+	}
+}
+
+export function isNoRemotesConfiguredError(error: unknown): error is NoRemotesConfiguredError {
+	return error instanceof NoRemotesConfiguredError;
+}
+
 /**
  * Resolve remote roles for a canonical repo.
  *
@@ -19,7 +30,7 @@ export async function resolveRemotes(repoDir: string, knownRemoteNames?: string[
 	const remotes = knownRemoteNames ?? (await getRemoteNames(repoDir));
 
 	if (remotes.length === 0) {
-		throw new Error(`No remotes configured for ${repoDir}`);
+		throw new NoRemotesConfiguredError(repoDir);
 	}
 
 	// Single remote — use it for both roles regardless of name
@@ -110,8 +121,12 @@ export async function resolveRemotesMap(repos: string[], reposDir: string): Prom
 		try {
 			const remotes = await resolveRemotes(`${reposDir}/${repo}`);
 			remotesMap.set(repo, remotes);
-		} catch {
-			// Repo has no remotes or is ambiguous — skip (will be handled as local or error)
+		} catch (error) {
+			if (isNoRemotesConfiguredError(error)) {
+				// Repo has no remotes (local repo) — skip
+				continue;
+			}
+			throw error;
 		}
 	}
 	return remotesMap;
