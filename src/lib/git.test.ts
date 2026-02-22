@@ -79,6 +79,12 @@ describe("git repo functions", () => {
 	let repoDir: string;
 	let tmpDir: string;
 
+	const configureGitIdentity = (dir: string) => {
+		Bun.spawnSync(["git", "-C", dir, "config", "user.name", "Arborist Test"]);
+		Bun.spawnSync(["git", "-C", dir, "config", "user.email", "arborist-test@example.com"]);
+		Bun.spawnSync(["git", "-C", dir, "config", "commit.gpgsign", "false"]);
+	};
+
 	beforeEach(() => {
 		tmpDir = mkdtempSync(join(tmpdir(), "arb-git-test-"));
 		const bare = join(tmpDir, "bare.git");
@@ -86,6 +92,7 @@ describe("git repo functions", () => {
 
 		Bun.spawnSync(["git", "init", "--bare", bare]);
 		Bun.spawnSync(["git", "clone", bare, repoDir]);
+		configureGitIdentity(repoDir);
 		Bun.spawnSync(["git", "-C", repoDir, "commit", "--allow-empty", "-m", "init"]);
 		Bun.spawnSync(["git", "-C", repoDir, "push", "origin", "HEAD"]);
 	});
@@ -295,6 +302,7 @@ describe("git repo functions", () => {
 			const bare = join(tmpDir, "bare.git");
 			const tmpClone = join(tmpDir, "tmpclone");
 			Bun.spawnSync(["git", "clone", bare, tmpClone]);
+			configureGitIdentity(tmpClone);
 			Bun.spawnSync(["git", "-C", tmpClone, "checkout", "feature"]);
 			writeFileSync(join(tmpClone, "remote-new.txt"), "remote content");
 			Bun.spawnSync(["git", "-C", tmpClone, "add", "remote-new.txt"]);
