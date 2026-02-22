@@ -7,6 +7,7 @@ import {
 	getShortHead,
 	git,
 	predictMergeConflict,
+	predictStashPopConflict,
 	remoteBranchExists,
 } from "./git";
 import {
@@ -51,12 +52,14 @@ interface RepoAssessment {
 	retargetTo?: string;
 	retargetBlocked?: boolean;
 	retargetWarning?: string;
+	needsStash?: boolean;
+	stashPopConflictFiles?: string[];
 }
 
 export async function integrate(
 	ctx: ArbContext,
 	mode: IntegrateMode,
-	options: { fetch?: boolean; yes?: boolean; dryRun?: boolean; retarget?: string | boolean },
+	options: { fetch?: boolean; yes?: boolean; dryRun?: boolean; retarget?: string | boolean; autostash?: boolean },
 	repoArgs: string[],
 ): Promise<void> {
 	const verb = mode === "rebase" ? "Rebase" : "Merge";
@@ -90,12 +93,13 @@ export async function integrate(
 	const { repos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
 	const canTwoPhase = shouldFetch && fetchDirs.length > 0 && isTTY();
 
+	const autostash = options.autostash === true;
 	const assess = async (fetchFailed: string[]) => {
 		const assessments: RepoAssessment[] = [];
 		for (const repo of selectedRepos) {
 			const repoDir = `${wsDir}/${repo}`;
 			const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
-			assessments.push(await assessRepo(status, repoDir, branch, fetchFailed, retarget, retargetExplicit));
+			assessments.push(await assessRepo(status, repoDir, branch, fetchFailed, retarget, retargetExplicit, autostash));
 		}
 		return assessments;
 	};
@@ -196,6 +200,7 @@ export async function integrate(
 	// Phase 5: execute sequentially
 	let succeeded = 0;
 	const conflicted: { assessment: RepoAssessment; stdout: string }[] = [];
+	const stashPopFailed: RepoAssessment[] = [];
 	for (const a of willOperate) {
 		const ref = `${a.upstreamRemote}/${a.baseBranch}`;
 
@@ -205,23 +210,51 @@ export async function integrate(
 			const oldBaseRef = remoteRefExists ? `${a.upstreamRemote}/${a.retargetFrom}` : a.retargetFrom;
 			const progressMsg = `rebasing ${branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
 			inlineStart(a.repo, progressMsg);
-			result = await git(a.repoDir, "rebase", "--onto", ref, oldBaseRef);
-		} else {
-			const progressMsg = mode === "rebase" ? `rebasing ${branch} onto ${ref}` : `merging ${ref} into ${branch}`;
+			const retargetArgs = ["rebase"];
+			if (a.needsStash) retargetArgs.push("--autostash");
+			retargetArgs.push("--onto", ref, oldBaseRef);
+			result = await git(a.repoDir, ...retargetArgs);
+		} else if (mode === "rebase") {
+			const progressMsg = `rebasing ${branch} onto ${ref}`;
 			inlineStart(a.repo, progressMsg);
-			result = await git(a.repoDir, mode, ref);
+			const rebaseArgs = ["rebase"];
+			if (a.needsStash) rebaseArgs.push("--autostash");
+			rebaseArgs.push(ref);
+			result = await git(a.repoDir, ...rebaseArgs);
+		} else {
+			// Merge mode
+			const progressMsg = `merging ${ref} into ${branch}`;
+			inlineStart(a.repo, progressMsg);
+			if (a.needsStash) {
+				await git(a.repoDir, "stash", "push", "-m", "arb: autostash before merge");
+			}
+			result = await git(a.repoDir, "merge", ref);
 		}
 
 		if (result.exitCode === 0) {
+			// For merge mode with stash, pop the stash
+			let stashPopOk = true;
+			if (a.needsStash && mode === "merge") {
+				const popResult = await git(a.repoDir, "stash", "pop");
+				if (popResult.exitCode !== 0) {
+					stashPopOk = false;
+					stashPopFailed.push(a);
+				}
+			}
 			let doneMsg: string;
 			if (a.retargetFrom) {
 				doneMsg = `rebased ${branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
 			} else {
 				doneMsg = mode === "rebase" ? `rebased ${branch} onto ${ref}` : `merged ${ref} into ${branch}`;
 			}
+			if (!stashPopOk) {
+				doneMsg += ` ${yellow("(stash pop failed)")}`;
+			}
 			inlineResult(a.repo, doneMsg);
 			succeeded++;
 		} else {
+			// For rebase mode, git rebase --autostash handles stash internally.
+			// For merge mode with stash, do NOT pop if merge conflicted.
 			inlineResult(a.repo, yellow("conflict"));
 			conflicted.push({ assessment: a, stdout: result.stdout });
 		}
@@ -239,6 +272,19 @@ export async function integrate(
 			process.stderr.write(`      cd ${a.repo}\n`);
 			process.stderr.write(`      # fix conflicts, then: git ${subcommand} --continue\n`);
 			process.stderr.write(`      # or to undo: git ${subcommand} --abort\n`);
+		}
+	}
+
+	// Stash pop failure report
+	if (stashPopFailed.length > 0) {
+		const subcommand = mode === "rebase" ? "Rebase" : "Merge";
+		process.stderr.write(`\n  ${stashPopFailed.length} repo(s) need manual stash application:\n`);
+		for (const a of stashPopFailed) {
+			process.stderr.write(`\n    ${a.repo}\n`);
+			process.stderr.write(`      ${subcommand} succeeded, but stash pop conflicted.\n`);
+			process.stderr.write(`      cd ${a.repo}\n`);
+			process.stderr.write("      git stash pop    # re-apply and resolve conflicts\n");
+			process.stderr.write("      # or: git stash show  # inspect stashed changes\n");
 		}
 	}
 
@@ -275,9 +321,10 @@ export async function integrate(
 	if (retargetedCount > 0) parts.push(`Retargeted ${plural(retargetedCount, "repo")}`);
 	if (normalCount > 0 || retargetedCount === 0) parts.push(`${verbed} ${plural(normalCount, "repo")}`);
 	if (conflicted.length > 0) parts.push(`${conflicted.length} conflicted`);
+	if (stashPopFailed.length > 0) parts.push(`${stashPopFailed.length} stash pop failed`);
 	if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
 	if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
-	if (conflicted.length > 0) {
+	if (conflicted.length > 0 || stashPopFailed.length > 0) {
 		warn(parts.join(", "));
 		process.exit(1);
 	} else {
@@ -297,6 +344,15 @@ function formatIntegratePlan(assessments: RepoAssessment[], mode: IntegrateMode,
 				if (a.retargetWarning) {
 					out += ` ${yellow(`(${a.retargetWarning})`)}`;
 				}
+				if (a.needsStash) {
+					if (a.stashPopConflictFiles && a.stashPopConflictFiles.length > 0) {
+						out += ` ${yellow("(autostash, stash pop conflict likely)")}`;
+					} else if (a.stashPopConflictFiles) {
+						out += " (autostash, stash pop conflict unlikely)";
+					} else {
+						out += " (autostash)";
+					}
+				}
 				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 				out += `${headStr}\n`;
 			} else {
@@ -313,8 +369,18 @@ function formatIntegratePlan(assessments: RepoAssessment[], mode: IntegrateMode,
 				} else if (a.conflictPrediction === "clean") {
 					conflictHint = mode === "merge" ? " (no conflict)" : " (conflict unlikely)";
 				}
+				let stashHint = "";
+				if (a.needsStash) {
+					if (a.stashPopConflictFiles && a.stashPopConflictFiles.length > 0) {
+						stashHint = ` ${yellow("(autostash, stash pop conflict likely)")}`;
+					} else if (a.stashPopConflictFiles) {
+						stashHint = " (autostash, stash pop conflict unlikely)";
+					} else {
+						stashHint = " (autostash)";
+					}
+				}
 				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
-				out += `  ${a.repo}   ${action}${diffStr}${conflictHint}${headStr}\n`;
+				out += `  ${a.repo}   ${action}${diffStr}${conflictHint}${stashHint}${headStr}\n`;
 			}
 		} else if (a.outcome === "up-to-date") {
 			out += `  ${a.repo}   up to date\n`;
@@ -339,14 +405,18 @@ function formatIntegratePlan(assessments: RepoAssessment[], mode: IntegrateMode,
 async function predictIntegrateConflicts(assessments: RepoAssessment[]): Promise<void> {
 	await Promise.all(
 		assessments
-			.filter((a) => a.outcome === "will-operate" && !a.retargetFrom)
+			.filter((a) => a.outcome === "will-operate")
 			.map(async (a) => {
-				if (a.ahead > 0 && a.behind > 0) {
-					const ref = `${a.upstreamRemote}/${a.baseBranch}`;
+				const ref = `${a.upstreamRemote}/${a.baseBranch}`;
+				if (!a.retargetFrom && a.ahead > 0 && a.behind > 0) {
 					const prediction = await predictMergeConflict(a.repoDir, ref);
 					a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
-				} else {
+				} else if (!a.retargetFrom) {
 					a.conflictPrediction = "clean";
+				}
+				if (a.needsStash) {
+					const stashPrediction = await predictStashPopConflict(a.repoDir, ref);
+					a.stashPopConflictFiles = stashPrediction.overlapping;
 				}
 			}),
 	);
@@ -372,6 +442,7 @@ async function assessRepo(
 	fetchFailed: string[],
 	retarget = false,
 	retargetExplicit: string | null = null,
+	autostash = false,
 ): Promise<RepoAssessment> {
 	const upstreamRemote = status.base?.remote ?? "origin";
 
@@ -414,7 +485,13 @@ async function assessRepo(
 	// Dirty check
 	const flags = computeFlags(status, branch);
 	if (flags.isDirty) {
-		return { ...base, skipReason: "uncommitted changes" };
+		if (!autostash) {
+			return { ...base, skipReason: "uncommitted changes (use --autostash)" };
+		}
+		// Only stash if there are staged or modified files (not untracked-only)
+		if (status.local.staged > 0 || status.local.modified > 0) {
+			base.needsStash = true;
+		}
 	}
 
 	// No base branch resolved

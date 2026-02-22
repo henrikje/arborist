@@ -146,7 +146,7 @@ load test_helper/common-setup
     [[ "$output" == *"up to date"* ]]
 }
 
-@test "arb rebase skips dirty repos" {
+@test "arb rebase skips dirty repos with autostash hint" {
     arb create my-feature repo-a
 
     # Push upstream change
@@ -157,7 +157,7 @@ load test_helper/common-setup
     cd "$TEST_DIR/project/my-feature"
     run arb rebase --yes
     [[ "$output" == *"skipped"* ]]
-    [[ "$output" == *"uncommitted changes"* ]]
+    [[ "$output" == *"uncommitted changes (use --autostash)"* ]]
 }
 
 @test "arb rebase skips wrong branch" {
@@ -1318,7 +1318,7 @@ load test_helper/common-setup
     [ "$status" -ne 0 ]
     [[ "$output" == *"Cannot retarget"* ]]
     [[ "$output" == *"repo-b"* ]]
-    [[ "$output" == *"uncommitted changes"* ]]
+    [[ "$output" == *"uncommitted changes (use --autostash)"* ]]
 }
 
 @test "arb rebase --retarget (auto-detect) is all-or-nothing" {
@@ -1430,4 +1430,383 @@ load test_helper/common-setup
     run arb rebase --retarget feat/auth
     [ "$status" -ne 0 ]
     [[ "$output" == *"already the configured base"* ]]
+}
+
+
+# ── autostash ─────────────────────────────────────────────────────
+
+@test "arb rebase --autostash stashes and rebases dirty repo" {
+    arb create my-feature repo-a
+
+    # Push upstream change
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    # Make worktree dirty (modified file)
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add dirty.txt >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb rebase --autostash --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Rebased"* ]]
+
+    # Upstream commit should be reachable
+    run git -C "$TEST_DIR/project/my-feature/repo-a" log --oneline
+    [[ "$output" == *"upstream"* ]]
+
+    # Dirty file should still be present (re-applied)
+    [ -f "$TEST_DIR/project/my-feature/repo-a/dirty.txt" ]
+}
+
+@test "arb rebase --autostash plan shows stash pop conflict warning" {
+    arb create my-feature repo-a
+
+    # Create a shared file on main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "original" > shared.txt && git add shared.txt && git commit -m "add shared" && git push) >/dev/null 2>&1
+
+    # Pull the shared file into the feature branch
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    arb rebase --yes >/dev/null 2>&1
+
+    # Create a conflicting upstream change
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "main version" > shared.txt && git add shared.txt && git commit -m "main change" && git push) >/dev/null 2>&1
+
+    # Make local dirty change to the same file
+    echo "dirty version" > "$TEST_DIR/project/my-feature/repo-a/shared.txt"
+
+    # Also need a local commit so there's ahead+behind for the rebase
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature commit" >/dev/null 2>&1
+
+    run arb rebase --autostash --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"autostash"* ]]
+    [[ "$output" == *"stash pop conflict likely"* ]]
+}
+
+@test "arb rebase --autostash with untracked-only proceeds without stashing" {
+    arb create my-feature repo-a
+
+    # Push upstream change
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    # Add only an untracked file (not staged or modified)
+    echo "untracked" > "$TEST_DIR/project/my-feature/repo-a/untracked.txt"
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb rebase --autostash --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Rebased"* ]]
+    # Should NOT show autostash hint (untracked-only doesn't need stashing)
+    [[ "$output" != *"autostash"* ]]
+
+    # Untracked file should still be present
+    [ -f "$TEST_DIR/project/my-feature/repo-a/untracked.txt" ]
+}
+
+@test "arb merge --autostash stashes and merges dirty repo" {
+    arb create my-feature repo-a
+
+    # Push upstream change
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream change" && git push) >/dev/null 2>&1
+
+    # Make worktree dirty (modified file)
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add dirty.txt >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb merge --autostash --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Merged"* ]]
+
+    # Upstream commit should be reachable
+    run git -C "$TEST_DIR/project/my-feature/repo-a" log --oneline
+    [[ "$output" == *"upstream change"* ]]
+
+    # Dirty file should still be present (re-applied)
+    [ -f "$TEST_DIR/project/my-feature/repo-a/dirty.txt" ]
+}
+
+@test "arb pull --autostash stashes and pulls dirty repo (rebase)" {
+    arb create my-feature repo-a
+
+    # Push the feature branch first
+    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "local" > local.txt && git add local.txt && git commit -m "local" && git push -u origin my-feature) >/dev/null 2>&1
+
+    # Push a remote commit to the feature branch via a tmp clone
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > remote.txt && git add remote.txt && git commit -m "remote" && git push) >/dev/null 2>&1
+
+    # Make worktree dirty
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add dirty.txt >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --autostash --rebase --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pulled"* ]]
+
+    # Remote commit should be reachable
+    run git -C "$TEST_DIR/project/my-feature/repo-a" log --oneline
+    [[ "$output" == *"remote"* ]]
+
+    # Dirty file should still be present
+    [ -f "$TEST_DIR/project/my-feature/repo-a/dirty.txt" ]
+}
+
+@test "arb pull --autostash stashes and pulls dirty repo (merge)" {
+    arb create my-feature repo-a
+
+    # Push the feature branch first
+    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "local" > local.txt && git add local.txt && git commit -m "local" && git push -u origin my-feature) >/dev/null 2>&1
+
+    # Push a remote commit to the feature branch via a tmp clone
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > remote.txt && git add remote.txt && git commit -m "remote" && git push) >/dev/null 2>&1
+
+    # Make worktree dirty
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add dirty.txt >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --autostash --merge --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pulled"* ]]
+
+    # Remote commit should be reachable
+    run git -C "$TEST_DIR/project/my-feature/repo-a" log --oneline
+    [[ "$output" == *"remote"* ]]
+
+    # Dirty file should still be present
+    [ -f "$TEST_DIR/project/my-feature/repo-a/dirty.txt" ]
+}
+
+@test "arb pull skips dirty repos without --autostash" {
+    arb create my-feature repo-a
+
+    # Push the feature branch first
+    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "local" > local.txt && git add local.txt && git commit -m "local" && git push -u origin my-feature) >/dev/null 2>&1
+
+    # Push a remote commit to the feature branch via a tmp clone
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > remote.txt && git add remote.txt && git commit -m "remote" && git push) >/dev/null 2>&1
+
+    # Make worktree dirty
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add dirty.txt >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --yes
+    [[ "$output" == *"skipped"* ]]
+    [[ "$output" == *"uncommitted changes (use --autostash)"* ]]
+}
+
+@test "arb rebase --retarget --autostash stashes dirty repo during retarget" {
+    # Create feat/auth branch
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a
+
+    # Add a commit on the stacked branch
+    echo "ui" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui feature" >/dev/null 2>&1
+
+    # Merge feat/auth into main
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge" && git merge origin/feat/auth --no-ff -m "merge feat/auth" && git push) >/dev/null 2>&1
+
+    # Make worktree dirty (staged file)
+    echo "dirty" > "$TEST_DIR/project/stacked/repo-a/dirty.txt"
+    git -C "$TEST_DIR/project/stacked/repo-a" add dirty.txt >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/stacked"
+    run arb rebase --retarget --autostash --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"retarget"* ]]
+    [[ "$output" == *"Retargeted"* ]]
+
+    # Dirty file should still be present (re-applied)
+    [ -f "$TEST_DIR/project/stacked/repo-a/dirty.txt" ]
+
+    # The ui commit should be on top of main
+    run git -C "$TEST_DIR/project/stacked/repo-a" log --oneline
+    [[ "$output" == *"ui feature"* ]]
+}
+
+@test "arb rebase --retarget refuses dirty repo without --autostash but succeeds with it" {
+    # Create feat/auth in both repos
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" checkout -b feat/auth >/dev/null 2>&1
+    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-b/auth.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" add auth.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" commit -m "auth feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" push -u origin feat/auth >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" checkout --detach >/dev/null 2>&1
+
+    # Create stacked workspace with both repos
+    arb create stacked --base feat/auth -b feat/auth-ui repo-a repo-b
+
+    # Add commits
+    echo "ui-a" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui a" >/dev/null 2>&1
+    echo "ui-b" > "$TEST_DIR/project/stacked/repo-b/ui.txt"
+    git -C "$TEST_DIR/project/stacked/repo-b" add ui.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/stacked/repo-b" commit -m "ui b" >/dev/null 2>&1
+
+    # Merge feat/auth into main for both
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge-a" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge-a" && git merge origin/feat/auth --no-ff -m "merge auth" && git push) >/dev/null 2>&1
+    git clone "$TEST_DIR/origin/repo-b.git" "$TEST_DIR/tmp-merge-b" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-merge-b" && git merge origin/feat/auth --no-ff -m "merge auth" && git push) >/dev/null 2>&1
+
+    # Make repo-b dirty
+    echo "dirty" > "$TEST_DIR/project/stacked/repo-b/dirty.txt"
+    git -C "$TEST_DIR/project/stacked/repo-b" add dirty.txt >/dev/null 2>&1
+
+    # Without --autostash should fail (all-or-nothing)
+    cd "$TEST_DIR/project/stacked"
+    run arb rebase --retarget --yes
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot retarget"* ]]
+
+    # With --autostash should succeed
+    run arb rebase --retarget --autostash --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Retargeted"* ]]
+
+    # Dirty file should still be present
+    [ -f "$TEST_DIR/project/stacked/repo-b/dirty.txt" ]
+}
+
+@test "arb rebase --autostash with multiple repos (mixed dirty/clean)" {
+    arb create my-feature repo-a repo-b
+
+    # Push upstream changes to both repos
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream-a" > upstream.txt && git add upstream.txt && git commit -m "upstream a" && git push) >/dev/null 2>&1
+    (cd "$TEST_DIR/project/.arb/repos/repo-b" && echo "upstream-b" > upstream.txt && git add upstream.txt && git commit -m "upstream b" && git push) >/dev/null 2>&1
+
+    # Make only repo-a dirty
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add dirty.txt >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb rebase --autostash --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Rebased 2 repos"* ]]
+    [[ "$output" == *"autostash"* ]]
+
+    # Both upstream commits reachable
+    run git -C "$TEST_DIR/project/my-feature/repo-a" log --oneline
+    [[ "$output" == *"upstream a"* ]]
+    run git -C "$TEST_DIR/project/my-feature/repo-b" log --oneline
+    [[ "$output" == *"upstream b"* ]]
+
+    # Dirty file should still be present in repo-a
+    [ -f "$TEST_DIR/project/my-feature/repo-a/dirty.txt" ]
+}
+
+@test "arb rebase --autostash with repo filter only processes named repos" {
+    arb create my-feature repo-a repo-b
+
+    # Push upstream changes to both repos
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream-a" > upstream.txt && git add upstream.txt && git commit -m "upstream a" && git push) >/dev/null 2>&1
+    (cd "$TEST_DIR/project/.arb/repos/repo-b" && echo "upstream-b" > upstream.txt && git add upstream.txt && git commit -m "upstream b" && git push) >/dev/null 2>&1
+
+    # Make both repos dirty
+    echo "dirty-a" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add dirty.txt >/dev/null 2>&1
+    echo "dirty-b" > "$TEST_DIR/project/my-feature/repo-b/dirty.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-b" add dirty.txt >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb rebase --autostash --yes repo-a
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Rebased 1 repo"* ]]
+
+    # repo-a should have upstream commit
+    run git -C "$TEST_DIR/project/my-feature/repo-a" log --oneline
+    [[ "$output" == *"upstream a"* ]]
+}
+
+@test "arb pull --autostash --dry-run shows stash hints" {
+    arb create my-feature repo-a
+
+    # Push the feature branch first
+    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "local" > local.txt && git add local.txt && git commit -m "local" && git push -u origin my-feature) >/dev/null 2>&1
+
+    # Push a remote commit to the feature branch via a tmp clone
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > remote.txt && git add remote.txt && git commit -m "remote" && git push) >/dev/null 2>&1
+
+    # Make worktree dirty
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add dirty.txt >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --autostash --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"autostash"* ]]
+    [[ "$output" == *"Dry run"* ]]
+}
+
+@test "arb pull --autostash reports stash pop failure (merge)" {
+    arb create my-feature repo-a
+
+    # Push the feature branch first with a shared file
+    echo "original" > "$TEST_DIR/project/my-feature/repo-a/shared.txt"
+    (cd "$TEST_DIR/project/my-feature/repo-a" && git add shared.txt && git commit -m "add shared" && git push -u origin my-feature) >/dev/null 2>&1
+
+    # Push a remote commit that changes the shared file
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote version" > shared.txt && git add shared.txt && git commit -m "remote change" && git push) >/dev/null 2>&1
+
+    # Make a local dirty change to the same shared file
+    echo "dirty version" > "$TEST_DIR/project/my-feature/repo-a/shared.txt"
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --autostash --merge --yes
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"stash pop failed"* ]]
+    [[ "$output" == *"manual stash application"* ]]
+}
+
+@test "arb merge --autostash reports stash pop failure" {
+    arb create my-feature repo-a
+
+    # Create a shared file on main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "original" > shared.txt && git add shared.txt && git commit -m "add shared" && git push) >/dev/null 2>&1
+
+    # Pull the shared file into the feature branch
+    cd "$TEST_DIR/project/my-feature"
+    arb fetch >/dev/null 2>&1
+    arb rebase --yes >/dev/null 2>&1
+
+    # Create upstream change to the shared file
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "main version" > shared.txt && git add shared.txt && git commit -m "main change" && git push) >/dev/null 2>&1
+
+    # Make a dirty change to the same shared file (will conflict on stash pop)
+    echo "dirty version" > "$TEST_DIR/project/my-feature/repo-a/shared.txt"
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb merge --autostash --yes
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"stash pop failed"* ]]
+    [[ "$output" == *"manual stash application"* ]]
+    [[ "$output" == *"git stash pop"* ]]
 }

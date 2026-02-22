@@ -9,12 +9,18 @@ export function registerMergeCommand(program: Command, getCtx: () => ArbContext)
 		.option("--no-fetch", "Skip fetching before merge")
 		.option("-y, --yes", "Skip confirmation prompt")
 		.option("-n, --dry-run", "Show what would happen without executing")
+		.option("--autostash", "Stash uncommitted changes before merge, re-apply after")
 		.summary("Merge the base branch into feature branches")
 		.description(
-			"Fetches all repos, then merges the base branch (e.g. main) into the feature branch for all repos, or only the named repos. Shows a plan and asks for confirmation before proceeding. Repos with uncommitted changes or that are already up to date are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. Use -F/--fetch to fetch explicitly (default); use --no-fetch to skip fetching when refs are known to be fresh.",
+			"Fetches all repos, then merges the base branch (e.g. main) into the feature branch for all repos, or only the named repos. Shows a plan and asks for confirmation before proceeding. Repos with uncommitted changes are skipped unless --autostash is used. Repos already up to date are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. Use -F/--fetch to fetch explicitly (default); use --no-fetch to skip fetching when refs are known to be fresh. Use --autostash to stash uncommitted changes before merging and re-apply them after.",
 		)
-		.action(async (repoArgs: string[], options: { fetch?: boolean; yes?: boolean; dryRun?: boolean }) => {
-			const ctx = getCtx();
-			await integrate(ctx, "merge", options, repoArgs);
-		});
+		.action(
+			async (
+				repoArgs: string[],
+				options: { fetch?: boolean; yes?: boolean; dryRun?: boolean; autostash?: boolean },
+			) => {
+				const ctx = getCtx();
+				await integrate(ctx, "merge", options, repoArgs);
+			},
+		);
 }

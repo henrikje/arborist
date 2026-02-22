@@ -322,6 +322,29 @@ export async function detectBranchMerged(
 	return null;
 }
 
+export async function predictStashPopConflict(repoDir: string, ref: string): Promise<{ overlapping: string[] }> {
+	// Get dirty file paths (unstaged + staged)
+	const [unstaged, staged] = await Promise.all([
+		git(repoDir, "diff", "--name-only"),
+		git(repoDir, "diff", "--name-only", "--cached"),
+	]);
+	const dirtyFiles = new Set<string>();
+	for (const line of unstaged.stdout.split("\n").filter(Boolean)) dirtyFiles.add(line);
+	for (const line of staged.stdout.split("\n").filter(Boolean)) dirtyFiles.add(line);
+
+	if (dirtyFiles.size === 0) return { overlapping: [] };
+
+	// Get incoming change paths (three-dot diff)
+	const incoming = await git(repoDir, "diff", "--name-only", `HEAD...${ref}`);
+	const incomingFiles = new Set<string>();
+	if (incoming.exitCode === 0) {
+		for (const line of incoming.stdout.split("\n").filter(Boolean)) incomingFiles.add(line);
+	}
+
+	const overlapping = [...dirtyFiles].filter((f) => incomingFiles.has(f));
+	return { overlapping };
+}
+
 export async function detectRebasedCommits(
 	repoDir: string,
 	trackingRef: string,
