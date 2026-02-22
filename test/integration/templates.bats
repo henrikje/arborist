@@ -662,6 +662,94 @@ load test_helper/common-setup
     [ "$(cat "$TEST_DIR/project/.arb/templates/repos/repo-a/.env")" = "OLD" ]
 }
 
+@test "arb template add directory adds all files recursively with --workspace" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    mkdir -p "$TEST_DIR/project/my-feature/.idea"
+    echo "file-a" > "$TEST_DIR/project/my-feature/.idea/workspace.xml"
+    echo "file-b" > "$TEST_DIR/project/my-feature/.idea/modules.xml"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template add .idea --workspace
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Added template"* ]]
+    [ -f "$TEST_DIR/project/.arb/templates/workspace/.idea/workspace.xml" ]
+    [ -f "$TEST_DIR/project/.arb/templates/workspace/.idea/modules.xml" ]
+}
+
+@test "arb template add directory adds all files for repo scope" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    mkdir -p "$TEST_DIR/project/my-feature/repo-a/.idea"
+    echo "repo-file" > "$TEST_DIR/project/my-feature/repo-a/.idea/misc.xml"
+    cd "$TEST_DIR/project/my-feature/repo-a"
+    run arb template add .idea
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Added template"* ]]
+    [ -f "$TEST_DIR/project/.arb/templates/repos/repo-a/.idea/misc.xml" ]
+}
+
+@test "arb template add directory handles nested subdirectories" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    mkdir -p "$TEST_DIR/project/my-feature/.claude/settings"
+    echo "top" > "$TEST_DIR/project/my-feature/.claude/config.json"
+    echo "nested" > "$TEST_DIR/project/my-feature/.claude/settings/local.json"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template add .claude --workspace
+    [ "$status" -eq 0 ]
+    [ -f "$TEST_DIR/project/.arb/templates/workspace/.claude/config.json" ]
+    [ -f "$TEST_DIR/project/.arb/templates/workspace/.claude/settings/local.json" ]
+    [ "$(cat "$TEST_DIR/project/.arb/templates/workspace/.claude/settings/local.json")" = "nested" ]
+}
+
+@test "arb template add directory with --force overwrites existing templates" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace/.idea"
+    echo "OLD" > "$TEST_DIR/project/.arb/templates/workspace/.idea/workspace.xml"
+    mkdir -p "$TEST_DIR/project/my-feature/.idea"
+    echo "NEW" > "$TEST_DIR/project/my-feature/.idea/workspace.xml"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template add .idea --workspace --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Updated template"* ]]
+    [ "$(cat "$TEST_DIR/project/.arb/templates/workspace/.idea/workspace.xml")" = "NEW" ]
+}
+
+@test "arb template add directory refuses overwrite without --force" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace/.idea"
+    echo "OLD" > "$TEST_DIR/project/.arb/templates/workspace/.idea/workspace.xml"
+    mkdir -p "$TEST_DIR/project/my-feature/.idea"
+    echo "NEW" > "$TEST_DIR/project/my-feature/.idea/workspace.xml"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template add .idea --workspace
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"already exists"* ]]
+}
+
+@test "arb template add directory with --repo adds all files for explicit repo" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    mkdir -p "$TEST_DIR/project/my-feature/repo-a/.idea"
+    echo "explicit" > "$TEST_DIR/project/my-feature/repo-a/.idea/misc.xml"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template add repo-a/.idea --repo repo-a
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Added template"* ]]
+    [ -f "$TEST_DIR/project/.arb/templates/repos/repo-a/.idea/misc.xml" ]
+    [ "$(cat "$TEST_DIR/project/.arb/templates/repos/repo-a/.idea/misc.xml")" = "explicit" ]
+}
+
+@test "arb template add directory with auto-detected workspace scope" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    mkdir -p "$TEST_DIR/project/my-feature/.config"
+    echo "auto" > "$TEST_DIR/project/my-feature/.config/settings.json"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template add .config --workspace
+    [ "$status" -eq 0 ]
+    [ -f "$TEST_DIR/project/.arb/templates/workspace/.config/settings.json" ]
+    # Now verify it applies to a new workspace
+    arb create second-ws repo-a >/dev/null 2>&1
+    [ -f "$TEST_DIR/project/second-ws/.config/settings.json" ]
+    [ "$(cat "$TEST_DIR/project/second-ws/.config/settings.json")" = "auto" ]
+}
+
 @test "arb template list aligns modified annotations" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
     echo "SHORT" > "$TEST_DIR/project/.arb/templates/workspace/.env"
