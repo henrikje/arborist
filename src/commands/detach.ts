@@ -1,9 +1,10 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { branchExistsLocally, git, isRepoDirty } from "../lib/git";
+import { branchExistsLocally, git, isRepoDirty, parseGitStatus } from "../lib/git";
 import { error, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
 import { selectInteractive, workspaceRepoDirs } from "../lib/repos";
+import { isLocalDirty } from "../lib/status";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
@@ -61,8 +62,7 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 
 				// Check for uncommitted changes
 				if (!options.force) {
-					const porcelain = await git(wtPath, "status", "--porcelain");
-					if (porcelain.exitCode === 0 && porcelain.stdout.trim()) {
+					if (isLocalDirty(await parseGitStatus(wtPath))) {
 						warn(`  [${repo}] has uncommitted changes — skipping (use --force to override)`);
 						skipped.push(repo);
 						continue;

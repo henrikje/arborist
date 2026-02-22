@@ -98,9 +98,17 @@ export function isAtRisk(flags: RepoFlags): boolean {
 	return hasAnyFlag(flags, AT_RISK_FLAGS);
 }
 
+export function isLocalDirty(local: {
+	staged: number;
+	modified: number;
+	untracked: number;
+	conflicts: number;
+}): boolean {
+	return local.staged > 0 || local.modified > 0 || local.untracked > 0 || local.conflicts > 0;
+}
+
 export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlags {
-	const localDirty =
-		repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0;
+	const localDirty = isLocalDirty(repo.local);
 
 	const isDetached = repo.identity.headMode.kind === "detached";
 
