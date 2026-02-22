@@ -1,28 +1,12 @@
-import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { getShortHead } from "../lib/git";
-import {
-	clearLines,
-	countLines,
-	dim,
-	dryRunNotice,
-	error,
-	info,
-	inlineResult,
-	inlineStart,
-	plural,
-	red,
-	skipConfirmNotice,
-	success,
-	yellow,
-} from "../lib/output";
-import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
+import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
+import { dim, dryRunNotice, info, inlineResult, inlineStart, plural, red, success, yellow } from "../lib/output";
 import type { RepoRemotes } from "../lib/remotes";
 import { resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos, resolveRepoSelection } from "../lib/repos";
 import { type RepoStatus, gatherRepoStatus } from "../lib/status";
-import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
@@ -66,9 +50,8 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 
 				const shouldFetch = options.fetch !== false;
 				const { repos: allRepos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
-				const canTwoPhase = shouldFetch && fetchDirs.length > 0 && isTTY();
 
-				const assess = async () => {
+				const assess = async (_fetchFailed: string[]) => {
 					const assessments = await Promise.all(
 						selectedRepos.map(async (repo) => {
 							const repoDir = `${wsDir}/${repo}`;
@@ -86,38 +69,15 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 					return assessments;
 				};
 
-				let assessments: PushAssessment[];
-
-				if (canTwoPhase) {
-					// Two-phase: render stale plan immediately, re-render after fetch
-					const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, { silent: true });
-
-					assessments = await assess();
-					const stalePlan = formatPushPlan(assessments, remotesMap);
-					const fetchingLine = `${dim(`Fetching ${plural(fetchDirs.length, "repo")}...`)}\n`;
-					const staleOutput = stalePlan + fetchingLine;
-					process.stderr.write(staleOutput);
-
-					const fetchResults = await fetchPromise;
-
-					// Re-assess with fresh refs
-					assessments = await assess();
-					const freshPlan = formatPushPlan(assessments, remotesMap);
-					clearLines(countLines(staleOutput));
-					process.stderr.write(freshPlan);
-
-					reportFetchFailures(allRepos, localRepos, fetchResults);
-				} else if (shouldFetch && fetchDirs.length > 0) {
-					// Fallback: fetch with visible progress, then assess
-					const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
-					reportFetchFailures(allRepos, localRepos, fetchResults);
-					assessments = await assess();
-					process.stderr.write(formatPushPlan(assessments, remotesMap));
-				} else {
-					// No fetch needed
-					assessments = await assess();
-					process.stderr.write(formatPushPlan(assessments, remotesMap));
-				}
+				const assessments = await runPlanFlow({
+					shouldFetch,
+					fetchDirs,
+					reposForFetchReport: allRepos,
+					localRepos,
+					remotesMap,
+					assess,
+					formatPlan: (nextAssessments) => formatPushPlan(nextAssessments, remotesMap),
+				});
 
 				const willPush = assessments.filter((a) => a.outcome === "will-push" || a.outcome === "will-force-push");
 				const upToDate = assessments.filter((a) => a.outcome === "up-to-date");
@@ -134,25 +94,10 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				}
 
 				// Phase 3: confirm
-				if (!options.yes) {
-					if (!isTTY()) {
-						error("Not a terminal. Use --yes to skip confirmation.");
-						process.exit(1);
-					}
-					const ok = await confirm(
-						{
-							message: `Push ${plural(willPush.length, "repo")}?`,
-							default: false,
-						},
-						{ output: process.stderr },
-					);
-					if (!ok) {
-						process.stderr.write("Aborted.\n");
-						process.exit(130);
-					}
-				} else {
-					skipConfirmNotice("--yes");
-				}
+				await confirmOrExit({
+					yes: options.yes,
+					message: `Push ${plural(willPush.length, "repo")}?`,
+				});
 
 				process.stderr.write("\n");
 

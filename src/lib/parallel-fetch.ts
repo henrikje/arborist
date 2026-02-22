@@ -123,22 +123,32 @@ export function reportFetchFailures(
 	localRepos: string[],
 	results: Map<string, { exitCode: number; output: string }>,
 ): string[] {
-	const failed = repos
+	const failed = getFetchFailedRepos(repos, localRepos, results);
+	for (const repo of failed) {
+		const fr = results.get(repo);
+		if (fr?.exitCode === 124) {
+			error(`  [${repo}] fetch timed out`);
+		} else {
+			error(`  [${repo}] fetch failed`);
+		}
+		if (fr?.output) {
+			for (const line of fr.output.split("\n").filter(Boolean)) {
+				error(`    ${line}`);
+			}
+		}
+	}
+	return failed;
+}
+
+export function getFetchFailedRepos(
+	repos: string[],
+	localRepos: string[],
+	results: Map<string, { exitCode: number; output: string }>,
+): string[] {
+	return repos
 		.filter((repo) => !localRepos.includes(repo))
 		.filter((repo) => {
 			const fr = results.get(repo);
-			if (fr && fr.exitCode === 0) return false;
-			if (fr?.exitCode === 124) {
-				error(`  [${repo}] fetch timed out`);
-			} else {
-				error(`  [${repo}] fetch failed`);
-			}
-			if (fr?.output) {
-				for (const line of fr.output.split("\n").filter(Boolean)) {
-					error(`    ${line}`);
-				}
-			}
-			return true;
+			return !fr || fr.exitCode !== 0;
 		});
-	return failed;
 }

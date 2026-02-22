@@ -1,4 +1,3 @@
-import confirm from "@inquirer/confirm";
 import { configGet, writeConfig } from "./config";
 import {
 	branchExistsLocally,
@@ -10,26 +9,11 @@ import {
 	predictStashPopConflict,
 	remoteBranchExists,
 } from "./git";
-import {
-	clearLines,
-	countLines,
-	dim,
-	dryRunNotice,
-	error,
-	info,
-	inlineResult,
-	inlineStart,
-	plural,
-	skipConfirmNotice,
-	success,
-	warn,
-	yellow,
-} from "./output";
-import { parallelFetch, reportFetchFailures } from "./parallel-fetch";
+import { confirmOrExit, runPlanFlow } from "./mutation-flow";
+import { dim, dryRunNotice, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "./output";
 import { resolveRemotesMap } from "./remotes";
 import { classifyRepos, resolveRepoSelection } from "./repos";
 import { type RepoStatus, computeFlags, gatherRepoStatus } from "./status";
-import { isTTY } from "./tty";
 import type { ArbContext } from "./types";
 import { workspaceBranch } from "./workspace-branch";
 import { requireBranch, requireWorkspace } from "./workspace-context";
@@ -91,7 +75,6 @@ export async function integrate(
 	// Phase 2: classify and fetch
 	const shouldFetch = options.fetch !== false;
 	const { repos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
-	const canTwoPhase = shouldFetch && fetchDirs.length > 0 && isTTY();
 
 	const autostash = options.autostash === true;
 	const assess = async (fetchFailed: string[]) => {
@@ -104,44 +87,16 @@ export async function integrate(
 		);
 	};
 
-	let assessments: RepoAssessment[];
-
-	if (canTwoPhase) {
-		// Two-phase: render stale plan immediately, re-render after fetch
-		const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, { silent: true });
-
-		assessments = await assess([]);
-		const stalePlan = formatIntegratePlan(assessments, mode, branch);
-		const fetchingLine = `${dim(`Fetching ${plural(fetchDirs.length, "repo")}...`)}\n`;
-		const staleOutput = stalePlan + fetchingLine;
-		process.stderr.write(staleOutput);
-
-		const fetchResults = await fetchPromise;
-
-		// Compute fetch failures silently (no stderr output yet)
-		const fetchFailed = getFetchFailedRepos(repos, localRepos, fetchResults);
-
-		// Re-assess with fresh refs and predict conflicts
-		assessments = await assess(fetchFailed);
-		await predictIntegrateConflicts(assessments);
-		const freshPlan = formatIntegratePlan(assessments, mode, branch);
-		clearLines(countLines(staleOutput));
-		process.stderr.write(freshPlan);
-
-		reportFetchFailures(repos, localRepos, fetchResults);
-	} else if (shouldFetch && fetchDirs.length > 0) {
-		// Fallback: fetch with visible progress, then assess
-		const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
-		const fetchFailed = reportFetchFailures(repos, localRepos, fetchResults);
-		assessments = await assess(fetchFailed);
-		await predictIntegrateConflicts(assessments);
-		process.stderr.write(formatIntegratePlan(assessments, mode, branch));
-	} else {
-		// No fetch needed
-		assessments = await assess([]);
-		await predictIntegrateConflicts(assessments);
-		process.stderr.write(formatIntegratePlan(assessments, mode, branch));
-	}
+	const assessments = await runPlanFlow({
+		shouldFetch,
+		fetchDirs,
+		reposForFetchReport: repos,
+		localRepos,
+		remotesMap,
+		assess,
+		postAssess: predictIntegrateConflicts,
+		formatPlan: (nextAssessments) => formatIntegratePlan(nextAssessments, mode, branch),
+	});
 
 	// All-or-nothing check: when retarget is active, any non-local skipped repo blocks the entire retarget
 	if (retarget) {
@@ -175,25 +130,10 @@ export async function integrate(
 		return;
 	}
 
-	if (!options.yes) {
-		if (!isTTY()) {
-			error("Not a terminal. Use --yes to skip confirmation.");
-			process.exit(1);
-		}
-		const ok = await confirm(
-			{
-				message: `${verb} ${plural(willOperate.length, "repo")}?`,
-				default: false,
-			},
-			{ output: process.stderr },
-		);
-		if (!ok) {
-			process.stderr.write("Aborted.\n");
-			process.exit(130);
-		}
-	} else {
-		skipConfirmNotice("--yes");
-	}
+	await confirmOrExit({
+		yes: options.yes,
+		message: `${verb} ${plural(willOperate.length, "repo")}?`,
+	});
 
 	process.stderr.write("\n");
 
@@ -420,19 +360,6 @@ async function predictIntegrateConflicts(assessments: RepoAssessment[]): Promise
 				}
 			}),
 	);
-}
-
-function getFetchFailedRepos(
-	repos: string[],
-	localRepos: string[],
-	results: Map<string, { exitCode: number; output: string }>,
-): string[] {
-	return repos
-		.filter((repo) => !localRepos.includes(repo))
-		.filter((repo) => {
-			const fr = results.get(repo);
-			return !fr || fr.exitCode !== 0;
-		});
 }
 
 async function assessRepo(

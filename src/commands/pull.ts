@@ -1,11 +1,9 @@
 import { basename } from "node:path";
-import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { getShortHead, git, predictMergeConflict, predictStashPopConflict } from "../lib/git";
+import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
 import {
-	clearLines,
-	countLines,
 	dim,
 	dryRunNotice,
 	error,
@@ -13,17 +11,14 @@ import {
 	inlineResult,
 	inlineStart,
 	plural,
-	skipConfirmNotice,
 	success,
 	warn,
 	yellow,
 } from "../lib/output";
-import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import type { RepoRemotes } from "../lib/remotes";
 import { resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos, resolveRepoSelection } from "../lib/repos";
 import { type RepoStatus, computeFlags, gatherRepoStatus } from "../lib/status";
-import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
@@ -82,7 +77,6 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				const { repos: allRepos, fetchDirs: allFetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
 				const repos = allRepos.filter((r) => selectedSet.has(r));
 				const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
-				const canTwoPhase = fetchDirs.length > 0 && isTTY();
 				const autostash = options.autostash === true;
 
 				const assess = async (fetchFailed: string[]) => {
@@ -95,44 +89,15 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					);
 				};
 
-				let assessments: PullAssessment[];
-
-				if (canTwoPhase) {
-					// Two-phase: render stale plan immediately, re-render after fetch
-					const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, { silent: true });
-
-					assessments = await assess([]);
-					const stalePlan = formatPullPlan(assessments, remotesMap);
-					const fetchingLine = `${dim(`Fetching ${plural(fetchDirs.length, "repo")}...`)}\n`;
-					const staleOutput = stalePlan + fetchingLine;
-					process.stderr.write(staleOutput);
-
-					const fetchResults = await fetchPromise;
-
-					// Compute fetch failures silently (no stderr output yet)
-					const fetchFailed = getFetchFailedRepos(repos, localRepos, fetchResults);
-
-					// Re-assess with fresh refs and predict conflicts
-					assessments = await assess(fetchFailed);
-					await predictPullConflicts(assessments, remotesMap, branch);
-					const freshPlan = formatPullPlan(assessments, remotesMap);
-					clearLines(countLines(staleOutput));
-					process.stderr.write(freshPlan);
-
-					reportFetchFailures(repos, localRepos, fetchResults);
-				} else if (fetchDirs.length > 0) {
-					// Fallback: fetch with visible progress, then assess
-					const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
-					const fetchFailed = reportFetchFailures(repos, localRepos, fetchResults);
-					assessments = await assess(fetchFailed);
-					await predictPullConflicts(assessments, remotesMap, branch);
-					process.stderr.write(formatPullPlan(assessments, remotesMap));
-				} else {
-					// No fetch needed
-					assessments = await assess([]);
-					await predictPullConflicts(assessments, remotesMap, branch);
-					process.stderr.write(formatPullPlan(assessments, remotesMap));
-				}
+				const assessments = await runPlanFlow({
+					fetchDirs,
+					reposForFetchReport: repos,
+					localRepos,
+					remotesMap,
+					assess,
+					postAssess: (nextAssessments) => predictPullConflicts(nextAssessments, remotesMap, branch),
+					formatPlan: (nextAssessments) => formatPullPlan(nextAssessments, remotesMap),
+				});
 
 				const willPull = assessments.filter((a) => a.outcome === "will-pull");
 				const upToDate = assessments.filter((a) => a.outcome === "up-to-date");
@@ -149,25 +114,10 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				}
 
 				// Phase 4: confirm
-				if (!options.yes) {
-					if (!isTTY()) {
-						error("Not a terminal. Use --yes to skip confirmation.");
-						process.exit(1);
-					}
-					const ok = await confirm(
-						{
-							message: `Pull ${plural(willPull.length, "repo")}?`,
-							default: false,
-						},
-						{ output: process.stderr },
-					);
-					if (!ok) {
-						process.stderr.write("Aborted.\n");
-						process.exit(130);
-					}
-				} else {
-					skipConfirmNotice("--yes");
-				}
+				await confirmOrExit({
+					yes: options.yes,
+					message: `Pull ${plural(willPull.length, "repo")}?`,
+				});
 
 				process.stderr.write("\n");
 
@@ -393,19 +343,6 @@ function formatPullPlan(assessments: PullAssessment[], remotesMap: Map<string, R
 	}
 	out += "\n";
 	return out;
-}
-
-function getFetchFailedRepos(
-	repos: string[],
-	localRepos: string[],
-	results: Map<string, { exitCode: number; output: string }>,
-): string[] {
-	return repos
-		.filter((repo) => !localRepos.includes(repo))
-		.filter((repo) => {
-			const fr = results.get(repo);
-			return !fr || fr.exitCode !== 0;
-		});
 }
 
 async function predictPullConflicts(
