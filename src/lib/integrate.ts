@@ -95,13 +95,13 @@ export async function integrate(
 
 	const autostash = options.autostash === true;
 	const assess = async (fetchFailed: string[]) => {
-		const assessments: RepoAssessment[] = [];
-		for (const repo of selectedRepos) {
-			const repoDir = `${wsDir}/${repo}`;
-			const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
-			assessments.push(await assessRepo(status, repoDir, branch, fetchFailed, retarget, retargetExplicit, autostash));
-		}
-		return assessments;
+		return Promise.all(
+			selectedRepos.map(async (repo) => {
+				const repoDir = `${wsDir}/${repo}`;
+				const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
+				return assessRepo(status, repoDir, branch, fetchFailed, retarget, retargetExplicit, autostash);
+			}),
+		);
 	};
 
 	let assessments: RepoAssessment[];
