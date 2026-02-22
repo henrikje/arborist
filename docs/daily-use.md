@@ -103,7 +103,7 @@ arb pull
 arb pull --rebase     # pull with rebase instead of the default fast-forward
 arb pull --merge      # pull with merge commit
 arb push
-arb push --force      # after rebasing
+arb push --force      # after rebasing (prompts for confirmation)
 ```
 
 Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.

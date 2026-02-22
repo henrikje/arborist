@@ -424,7 +424,7 @@ load test_helper/common-setup
     [[ "$output" == *"upstream"* ]]
 }
 
-@test "arb push --force implies --yes" {
+@test "arb push --force does not imply --yes" {
     arb create my-feature repo-a
     echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
@@ -438,8 +438,28 @@ load test_helper/common-setup
     cd "$TEST_DIR/project/my-feature"
     arb rebase --yes >/dev/null 2>&1
 
-    # Push with --force only (no --yes) — should skip confirmation
+    # Push with --force only (no --yes) in non-TTY — should require --yes
     run arb push --force
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Not a terminal"* ]]
+}
+
+@test "arb push --force --yes skips confirmation" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Push an upstream change to main to create divergence after rebase
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    # Rebase the feature branch
+    cd "$TEST_DIR/project/my-feature"
+    arb rebase --yes >/dev/null 2>&1
+
+    # Push with --force --yes — should skip confirmation and push
+    run arb push --force --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"Pushed"* ]]
     [[ "$output" == *"Skipping confirmation"* ]]
