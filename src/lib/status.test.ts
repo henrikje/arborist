@@ -531,7 +531,7 @@ describe("flagLabels", () => {
 			}),
 			"feature",
 		);
-		expect(flagLabels(flags)).toEqual(["dirty", "behind base", "operation", "shallow"]);
+		expect(flagLabels(flags)).toEqual(["dirty", "operation", "shallow", "behind base"]);
 	});
 
 	test("returns diverged label when both ahead and behind base", () => {
@@ -549,7 +549,7 @@ describe("flagLabels", () => {
 			}),
 			"feature",
 		);
-		expect(flagLabels(flags)).toEqual(["behind base", "diverged"]);
+		expect(flagLabels(flags)).toEqual(["diverged", "behind base"]);
 	});
 
 	test("includes merged label when isMerged", () => {
@@ -568,6 +568,45 @@ describe("flagLabels", () => {
 			"feature",
 		);
 		expect(flagLabels(flags)).toContain("merged");
+	});
+
+	test("puts merged and gone first when mixed with other labels", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 2,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: null,
+				},
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+			}),
+			"feature",
+		);
+		expect(flagLabels(flags)).toEqual(["merged", "gone", "behind base"]);
+	});
+
+	test("puts work-safety labels before lifecycle labels when both exist", () => {
+		const flags = computeFlags(
+			makeRepo({
+				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 2,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: null,
+				},
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+			}),
+			"feature",
+		);
+		expect(flagLabels(flags)).toEqual(["dirty", "merged", "gone", "behind base"]);
 	});
 
 	test("includes base merged label when isBaseMerged", () => {
@@ -1060,6 +1099,28 @@ describe("isWorkspaceSafe", () => {
 });
 
 describe("computeSummaryAggregates decoupled display gate", () => {
+	test("statusCounts puts work-safety labels before lifecycle labels", () => {
+		const repos = [
+			makeRepo({
+				name: "mixed",
+				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 2,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: null,
+				},
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+			}),
+		];
+		const result = computeSummaryAggregates(repos, "feature");
+		expect(result.statusCounts.map((c) => c.label)).toEqual(["dirty", "merged", "gone", "behind base"]);
+		expect(result.statusLabels).toEqual(["dirty", "merged", "gone", "behind base"]);
+	});
+
 	test("statusCounts includes stale flags even when not at-risk", () => {
 		const repos = [
 			makeRepo({

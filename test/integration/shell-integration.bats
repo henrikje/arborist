@@ -16,7 +16,8 @@ SHELL_FILE="$BATS_TEST_DIRNAME/../../shell/arb.bash"
         echo \"\$PWD\"
     "
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" == "$TEST_DIR/project/my-feature" ]]
+    local last_line="${lines[${#lines[@]}-1]}"
+    [[ "$last_line" == "$TEST_DIR/project/my-feature" ]]
 }
 
 @test "bash wrapper: arb cd with subpath changes to worktree" {
@@ -28,7 +29,8 @@ SHELL_FILE="$BATS_TEST_DIRNAME/../../shell/arb.bash"
         echo \"\$PWD\"
     "
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" == "$TEST_DIR/project/my-feature/repo-a" ]]
+    local last_line="${lines[${#lines[@]}-1]}"
+    [[ "$last_line" == "$TEST_DIR/project/my-feature/repo-a" ]]
 }
 
 @test "bash wrapper: arb create captures path and changes directory" {
@@ -39,7 +41,8 @@ SHELL_FILE="$BATS_TEST_DIRNAME/../../shell/arb.bash"
         echo \"\$PWD\"
     "
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" == "$TEST_DIR/project/new-ws" ]]
+    local last_line="${lines[${#lines[@]}-1]}"
+    [[ "$last_line" == "$TEST_DIR/project/new-ws" ]]
 }
 
 @test "bash wrapper: arb cd --help passes through without capturing" {
@@ -84,8 +87,9 @@ SHELL_FILE="$BATS_TEST_DIRNAME/../../shell/arb.bash"
     "
     [ "$status" -eq 0 ]
     # PWD should have recovered to an existing parent directory
-    [[ "${lines[-1]}" != "$TEST_DIR/project/tmp-ws/repo-a" ]]
-    [ -d "${lines[-1]}" ]
+    local last_line="${lines[${#lines[@]}-1]}"
+    [[ "$last_line" != "$TEST_DIR/project/tmp-ws/repo-a" ]]
+    [ -d "$last_line" ]
 }
 
 # ── completion: subcommands ──────────────────────────────────────
@@ -293,7 +297,8 @@ SHELL_FILE="$BATS_TEST_DIRNAME/../../shell/arb.bash"
         echo \"\$PWD\"
     "
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" == "$TEST_DIR/project/my-feature/repo-b" ]]
+    local last_line="${lines[${#lines[@]}-1]}"
+    [[ "$last_line" == "$TEST_DIR/project/my-feature/repo-b" ]]
 }
 
 # ── completion: cd slash pattern ─────────────────────────────────

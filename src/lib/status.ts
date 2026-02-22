@@ -168,20 +168,24 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 }
 
 const FLAG_LABELS: { key: keyof RepoFlags; label: string }[] = [
+	// Work-safety / immediate-attention flags.
 	{ key: "isDirty", label: "dirty" },
 	{ key: "isUnpushed", label: "unpushed" },
+	{ key: "hasOperation", label: "operation" },
+	{ key: "isDetached", label: "detached" },
+	{ key: "isDrifted", label: "drifted" },
+	// Other at-risk/infrastructure signals.
+	{ key: "baseFellBack", label: "base missing" },
+	{ key: "isBaseMerged", label: "base merged" },
+	{ key: "isShallow", label: "shallow" },
+	// Lifecycle markers.
+	{ key: "isMerged", label: "merged" },
+	{ key: "isGone", label: "gone" },
+	// Staleness and informational tails.
+	{ key: "isDiverged", label: "diverged" },
 	{ key: "needsPull", label: "behind share" },
 	{ key: "needsRebase", label: "behind base" },
-	{ key: "isDiverged", label: "diverged" },
-	{ key: "isDrifted", label: "drifted" },
-	{ key: "isDetached", label: "detached" },
-	{ key: "hasOperation", label: "operation" },
 	{ key: "isLocal", label: "local" },
-	{ key: "isGone", label: "gone" },
-	{ key: "isShallow", label: "shallow" },
-	{ key: "isMerged", label: "merged" },
-	{ key: "isBaseMerged", label: "base merged" },
-	{ key: "baseFellBack", label: "base missing" },
 ];
 
 export function flagLabels(flags: RepoFlags): string[] {
