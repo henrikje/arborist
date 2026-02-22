@@ -567,11 +567,7 @@ export async function gatherWorkspaceSummary(
 
 			let remotes: RepoRemotes | undefined;
 			if (repoHasRemote) {
-				try {
-					remotes = await resolveRemotes(canonicalPath, remoteNames);
-				} catch {
-					// Ambiguous remotes — use defaults
-				}
+				remotes = await resolveRemotes(canonicalPath, remoteNames);
 			}
 
 			const [status, commitDate] = await Promise.all([
