@@ -86,13 +86,13 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				const autostash = options.autostash === true;
 
 				const assess = async (fetchFailed: string[]) => {
-					const assessments: PullAssessment[] = [];
-					for (const repo of repos) {
-						const repoDir = `${wsDir}/${repo}`;
-						const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
-						assessments.push(await assessPullRepo(status, repoDir, branch, fetchFailed, flagMode, autostash));
-					}
-					return assessments;
+					return Promise.all(
+						repos.map(async (repo) => {
+							const repoDir = `${wsDir}/${repo}`;
+							const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
+							return assessPullRepo(status, repoDir, branch, fetchFailed, flagMode, autostash);
+						}),
+					);
 				};
 
 				let assessments: PullAssessment[];

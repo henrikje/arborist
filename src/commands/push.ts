@@ -69,12 +69,13 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				const canTwoPhase = shouldFetch && fetchDirs.length > 0 && isTTY();
 
 				const assess = async () => {
-					const assessments: PushAssessment[] = [];
-					for (const repo of selectedRepos) {
-						const repoDir = `${wsDir}/${repo}`;
-						const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
-						assessments.push(await assessPushRepo(status, repoDir, branch, { force: options.force }));
-					}
+					const assessments = await Promise.all(
+						selectedRepos.map(async (repo) => {
+							const repoDir = `${wsDir}/${repo}`;
+							const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
+							return assessPushRepo(status, repoDir, branch, { force: options.force });
+						}),
+					);
 					for (const a of assessments) {
 						if (a.outcome === "will-force-push" && !options.force) {
 							a.outcome = "skip";
