@@ -215,7 +215,7 @@ __arb_complete_remove() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-f --force -d --delete-remote -y --yes -a --all-safe -w --where -n --dry-run" -- "$cur"))
+        COMPREPLY=($(compgen -W "-f --force -r --delete-remote -d --dirty -y --yes -a --all-safe -w --where -n --dry-run" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_workspace_names "$base_dir")" -- "$cur"))
@@ -228,7 +228,7 @@ __arb_complete_list() {
         __arb_complete_where_value "$cur"
         return
     fi
-    COMPREPLY=($(compgen -W "-f --fetch -q --quick -w --where --json" -- "$cur"))
+    COMPREPLY=($(compgen -W "-f --fetch -q --quick -d --dirty -w --where --json" -- "$cur"))
 }
 
 __arb_complete_path() {

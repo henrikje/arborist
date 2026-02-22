@@ -255,7 +255,8 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 		.command("delete [names...]")
 		.option("-y, --yes", "Skip confirmation prompt")
 		.option("-f, --force", "Force deletion of at-risk workspaces (implies --yes)")
-		.option("-d, --delete-remote", "Delete remote branches")
+		.option("-r, --delete-remote", "Delete remote branches")
+		.option("-d, --dirty", "Only target dirty workspaces (shorthand for --where dirty)")
 		.option(
 			"-a, --all-safe",
 			"Delete all safe workspaces (no uncommitted changes, unpushed commits, or branch drift; behind base is fine)",
@@ -264,7 +265,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.summary("Delete one or more workspaces")
 		.description(
-			"Delete one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-delete all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Combine with --where <filter> to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). --where accepts: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk, stale. Comma-separated values use OR logic.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.",
+			"Delete one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-delete all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Use --dirty / -d to target only dirty workspaces, or --where <filter> for other status flags. Combine with --all-safe to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). --where accepts: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk, stale. Comma-separated values use OR logic.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.",
 		)
 		.action(
 			async (
@@ -273,6 +274,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 					yes?: boolean;
 					force?: boolean;
 					deleteRemote?: boolean;
+					dirty?: boolean;
 					allSafe?: boolean;
 					where?: string;
 					dryRun?: boolean;
@@ -283,8 +285,12 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 				const forceAtRisk = options.force ?? false;
 				const deleteRemote = options.deleteRemote ?? false;
 
-				// Validate --where terms
-				const whereFilter = options.where;
+				// Resolve --dirty as shorthand for --where dirty
+				if (options.dirty && options.where) {
+					error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
+					process.exit(1);
+				}
+				const whereFilter = options.dirty ? "dirty" : options.where;
 				if (whereFilter) {
 					const err = validateWhere(whereFilter);
 					if (err) {

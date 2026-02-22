@@ -568,6 +568,40 @@ assert data == []
     [[ "$output" == *"$TEST_DIR/project/my-feature"* ]]
 }
 
+@test "arb list --dirty filters to dirty workspaces" {
+    arb create ws-clean repo-a
+    arb create ws-dirty repo-a
+    echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
+    run arb list --dirty
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-dirty"* ]]
+    [[ "$output" != *"ws-clean"* ]]
+}
+
+@test "arb list -d filters to dirty workspaces" {
+    arb create ws-clean repo-a
+    arb create ws-dirty repo-a
+    echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
+    run arb list -d
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-dirty"* ]]
+    [[ "$output" != *"ws-clean"* ]]
+}
+
+@test "arb list --dirty --where conflicts" {
+    arb create ws-one repo-a
+    run arb list --dirty --where unpushed
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot combine --dirty with --where"* ]]
+}
+
+@test "arb list --dirty --quick conflicts" {
+    arb create ws-one repo-a
+    run arb list --dirty --quick
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"--where"* ]]
+}
+
 @test "arb -C is visible in --help output" {
     run arb --help
     [ "$status" -eq 0 ]

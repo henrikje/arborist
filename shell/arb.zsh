@@ -145,10 +145,11 @@ _arb() {
                     _arguments \
                         '*:workspace:($ws_names)' \
                         '(-f --force)'{-f,--force}'[Force removal]' \
-                        '(-d --delete-remote)'{-d,--delete-remote}'[Delete remote branches]' \
+                        '(-r --delete-remote)'{-r,--delete-remote}'[Delete remote branches]' \
+                        '(-d --dirty -w --where)'{-d,--dirty}'[Only target dirty workspaces]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-a --all-safe)'{-a,--all-safe}'[Remove all safe workspaces]' \
-                        '(-w --where)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
+                        '(-d --dirty -w --where)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]'
                     ;;
                 path)
@@ -263,8 +264,9 @@ _arb() {
                 list)
                     _arguments \
                         '(-f --fetch)'{-f,--fetch}'[Fetch all repos before listing]' \
-                        '(-q --quick -w --where)'{-q,--quick}'[Skip per-repo status]' \
-                        '(-q --quick -w --where)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
+                        '(-q --quick -w --where -d --dirty)'{-q,--quick}'[Skip per-repo status]' \
+                        '(-d --dirty -w --where -q --quick)'{-d,--dirty}'[Only list dirty workspaces]' \
+                        '(-d --dirty -w --where -q --quick)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
                         '--json[Output structured JSON]'
                     ;;
                 status)

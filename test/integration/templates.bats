@@ -309,11 +309,11 @@ load test_helper/common-setup
     [[ "$output" == *"Skipping confirmation"* ]]
 }
 
-@test "arb delete -d shows remote deletion notice in plan" {
+@test "arb delete -r shows remote deletion notice in plan" {
     arb create ws-dnotice repo-a
     git -C "$TEST_DIR/project/ws-dnotice/repo-a" push -u origin ws-dnotice >/dev/null 2>&1
 
-    run arb delete ws-dnotice -y -d
+    run arb delete ws-dnotice -y -r
     [ "$status" -eq 0 ]
     [[ "$output" == *"Remote branches will also be deleted"* ]]
     [ ! -d "$TEST_DIR/project/ws-dnotice" ]
@@ -332,11 +332,11 @@ load test_helper/common-setup
     [[ "$output" == *"Skipping confirmation"* ]]
 }
 
-@test "arb delete --all-safe -d shows remote deletion notice" {
+@test "arb delete --all-safe -r shows remote deletion notice" {
     arb create ws-allok-d repo-a
     git -C "$TEST_DIR/project/ws-allok-d/repo-a" push -u origin ws-allok-d >/dev/null 2>&1
 
-    run arb delete --all-safe --yes -d
+    run arb delete --all-safe --yes -r
     [ "$status" -eq 0 ]
     [[ "$output" == *"Remote branches will also be deleted"* ]]
     [ ! -d "$TEST_DIR/project/ws-allok-d" ]
