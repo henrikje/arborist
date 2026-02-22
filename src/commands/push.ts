@@ -45,14 +45,14 @@ interface PushAssessment {
 export function registerPushCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("push [repos...]")
-		.option("-f, --force", "Force push with lease (implies --yes)")
+		.option("-f, --force", "Force push with lease")
 		.option("-F, --fetch", "Fetch from all remotes before push (default)")
 		.option("--no-fetch", "Skip fetching before push")
 		.option("-y, --yes", "Skip confirmation prompt")
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.summary("Push the feature branch to the share remote")
 		.description(
-			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos without a remote and repos whose branches have been merged into the base branch. If a remote branch was deleted after merge, use --force to recreate it. Use --force after rebase or amend to force push with lease (implies --yes). Use -F/--fetch to fetch explicitly (default); use --no-fetch to skip fetching when refs are known to be fresh.",
+			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos without a remote and repos whose branches have been merged into the base branch. If a remote branch was deleted after merge, use --force to recreate it. Use --force after rebase or amend to force push with lease. Use -F/--fetch to fetch explicitly (default); use --no-fetch to skip fetching when refs are known to be fresh.",
 		)
 		.action(
 			async (repoArgs: string[], options: { force?: boolean; fetch?: boolean; yes?: boolean; dryRun?: boolean }) => {
@@ -133,7 +133,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				}
 
 				// Phase 3: confirm
-				if (!options.yes && !options.force) {
+				if (!options.yes) {
 					if (!isTTY()) {
 						error("Not a terminal. Use --yes to skip confirmation.");
 						process.exit(1);
@@ -150,7 +150,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 						process.exit(130);
 					}
 				} else {
-					skipConfirmNotice(options.force ? "--force" : "--yes");
+					skipConfirmNotice("--yes");
 				}
 
 				process.stderr.write("\n");
