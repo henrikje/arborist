@@ -12,8 +12,14 @@ export function configGet(configFile: string, key: string): string | null {
 	);
 }
 
-export function writeConfig(configFile: string, branch: string, base?: string): void {
+export function writeConfig(
+	configFile: string,
+	branch: string,
+	base?: string | null,
+	rebranchFrom?: string | null,
+): void {
 	let content = `branch = ${branch}\n`;
 	if (base) content += `base = ${base}\n`;
+	if (rebranchFrom) content += `rebranch_from = ${rebranchFrom}\n`;
 	writeFileSync(configFile, content);
 }

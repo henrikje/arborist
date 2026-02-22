@@ -18,6 +18,7 @@ import { registerPathCommand } from "./commands/path";
 import { registerPullCommand } from "./commands/pull";
 import { registerPushCommand } from "./commands/push";
 import { registerRebaseCommand } from "./commands/rebase";
+import { registerRebranchCommand } from "./commands/rebranch";
 import { registerRepoCommand } from "./commands/repo";
 import { registerStatusCommand } from "./commands/status";
 import { registerTemplateCommand } from "./commands/template";
@@ -42,6 +43,7 @@ const WORKTREE_COMMANDS = new Set([
 	"pull",
 	"push",
 	"rebase",
+	"rebranch",
 	"merge",
 	"exec",
 	"open",
@@ -204,6 +206,7 @@ registerFetchCommand(program, getCtx);
 registerPullCommand(program, getCtx);
 registerPushCommand(program, getCtx);
 registerRebaseCommand(program, getCtx);
+registerRebranchCommand(program, getCtx);
 registerMergeCommand(program, getCtx);
 registerExecCommand(program, getCtx);
 registerLogCommand(program, getCtx);

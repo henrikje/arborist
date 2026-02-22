@@ -186,3 +186,7 @@ The parallel pre-fetch also serves a performance purpose: `parallelFetch()` fetc
 ### Repo classification: local vs remote
 
 `classifyRepos()` separates repos into those with remotes and local-only repos. Commands that interact with remotes (fetch, pull, integrate) use this to gracefully skip local repos with a reason. This allows mixed local/remote workspaces.
+
+### In-progress state for partially-completing commands
+
+Commands that execute sequentially across multiple repos and can fail partway through (leaving some repos done and others not) must carry explicit in-progress state in `.arbws/config`. This state enables `--continue` (resume from where it left off) and `--abort` (roll back completed steps), modeled after git's own rebase-in-progress / merge-in-progress pattern. Without this state, a partial failure leaves the workspace in an ambiguous split state that cannot be safely recovered by re-running the same command. See `decisions/0025-rebranch-migration-state.md` for the reasoning behind this pattern.
