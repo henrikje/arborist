@@ -34,22 +34,38 @@ function helpDim(str: string): string {
 	return process.stdout.isTTY ? `\x1b[2m${str}\x1b[0m` : str;
 }
 
-const SETUP_COMMANDS = new Set(["init", "repo", "template", "help"]);
-const WORKTREE_COMMANDS = new Set([
-	"attach",
-	"detach",
-	"status",
-	"fetch",
-	"pull",
-	"push",
-	"rebase",
-	"rebranch",
-	"merge",
-	"exec",
-	"open",
-	"log",
-	"diff",
-]);
+const COMMAND_GROUPS = [
+	{
+		title: "Setup Commands:",
+		description: "  Set up the arb root and clone repos.",
+		commands: ["init", "repo", "template", "help"],
+	},
+	{
+		title: "Workspace Commands:",
+		description: "  Create and manage workspaces. Run from within an arb root.",
+		commands: ["create", "delete", "list", "path", "cd"],
+	},
+	{
+		title: "Workspace Structure Commands:",
+		description: "  Manage which repositories participate in a workspace. Run from within a workspace.",
+		commands: ["attach", "detach"],
+	},
+	{
+		title: "Inspection Commands:",
+		description: "  Inspect workspace branch state across repositories. Run from within a workspace.",
+		commands: ["status", "log", "diff"],
+	},
+	{
+		title: "Synchronization Commands:",
+		description: "  Synchronize workspace branches with remotes and base branches. Run from within a workspace.",
+		commands: ["fetch", "pull", "push", "rebase", "rebranch", "merge"],
+	},
+	{
+		title: "Execution Commands:",
+		description: "  Run commands or open tools across all workspace worktrees. Run from within a workspace.",
+		commands: ["exec", "open"],
+	},
+] as const;
 
 function arbFormatHelp(cmd: Command, helper: Help): string {
 	const termWidth = helper.padWidth(cmd, helper);
@@ -80,60 +96,24 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 		}
 	}
 
-	// Commands — split into three groups
+	// Commands — grouped for root help
 	const allCommands = helper.visibleCommands(cmd);
-	const setupCommands = allCommands.filter((c) => SETUP_COMMANDS.has(c.name()));
-	const workspaceCommands = allCommands.filter(
-		(c) => !SETUP_COMMANDS.has(c.name()) && !WORKTREE_COMMANDS.has(c.name()),
-	);
-	const worktreeCommands = allCommands.filter((c) => WORKTREE_COMMANDS.has(c.name()));
+	const commandsByName = new Map(allCommands.map((subcommand) => [subcommand.name(), subcommand]));
 
-	if (setupCommands.length > 0) {
-		const list = setupCommands.map((c) => {
-			return callFormatItem(
-				helper.styleSubcommandTerm(helper.subcommandTerm(c)),
-				helper.styleSubcommandDescription(helper.subcommandDescription(c)),
-			);
-		});
-		output = output.concat([
-			helper.styleTitle("Setup Commands:"),
-			helpDim("  Set up the arb root and clone repos."),
-			"",
-			...list,
-			"",
-		]);
-	}
-
-	if (workspaceCommands.length > 0) {
-		const list = workspaceCommands.map((c) => {
-			return callFormatItem(
-				helper.styleSubcommandTerm(helper.subcommandTerm(c)),
-				helper.styleSubcommandDescription(helper.subcommandDescription(c)),
-			);
-		});
-		output = output.concat([
-			helper.styleTitle("Workspace Commands:"),
-			helpDim("  Create and manage workspaces. Run from within an arb root."),
-			"",
-			...list,
-			"",
-		]);
-	}
-
-	if (worktreeCommands.length > 0) {
-		const list = worktreeCommands.map((c) => {
-			return callFormatItem(
-				helper.styleSubcommandTerm(helper.subcommandTerm(c)),
-				helper.styleSubcommandDescription(helper.subcommandDescription(c)),
-			);
-		});
-		output = output.concat([
-			helper.styleTitle("Worktree Commands:"),
-			helpDim("  Manage worktrees. Run from within a workspace, or with -C <workspace>."),
-			"",
-			...list,
-			"",
-		]);
+	for (const group of COMMAND_GROUPS) {
+		const groupedCommands = group.commands
+			.map((name) => commandsByName.get(name))
+			.filter((subcommand): subcommand is Command => Boolean(subcommand));
+		if (groupedCommands.length === 0) {
+			continue;
+		}
+		const list = groupedCommands.map((subcommand) =>
+			callFormatItem(
+				helper.styleSubcommandTerm(helper.subcommandTerm(subcommand)),
+				helper.styleSubcommandDescription(helper.subcommandDescription(subcommand)),
+			),
+		);
+		output = output.concat([helper.styleTitle(group.title), helpDim(group.description), "", ...list, ""]);
 	}
 
 	// Global Options (moved after commands)
