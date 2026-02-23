@@ -25,7 +25,7 @@ For every command in `src/commands/`, verify:
 - Every `.option()` has a help string that matches its actual behavior.
 - Default values are documented in option help text (e.g., fetch defaults per GUIDELINES.md's "Universal fetch flags").
 - Arguments like `[repos...]` are documented.
-- Command groups (`repo`, `template`) have accurate subcommand help.
+- Every registered command appears in its parent's help output. Run `arb --help` and each command group (`repo --help`, `template --help`, etc.) and verify no registered commands or subcommands are missing from the output.
 
 Cross-reference against the actual implementation — don't just check that help text exists, check that it's *correct*.
 
