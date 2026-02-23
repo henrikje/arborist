@@ -22,7 +22,7 @@ import { type RepoStatus, computeFlags, gatherRepoStatus } from "../lib/status";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
-interface PullAssessment {
+export interface PullAssessment {
 	repo: string;
 	repoDir: string;
 	outcome: "will-pull" | "up-to-date" | "skip";
@@ -85,7 +85,9 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 						repos.map(async (repo) => {
 							const repoDir = `${wsDir}/${repo}`;
 							const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
-							return assessPullRepo(status, repoDir, branch, fetchFailed, flagMode, autostash);
+							const headSha = await getShortHead(repoDir);
+							const pullMode = flagMode ?? (await detectPullMode(repoDir, branch));
+							return assessPullRepo(status, repoDir, branch, fetchFailed, pullMode, autostash, headSha);
 						}),
 					);
 				};
@@ -217,16 +219,15 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 		);
 }
 
-async function assessPullRepo(
+export function assessPullRepo(
 	status: RepoStatus,
 	repoDir: string,
 	branch: string,
 	fetchFailed: string[],
-	flagMode: "rebase" | "merge" | undefined,
-	autostash = false,
-): Promise<PullAssessment> {
-	const headSha = await getShortHead(repoDir);
-
+	pullMode: "rebase" | "merge",
+	autostash: boolean,
+	headSha: string,
+): PullAssessment {
 	const base: PullAssessment = {
 		repo: status.name,
 		repoDir,
@@ -234,7 +235,7 @@ async function assessPullRepo(
 		behind: 0,
 		toPush: 0,
 		rebased: 0,
-		pullMode: "merge",
+		pullMode,
 		headSha,
 	};
 
@@ -288,13 +289,10 @@ async function assessPullRepo(
 		return { ...base, skipReason: `already merged into ${status.base.ref}` };
 	}
 
-	// Determine pull mode
-	const pullMode = flagMode ?? (await detectPullMode(repoDir, branch));
-
 	// Check toPull count
 	const toPull = status.share.toPull ?? 0;
 	if (toPull === 0) {
-		return { ...base, outcome: "up-to-date", pullMode };
+		return { ...base, outcome: "up-to-date" };
 	}
 
 	// Skip if all to-pull commits are rebased locally
@@ -304,10 +302,10 @@ async function assessPullRepo(
 	}
 
 	const toPush = status.share.toPush ?? 0;
-	return { ...base, outcome: "will-pull", behind: toPull, toPush, rebased, pullMode };
+	return { ...base, outcome: "will-pull", behind: toPull, toPush, rebased };
 }
 
-function formatPullPlan(assessments: PullAssessment[], remotesMap: Map<string, RepoRemotes>): string {
+export function formatPullPlan(assessments: PullAssessment[], remotesMap: Map<string, RepoRemotes>): string {
 	let out = "\n";
 	for (const a of assessments) {
 		const remotes = remotesMap.get(a.repo);

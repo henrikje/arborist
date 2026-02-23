@@ -11,7 +11,7 @@ import { type RepoStatus, gatherRepoStatus } from "../lib/status";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
-interface PushAssessment {
+export interface PushAssessment {
 	repo: string;
 	repoDir: string;
 	outcome: "will-push" | "will-force-push" | "up-to-date" | "skip";
@@ -58,7 +58,8 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 						selectedRepos.map(async (repo) => {
 							const repoDir = `${wsDir}/${repo}`;
 							const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
-							return assessPushRepo(status, repoDir, branch, { force: options.force });
+							const headSha = await getShortHead(repoDir);
+							return assessPushRepo(status, repoDir, branch, headSha, { force: options.force });
 						}),
 					);
 					for (const a of assessments) {
@@ -139,7 +140,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 		);
 }
 
-function formatPushPlan(assessments: PushAssessment[], remotesMap: Map<string, RepoRemotes>): string {
+export function formatPushPlan(assessments: PushAssessment[], remotesMap: Map<string, RepoRemotes>): string {
 	let out = "\n";
 	for (const a of assessments) {
 		const remotes = remotesMap.get(a.repo);
@@ -175,14 +176,13 @@ function formatPushPlan(assessments: PushAssessment[], remotesMap: Map<string, R
 	return out;
 }
 
-async function assessPushRepo(
+export function assessPushRepo(
 	status: RepoStatus,
 	repoDir: string,
 	branch: string,
+	headSha: string,
 	options?: { force?: boolean },
-): Promise<PushAssessment> {
-	const headSha = await getShortHead(repoDir);
-
+): PushAssessment {
 	const behindBase = status.base?.behind ?? 0;
 
 	const base: PushAssessment = {

@@ -61,7 +61,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 }
 
 // 8-column cell data for width measurement (plain text, no ANSI)
-interface CellData {
+export interface CellData {
 	repo: string;
 	branch: string;
 	baseName: string;
@@ -342,7 +342,7 @@ async function runStatus(
 
 // Plain-text cell computation (no ANSI codes) for width measurement
 
-function plainCells(repo: RepoStatus): CellData {
+export function plainCells(repo: RepoStatus): CellData {
 	const isDetached = repo.identity.headMode.kind === "detached";
 	const actualBranch = repo.identity.headMode.kind === "attached" ? repo.identity.headMode.branch : "";
 
@@ -398,7 +398,7 @@ function plainCells(repo: RepoStatus): CellData {
 	return { repo: repoName, branch, baseName, baseDiff, remoteName, remoteDiff, local, lastCommit };
 }
 
-function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
+export function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
 	if (base.baseMergedIntoDefault != null) return "base merged";
 	const parts = [base.ahead > 0 && `${base.ahead} ahead`, base.behind > 0 && `${base.behind} behind`]
 		.filter(Boolean)
@@ -406,7 +406,7 @@ function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
 	return parts || "equal";
 }
 
-function plainRemoteDiff(repo: RepoStatus): string {
+export function plainRemoteDiff(repo: RepoStatus): string {
 	const merged = repo.base?.mergedIntoBase != null;
 
 	if (repo.share.refMode === "gone") {
@@ -445,7 +445,7 @@ function plainRemoteDiff(repo: RepoStatus): string {
 	return parts;
 }
 
-function plainLocal(repo: RepoStatus): string {
+export function plainLocal(repo: RepoStatus): string {
 	const parts = [
 		repo.local.conflicts > 0 && `${repo.local.conflicts} conflicts`,
 		repo.local.staged > 0 && `${repo.local.staged} staged`,

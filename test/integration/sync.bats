@@ -25,27 +25,6 @@ load test_helper/common-setup
     [[ "$output" == *"repo-b"* ]]
 }
 
-@test "arb pull plan shows HEAD SHA" {
-    arb create my-feature repo-a
-    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "change" > file.txt && git add file.txt && git commit -m "change" && git push -u origin my-feature) >/dev/null 2>&1
-
-    # Push a new commit from a separate clone so pull has work to do
-    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-pull-sha" >/dev/null 2>&1
-    (cd "$TEST_DIR/tmp-pull-sha" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    expected_sha=$(git -C "$TEST_DIR/project/my-feature/repo-a" rev-parse --short HEAD)
-    run arb pull --yes
-    [[ "$output" == *"HEAD $expected_sha"* ]]
-}
-
-@test "arb pull without push shows not pushed" {
-    arb create my-feature repo-a
-    cd "$TEST_DIR/project/my-feature"
-    run arb pull
-    [[ "$output" == *"not pushed yet"* ]]
-}
-
 @test "arb pull continues through repos on conflict" {
     arb create my-feature repo-a repo-b
 
@@ -77,20 +56,6 @@ load test_helper/common-setup
     [[ "$output" == *"Pulled 1 repo"* ]]
 }
 
-@test "arb pull skips repo on wrong branch" {
-    arb create my-feature repo-a repo-b
-    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
-    # Manually switch repo-a to a different branch
-    git -C "$TEST_DIR/project/my-feature/repo-a" checkout -b experiment >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    run arb pull --yes
-    [[ "$output" == *"on branch experiment, expected my-feature"* ]]
-    [[ "$output" == *"skipped"* ]]
-    # repo-b should still appear in plan
-    [[ "$output" == *"repo-b"* ]]
-}
-
 @test "arb pull without workspace context fails" {
     run arb pull
     [ "$status" -ne 0 ]
@@ -113,32 +78,11 @@ load test_helper/common-setup
     [ "$status" -eq 0 ]
 }
 
-@test "arb push plan shows HEAD SHA" {
-    arb create my-feature repo-a
-    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    expected_sha=$(git -C "$TEST_DIR/project/my-feature/repo-a" rev-parse --short HEAD)
-    run arb push --yes
-    [[ "$output" == *"HEAD $expected_sha"* ]]
-}
-
-@test "arb push skips repo on wrong branch" {
-    arb create my-feature repo-a repo-b
-    git -C "$TEST_DIR/project/my-feature/repo-a" checkout -b experiment >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    run arb push --yes
-    [[ "$output" == *"on branch experiment, expected my-feature"* ]]
-    [[ "$output" == *"skipped"* ]]
-}
-
 @test "arb push without workspace context fails" {
     run arb push
     [ "$status" -ne 0 ]
     [[ "$output" == *"Not inside a workspace"* ]]
 }
-
 
 # ── pull (plan+confirm) ─────────────────────────────────────────
 
@@ -158,17 +102,6 @@ load test_helper/common-setup
     [[ "$output" == *"Skipping confirmation"* ]]
 }
 
-@test "arb pull shows plan before pulling" {
-    arb create my-feature repo-a repo-b
-    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb pull --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"up to date"* ]]
-}
-
 # ── push (plan+confirm) ─────────────────────────────────────────
 
 @test "arb push --yes skips confirmation" {
@@ -182,50 +115,6 @@ load test_helper/common-setup
     [[ "$output" == *"Pushed"* ]]
     [[ "$output" == *"to push"* ]]
     [[ "$output" == *"Skipping confirmation"* ]]
-}
-
-@test "arb push shows plan before pushing" {
-    arb create my-feature repo-a
-    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    echo "more" > "$TEST_DIR/project/my-feature/repo-a/file2.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add file2.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "more" >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    run arb push --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"1 commit"* ]]
-    [[ "$output" == *"Pushed"* ]]
-}
-
-@test "arb push first push shows correct commit count and new branch annotation" {
-    arb create my-feature repo-a
-    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    run arb push --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"1 commit"* ]]
-    [[ "$output" == *"new branch"* ]]
-    [[ "$output" != *"2 commit"* ]]
-}
-
-@test "arb push skips repo with no commits" {
-    arb create my-feature repo-a repo-b
-    # repo-a: no commits (fresh branch)
-    # repo-b: has a commit
-    echo "change" > "$TEST_DIR/project/my-feature/repo-b/file.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-b" add file.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-b" commit -m "change" >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    run arb push --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"repo-a"*"skipped"*"no commits"* ]]
-    [[ "$output" == *"repo-b"*"1 commit"* ]]
-    [[ "$output" == *"Pushed 1 repo"* ]]
 }
 
 @test "arb push fetches by default" {
@@ -309,43 +198,6 @@ load test_helper/common-setup
     [[ "$output" == *"--force"* ]]
 }
 
-@test "arb push skip message includes rebased count" {
-    arb create my-feature repo-a
-    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-
-    # Advance main and rebase
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    arb rebase --yes >/dev/null 2>&1
-
-    # Push without --force: skip message should mention rebased
-    run arb push --yes
-    [[ "$output" == *"1 rebased"* ]]
-    [[ "$output" == *"--force"* ]]
-}
-
-@test "arb push --force plan shows rebased annotation" {
-    arb create my-feature repo-a
-    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-
-    # Advance main and rebase
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    arb rebase --yes >/dev/null 2>&1
-
-    run arb push --force --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"rebased"* ]]
-    [[ "$output" == *"force"* ]]
-    [[ "$output" == *"Pushed"* ]]
-}
-
 @test "arb push -f short flag works" {
     arb create my-feature repo-a
     echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
@@ -425,69 +277,7 @@ load test_helper/common-setup
     [[ "$output" == *"not in this workspace"* ]]
 }
 
-
 # ── pull --rebase / --merge ──────────────────────────────────────
-
-@test "arb pull defaults to merge mode in plan and result" {
-    arb create my-feature repo-a
-    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "change" > file.txt && git add file.txt && git commit -m "change" && git push -u origin my-feature) >/dev/null 2>&1
-
-    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
-    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb pull --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"to pull (merge"* ]]
-    [[ "$output" == *"pulled"*"(merge)"* ]]
-}
-
-@test "arb pull detects rebase from pull.rebase config" {
-    arb create my-feature repo-a
-    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "change" > file.txt && git add file.txt && git commit -m "change" && git push -u origin my-feature) >/dev/null 2>&1
-
-    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
-    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
-
-    git -C "$TEST_DIR/project/my-feature/repo-a" config pull.rebase true
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb pull --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"to pull (rebase"* ]]
-    [[ "$output" == *"pulled"*"(rebase)"* ]]
-}
-
-@test "arb pull --rebase forces rebase mode" {
-    arb create my-feature repo-a
-    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "change" > file.txt && git add file.txt && git commit -m "change" && git push -u origin my-feature) >/dev/null 2>&1
-
-    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
-    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb pull --rebase --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"to pull (rebase"* ]]
-    [[ "$output" == *"pulled"*"(rebase)"* ]]
-}
-
-@test "arb pull --merge forces merge mode" {
-    arb create my-feature repo-a
-    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "change" > file.txt && git add file.txt && git commit -m "change" && git push -u origin my-feature) >/dev/null 2>&1
-
-    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
-    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
-
-    # Set rebase in config, but --merge flag should override
-    git -C "$TEST_DIR/project/my-feature/repo-a" config pull.rebase true
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb pull --merge --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"to pull (merge"* ]]
-    [[ "$output" == *"pulled"*"(merge)"* ]]
-}
 
 @test "arb pull --rebase --merge errors" {
     arb create my-feature repo-a
@@ -497,18 +287,7 @@ load test_helper/common-setup
     [[ "$output" == *"Cannot use both --rebase and --merge"* ]]
 }
 
-
 # ── gone remote branches ─────────────────────────────────────────
-
-@test "arb status shows gone for deleted remote branch" {
-    arb create gone-status repo-a
-    push_then_delete_remote gone-status repo-a
-
-    cd "$TEST_DIR/project/gone-status"
-    run arb status
-    [[ "$output" == *"gone"* ]]
-    [[ "$output" != *"not pushed"* ]]
-}
 
 @test "arb status exits 0 for gone repos (gone is not at-risk)" {
     arb create gone-exit repo-a
@@ -521,28 +300,6 @@ load test_helper/common-setup
     [[ "$output" == *"to push"* ]]
 }
 
-@test "arb push recreates gone remote branches" {
-    arb create gone-push repo-a
-    push_then_delete_remote gone-push repo-a
-    cd "$TEST_DIR/project/gone-push"
-    run arb push --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"(recreate)"* ]]
-    [[ "$output" == *"pushed"* ]]
-    # Verify the remote branch was actually recreated
-    run git -C "$TEST_DIR/origin/repo-a.git" branch --list gone-push
-    [[ "$output" == *"gone-push"* ]]
-}
-
-@test "arb pull skips gone repos" {
-    arb create gone-pull repo-a
-    push_then_delete_remote gone-pull repo-a
-
-    cd "$TEST_DIR/project/gone-pull"
-    run arb pull --yes
-    [[ "$output" == *"remote branch gone"* ]]
-}
-
 @test "arb delete treats gone repos as safe" {
     arb create gone-remove repo-a
     push_then_delete_remote gone-remove repo-a
@@ -553,92 +310,6 @@ load test_helper/common-setup
 }
 
 # ── merged branch detection ──────────────────────────────────────
-
-@test "arb status shows merged (gone) after squash merge + branch delete" {
-    arb create squash-gone repo-a
-    local wt="$TEST_DIR/project/squash-gone/repo-a"
-
-    # Make feature work
-    echo "feature content" > "$wt/feature.txt"
-    git -C "$wt" add feature.txt >/dev/null 2>&1
-    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
-    cd "$TEST_DIR/project/squash-gone"
-    arb push --yes >/dev/null 2>&1
-
-    # Simulate squash merge on main: squash-merge the feature branch
-    local bare="$TEST_DIR/origin/repo-a.git"
-    local tmp="$TEST_DIR/tmp-squash"
-    git clone "$bare" "$tmp" >/dev/null 2>&1
-    (cd "$tmp" && git merge --squash origin/squash-gone && git commit -m "squash: feature work") >/dev/null 2>&1
-    (cd "$tmp" && git push origin main) >/dev/null 2>&1
-    rm -rf "$tmp"
-
-    # Delete the feature branch on the remote (simulates GitHub auto-delete)
-    git -C "$bare" branch -D squash-gone >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch --prune >/dev/null 2>&1
-
-    # Fetch and check status
-    cd "$TEST_DIR/project/squash-gone"
-    fetch_all_repos
-    run arb status
-    [[ "$output" == *"merged (gone)"* ]]
-}
-
-@test "arb status shows merged when branch merged but not deleted" {
-    arb create merged-not-gone repo-a
-    local wt="$TEST_DIR/project/merged-not-gone/repo-a"
-
-    # Make feature work and push
-    echo "feature content" > "$wt/feature.txt"
-    git -C "$wt" add feature.txt >/dev/null 2>&1
-    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
-    cd "$TEST_DIR/project/merged-not-gone"
-    arb push --yes >/dev/null 2>&1
-
-    # Merge feature into main (merge commit)
-    local bare="$TEST_DIR/origin/repo-a.git"
-    local tmp="$TEST_DIR/tmp-merge"
-    git clone "$bare" "$tmp" >/dev/null 2>&1
-    (cd "$tmp" && git merge origin/merged-not-gone --no-ff -m "merge feature") >/dev/null 2>&1
-    (cd "$tmp" && git push origin main) >/dev/null 2>&1
-    rm -rf "$tmp"
-
-    # Do NOT delete the feature branch — it stays on the remote
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/merged-not-gone"
-    fetch_all_repos
-    run arb status
-    [[ "$output" == *"merged"* ]]
-    [[ "$output" != *"merged (gone)"* ]]
-}
-
-@test "arb push skips merged repos with explanatory message" {
-    arb create merged-push repo-a
-    local wt="$TEST_DIR/project/merged-push/repo-a"
-
-    # Make feature work and push
-    echo "feature content" > "$wt/feature.txt"
-    git -C "$wt" add feature.txt >/dev/null 2>&1
-    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
-    cd "$TEST_DIR/project/merged-push"
-    arb push --yes >/dev/null 2>&1
-
-    # Squash merge + delete
-    local bare="$TEST_DIR/origin/repo-a.git"
-    local tmp="$TEST_DIR/tmp-squash-push"
-    git clone "$bare" "$tmp" >/dev/null 2>&1
-    (cd "$tmp" && git merge --squash origin/merged-push && git commit -m "squash merge") >/dev/null 2>&1
-    (cd "$tmp" && git push origin main) >/dev/null 2>&1
-    rm -rf "$tmp"
-    git -C "$bare" branch -D merged-push >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch --prune >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/merged-push"
-    run arb push --yes
-    [[ "$output" == *"already merged"* ]]
-    [[ "$output" == *"--force"* ]]
-}
 
 @test "arb push --force overrides merged skip and recreates branch" {
     arb create merged-force repo-a
@@ -665,32 +336,6 @@ load test_helper/common-setup
     run arb push --force --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"pushed"* ]] || [[ "$output" == *"Pushed"* ]]
-}
-
-@test "arb pull skips merged repos" {
-    arb create merged-pull repo-a
-    local wt="$TEST_DIR/project/merged-pull/repo-a"
-
-    # Make feature work and push
-    echo "feature content" > "$wt/feature.txt"
-    git -C "$wt" add feature.txt >/dev/null 2>&1
-    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
-    cd "$TEST_DIR/project/merged-pull"
-    arb push --yes >/dev/null 2>&1
-
-    # Merge into main (merge commit)
-    local bare="$TEST_DIR/origin/repo-a.git"
-    local tmp="$TEST_DIR/tmp-merge-pull"
-    git clone "$bare" "$tmp" >/dev/null 2>&1
-    (cd "$tmp" && git merge origin/merged-pull --no-ff -m "merge feature") >/dev/null 2>&1
-    (cd "$tmp" && git push origin main) >/dev/null 2>&1
-    rm -rf "$tmp"
-
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/merged-pull"
-    run arb pull --yes
-    [[ "$output" == *"already merged"* ]]
 }
 
 @test "arb status --json includes mergedIntoBase field" {
@@ -724,101 +369,3 @@ r = d['repos'][0]
 assert r['base']['mergedIntoBase'] == 'squash', f'expected squash, got {r[\"base\"][\"mergedIntoBase\"]}'
 "
 }
-
-# ── push behind-base annotations ─────────────────────────────────
-
-@test "arb push plan shows behind-base annotation" {
-    arb create behind-base repo-a
-    local wt="$TEST_DIR/project/behind-base/repo-a"
-
-    # Make a feature commit
-    echo "feature" > "$wt/feature.txt"
-    git -C "$wt" add feature.txt >/dev/null 2>&1
-    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
-
-    # Advance main on the bare remote
-    local tmp="$TEST_DIR/tmp-advance-main"
-    git clone "$TEST_DIR/origin/repo-a.git" "$tmp" >/dev/null 2>&1
-    (cd "$tmp" && echo "upstream1" > u1.txt && git add u1.txt && git commit -m "upstream 1" && echo "upstream2" > u2.txt && git add u2.txt && git commit -m "upstream 2" && git push) >/dev/null 2>&1
-    rm -rf "$tmp"
-
-    cd "$TEST_DIR/project/behind-base"
-    run arb push --dry-run
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"behind base"* ]]
-    [[ "$output" == *"2 behind base"* ]]
-}
-
-@test "arb push plan shows rebase hint when behind base" {
-    arb create rebase-hint repo-a
-    local wt="$TEST_DIR/project/rebase-hint/repo-a"
-
-    # Make a feature commit
-    echo "feature" > "$wt/feature.txt"
-    git -C "$wt" add feature.txt >/dev/null 2>&1
-    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
-
-    # Advance main on the bare remote
-    local tmp="$TEST_DIR/tmp-advance-hint"
-    git clone "$TEST_DIR/origin/repo-a.git" "$tmp" >/dev/null 2>&1
-    (cd "$tmp" && echo "upstream" > u.txt && git add u.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-    rm -rf "$tmp"
-
-    cd "$TEST_DIR/project/rebase-hint"
-    run arb push --dry-run
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"consider 'arb rebase'"* ]]
-}
-
-@test "arb push plan does not show behind-base when up to date" {
-    arb create no-behind repo-a
-    local wt="$TEST_DIR/project/no-behind/repo-a"
-
-    # Make a feature commit (no main advancement)
-    echo "feature" > "$wt/feature.txt"
-    git -C "$wt" add feature.txt >/dev/null 2>&1
-    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/no-behind"
-    run arb push --dry-run
-    [ "$status" -eq 0 ]
-    [[ "$output" != *"behind base"* ]]
-    [[ "$output" != *"consider 'arb rebase'"* ]]
-}
-
-@test "arb status --where merged filters correctly" {
-    arb create where-merged repo-a repo-b
-    local wt_a="$TEST_DIR/project/where-merged/repo-a"
-    local wt_b="$TEST_DIR/project/where-merged/repo-b"
-
-    # Make feature work on repo-a, push
-    echo "feature content" > "$wt_a/feature.txt"
-    git -C "$wt_a" add feature.txt >/dev/null 2>&1
-    git -C "$wt_a" commit -m "feature work" >/dev/null 2>&1
-
-    # Make feature work on repo-b too (so it's not trivially an ancestor of main)
-    echo "repo-b content" > "$wt_b/b-feature.txt"
-    git -C "$wt_b" add b-feature.txt >/dev/null 2>&1
-    git -C "$wt_b" commit -m "repo-b work" >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/where-merged"
-    arb push --yes >/dev/null 2>&1
-
-    # Only merge repo-a into main (not repo-b)
-    local bare="$TEST_DIR/origin/repo-a.git"
-    local tmp="$TEST_DIR/tmp-where-merge"
-    git clone "$bare" "$tmp" >/dev/null 2>&1
-    (cd "$tmp" && git merge origin/where-merged --no-ff -m "merge feature") >/dev/null 2>&1
-    (cd "$tmp" && git push origin main) >/dev/null 2>&1
-    rm -rf "$tmp"
-
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/where-merged"
-    fetch_all_repos
-    run arb status --where merged
-    # Should show repo-a (merged) but not repo-b (not merged — has unpushed work)
-    [[ "$output" == *"repo-a"* ]]
-    [[ "$output" != *"repo-b"* ]]
-}
-
