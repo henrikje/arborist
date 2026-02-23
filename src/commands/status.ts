@@ -2,7 +2,7 @@ import { basename, resolve } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict } from "../lib/git";
 import type { StatusJsonOutput } from "../lib/json-types";
-import { dim, error, green, yellow } from "../lib/output";
+import { bold, dim, error, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { workspaceRepoDirs } from "../lib/repos";
@@ -242,7 +242,7 @@ async function runStatus(
 		const flags = computeFlags(repo, summary.branch);
 
 		// Col 1: Repo name
-		const marker = isActive ? `${green("*")} ` : "  ";
+		const marker = isActive ? `${bold("*")} ` : "  ";
 		const repoName = repo.name;
 		const repoPad = maxRepo - cell.repo.length;
 

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import type { ListJsonEntry } from "../lib/json-types";
-import { dim, error, green, info, yellow } from "../lib/output";
+import { bold, dim, error, info, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, listWorkspaces, workspaceRepoDirs } from "../lib/repos";
@@ -313,7 +313,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				};
 
 				const renderRow = (row: ListRow): string => {
-					const prefix = row.marker ? `${green("*")} ` : "  ";
+					const prefix = row.marker ? `${bold("*")} ` : "  ";
 					const paddedName = row.name.padEnd(maxName);
 
 					if (row.special === "config-missing") {
