@@ -86,6 +86,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
 				const autostash = options.autostash === true;
 
+				// Phase 2: assess
 				const assess = async (fetchFailed: string[]) => {
 					return Promise.all(
 						repos.map(async (repo) => {
@@ -121,7 +122,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					return;
 				}
 
-				// Phase 4: confirm
+				// Phase 3: confirm
 				await confirmOrExit({
 					yes: options.yes,
 					message: `Pull ${plural(willPull.length, "repo")}?`,
@@ -129,7 +130,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 
 				process.stderr.write("\n");
 
-				// Phase 5: execute
+				// Phase 4: execute
 				let pullOk = 0;
 				const conflicted: { assessment: PullAssessment; stdout: string }[] = [];
 				const stashPopFailed: PullAssessment[] = [];
@@ -208,7 +209,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					}
 				}
 
-				// Phase 6: summary
+				// Phase 5: summary
 				process.stderr.write("\n");
 				const parts = [`Pulled ${plural(pullOk, "repo")}`];
 				if (conflicted.length > 0) parts.push(`${conflicted.length} conflicted`);
