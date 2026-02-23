@@ -8,7 +8,6 @@ import { registerDeleteCommand } from "./commands/delete";
 import { registerDetachCommand } from "./commands/detach";
 import { registerDiffCommand } from "./commands/diff";
 import { registerExecCommand } from "./commands/exec";
-import { registerFetchCommand } from "./commands/fetch";
 import { registerInitCommand } from "./commands/init";
 import { registerListCommand } from "./commands/list";
 import { registerLogCommand } from "./commands/log";
@@ -58,7 +57,7 @@ const COMMAND_GROUPS = [
 	{
 		title: "Synchronization Commands:",
 		description: "  Synchronize workspace branches with remotes and base branches. Run from within a workspace.",
-		commands: ["fetch", "pull", "push", "rebase", "rebranch", "merge"],
+		commands: ["pull", "push", "rebase", "rebranch", "merge"],
 	},
 	{
 		title: "Execution Commands:",
@@ -182,7 +181,6 @@ registerCdCommand(program, getCtx);
 registerAttachCommand(program, getCtx);
 registerDetachCommand(program, getCtx);
 registerStatusCommand(program, getCtx);
-registerFetchCommand(program, getCtx);
 registerPullCommand(program, getCtx);
 registerPushCommand(program, getCtx);
 registerRebaseCommand(program, getCtx);

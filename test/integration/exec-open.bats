@@ -283,16 +283,6 @@ SCRIPT
     [[ "$output" != *"not pushed"* ]]
 }
 
-@test "arb fetch skips local repos without error" {
-    setup_local_repo
-    arb create local-ws local-lib
-    cd "$TEST_DIR/project/local-ws"
-    run arb fetch
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"local repo"* ]]
-    [[ "$output" == *"skipping"* ]]
-}
-
 @test "arb pull skips local repos with informational message" {
     setup_local_repo
     arb create local-ws local-lib
@@ -325,12 +315,6 @@ SCRIPT
     run arb status
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" == *"local-lib"* ]]
-
-    # fetch skips local, fetches remote
-    run arb fetch
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"local repo"* ]]
-    [[ "$output" == *"repo-a"* ]]
 
     # pull skips local
     run arb pull --yes

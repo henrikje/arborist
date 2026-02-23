@@ -2,55 +2,6 @@
 
 load test_helper/common-setup
 
-# ── fetch ────────────────────────────────────────────────────────
-
-@test "arb fetch succeeds" {
-    arb create my-feature repo-a repo-b
-    cd "$TEST_DIR/project/my-feature"
-    run arb fetch
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"[repo-a] up to date"* ]]
-    [[ "$output" == *"[repo-b] up to date"* ]]
-}
-
-@test "arb fetch without workspace context fails" {
-    run arb fetch
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"Not inside a workspace"* ]]
-}
-
-@test "arb fetch shows error output on failure" {
-    arb create my-feature repo-a
-    # Break the remote URL so fetch fails immediately with a git error
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" remote set-url origin "file:///nonexistent/repo.git"
-    cd "$TEST_DIR/project/my-feature"
-    run arb fetch
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"fetch failed"* ]]
-    # The actual git error should appear indented in the output
-    [[ "$output" == *"fatal:"* ]] || [[ "$output" == *"does not appear to be a git repository"* ]]
-}
-
-@test "arb fetch times out with ARB_FETCH_TIMEOUT" {
-    arb create my-feature repo-a
-    cd "$TEST_DIR/project/my-feature"
-
-    # Shadow git with a script that hangs on fetch
-    mkdir -p "$TEST_DIR/fake-bin"
-    cat > "$TEST_DIR/fake-bin/git" <<'SCRIPT'
-#!/usr/bin/env bash
-if [[ "$1" == "-C" && "$3" == "fetch" ]]; then
-    exec sleep 30
-fi
-exec /usr/bin/git "$@"
-SCRIPT
-    chmod +x "$TEST_DIR/fake-bin/git"
-
-    run env PATH="$TEST_DIR/fake-bin:$PATH" ARB_FETCH_TIMEOUT=2 arb fetch
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"timed out"* ]]
-}
-
 # ── pull ─────────────────────────────────────────────────────────
 
 @test "arb pull after push succeeds" {
@@ -559,29 +510,6 @@ SCRIPT
 
 # ── gone remote branches ─────────────────────────────────────────
 
-@test "arb fetch prunes deleted remote branches" {
-    arb create gone-fetch repo-a
-    local wt="$TEST_DIR/project/gone-fetch/repo-a"
-    echo "change" > "$wt/file.txt"
-    git -C "$wt" add file.txt >/dev/null 2>&1
-    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
-    cd "$TEST_DIR/project/gone-fetch"
-    arb push --yes >/dev/null 2>&1
-
-    # Verify tracking ref exists before
-    run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/remotes/origin/gone-fetch"
-    [ "$status" -eq 0 ]
-
-    # Delete on bare remote
-    git -C "$TEST_DIR/origin/repo-a.git" branch -D gone-fetch >/dev/null 2>&1
-
-    # Fetch should prune the stale tracking ref
-    arb fetch
-
-    run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/remotes/origin/gone-fetch"
-    [ "$status" -ne 0 ]
-}
-
 @test "arb status shows gone for deleted remote branch" {
     arb create gone-status repo-a
     push_then_delete_remote gone-status repo-a
@@ -661,7 +589,7 @@ SCRIPT
 
     # Fetch and check status
     cd "$TEST_DIR/project/squash-gone"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     [[ "$output" == *"merged (gone)"* ]]
 }
@@ -689,7 +617,7 @@ SCRIPT
     git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch >/dev/null 2>&1
 
     cd "$TEST_DIR/project/merged-not-gone"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     [[ "$output" == *"merged"* ]]
     [[ "$output" != *"merged (gone)"* ]]
@@ -717,7 +645,6 @@ SCRIPT
     git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch --prune >/dev/null 2>&1
 
     cd "$TEST_DIR/project/merged-push"
-    arb fetch >/dev/null 2>&1
     run arb push --yes
     [[ "$output" == *"already merged"* ]]
     [[ "$output" == *"--force"* ]]
@@ -745,7 +672,6 @@ SCRIPT
     git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch --prune >/dev/null 2>&1
 
     cd "$TEST_DIR/project/merged-force"
-    arb fetch >/dev/null 2>&1
     run arb push --force --yes
     [ "$status" -eq 0 ]
     [[ "$output" == *"pushed"* ]] || [[ "$output" == *"Pushed"* ]]
@@ -773,7 +699,6 @@ SCRIPT
     git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch >/dev/null 2>&1
 
     cd "$TEST_DIR/project/merged-pull"
-    arb fetch >/dev/null 2>&1
     run arb pull --yes
     [[ "$output" == *"already merged"* ]]
 }
@@ -800,7 +725,7 @@ SCRIPT
     git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch --prune >/dev/null 2>&1
 
     cd "$TEST_DIR/project/merged-json"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status --json
     echo "$output" | python3 -c "
 import sys, json
@@ -900,7 +825,7 @@ assert r['base']['mergedIntoBase'] == 'squash', f'expected squash, got {r[\"base
     git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch >/dev/null 2>&1
 
     cd "$TEST_DIR/project/where-merged"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status --where merged
     # Should show repo-a (merged) but not repo-b (not merged — has unpushed work)
     [[ "$output" == *"repo-a"* ]]

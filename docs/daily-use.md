@@ -84,9 +84,7 @@ See `arb status --help` for all options.
 
 ## Stay in sync
 
-Arborist's synchronization commands — `push`, `pull`, `rebase`, and `merge` — keep your workspace current. They automatically fetch all repos before operating, so you always work against the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh.
-
-To fetch manually without making changes, use `arb fetch`. It fetches from all configured remotes for every repo in the workspace in parallel. Nothing is merged — this updates remote tracking refs so you can see what's changed before deciding what to do.
+Arborist's synchronization commands — `push`, `pull`, `rebase`, and `merge` — keep your workspace current. They automatically fetch all repos before operating, so you always work against the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh. Overview commands (`status`, `log`, `diff`, `list`) accept `--fetch` to opt in to a pre-fetch.
 
 **Integration axis** — when the base branch has moved forward (e.g. teammates merged PRs to `main`), rebase your feature branches onto it:
 

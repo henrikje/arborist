@@ -56,7 +56,7 @@ load test_helper/common-setup
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     [[ "$output" == *"1 behind"* ]]
 }
@@ -77,7 +77,7 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     [[ "$output" == *"up to date"* ]]
 }
@@ -203,7 +203,7 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/stacked/repo-b" commit -m "ui change b" >/dev/null 2>&1
 
     cd "$TEST_DIR/project/stacked"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
 
     # repo-a: should compare against feat/auth (1 ahead, not 3 ahead which it would be vs main)
@@ -231,7 +231,7 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "commit" >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     [ "$status" -eq 0 ]
     [[ "$output" == *"up to date"* ]]
@@ -253,7 +253,7 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
     echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     [ "$status" -eq 1 ]
     [[ "$output" == *"untracked"* ]]
@@ -313,7 +313,7 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/my-feature/repo-a" add g.txt >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "second" >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     [[ "$output" == *"1 to push"* ]]
 }
@@ -328,7 +328,7 @@ load test_helper/common-setup
     git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
     (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     [[ "$output" == *"1 to pull"* ]]
 }
@@ -351,7 +351,7 @@ load test_helper/common-setup
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream change" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status --verbose
     [[ "$output" == *"Behind origin/main:"* ]]
     [[ "$output" == *"upstream change"* ]]
@@ -368,7 +368,7 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/my-feature/repo-a" add g.txt >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "unpushed commit" >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status --verbose
     [[ "$output" == *"Unpushed to origin:"* ]]
     [[ "$output" == *"unpushed commit"* ]]
@@ -459,7 +459,7 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "commit" >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     [ "$status" -eq 0 ]
     [[ "$output" == *"up to date"* ]]
@@ -476,7 +476,7 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "second" >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     [[ "$output" == *"2 ahead"* ]]
     [[ "$output" == *"origin/my-feature"*"up to date"* ]]
@@ -492,7 +492,7 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     # Advance main on origin
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     [[ "$output" == *"1 ahead"* ]]
     [[ "$output" == *"1 behind"* ]]
@@ -521,7 +521,7 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     git -C "$TEST_DIR/project/my-feature/repo-a" push origin my-feature:other-branch >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" branch --set-upstream-to=origin/other-branch >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     # Remote column should show origin/other-branch (mismatch)
     [[ "$output" == *"origin/other-branch"* ]]
@@ -566,7 +566,7 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
 
     arb create stacked --base feat/auth -b feat/auth-ui repo-a repo-b
     cd "$TEST_DIR/project/stacked"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     # repo-a should show feat/auth as base
     [[ "$output" == *"repo-a"*"feat/auth"* ]]
@@ -585,7 +585,7 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
 
     arb create stacked --base feat/auth -b feat/auth-ui repo-a repo-b
     cd "$TEST_DIR/project/stacked"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status --where base-missing
     # Only repo-b should appear (its configured base is missing)
     [[ "$output" == *"repo-b"* ]]
@@ -603,7 +603,7 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
 
     arb create stacked --base feat/auth -b feat/auth-ui repo-a repo-b
     cd "$TEST_DIR/project/stacked"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status --json
     echo "$output" | python3 -c "
 import sys, json
@@ -633,7 +633,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
     git -C "$TEST_DIR/project/stacked/repo-b" commit -m "ui change" >/dev/null 2>&1
 
     cd "$TEST_DIR/project/stacked"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status -v
     # Should show the explanation for repo-b
     [[ "$output" == *"Configured base branch feat/auth not found on origin"* ]]
@@ -658,7 +658,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
     git -C "$TEST_DIR/project/stacked/repo-b" commit -m "ui change" >/dev/null 2>&1
 
     cd "$TEST_DIR/project/stacked"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status -v
     # Should NOT show "Ahead of origin/main" for repo-b (suppressed because base fell back)
     # repo-a may show ahead of feat/auth — that's fine
@@ -712,7 +712,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
 
     # Fetch and start a rebase that will conflict
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     git -C "$TEST_DIR/project/my-feature/repo-a" rebase origin/main >/dev/null 2>&1 || true
 
     run arb status
@@ -730,7 +730,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream-conflict" > conflict.txt && git add conflict.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     # Start a merge that will conflict
     git -C "$TEST_DIR/project/my-feature/repo-a" merge origin/main >/dev/null 2>&1 || true
 
@@ -827,7 +827,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
     git -C "$TEST_DIR/project/my-feature/repo-b" commit -m "commit" >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     # Both repos are clean and pushed — at-risk should show no repos
     run arb status --where at-risk
     [[ "$output" == *"(no repos)"* ]]
@@ -842,7 +842,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
     git -C "$TEST_DIR/project/my-feature/repo-b" commit -m "commit" >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status --where at-risk
     # repo-a is at-risk (dirty), repo-b is not at-risk (clean + pushed)
     [[ "$output" == *"repo-a"* ]]
@@ -965,7 +965,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
     # repo-b stays equal (not diverged)
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status --where diverged
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" != *"repo-b"* ]]
@@ -978,7 +978,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status --where diverged
     # repo-a is behind-only, not diverged — should not match
     [[ "$output" != *"repo-a"* ]]
@@ -995,7 +995,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
 
     # Pull the shared file into the feature branch
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     arb rebase --yes >/dev/null 2>&1
 
     # Conflicting change on feature branch
@@ -1007,7 +1007,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
     # Conflicting change on main
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "main version" > shared.txt && git add shared.txt && git commit -m "main change" && git push) >/dev/null 2>&1
 
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     [ "$status" -eq 0 ]  # diverged is stale, not at-risk
     [[ "$output" == *"repo-a"* ]]
@@ -1028,7 +1028,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     [ "$status" -eq 0 ]  # diverged is stale, not at-risk
     [[ "$output" == *"1 ahead"* ]]
@@ -1043,7 +1043,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
 
     # Pull into feature branch
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     arb rebase --yes >/dev/null 2>&1
 
     # Conflicting change on feature branch for repo-a
@@ -1057,7 +1057,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
 
     # repo-b stays equal (no changes)
 
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" == *"repo-b"* ]]
@@ -1080,7 +1080,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
     cd "$TEST_DIR/project/my-feature"
     arb rebase --yes >/dev/null 2>&1
 
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status
     # Should show "rebased" instead of misleading "to push, to pull"
     [[ "$output" == *"rebased"* ]]
@@ -1104,7 +1104,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
     cd "$TEST_DIR/project/my-feature"
     arb rebase --yes >/dev/null 2>&1
 
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status -v
     # Verbose output should annotate rebased commits
     [[ "$output" == *"(rebased)"* ]]
@@ -1124,7 +1124,7 @@ assert repos['repo-b']['base']['configuredRef'] == 'feat/auth', f'repo-b configu
     cd "$TEST_DIR/project/my-feature"
     arb rebase --yes >/dev/null 2>&1
 
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status --json
     echo "$output" | python3 -c "
 import sys, json
@@ -1142,7 +1142,7 @@ assert r['share']['rebased'] == 1, f'expected rebased=1, got {r[\"share\"][\"reb
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "commit" >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status --json
     echo "$output" | python3 -c "
 import sys, json
@@ -1160,7 +1160,7 @@ assert r['share']['rebased'] is None, f'expected rebased=null, got {r[\"share\"]
 
     # Pull into feature branch
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     arb rebase --yes >/dev/null 2>&1
 
     # Conflicting change on feature branch
@@ -1172,7 +1172,7 @@ assert r['share']['rebased'] is None, f'expected rebased=null, got {r[\"share\"]
     # Conflicting change on main
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "main version" > shared.txt && git add shared.txt && git commit -m "main change" && git push) >/dev/null 2>&1
 
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status --json
     [ "$status" -eq 0 ]  # diverged is stale, not at-risk
     echo "$output" | python3 -c "
@@ -1206,7 +1206,7 @@ assert r['base']['behind'] == 1, f'expected behind=1, got {r[\"base\"][\"behind\
     git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch --prune >/dev/null 2>&1
 
     cd "$TEST_DIR/project/merged-verbose"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status -v
     [[ "$output" == *"merged (gone)"* ]]
     [[ "$output" == *"Branch merged into"* ]]
@@ -1276,7 +1276,7 @@ assert len(v['aheadOfBase'][0]['hash']) == 40, 'hash should be full-length'
     git -C "$TEST_DIR/project/my-feature/repo-a" add g.txt >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "unpushed commit" >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status --json --verbose
     echo "$output" | python3 -c "
 import sys, json

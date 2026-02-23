@@ -503,7 +503,7 @@ if [[ "$merged_any" == "false" ]]; then
 fi
 
 echo ""
-echo "Done! Now run 'arb fetch' in your workspace to pick up the changes."
+echo "Done! Changes are on the remote. Arb commands will fetch them automatically."
 HELPER
 
 chmod +x "$PLAYGROUND_DIR/merge-branch.sh"
@@ -543,7 +543,7 @@ hint "  2. Merge the base and retarget:"
 hint "     cd $PLAYGROUND_DIR"
 hint "     ./merge-branch.sh feat/auth main"
 hint "     cd feat-auth-ui"
-hint "     arb fetch && arb status         # base merged into default!"
+hint "     arb status --fetch               # base merged into default!"
 hint "     arb rebase --retarget --yes     # rebases onto main, clears base"
 hint "     arb status                      # now tracks main directly"
 printf "\n" >&2
@@ -552,7 +552,7 @@ hint "  3. Then collapse the whole stack:"
 hint "     cd $PLAYGROUND_DIR"
 hint "     ./merge-branch.sh feat/auth-ui main"
 hint "     cd feat-auth-tests"
-hint "     arb fetch && arb rebase --retarget --yes"
+hint "     arb rebase --retarget --yes"
 hint "     arb status                      # now tracks main"
 printf "\n" >&2
 
@@ -561,5 +561,5 @@ hint "     (reset the playground first: re-run this script)"
 hint "     cd $PLAYGROUND_DIR"
 hint "     ./merge-branch.sh feat/auth main squash"
 hint "     cd feat-auth-ui"
-hint "     arb fetch && arb rebase --retarget --yes"
+hint "     arb rebase --retarget --yes"
 printf "\n" >&2
