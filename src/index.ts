@@ -34,22 +34,22 @@ const COMMAND_GROUPS = [
 	},
 	{
 		title: "Workspace Commands:",
-		description: "  Create and manage workspaces. Run from within an arb root.",
+		description: "  Create and manage workspaces.",
 		commands: ["create", "delete", "list", "path", "cd", "attach", "detach"],
 	},
 	{
 		title: "Inspection Commands:",
-		description: "  Inspect workspace branch state across repositories. Run from within a workspace.",
+		description: "  Inspect workspace branch state across repositories.",
 		commands: ["status", "log", "diff"],
 	},
 	{
 		title: "Synchronization Commands:",
-		description: "  Synchronize workspace branches with remotes and base branches. Run from within a workspace.",
+		description: "  Synchronize workspace branches with remotes and base branches.",
 		commands: ["pull", "push", "rebase", "rebranch", "merge"],
 	},
 	{
 		title: "Execution Commands:",
-		description: "  Run commands or open tools across all workspace worktrees. Run from within a workspace.",
+		description: "  Run commands or open tools across all workspace worktrees.",
 		commands: ["exec", "open"],
 	},
 ] as const;
@@ -83,24 +83,35 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 		}
 	}
 
-	// Commands — grouped for root help
+	// Commands — grouped for root help, flat for subcommands
 	const allCommands = helper.visibleCommands(cmd);
-	const commandsByName = new Map(allCommands.map((subcommand) => [subcommand.name(), subcommand]));
 
-	for (const group of COMMAND_GROUPS) {
-		const groupedCommands = group.commands
-			.map((name) => commandsByName.get(name))
-			.filter((subcommand): subcommand is Command => Boolean(subcommand));
-		if (groupedCommands.length === 0) {
-			continue;
+	if (cmd.name() === "arb") {
+		const commandsByName = new Map(allCommands.map((subcommand) => [subcommand.name(), subcommand]));
+
+		for (const group of COMMAND_GROUPS) {
+			const groupedCommands = group.commands
+				.map((name) => commandsByName.get(name))
+				.filter((subcommand): subcommand is Command => Boolean(subcommand));
+			if (groupedCommands.length === 0) {
+				continue;
+			}
+			const list = groupedCommands.map((subcommand) =>
+				callFormatItem(
+					helper.styleSubcommandTerm(helper.subcommandTerm(subcommand)),
+					helper.styleSubcommandDescription(helper.subcommandDescription(subcommand)),
+				),
+			);
+			output = output.concat([helper.styleTitle(group.title), dim(group.description), "", ...list, ""]);
 		}
-		const list = groupedCommands.map((subcommand) =>
+	} else if (allCommands.length > 0) {
+		const list = allCommands.map((subcommand) =>
 			callFormatItem(
 				helper.styleSubcommandTerm(helper.subcommandTerm(subcommand)),
 				helper.styleSubcommandDescription(helper.subcommandDescription(subcommand)),
 			),
 		);
-		output = output.concat([helper.styleTitle(group.title), dim(group.description), "", ...list, ""]);
+		output = output.concat([helper.styleTitle("Commands:"), ...list, ""]);
 	}
 
 	// Global Options (moved after commands)
