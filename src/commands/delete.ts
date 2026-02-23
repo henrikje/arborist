@@ -404,7 +404,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 					const stdinNames = await readNamesFromStdin();
 					if (stdinNames.length > 0) {
 						names = stdinNames;
-					} else if (!isTTY()) {
+					} else if (!isTTY() || !process.stdin.isTTY) {
 						error("No workspace specified.");
 						process.exit(1);
 					} else {

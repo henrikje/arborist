@@ -6,7 +6,6 @@ import type { RepoListJsonEntry } from "../lib/json-types";
 import { dim, error, info, plural, skipConfirmNotice, success, yellow } from "../lib/output";
 import { getRemoteUrl, resolveRemotes } from "../lib/remotes";
 import { findRepoUsage, listRepos, selectInteractive } from "../lib/repos";
-import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 
 export function registerRepoCommand(program: Command, getCtx: () => ArbContext): void {
@@ -159,7 +158,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 				}
 				repos = allRepos;
 			} else if (repos.length === 0) {
-				if (!isTTY()) {
+				if (!process.stdin.isTTY) {
 					error("No repos specified. Pass repo names or use --all-repos.");
 					process.exit(1);
 				}
@@ -204,7 +203,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 
 			// Confirm
 			if (!options.yes) {
-				if (!isTTY()) {
+				if (!process.stdin.isTTY) {
 					error("Not a terminal. Use --yes to skip confirmation.");
 					process.exit(1);
 				}
