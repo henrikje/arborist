@@ -505,6 +505,7 @@ export function registerRebranchCommand(program: Command, getCtx: () => ArbConte
 		.option("--continue", "Resume an in-progress rebranch")
 		.option("--abort", "Roll back an in-progress rebranch")
 		.option("--delete-remote-old", "Delete old branch on remote after rename")
+		.option("-F, --fetch", "Fetch from all remotes before rebranch (default)")
 		.option("--no-fetch", "Skip pre-rename remote fetch")
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.option("-y, --yes", "Skip confirmation prompt")
