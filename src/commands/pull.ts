@@ -287,8 +287,9 @@ async function assessPullRepo(
 		};
 	}
 
-	// Already merged into base
-	if (status.base?.mergedIntoBase != null) {
+	// Already merged into base — but only skip if share has nothing to pull
+	// (e.g. on main behind origin/main, mergedIntoBase is set but toPull > 0)
+	if (status.base?.mergedIntoBase != null && (status.share.toPull ?? 0) === 0) {
 		return { ...base, skipReason: `already merged into ${status.base.ref}` };
 	}
 
