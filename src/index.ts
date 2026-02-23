@@ -22,16 +22,9 @@ import { registerRepoCommand } from "./commands/repo";
 import { registerStatusCommand } from "./commands/status";
 import { registerTemplateCommand } from "./commands/template";
 import { detectBaseDir, detectWorkspace } from "./lib/base-dir";
-import { error } from "./lib/output";
+import { bold, dim, error } from "./lib/output";
 import type { ArbContext } from "./lib/types";
 import { ARB_VERSION } from "./version";
-
-function helpBold(str: string): string {
-	return process.stdout.isTTY ? `\x1b[1m${str}\x1b[0m` : str;
-}
-function helpDim(str: string): string {
-	return process.stdout.isTTY ? `\x1b[2m${str}\x1b[0m` : str;
-}
 
 const COMMAND_GROUPS = [
 	{
@@ -89,7 +82,7 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 					helpWidth,
 				),
 				"",
-				helpDim("arborist (noun) \u02C8\u00E4r-b\u0259-rist \u2014 a specialist in the care and maintenance of trees"),
+				dim("arborist (noun) \u02C8\u00E4r-b\u0259-rist \u2014 a specialist in the care and maintenance of trees"),
 				"",
 			]);
 		}
@@ -112,7 +105,7 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 				helper.styleSubcommandDescription(helper.subcommandDescription(subcommand)),
 			),
 		);
-		output = output.concat([helper.styleTitle(group.title), helpDim(group.description), "", ...list, ""]);
+		output = output.concat([helper.styleTitle(group.title), dim(group.description), "", ...list, ""]);
 	}
 
 	// Global Options (moved after commands)
@@ -150,7 +143,7 @@ program
 	.version(`Arborist ${ARB_VERSION}`, "-v, --version")
 	.option("-C <directory>", "Run as if arb was started in <directory>")
 	.usage("[options] [command]")
-	.configureHelp({ formatHelp: arbFormatHelp, styleTitle: (str) => helpBold(str) })
+	.configureHelp({ formatHelp: arbFormatHelp, styleTitle: (str) => bold(str) })
 	.configureOutput({
 		outputError: (str) => {
 			error(str.replace(/^error: /, "").trimEnd());
