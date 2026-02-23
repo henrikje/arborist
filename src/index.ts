@@ -35,12 +35,7 @@ const COMMAND_GROUPS = [
 	{
 		title: "Workspace Commands:",
 		description: "  Create and manage workspaces. Run from within an arb root.",
-		commands: ["create", "delete", "list", "path", "cd"],
-	},
-	{
-		title: "Workspace Structure Commands:",
-		description: "  Manage which repositories participate in a workspace. Run from within a workspace.",
-		commands: ["attach", "detach"],
+		commands: ["create", "delete", "list", "path", "cd", "attach", "detach"],
 	},
 	{
 		title: "Inspection Commands:",
