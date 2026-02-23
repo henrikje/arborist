@@ -2,7 +2,7 @@ import { basename, resolve } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict } from "../lib/git";
 import type { StatusJsonOutput } from "../lib/json-types";
-import { dim, green, yellow } from "../lib/output";
+import { dim, error, green, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { workspaceRepoDirs } from "../lib/repos";
@@ -76,7 +76,7 @@ async function runStatus(
 
 	// Resolve --dirty as shorthand for --where dirty
 	if (options.dirty && options.where) {
-		process.stderr.write("Cannot combine --dirty with --where. Use --where dirty,... instead.\n");
+		error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
 		process.exit(1);
 	}
 	const where = options.dirty ? "dirty" : options.where;
@@ -85,18 +85,18 @@ async function runStatus(
 	if (where) {
 		const err = validateWhere(where);
 		if (err) {
-			process.stderr.write(`${err}\n`);
+			error(err);
 			process.exit(1);
 		}
 	}
 
 	// Conflict checks
 	if (options.quiet && options.json) {
-		process.stderr.write("Cannot combine --quiet with --json.\n");
+		error("Cannot combine --quiet with --json.");
 		process.exit(1);
 	}
 	if (options.quiet && options.verbose) {
-		process.stderr.write("Cannot combine --quiet with --verbose.\n");
+		error("Cannot combine --quiet with --verbose.");
 		process.exit(1);
 	}
 

@@ -252,7 +252,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 				if (t.conflict) annotations.push(yellow("(conflict)"));
 				if (modified) annotations.push(yellow("(modified)"));
 				const annotation = annotations.length > 0 ? `  ${annotations.join(" ")}` : "";
-				process.stderr.write(`  [${scopeLabel}]${" ".repeat(maxScope - scopeLabel.length)} ${padded}${annotation}\n`);
+				process.stdout.write(`  [${scopeLabel}]${" ".repeat(maxScope - scopeLabel.length)} ${padded}${annotation}\n`);
 			}
 		});
 
@@ -340,7 +340,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 				]);
 				const output = proc.stdout.toString();
 				if (output) {
-					process.stderr.write(`${output}\n`);
+					process.stdout.write(`${output}\n`);
 				}
 				if (tmpFile) unlinkSync(tmpFile);
 			}
