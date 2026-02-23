@@ -7,6 +7,7 @@ import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import { type RepoStatus, baseRef, computeFlags, gatherWorkspaceSummary } from "../lib/status";
+import { readNamesFromStdin } from "../lib/stdin";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -54,7 +55,12 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 				if (failed.length > 0) process.exit(1);
 			}
 
-			const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
+			let repoNames = repoArgs;
+			if (repoNames.length === 0) {
+				const stdinNames = await readNamesFromStdin();
+				if (stdinNames.length > 0) repoNames = stdinNames;
+			}
+			const selectedRepos = resolveRepoSelection(wsDir, repoNames);
 			const maxCount = options.maxCount ? Number.parseInt(options.maxCount, 10) : undefined;
 
 			if (maxCount !== undefined && (Number.isNaN(maxCount) || maxCount < 1)) {

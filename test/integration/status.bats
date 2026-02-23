@@ -517,3 +517,42 @@ load test_helper/common-setup
     [[ "$output" == *"first feature"* ]]
     [[ "$output" == *"second feature"* ]]
 }
+
+# ── quiet output ──────────────────────────────────────────────────
+
+@test "arb status -q outputs repo names only" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb status -q
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"repo-b"* ]]
+    [[ "$output" != *"REPO"* ]]
+    [[ "$output" != *"BRANCH"* ]]
+}
+
+@test "arb status --quiet --where dirty outputs only dirty repo names" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    echo "dirty" > repo-a/dirty.txt
+    run arb status --quiet --where dirty
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb status --quiet --json conflicts" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --quiet --json
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot combine --quiet with --json"* ]]
+}
+
+@test "arb status --quiet --verbose conflicts" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --quiet --verbose
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot combine --quiet with --verbose"* ]]
+}

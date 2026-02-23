@@ -125,6 +125,12 @@ In both cases, the developer is never left stranded — arb always shows what ha
 
 When repos are the command's primary target, they are positional arguments (`arb push [repos...]`). When the positional is consumed by another primary argument (a command, a file path), repos become a secondary filter via the `--repo <name>` option, which can be specified multiple times. Examples: `arb exec <command...>` runs in all repos (positional consumed by command), `arb template diff [file] --repo <name>` filters by repo (positional consumed by file path).
 
+### Quiet output and stdin piping
+
+`--quiet` / `-q` outputs one primary identifier per line to stdout — no headers, no ANSI codes, no trailing whitespace. Supported on all three list commands: `list` (workspace names), `status` (repo names), `repo list` (repo names). Conflicts with `--json` and `--verbose`.
+
+Commands that accept positional `[repos...]` or `[names...]` also accept names from stdin when piped. Convention: positional args take precedence, then stdin if piped, then default (all). Commands that inherit stdin for child processes (`exec`, `open`) are excluded — use xargs instead.
+
 ### Documentation: help is reference, README is tutorial
 
 The `--help` output for each command is the authoritative reference. It should document every option, argument, and behavioral detail a user needs. Keep descriptions concise but complete.

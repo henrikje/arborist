@@ -68,13 +68,49 @@ The full list of filter terms:
 | `at-risk` | the repo has unpushed commits, local changes, or is in a dirty operation state |
 | `stale` | the repo matches any staleness condition (at-risk, operation, drifted, etc.) |
 
+## Quiet output
+
+Use `-q` / `--quiet` for plain enumeration — one name per line on stdout, no headers, no colors:
+
+```bash
+arb list -q                          # all workspace names
+arb status -q                        # all repo names in current workspace
+arb repo list -q                     # all canonical repo names
+```
+
+Combine with `--where` for filtered enumeration:
+
+```bash
+arb list -q --where gone             # workspaces with gone repos
+arb status -q --where dirty          # only dirty repo names
+```
+
+## Stdin piping
+
+Commands that accept `[repos...]` or `[names...]` also read names from stdin when piped. Positional args take precedence over stdin, and stdin takes precedence over the default (all).
+
+```bash
+arb status -q --where dirty | arb push -y        # push only dirty repos
+arb status -q --where unpushed | arb diff         # diff only unpushed repos
+arb list -q --where gone | arb delete -y          # delete gone workspaces
+arb status -q | grep -v legacy | arb rebase -y    # rebase all except "legacy"
+```
+
+Stdin-accepting commands: `diff`, `log`, `push`, `pull`, `rebase`, `merge`, `delete`.
+
+`exec` and `open` are excluded because they inherit stdin for child processes. Use xargs instead:
+
+```bash
+arb status -q --where dirty | xargs -I{} arb exec --repo {} make test
+```
+
 ## Machine-readable output
 
-`arb list --json` writes a JSON array of workspace objects to stdout with aggregate status counts, labels (`atRiskCount`, `statusLabels`), and last commit date (`lastCommit` as ISO 8601). Combine with `--quick` to skip status gathering:
+`arb list --json` writes a JSON array of workspace objects to stdout with aggregate status counts, labels (`atRiskCount`, `statusLabels`), and last commit date (`lastCommit` as ISO 8601). Combine with `--no-status` to skip status gathering:
 
 ```bash
 arb list --json | jq '[.[] | select(.active)]'
-arb list --json --quick | jq '.[].workspace'
+arb list --json --no-status | jq '.[].workspace'
 ```
 
 `arb status --json` writes structured JSON to stdout. Each repo includes branch state, base branch drift, remote push/pull status, local changes, and any in-progress operation:
@@ -83,7 +119,13 @@ arb list --json --quick | jq '.[].workspace'
 arb status --json | jq '[.repos[] | select(.base.behind > 0) | .name]'
 ```
 
-Add `--verbose` for file-level detail — staged files, modified files, untracked files, and the individual commits that are ahead or behind:
+`arb repo list --json` writes a JSON array of `{name, url}` objects:
+
+```bash
+arb repo list --json | jq '.[].name'
+```
+
+Add `--verbose` to `arb status --json` for file-level detail — staged files, modified files, untracked files, and the individual commits that are ahead or behind:
 
 ```bash
 arb status --json --verbose | jq '[.repos[] | select(.verbose.unstaged | length > 0)]'

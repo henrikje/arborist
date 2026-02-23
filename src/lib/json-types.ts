@@ -106,6 +106,13 @@ export interface DiffJsonOutput {
 	totalDeletions: number;
 }
 
+// ── Repo list JSON types ──
+
+export interface RepoListJsonEntry {
+	name: string;
+	url: string;
+}
+
 // ── List JSON types ──
 
 export interface ListJsonEntry {

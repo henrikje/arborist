@@ -39,6 +39,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("-F, --fetch", "Fetch from all remotes before showing status")
 		.option("--no-fetch", "Skip fetching (default)", false)
 		.option("-v, --verbose", "Show file-level detail for each repo")
+		.option("-q, --quiet", "Output one repo name per line")
 		.option("--json", "Output structured JSON (combine with --verbose for commit and file detail)")
 		.summary("Show workspace status")
 		.description(
@@ -50,6 +51,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 				where?: string;
 				fetch?: boolean;
 				verbose?: boolean;
+				quiet?: boolean;
 				json?: boolean;
 			}) => {
 				const ctx = getCtx();
@@ -74,7 +76,7 @@ export interface CellData {
 
 async function runStatus(
 	ctx: ArbContext,
-	options: { dirty?: boolean; where?: string; fetch?: boolean; verbose?: boolean; json?: boolean },
+	options: { dirty?: boolean; where?: string; fetch?: boolean; verbose?: boolean; quiet?: boolean; json?: boolean },
 ): Promise<number> {
 	const wsDir = `${ctx.baseDir}/${ctx.currentWorkspace}`;
 
@@ -92,6 +94,16 @@ async function runStatus(
 			process.stderr.write(`${err}\n`);
 			return 1;
 		}
+	}
+
+	// Conflict checks
+	if (options.quiet && options.json) {
+		process.stderr.write("Cannot combine --quiet with --json.\n");
+		process.exit(1);
+	}
+	if (options.quiet && options.verbose) {
+		process.stderr.write("Cannot combine --quiet with --verbose.\n");
+		process.exit(1);
 	}
 
 	// Fetch if requested
@@ -122,6 +134,14 @@ async function runStatus(
 		});
 		const aggregates = computeSummaryAggregates(repos, summary.branch);
 		filteredSummary = { ...summary, repos, total: repos.length, ...aggregates };
+	}
+
+	// Quiet output — one repo name per line
+	if (options.quiet) {
+		for (const repo of filteredSummary.repos) {
+			process.stdout.write(`${repo.name}\n`);
+		}
+		return filteredSummary.atRiskCount > 0 ? 1 : 0;
 	}
 
 	// JSON output

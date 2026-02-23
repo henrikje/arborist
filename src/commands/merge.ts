@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 import { integrate } from "../lib/integrate";
+import { readNamesFromStdin } from "../lib/stdin";
 import type { ArbContext } from "../lib/types";
 
 export function registerMergeCommand(program: Command, getCtx: () => ArbContext): void {
@@ -19,8 +20,13 @@ export function registerMergeCommand(program: Command, getCtx: () => ArbContext)
 				repoArgs: string[],
 				options: { fetch?: boolean; yes?: boolean; dryRun?: boolean; autostash?: boolean },
 			) => {
+				let repoNames = repoArgs;
+				if (repoNames.length === 0) {
+					const stdinNames = await readNamesFromStdin();
+					if (stdinNames.length > 0) repoNames = stdinNames;
+				}
 				const ctx = getCtx();
-				await integrate(ctx, "merge", options, repoArgs);
+				await integrate(ctx, "merge", options, repoNames);
 			},
 		);
 }
