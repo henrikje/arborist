@@ -158,10 +158,11 @@ load test_helper/common-setup
 }
 
 @test "arb attach with nonexistent repo fails" {
-    arb create my-feature repo-a
+    arb create my-feature repo-a >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
     run arb attach no-such-repo
-    [[ "$output" == *"not a git repo"* ]] || [[ "$output" == *"failed"* ]]
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Unknown repos"* ]] || [[ "$output" == *"not a git repo"* ]] || [[ "$output" == *"failed"* ]]
 }
 
 @test "arb attach without workspace context fails" {

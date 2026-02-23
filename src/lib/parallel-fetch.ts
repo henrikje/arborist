@@ -50,22 +50,52 @@ export async function parallelFetch(
 			if (repoRemotes) {
 				remotesToFetch.add(repoRemotes.upstream);
 				remotesToFetch.add(repoRemotes.share);
-			} else {
-				remotesToFetch.add("origin");
 			}
-			const upstreamRemote = repoRemotes?.upstream ?? "origin";
+			const upstreamRemote = repoRemotes?.upstream;
 
 			let allOutput = "";
 			let lastExitCode = 0;
 
-			for (const remote of remotesToFetch) {
-				const proc = Bun.spawn(["git", "-C", repoDir, "fetch", "--prune", remote], {
+			if (remotesToFetch.size > 0) {
+				for (const remote of remotesToFetch) {
+					const proc = Bun.spawn(["git", "-C", repoDir, "fetch", "--prune", remote], {
+						cwd: repoDir,
+						stdout: "pipe",
+						stderr: "pipe",
+					});
+
+					// Race fetch against abort
+					const abortPromise = new Promise<"aborted">((resolve) => {
+						controller.signal.addEventListener("abort", () => resolve("aborted"), { once: true });
+					});
+
+					const raceResult = await Promise.race([proc.exited, abortPromise]);
+
+					if (raceResult === "aborted") {
+						proc.kill();
+						await proc.exited;
+						results.set(repo, { repo, exitCode: 124, output: `fetch timed out after ${fetchTimeout}s` });
+						completed++;
+						updateProgress();
+						return;
+					}
+
+					const stderrText = await new Response(proc.stderr).text();
+					if (stderrText.trim()) {
+						allOutput += (allOutput ? "\n" : "") + stderrText.trim();
+					}
+					if (raceResult !== 0) {
+						lastExitCode = raceResult;
+					}
+				}
+			} else {
+				// No resolved remotes — fetch all
+				const proc = Bun.spawn(["git", "-C", repoDir, "fetch", "--all", "--prune"], {
 					cwd: repoDir,
 					stdout: "pipe",
 					stderr: "pipe",
 				});
 
-				// Race fetch against abort
 				const abortPromise = new Promise<"aborted">((resolve) => {
 					controller.signal.addEventListener("abort", () => resolve("aborted"), { once: true });
 				});
@@ -83,7 +113,7 @@ export async function parallelFetch(
 
 				const stderrText = await new Response(proc.stderr).text();
 				if (stderrText.trim()) {
-					allOutput += (allOutput ? "\n" : "") + stderrText.trim();
+					allOutput += stderrText.trim();
 				}
 				if (raceResult !== 0) {
 					lastExitCode = raceResult;
@@ -92,8 +122,10 @@ export async function parallelFetch(
 
 			results.set(repo, { repo, exitCode: lastExitCode, output: allOutput });
 
-			// Auto-detect remote HEAD on the upstream remote
-			await Bun.$`git -C ${repoDir} remote set-head ${upstreamRemote} --auto`.cwd(repoDir).quiet().nothrow();
+			// Auto-detect remote HEAD on the upstream remote (only when we know which remote is upstream)
+			if (upstreamRemote) {
+				await Bun.$`git -C ${repoDir} remote set-head ${upstreamRemote} --auto`.cwd(repoDir).quiet().nothrow();
+			}
 		} catch {
 			results.set(repo, { repo, exitCode: 1, output: "fetch failed" });
 		}

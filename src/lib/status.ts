@@ -31,7 +31,7 @@ export interface RepoStatus {
 	};
 	local: { staged: number; modified: number; untracked: number; conflicts: number };
 	base: {
-		remote: string;
+		remote: string | null;
 		ref: string;
 		configuredRef: string | null;
 		ahead: number;
@@ -49,6 +49,11 @@ export interface RepoStatus {
 	} | null; // null when no remote
 	operation: GitOperation;
 	lastCommit: string | null;
+}
+
+/** Build the full git ref for a base section (e.g. "origin/main" or just "main" for local repos). */
+export function baseRef(base: NonNullable<RepoStatus["base"]>): string {
+	return base.remote ? `${base.remote}/${base.ref}` : base.ref;
 }
 
 export interface RepoFlags {
@@ -362,9 +367,20 @@ export async function gatherRepoStatus(
 	// Remote detection — use pre-resolved value if available
 	const repoHasRemote = knownHasRemote ?? (await getRemoteNames(repoPath)).length > 0;
 
-	// Resolve remote names (upstream for base, share for tracking)
-	const upstreamRemote = remotes?.upstream ?? "origin";
-	const shareRemote = remotes?.share ?? "origin";
+	// Resolve remote names (upstream for base, share for tracking).
+	// When caller didn't pre-resolve, attempt resolution here.
+	// Ambiguous remotes → leave unresolved; remote-dependent sections will be skipped.
+	let resolvedRemotes = remotes;
+	if (!resolvedRemotes && repoHasRemote) {
+		try {
+			resolvedRemotes = await resolveRemotes(repoPath);
+		} catch {
+			// Ambiguous — leave undefined
+		}
+	}
+	const remotesResolved = resolvedRemotes !== undefined || !repoHasRemote;
+	const upstreamRemote = resolvedRemotes?.upstream;
+	const shareRemote = resolvedRemotes?.share;
 
 	// ── Section 2: Local (working tree status) ──
 	// Gathered above in the parallel group (parseGitStatus → local).
@@ -377,27 +393,30 @@ export async function gatherRepoStatus(
 		let defaultBranch: string | null = null;
 		let fellBack = false;
 		if (configBase) {
-			const baseExists = repoHasRemote
-				? await remoteBranchExists(repoPath, configBase, upstreamRemote)
-				: await branchExistsLocally(repoPath, configBase);
+			const baseExists =
+				repoHasRemote && upstreamRemote
+					? await remoteBranchExists(repoPath, configBase, upstreamRemote)
+					: !repoHasRemote
+						? await branchExistsLocally(repoPath, configBase)
+						: false;
 			if (baseExists) {
 				defaultBranch = configBase;
 			}
 		}
-		if (!defaultBranch && repoHasRemote) {
+		if (!defaultBranch && upstreamRemote) {
 			defaultBranch = await getDefaultBranch(repoPath, upstreamRemote);
 			if (configBase && defaultBranch) fellBack = true;
 		}
 
 		if (defaultBranch) {
-			const compareRef = repoHasRemote ? `${upstreamRemote}/${defaultBranch}` : defaultBranch;
+			const compareRef = upstreamRemote ? `${upstreamRemote}/${defaultBranch}` : defaultBranch;
 			const lr = await git(repoDir, "rev-list", "--left-right", "--count", `${compareRef}...HEAD`);
 			if (lr.exitCode === 0) {
 				const parts = lr.stdout.trim().split(/\s+/);
 				const behind = Number.parseInt(parts[0] ?? "0", 10);
 				const ahead = Number.parseInt(parts[1] ?? "0", 10);
 				baseStatus = {
-					remote: upstreamRemote,
+					remote: upstreamRemote ?? null,
 					ref: defaultBranch,
 					configuredRef: fellBack ? configBase : null,
 					ahead,
@@ -412,7 +431,7 @@ export async function gatherRepoStatus(
 	// ── Section 4: Share (push/pull status vs share remote) ──
 
 	let shareStatus: RepoStatus["share"] = null;
-	if (repoHasRemote && !detached) {
+	if (remotesResolved && repoHasRemote && shareRemote && !detached) {
 		// Step 1: Try configured tracking branch
 		const upstreamResult = await git(repoDir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}");
 		if (upstreamResult.exitCode === 0) {
@@ -479,7 +498,7 @@ export async function gatherRepoStatus(
 	} else if (!repoHasRemote) {
 		// No remote at all — share is null (local repo)
 		shareStatus = null;
-	} else {
+	} else if (remotesResolved && shareRemote && detached) {
 		// Detached — share is present but no ref comparison possible
 		shareStatus = {
 			remote: shareRemote,
@@ -490,6 +509,7 @@ export async function gatherRepoStatus(
 			rebased: null,
 		};
 	}
+	// else: remotes unresolved (ambiguous) — shareStatus stays null
 
 	// ── Merge detection ──
 	// Skip when branch is at the exact same point as base (ahead=0, behind=0) — nothing to detect.
@@ -497,7 +517,7 @@ export async function gatherRepoStatus(
 	// Squash check is more expensive — only run when branch is gone OR share is up to date.
 	const hasWork = baseStatus !== null && (baseStatus.ahead > 0 || baseStatus.behind > 0);
 	if (baseStatus !== null && !detached && hasWork) {
-		const compareRef = repoHasRemote ? `${upstreamRemote}/${baseStatus.ref}` : baseStatus.ref;
+		const compareRef = upstreamRemote ? `${upstreamRemote}/${baseStatus.ref}` : baseStatus.ref;
 		const shareUpToDate =
 			shareStatus !== null && shareStatus.toPush === 0 && shareStatus.toPull === 0 && shareStatus.refMode !== "noRef";
 		const shouldCheckSquash = (shareStatus !== null && shareStatus.refMode === "gone") || shareUpToDate;
@@ -515,7 +535,7 @@ export async function gatherRepoStatus(
 	// ── Stacked base merge detection ──
 	// When configBase is set and resolved, check if the base branch itself
 	// has been merged into the repo's true default branch.
-	if (configBase && baseStatus !== null && repoHasRemote && !detached) {
+	if (configBase && baseStatus !== null && upstreamRemote && !detached) {
 		if (baseStatus.ref === configBase) {
 			// Base branch exists on remote — use remote ref for detection
 			const trueDefault = await getDefaultBranch(repoPath, upstreamRemote);
@@ -567,7 +587,11 @@ export async function gatherWorkspaceSummary(
 
 			let remotes: RepoRemotes | undefined;
 			if (repoHasRemote) {
-				remotes = await resolveRemotes(canonicalPath, remoteNames);
+				try {
+					remotes = await resolveRemotes(canonicalPath, remoteNames);
+				} catch {
+					// Ambiguous remotes — leave undefined; remote-dependent status sections will be skipped
+				}
 			}
 
 			const [status, commitDate] = await Promise.all([

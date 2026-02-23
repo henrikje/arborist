@@ -35,7 +35,7 @@ export async function resolveRemotes(repoDir: string, knownRemoteNames?: string[
 
 	// Single remote — use it for both roles regardless of name
 	if (remotes.length === 1) {
-		const single = remotes[0] ?? "origin";
+		const [single] = remotes as [string];
 		return { upstream: single, share: single };
 	}
 
@@ -45,7 +45,7 @@ export async function resolveRemotes(repoDir: string, knownRemoteNames?: string[
 		const others = remotes.filter((r) => r !== pushDefault);
 		let upstream: string;
 		if (others.length === 1) {
-			upstream = others[0] ?? "origin";
+			[upstream] = others as [string];
 		} else if (others.includes("upstream")) {
 			upstream = "upstream";
 		} else {

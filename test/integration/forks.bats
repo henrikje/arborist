@@ -253,17 +253,11 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/.arb/repos/ambig" remote add canonical "$bare_a"
     git -C "$TEST_DIR/project/.arb/repos/ambig" remote add staging "$bare_c"
 
-    # No pushDefault set, no "upstream" name — should be ambiguous
-    # Create still works (falls back to origin for remote operations)
+    # No pushDefault set, no "upstream" name — ambiguous, should fail with guidance
     run arb create ambig-ws ambig
-    [ "$status" -eq 0 ]
-    [ -d "$TEST_DIR/project/ambig-ws/ambig" ]
-
-    # Status runs without crashing (exit 0 — fresh branch with no commits is not unpushed)
-    cd "$TEST_DIR/project/ambig-ws"
-    run arb status
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"ambig"* ]]
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot determine remote roles"* ]]
+    [[ "$output" == *"remote.pushDefault"* ]]
 }
 
 @test "fork: pull syncs from share remote" {

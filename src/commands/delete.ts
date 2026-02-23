@@ -219,18 +219,22 @@ async function executeDelete(
 		}
 
 		if (deleteRemote && (await hasRemote(`${ctx.reposDir}/${repo}`))) {
-			let shareRemote = "origin";
+			let shareRemote: string | undefined;
 			try {
 				const remotes = await resolveRemotes(`${ctx.reposDir}/${repo}`);
 				shareRemote = remotes.share;
 			} catch {
-				// Fall back to origin
+				// Ambiguous remotes — can't determine which remote to delete from
 			}
-			if (await remoteBranchExists(`${ctx.reposDir}/${repo}`, branch, shareRemote)) {
-				const pushResult = await git(`${ctx.reposDir}/${repo}`, "push", shareRemote, "--delete", branch);
-				if (pushResult.exitCode !== 0) {
-					failedRemoteDeletes.push(repo);
+			if (shareRemote) {
+				if (await remoteBranchExists(`${ctx.reposDir}/${repo}`, branch, shareRemote)) {
+					const pushResult = await git(`${ctx.reposDir}/${repo}`, "push", shareRemote, "--delete", branch);
+					if (pushResult.exitCode !== 0) {
+						failedRemoteDeletes.push(repo);
+					}
 				}
+			} else {
+				warn(`  [${repo}] could not determine share remote — skipping remote branch deletion`);
 			}
 		}
 	}

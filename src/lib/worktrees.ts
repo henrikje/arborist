@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { branchExistsLocally, getDefaultBranch, hasRemote, isRepoDirty, remoteBranchExists } from "./git";
+import { branchExistsLocally, getDefaultBranch, git, hasRemote, isRepoDirty, remoteBranchExists } from "./git";
 import { error, inlineResult, inlineStart, warn } from "./output";
 import { type FetchResult, parallelFetch } from "./parallel-fetch";
 import type { RepoRemotes } from "./remotes";
@@ -88,16 +88,19 @@ export async function addWorktrees(
 
 		// Resolve remote names for this repo
 		const repoRemotes = remotesMap?.get(repo);
-		const upstreamRemote = repoRemotes?.upstream ?? "origin";
+		const upstreamRemote = repoRemotes?.upstream;
 
 		let effectiveBase: string | null;
 		if (baseBranch) {
-			const baseExists = repoHasRemote
-				? await remoteBranchExists(repoPath, baseBranch, upstreamRemote)
-				: await branchExistsLocally(repoPath, baseBranch);
+			const baseExists =
+				repoHasRemote && upstreamRemote
+					? await remoteBranchExists(repoPath, baseBranch, upstreamRemote)
+					: !repoHasRemote
+						? await branchExistsLocally(repoPath, baseBranch)
+						: false;
 			if (baseExists) {
 				effectiveBase = baseBranch;
-			} else {
+			} else if (upstreamRemote) {
 				effectiveBase = await getDefaultBranch(repoPath, upstreamRemote);
 				if (effectiveBase) {
 					warn(`  [${repo}] base branch '${baseBranch}' not found — using '${effectiveBase}'`);
@@ -106,14 +109,42 @@ export async function addWorktrees(
 					result.failed.push(repo);
 					continue;
 				}
+			} else if (!repoHasRemote) {
+				// Local repo — try HEAD as fallback default branch
+				const headRef = await git(repoPath, "symbolic-ref", "--short", "HEAD");
+				effectiveBase = headRef.exitCode === 0 ? headRef.stdout.trim() : null;
+				if (effectiveBase) {
+					warn(`  [${repo}] base branch '${baseBranch}' not found — using '${effectiveBase}'`);
+				} else {
+					error(`  [${repo}] base branch '${baseBranch}' not found and could not determine default branch`);
+					result.failed.push(repo);
+					continue;
+				}
+			} else {
+				error(`  [${repo}] could not determine upstream remote`);
+				result.failed.push(repo);
+				continue;
 			}
-		} else {
+		} else if (upstreamRemote) {
 			effectiveBase = await getDefaultBranch(repoPath, upstreamRemote);
 			if (!effectiveBase) {
 				error(`  [${repo}] could not determine default branch`);
 				result.failed.push(repo);
 				continue;
 			}
+		} else if (!repoHasRemote) {
+			// Local repo — resolve default branch from HEAD
+			const headRef = await git(repoPath, "symbolic-ref", "--short", "HEAD");
+			effectiveBase = headRef.exitCode === 0 ? headRef.stdout.trim() : null;
+			if (!effectiveBase) {
+				error(`  [${repo}] could not determine default branch`);
+				result.failed.push(repo);
+				continue;
+			}
+		} else {
+			error(`  [${repo}] could not determine upstream remote`);
+			result.failed.push(repo);
+			continue;
 		}
 
 		const branchExists = await branchExistsLocally(repoPath, branch);
@@ -136,7 +167,7 @@ export async function addWorktrees(
 			}
 			inlineResult(repo, `branch ${branch} attached`);
 		} else {
-			const startPoint = repoHasRemote ? `${upstreamRemote}/${effectiveBase}` : effectiveBase;
+			const startPoint = upstreamRemote ? `${upstreamRemote}/${effectiveBase}` : effectiveBase;
 			inlineStart(repo, `creating branch ${branch} from ${startPoint}`);
 			// Prevent git from auto-setting tracking config (branch.autoSetupMerge) when
 			// branching from a remote ref. We rely on tracking config being absent for fresh

@@ -8,6 +8,7 @@ import { resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos, resolveRepoSelection } from "../lib/repos";
 import {
 	type RepoStatus,
+	baseRef,
 	computeFlags,
 	gatherRepoStatus,
 	gatherWorkspaceSummary,
@@ -172,8 +173,8 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
 			note = "no base branch, showing recent";
 		} else {
 			const baseFellBack = repo.base.configuredRef != null && repo.base.baseMergedIntoDefault == null;
-			const baseRef = `${repo.base.remote}/${repo.base.ref}`;
-			gitArgs.push(`${baseRef}...HEAD`);
+			const ref = baseRef(repo.base);
+			gitArgs.push(`${ref}...HEAD`);
 			if (baseFellBack) {
 				note = `base ${repo.base.configuredRef} not found, showing against ${repo.base.ref}`;
 			}
@@ -281,8 +282,8 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
 		note = "no base branch, showing recent";
 	} else {
 		const baseFellBack = repo.base.configuredRef != null && repo.base.baseMergedIntoDefault == null;
-		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
-		range = `${baseRef}...HEAD`;
+		const ref = baseRef(repo.base);
+		range = `${ref}...HEAD`;
 		if (baseFellBack) {
 			status = "fallback-base";
 			reason = `base ${repo.base.configuredRef} not found, using ${repo.base.ref}`;
@@ -388,8 +389,8 @@ async function outputPipe(
 				}
 			}
 		} else {
-			const baseRef = `${repo.base.remote}/${repo.base.ref}`;
-			range = `${baseRef}...HEAD`;
+			const ref = baseRef(repo.base);
+			range = `${ref}...HEAD`;
 		}
 
 		if (!range) continue;
