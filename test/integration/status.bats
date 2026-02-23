@@ -333,6 +333,20 @@ load test_helper/common-setup
     [[ "$output" == *"1 to pull"* ]]
 }
 
+@test "arb status on default branch behind origin shows to pull not merged" {
+    # Detach HEAD in canonical repo so a main worktree can be created
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
+    arb create main-ws --branch main repo-a
+    # Push a commit directly to origin's main
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-main" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-main" && echo "new" > new.txt && git add new.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+    cd "$TEST_DIR/project/main-ws"
+    fetch_all_repos
+    run arb status
+    [[ "$output" == *"1 to pull"* ]]
+    [[ "$output" != *"merged"* ]]
+}
+
 @test "arb status --verbose shows ahead of base section" {
     arb create my-feature repo-a
     echo "new" > "$TEST_DIR/project/my-feature/repo-a/new.txt"

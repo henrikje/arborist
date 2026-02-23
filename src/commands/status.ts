@@ -417,7 +417,7 @@ function plainRemoteDiff(repo: RepoStatus): string {
 		return "gone";
 	}
 
-	if (merged) return "merged";
+	if (merged && (repo.share.toPull ?? 0) === 0) return "merged";
 
 	if (repo.share.refMode === "noRef") {
 		if (repo.base !== null && repo.base.ahead > 0) {
