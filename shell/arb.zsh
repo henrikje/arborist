@@ -141,11 +141,13 @@ _arb() {
                 'attach:Attach repos to the workspace'
                 'detach:Detach repos from the workspace'
                 'status:Show workspace status'
-                'fetch:Fetch all repos from their remotes'
                 'pull:Pull the feature branch from the share remote'
                 'push:Push the feature branch to the share remote'
                 'rebase:Rebase feature branches onto the base branch'
                 'merge:Merge the base branch into feature branches'
+                'rebranch:Rename the workspace branch across all repos'
+                'log:Show feature branch commits across repos'
+                'diff:Show feature branch diff across repos'
                 'exec:Run a command in each worktree'
                 'open:Open worktrees in an application'
                 'template:Manage workspace templates'
@@ -293,7 +295,8 @@ _arb() {
                     _arguments \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only show dirty repos]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '(-F --fetch)'{-F,--fetch}'[Fetch before showing status]' \
+                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before showing status]' \
+                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching (default)]' \
                         '(-v --verbose -q --quiet)'{-v,--verbose}'[Show file-level detail]' \
                         '(-q --quiet --json -v --verbose)'{-q,--quiet}'[Output one repo name per line]' \
                         '(--json -q --quiet)--json[Output structured JSON]'
@@ -318,29 +321,65 @@ _arb() {
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(--merge)--rebase[Pull with rebase]' \
                         '(--rebase)--merge[Pull with merge]' \
+                        '--autostash[Stash uncommitted changes before pull, re-apply after]' \
                         '*:repo:($repo_names)'
                     ;;
                 push)
                     _arguments \
                         '(-f --force)'{-f,--force}'[Force push with lease]' \
-                        '--no-fetch[Skip fetching before push]' \
+                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before push (default)]' \
+                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching before push]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '*:repo:($repo_names)'
                     ;;
                 rebase)
                     _arguments \
-                        '(-F --no-fetch)'{-F,--no-fetch}'[Skip fetching before rebase]' \
+                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before rebase (default)]' \
+                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching before rebase]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '--retarget=-[Retarget repos whose base has been merged; optionally specify branch]::branch:' \
+                        '--autostash[Stash uncommitted changes before rebase, re-apply after]' \
                         '*:repo:($repo_names)'
                     ;;
                 merge)
                     _arguments \
-                        '(-F --no-fetch)'{-F,--no-fetch}'[Skip fetching before merge]' \
+                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before merge (default)]' \
+                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching before merge]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '--autostash[Stash uncommitted changes before merge, re-apply after]' \
+                        '*:repo:($repo_names)'
+                    ;;
+                rebranch)
+                    _arguments \
+                        '--continue[Resume an in-progress rebranch]' \
+                        '--abort[Roll back an in-progress rebranch]' \
+                        '--delete-remote-old[Delete old branch on remote after rename]' \
+                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before rebranch (default)]' \
+                        '(-F --fetch --no-fetch)--no-fetch[Skip pre-rename remote fetch]' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                        '--include-in-progress[Rename repos even if they have an in-progress git operation]' \
+                        '1:new-branch:'
+                    ;;
+                log)
+                    _arguments \
+                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before showing log]' \
+                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching (default)]' \
+                        '(-n --max-count)'{-n,--max-count}'[Limit commits shown per repo]:count:' \
+                        '--json[Output structured JSON]' \
+                        '*:repo:($repo_names)'
+                    ;;
+                diff)
+                    _arguments \
+                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before showing diff]' \
+                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching (default)]' \
+                        '--stat[Show diffstat summary instead of full diff]' \
+                        '--json[Output structured JSON]' \
+                        '(-d --dirty -w --where)'{-d,--dirty}'[Only diff dirty repos]' \
+                        '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($repo_names)'
                     ;;
                 template)
