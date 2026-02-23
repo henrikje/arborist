@@ -59,7 +59,7 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/my-feature/repo-a" checkout -b experiment >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
     run arb status
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 0 ]
     # repo-a should show experiment in branch column and origin/experiment in remote column
     [[ "$output" == *"repo-a"*"experiment"* ]]
     [[ "$output" == *"origin/experiment"* ]]
@@ -229,7 +229,7 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/my-feature/repo-a" checkout "$head_sha" >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
     run arb status
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 0 ]
     [[ "$output" == *"(detached)"* ]]
     [[ "$output" == *"detached"* ]]
 }

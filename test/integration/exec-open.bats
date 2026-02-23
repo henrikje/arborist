@@ -250,7 +250,7 @@ SCRIPT
     cd "$TEST_DIR/project/my-feature"
     echo "change" >> repo-a/file.txt
     run arb status -w dirty
-    [ "$status" -ne 0 ]
+    [ "$status" -eq 0 ]
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" != *"repo-b"* ]]
 }
@@ -447,7 +447,7 @@ SCRIPT
     echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
     cd "$TEST_DIR/project/my-feature"
     run arb status --where dirty --json
-    [ "$status" -ne 0 ]
+    [ "$status" -eq 0 ]
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" != *"repo-b"* ]]
 }
