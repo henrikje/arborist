@@ -553,3 +553,56 @@ load test_helper/common-setup
     [[ "$output" == *"Cannot combine --dirty with --where"* ]]
 }
 
+@test "arb delete --where alone selects matching workspaces" {
+    arb create ws-gone repo-a
+    arb create ws-clean repo-a
+    cd "$TEST_DIR/project"
+    push_then_delete_remote ws-gone repo-a
+    git -C "$TEST_DIR/project/ws-clean/repo-a" push -u origin ws-clean >/dev/null 2>&1
+    run arb delete --where gone --force
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/ws-gone" ]
+    [ -d "$TEST_DIR/project/ws-clean" ]
+}
+
+@test "arb delete --where with names uses AND semantics" {
+    arb create ws-dirty repo-a
+    arb create ws-clean repo-a
+    cd "$TEST_DIR/project"
+    echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
+    run arb delete ws-dirty ws-clean --where dirty --force
+    [ "$status" -eq 0 ]
+    [ ! -d "$TEST_DIR/project/ws-dirty" ]
+    [ -d "$TEST_DIR/project/ws-clean" ]
+}
+
+@test "arb delete --where alone without --yes fails in non-TTY" {
+    arb create ws-gone repo-a
+    cd "$TEST_DIR/project"
+    push_then_delete_remote ws-gone repo-a
+    run arb delete --where gone
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Not a terminal"* ]]
+}
+
+@test "arb delete --where alone with --dry-run shows matching workspaces" {
+    arb create ws-gone repo-a
+    arb create ws-clean repo-a
+    cd "$TEST_DIR/project"
+    push_then_delete_remote ws-gone repo-a
+    git -C "$TEST_DIR/project/ws-clean/repo-a" push -u origin ws-clean >/dev/null 2>&1
+    run arb delete --where gone --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-gone"* ]]
+    [[ "$output" == *"Dry run"* ]]
+}
+
+@test "arb delete --where alone with no matches shows info" {
+    arb create ws-clean repo-a
+    cd "$TEST_DIR/project"
+    git -C "$TEST_DIR/project/ws-clean/repo-a" push -u origin ws-clean >/dev/null 2>&1
+    run arb delete --where gone --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"No workspaces match the filter"* ]]
+}
+
