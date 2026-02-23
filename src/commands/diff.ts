@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { git, parseGitNumstat } from "../lib/git";
@@ -5,7 +6,7 @@ import type { DiffJsonFileStat, DiffJsonOutput, DiffJsonRepo } from "../lib/json
 import { bold, dim, error, plural, stdout, success, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
-import { classifyRepos, resolveRepoSelection } from "../lib/repos";
+import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import {
 	type RepoStatus,
 	baseRef,
@@ -61,11 +62,11 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
 				const branch = await requireBranch(wsDir, workspace);
 
 				if (options.fetch) {
-					const { repos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
-					const remoteRepos = repos.filter((r) => !localRepos.includes(r));
-					const remotesMap = await resolveRemotesMap(remoteRepos, ctx.reposDir);
+					const fetchDirs = workspaceRepoDirs(wsDir);
+					const repos = fetchDirs.map((d) => basename(d));
+					const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
 					const results = await parallelFetch(fetchDirs, undefined, remotesMap);
-					const failed = reportFetchFailures(repos, localRepos, results);
+					const failed = reportFetchFailures(repos, results);
 					if (failed.length > 0) process.exit(1);
 				}
 

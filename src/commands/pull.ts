@@ -17,7 +17,7 @@ import {
 } from "../lib/output";
 import type { RepoRemotes } from "../lib/remotes";
 import { resolveRemotesMap } from "../lib/remotes";
-import { classifyRepos, resolveRepoSelection } from "../lib/repos";
+import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import { type RepoStatus, computeFlags, gatherRepoStatus } from "../lib/status";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -73,8 +73,9 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
 				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 
-				// Phase 1: classify and fetch
-				const { repos: allRepos, fetchDirs: allFetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
+				// Phase 1: fetch
+				const allFetchDirs = workspaceRepoDirs(wsDir);
+				const allRepos = allFetchDirs.map((d) => basename(d));
 				const repos = allRepos.filter((r) => selectedSet.has(r));
 				const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
 				const autostash = options.autostash === true;
@@ -92,7 +93,6 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				const assessments = await runPlanFlow({
 					fetchDirs,
 					reposForFetchReport: repos,
-					localRepos,
 					remotesMap,
 					assess,
 					postAssess: (nextAssessments) => predictPullConflicts(nextAssessments, remotesMap, branch),
@@ -237,11 +237,6 @@ async function assessPullRepo(
 		pullMode: "merge",
 		headSha,
 	};
-
-	// Local repo — no share remote
-	if (status.share === null) {
-		return { ...base, skipReason: "local repo" };
-	}
 
 	// Fetch failed for this repo
 	if (fetchFailed.includes(status.name)) {

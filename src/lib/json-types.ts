@@ -29,7 +29,7 @@ export interface StatusJsonRepo {
 		toPush: number | null;
 		toPull: number | null;
 		rebased: number | null;
-	} | null;
+	};
 	operation: GitOperation;
 	lastCommit: string | null;
 	verbose?: {
@@ -114,7 +114,7 @@ export interface ListJsonEntry {
 	branch: string | null;
 	base: string | null;
 	repoCount: number | null;
-	status: "config-missing" | "empty" | null;
+	status: "config-missing" | "empty" | "error" | null;
 	atRiskCount?: number;
 	statusLabels?: string[];
 	statusCounts?: { label: string; count: number }[];

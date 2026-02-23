@@ -527,17 +527,6 @@ assert r['identity']['shallow'] == False, 'expected not shallow'
     [[ "$output" == *"origin/other-branch"* ]]
 }
 
-@test "arb status shows local repo with dirty files" {
-    setup_local_repo
-    arb create local-ws local-lib
-    echo "dirty" > "$TEST_DIR/project/local-ws/local-lib/dirty.txt"
-    cd "$TEST_DIR/project/local-ws"
-    run arb status
-    # Local repos should show "local" and local changes
-    [[ "$output" == *"local"* ]]
-    [[ "$output" == *"1 untracked"* ]]
-}
-
 @test "arb status shows multiple local change types" {
     arb create my-feature repo-a
     # Create a tracked file, commit, then modify

@@ -2,7 +2,7 @@ import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
-import { branchExistsLocally, git, hasRemote, remoteBranchExists, validateWorkspaceName } from "../lib/git";
+import { branchExistsLocally, git, remoteBranchExists, validateWorkspaceName } from "../lib/git";
 import {
 	dim,
 	dryRunNotice,
@@ -14,6 +14,7 @@ import {
 	skipConfirmNotice,
 	success,
 	warn,
+	yellow,
 } from "../lib/output";
 import { resolveRemotes } from "../lib/remotes";
 import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
@@ -44,8 +45,8 @@ interface WorkspaceAssessment {
 	name: string;
 	wsDir: string;
 	branch: string;
+	repos: string[]; // Repo names from filesystem scan (independent of summary)
 	summary: WorkspaceSummary;
-	remoteRepos: string[];
 	atRiskCount: number;
 	hasAtRisk: boolean;
 	templateDiffs: TemplateDiff[];
@@ -84,25 +85,35 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 		return null;
 	}
 
-	// Gather workspace summary using the canonical status model
-	const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir);
+	// Gather workspace summary using the canonical status model.
+	// Delete must be resilient to repos with broken/missing/ambiguous remotes —
+	// if we can't determine the state, treat the workspace as at-risk.
+	let summary: WorkspaceSummary;
+	try {
+		summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir);
+	} catch (e) {
+		warn(`Could not gather status for ${name}: ${e instanceof Error ? e.message : e}`);
+		summary = {
+			workspace: name,
+			branch,
+			base: null,
+			repos: [],
+			total: repos.length,
+			atRiskCount: repos.length,
+			rebasedOnlyCount: 0,
+			statusLabels: [],
+			statusCounts: [],
+			lastCommit: null,
+		};
+	}
 
-	// Determine at-risk repos and collect remote repos
-	let hasAtRisk = false;
-	let atRiskCount = 0;
-	const remoteRepos: string[] = [];
+	// Determine at-risk repos
+	let hasAtRisk = summary.repos.length === 0 && repos.length > 0;
+	let atRiskCount = summary.repos.length === 0 ? repos.length : 0;
 
 	for (const status of summary.repos) {
-		if (status.share !== null) {
-			if (status.share.refMode === "configured" || status.share.refMode === "implicit") {
-				remoteRepos.push(status.name);
-			}
-		}
-
 		const flags = computeFlags(status, branch);
-		const localWithCommits = status.share === null && status.base !== null && status.base.ahead > 0;
-		const atRisk = wouldLoseWork(flags) || localWithCommits;
-		if (atRisk) {
+		if (wouldLoseWork(flags)) {
 			hasAtRisk = true;
 			atRiskCount++;
 		}
@@ -115,8 +126,8 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 		name,
 		wsDir,
 		branch,
+		repos,
 		summary,
-		remoteRepos,
 		atRiskCount,
 		hasAtRisk,
 		templateDiffs,
@@ -168,7 +179,9 @@ function displayDeleteTable(assessments: WorkspaceAssessment[]): void {
 		line += `    ${`${a.summary.total}`.padEnd(maxRepos)}`;
 
 		// Status
-		if (a.summary.statusCounts.length === 0) {
+		if (a.summary.repos.length === 0 && a.summary.total > 0) {
+			line += `    ${yellow("(remotes not resolved)")}`;
+		} else if (a.summary.statusCounts.length === 0) {
 			line += "    no issues";
 		} else {
 			line += `    ${formatStatusCounts(a.summary.statusCounts, a.summary.rebasedOnlyCount, LOSE_WORK_FLAGS)}`;
@@ -207,8 +220,7 @@ async function executeDelete(
 	ctx: ArbContext,
 	deleteRemote: boolean,
 ): Promise<string[]> {
-	const { wsDir, branch } = assessment;
-	const repos = assessment.summary.repos.map((r) => r.name);
+	const { wsDir, branch, repos } = assessment;
 	const failedRemoteDeletes: string[] = [];
 
 	for (const repo of repos) {
@@ -218,7 +230,7 @@ async function executeDelete(
 			await git(`${ctx.reposDir}/${repo}`, "branch", "-D", branch);
 		}
 
-		if (deleteRemote && (await hasRemote(`${ctx.reposDir}/${repo}`))) {
+		if (deleteRemote) {
 			let shareRemote: string | undefined;
 			try {
 				const remotes = await resolveRemotes(`${ctx.reposDir}/${repo}`);
@@ -269,7 +281,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.summary("Delete one or more workspaces")
 		.description(
-			"Delete one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-delete all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Use --dirty / -d to target only dirty workspaces, or --where <filter> for other status flags. Combine with --all-safe to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). --where accepts: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk, stale. Comma-separated values use OR logic; use + for AND (e.g. --where dirty+unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.",
+			"Delete one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-delete all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Use --dirty / -d to target only dirty workspaces, or --where <filter> for other status flags. Combine with --all-safe to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). --where accepts: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, at-risk, stale. Comma-separated values use OR logic; use + for AND (e.g. --where dirty+unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.",
 		)
 		.action(
 			async (
@@ -323,7 +335,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 						if (!existsSync(`${wsDir}/.arbws/config`)) continue;
 
 						const assessment = await assessWorkspace(ws, ctx);
-						if (assessment && isWorkspaceSafe(assessment.summary.repos, assessment.branch)) {
+						if (assessment && !assessment.hasAtRisk && isWorkspaceSafe(assessment.summary.repos, assessment.branch)) {
 							// Apply --where narrowing (AND with --all-safe)
 							if (whereFilter) {
 								if (!workspaceMatchesWhere(assessment.summary.repos, assessment.branch, whereFilter)) {

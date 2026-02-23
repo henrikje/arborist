@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { getShortHead } from "../lib/git";
@@ -5,7 +6,7 @@ import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
 import { dim, dryRunNotice, info, inlineResult, inlineStart, plural, red, success, yellow } from "../lib/output";
 import type { RepoRemotes } from "../lib/remotes";
 import { resolveRemotesMap } from "../lib/remotes";
-import { classifyRepos, resolveRepoSelection } from "../lib/repos";
+import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import { type RepoStatus, gatherRepoStatus } from "../lib/status";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -36,7 +37,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.summary("Push the feature branch to the share remote")
 		.description(
-			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos without a remote and repos whose branches have been merged into the base branch. If a remote branch was deleted after merge, use --force to recreate it. Use --force after rebase or amend to force push with lease. Use -F/--fetch to fetch explicitly (default); use --no-fetch to skip fetching when refs are known to be fresh.",
+			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos whose branches have been merged into the base branch. If a remote branch was deleted after merge, use --force to recreate it. Use --force after rebase or amend to force push with lease. Use -F/--fetch to fetch explicitly (default); use --no-fetch to skip fetching when refs are known to be fresh.",
 		)
 		.action(
 			async (repoArgs: string[], options: { force?: boolean; fetch?: boolean; yes?: boolean; dryRun?: boolean }) => {
@@ -49,7 +50,8 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 
 				const shouldFetch = options.fetch !== false;
-				const { repos: allRepos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
+				const fetchDirs = workspaceRepoDirs(wsDir);
+				const allRepos = fetchDirs.map((d) => basename(d));
 
 				const assess = async (_fetchFailed: string[]) => {
 					const assessments = await Promise.all(
@@ -73,7 +75,6 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 					shouldFetch,
 					fetchDirs,
 					reposForFetchReport: allRepos,
-					localRepos,
 					remotesMap,
 					assess,
 					formatPlan: (nextAssessments) => formatPushPlan(nextAssessments, remotesMap),
@@ -192,21 +193,12 @@ async function assessPushRepo(
 		behind: 0,
 		rebased: 0,
 		branch,
-		shareRemote: status.share?.remote ?? "",
+		shareRemote: status.share.remote,
 		newBranch: false,
 		headSha,
 		recreate: false,
 		behindBase,
 	};
-
-	// Local repo — no share remote
-	if (status.share === null) {
-		return { ...base, skipReason: "local repo" };
-	}
-
-	// After this point, status.share is guaranteed non-null.
-	const shareRemote = status.share.remote;
-	base.shareRemote = shareRemote;
 
 	// Branch check — detached or drifted
 	if (status.identity.headMode.kind === "detached") {
@@ -260,7 +252,7 @@ async function assessPushRepo(
 	}
 
 	if (toPush === 0 && toPull > 0) {
-		return { ...base, outcome: "skip", skipReason: `behind ${shareRemote} (pull first?)`, behind: toPull };
+		return { ...base, outcome: "skip", skipReason: `behind ${status.share.remote} (pull first?)`, behind: toPull };
 	}
 
 	if (toPush > 0 && toPull > 0) {

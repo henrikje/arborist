@@ -107,7 +107,7 @@ Every multi-repo command ends with a single green line on stderr that aggregates
 
 ### Helpful skip reasons
 
-When a repo is skipped during the plan phase, the reason is always stated. Examples: "diverged from origin (use --force)", "uncommitted changes", "local repo", "not pushed yet", "on branch X, expected Y". The developer should never have to guess why a repo was excluded.
+When a repo is skipped during the plan phase, the reason is always stated. Examples: "diverged from origin (use --force)", "uncommitted changes", "not pushed yet", "on branch X, expected Y". The developer should never have to guess why a repo was excluded.
 
 ### Error recovery guidance
 
@@ -187,9 +187,9 @@ The parallel pre-fetch also serves a performance purpose: `parallelFetch()` fetc
 
 **Rendering and derived decisions should be centralized.** Functions like `isAtRisk()` (used for filtering and aggregate counts) and `flagLabels()` (used for summary lines in both `status` and `list`) exist so that the same logic governs every place a repo's state is evaluated. Commands should call these shared functions rather than re-deriving the same conclusions from raw fields.
 
-### Repo classification: local vs remote
+### Repo classification and remote validation
 
-`classifyRepos()` separates repos into those with remotes and local-only repos. Commands that interact with remotes (pull, integrate) use this to gracefully skip local repos with a reason. This allows mixed local/remote workspaces.
+All repos in a workspace must have valid, resolvable git remotes. `resolveRemotesMap()` resolves remote roles (upstream/share) for each repo and propagates errors — repos without remotes or with ambiguous remote configurations cause an error with actionable fix instructions rather than silently degrading.
 
 ### In-progress state for partially-completing commands
 

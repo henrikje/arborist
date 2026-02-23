@@ -152,10 +152,9 @@ export async function parallelFetch(
 
 export function reportFetchFailures(
 	repos: string[],
-	localRepos: string[],
 	results: Map<string, { exitCode: number; output: string }>,
 ): string[] {
-	const failed = getFetchFailedRepos(repos, localRepos, results);
+	const failed = getFetchFailedRepos(repos, results);
 	for (const repo of failed) {
 		const fr = results.get(repo);
 		if (fr?.exitCode === 124) {
@@ -174,13 +173,10 @@ export function reportFetchFailures(
 
 export function getFetchFailedRepos(
 	repos: string[],
-	localRepos: string[],
 	results: Map<string, { exitCode: number; output: string }>,
 ): string[] {
-	return repos
-		.filter((repo) => !localRepos.includes(repo))
-		.filter((repo) => {
-			const fr = results.get(repo);
-			return !fr || fr.exitCode !== 0;
-		});
+	return repos.filter((repo) => {
+		const fr = results.get(repo);
+		return !fr || fr.exitCode !== 0;
+	});
 }

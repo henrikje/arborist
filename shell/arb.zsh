@@ -37,7 +37,7 @@ arb() {
 _arb_where_filter() {
     local -a all_terms=(
         dirty unpushed behind-share behind-base diverged drifted detached
-        operation local gone shallow merged base-merged base-missing at-risk stale
+        operation gone shallow merged base-merged base-missing at-risk stale
     )
     # Parse already-entered terms (split on , and +) to offer remaining ones
     local input="${PREFIX}${SUFFIX}"

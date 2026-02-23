@@ -67,11 +67,6 @@ export async function getDefaultBranch(repoDir: string, remote: string): Promise
 	return null;
 }
 
-export async function hasRemote(repoDir: string): Promise<boolean> {
-	const result = await git(repoDir, "remote");
-	return result.exitCode === 0 && result.stdout.trim().length > 0;
-}
-
 export function validateBranchName(name: string): boolean {
 	const result = Bun.spawnSync(["git", "check-ref-format", "--branch", name]);
 	return result.exitCode === 0;

@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import { configGet, writeConfig } from "./config";
 import {
 	branchExistsLocally,
@@ -12,7 +13,7 @@ import {
 import { confirmOrExit, runPlanFlow } from "./mutation-flow";
 import { dim, dryRunNotice, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "./output";
 import { resolveRemotesMap } from "./remotes";
-import { classifyRepos, resolveRepoSelection } from "./repos";
+import { resolveRepoSelection, workspaceRepoDirs } from "./repos";
 import { type RepoStatus, computeFlags, gatherRepoStatus } from "./status";
 import type { ArbContext } from "./types";
 import { workspaceBranch } from "./workspace-branch";
@@ -72,9 +73,10 @@ export async function integrate(
 	// Resolve remotes for all repos
 	const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
 
-	// Phase 2: classify and fetch
+	// Phase 2: fetch
 	const shouldFetch = options.fetch !== false;
-	const { repos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
+	const fetchDirs = workspaceRepoDirs(wsDir);
+	const repos = fetchDirs.map((d) => basename(d));
 
 	const autostash = options.autostash === true;
 	const assess = async (fetchFailed: string[]) => {
@@ -91,7 +93,6 @@ export async function integrate(
 		shouldFetch,
 		fetchDirs,
 		reposForFetchReport: repos,
-		localRepos,
 		remotesMap,
 		assess,
 		postAssess: predictIntegrateConflicts,
@@ -103,7 +104,7 @@ export async function integrate(
 		const hasRetargetWork = assessments.some((a) => a.retargetTo || a.retargetBlocked);
 		if (hasRetargetWork) {
 			const blockedRepos = assessments.filter(
-				(a) => a.outcome === "skip" && a.skipReason !== "local repo" && !a.skipReason?.startsWith("no base branch"),
+				(a) => a.outcome === "skip" && !a.skipReason?.startsWith("no base branch"),
 			);
 			if (blockedRepos.length > 0) {
 				error("Cannot retarget: some repos are blocked. Fix these issues and retry:");
@@ -383,11 +384,6 @@ async function assessRepo(
 		headSha,
 		shallow: status.identity.shallow,
 	};
-
-	// Local repo — no remote
-	if (status.share === null) {
-		return { ...base, skipReason: "local repo" };
-	}
 
 	// Fetch failed for this repo
 	if (fetchFailed.includes(status.name)) {

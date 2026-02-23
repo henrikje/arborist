@@ -59,7 +59,6 @@ describe("computeFlags", () => {
 			isDrifted: false,
 			isDetached: false,
 			hasOperation: false,
-			isLocal: false,
 			isGone: false,
 			isShallow: false,
 			isMerged: false,
@@ -142,8 +141,13 @@ describe("computeFlags", () => {
 		expect(flags.isUnpushed).toBe(false);
 	});
 
-	test("not isUnpushed when share is null (local repo)", () => {
-		const flags = computeFlags(makeRepo({ share: null }), "feature");
+	test("not isUnpushed when share has no ref and no base ahead", () => {
+		const flags = computeFlags(
+			makeRepo({
+				share: { remote: "origin", ref: null, refMode: "noRef" as const, toPush: null, toPull: null, rebased: null },
+			}),
+			"feature",
+		);
 		expect(flags.isUnpushed).toBe(false);
 	});
 
@@ -257,16 +261,6 @@ describe("computeFlags", () => {
 	test("hasOperation when operation is in progress", () => {
 		const flags = computeFlags(makeRepo({ operation: "rebase" }), "feature");
 		expect(flags.hasOperation).toBe(true);
-	});
-
-	test("isLocal when no share remote", () => {
-		const flags = computeFlags(makeRepo({ share: null }), "feature");
-		expect(flags.isLocal).toBe(true);
-	});
-
-	test("not isLocal when share remote exists", () => {
-		const flags = computeFlags(makeRepo(), "feature");
-		expect(flags.isLocal).toBe(false);
 	});
 
 	test("isGone when refMode is gone", () => {
@@ -730,8 +724,14 @@ describe("wouldLoseWork", () => {
 		expect(wouldLoseWork(flags)).toBe(false);
 	});
 
-	test("returns false when isLocal", () => {
-		const flags = computeFlags(makeRepo({ share: null, base: null }), "feature");
+	test("returns false when share has noRef and no base", () => {
+		const flags = computeFlags(
+			makeRepo({
+				share: { remote: "origin", ref: null, refMode: "noRef" as const, toPush: null, toPull: null, rebased: null },
+				base: null,
+			}),
+			"feature",
+		);
 		expect(wouldLoseWork(flags)).toBe(false);
 	});
 
@@ -771,7 +771,7 @@ describe("validateWhere", () => {
 	test("returns null for all valid terms", () => {
 		expect(
 			validateWhere(
-				"dirty,unpushed,behind-share,behind-base,diverged,drifted,detached,operation,local,gone,shallow,merged,base-merged,base-missing,at-risk,stale",
+				"dirty,unpushed,behind-share,behind-base,diverged,drifted,detached,operation,gone,shallow,merged,base-merged,base-missing,at-risk,stale",
 			),
 		).toBeNull();
 	});
@@ -977,7 +977,7 @@ describe("repoMatchesWhere", () => {
 			],
 			["detached", { identity: { worktreeKind: "linked", headMode: { kind: "detached" }, shallow: false } }],
 			["operation", { operation: "rebase" }],
-			["local", { share: null }],
+
 			["gone", { share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null } }],
 			[
 				"shallow",
@@ -1114,11 +1114,11 @@ describe("isWorkspaceSafe", () => {
 		expect(isWorkspaceSafe(repos, "feature")).toBe(false);
 	});
 
-	test("returns false when a local repo has commits ahead of base", () => {
+	test("returns false when a repo has unpushed commits via noRef share", () => {
 		const repos = [
 			makeRepo({
-				name: "local-with-commits",
-				share: null,
+				name: "noref-with-commits",
+				share: { remote: "origin", ref: null, refMode: "noRef" as const, toPush: null, toPull: null, rebased: null },
 				base: {
 					remote: "origin",
 					ref: "main",

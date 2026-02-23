@@ -94,7 +94,7 @@ __arb_repo_names() {
 }
 
 __arb_where_filters() {
-    printf '%s\n' dirty unpushed behind-share behind-base diverged drifted detached operation local gone shallow merged base-merged base-missing at-risk stale
+    printf '%s\n' dirty unpushed behind-share behind-base diverged drifted detached operation gone shallow merged base-merged base-missing at-risk stale
 }
 
 __arb_template_names() {

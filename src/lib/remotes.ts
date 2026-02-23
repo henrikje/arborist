@@ -5,17 +5,6 @@ export interface RepoRemotes {
 	share: string; // Where feature branches are shared (push, pull, tracking)
 }
 
-export class NoRemotesConfiguredError extends Error {
-	constructor(repoDir: string) {
-		super(`No remotes configured for ${repoDir}`);
-		this.name = "NoRemotesConfiguredError";
-	}
-}
-
-export function isNoRemotesConfiguredError(error: unknown): error is NoRemotesConfiguredError {
-	return error instanceof NoRemotesConfiguredError;
-}
-
 /**
  * Resolve remote roles for a canonical repo.
  *
@@ -30,7 +19,7 @@ export async function resolveRemotes(repoDir: string, knownRemoteNames?: string[
 	const remotes = knownRemoteNames ?? (await getRemoteNames(repoDir));
 
 	if (remotes.length === 0) {
-		throw new NoRemotesConfiguredError(repoDir);
+		throw new Error(`No remotes configured for ${repoDir}`);
 	}
 
 	// Single remote — use it for both roles regardless of name
@@ -113,21 +102,13 @@ async function getPushDefault(repoDir: string): Promise<string | null> {
 /**
  * Resolve remotes for multiple repos in a workspace.
  * Returns a Map from repo name to RepoRemotes.
- * Repos without remotes are excluded (local repos).
+ * Errors propagate if any repo has no remotes or ambiguous remotes.
  */
 export async function resolveRemotesMap(repos: string[], reposDir: string): Promise<Map<string, RepoRemotes>> {
 	const remotesMap = new Map<string, RepoRemotes>();
 	for (const repo of repos) {
-		try {
-			const remotes = await resolveRemotes(`${reposDir}/${repo}`);
-			remotesMap.set(repo, remotes);
-		} catch (error) {
-			if (isNoRemotesConfiguredError(error)) {
-				// Repo has no remotes (local repo) — skip
-				continue;
-			}
-			throw error;
-		}
+		const remotes = await resolveRemotes(`${reposDir}/${repo}`);
+		remotesMap.set(repo, remotes);
 	}
 	return remotesMap;
 }

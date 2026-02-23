@@ -17,7 +17,7 @@ import {
 	yellow,
 } from "../lib/output";
 import { resolveRemotesMap } from "../lib/remotes";
-import { classifyRepos, workspaceRepoDirs } from "../lib/repos";
+import { workspaceRepoDirs } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
 import { requireWorkspace } from "../lib/workspace-context";
 
@@ -286,8 +286,7 @@ async function runRename(
 	// Resolve remotes for all repos (canonical repos share remote config with worktrees)
 	const fullRemotesMap = await resolveRemotesMap(repos, ctx.reposDir);
 
-	// Classify repos for fetch
-	const { fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
+	const fetchDirs = workspaceRepoDirs(wsDir);
 
 	const shouldFetch = options.fetch !== false;
 
@@ -307,7 +306,6 @@ async function runRename(
 		shouldFetch,
 		fetchDirs,
 		reposForFetchReport: repos,
-		localRepos,
 		remotesMap: fullRemotesMap,
 		assess,
 		formatPlan: (nextAssessments) =>

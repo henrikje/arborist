@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import type { Command } from "commander";
 import {
 	type FileChange,
@@ -11,7 +11,7 @@ import type { StatusJsonOutput, StatusJsonRepo } from "../lib/json-types";
 import { dim, green, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
-import { classifyRepos } from "../lib/repos";
+import { workspaceRepoDirs } from "../lib/repos";
 import {
 	type RepoStatus,
 	baseRef,
@@ -42,7 +42,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("--json", "Output structured JSON (combine with --verbose for commit and file detail)")
 		.summary("Show workspace status")
 		.description(
-			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use + for AND (e.g. --where dirty+unpushed matches repos that are both dirty and unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. Use -F/--fetch to update remote tracking info first (skip with --no-fetch). Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.",
+			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use + for AND (e.g. --where dirty+unpushed matches repos that are both dirty and unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. Use -F/--fetch to update remote tracking info first (skip with --no-fetch). Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.",
 		)
 		.action(
 			async (options: {
@@ -96,11 +96,11 @@ async function runStatus(
 
 	// Fetch if requested
 	if (options.fetch) {
-		const { repos, fetchDirs, localRepos } = await classifyRepos(wsDir, ctx.reposDir);
-		const remoteRepos = repos.filter((r) => !localRepos.includes(r));
-		const remotesMap = await resolveRemotesMap(remoteRepos, ctx.reposDir);
+		const fetchDirs = workspaceRepoDirs(wsDir);
+		const repos = fetchDirs.map((d) => basename(d));
+		const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
 		const results = await parallelFetch(fetchDirs, undefined, remotesMap);
-		const failed = reportFetchFailures(repos, localRepos, results);
+		const failed = reportFetchFailures(repos, results);
 		if (failed.length > 0) return 1;
 	}
 
@@ -259,18 +259,12 @@ async function runStatus(
 
 		// Col 5: Remote name
 		let remoteNameColored: string;
-		const isLocal = repo.share === null;
-		if (isLocal) {
-			remoteNameColored = cell.remoteName;
-		} else if (isDetached) {
+		if (isDetached) {
 			remoteNameColored = yellow(cell.remoteName);
 		} else if (cell.remoteName) {
-			const expectedTracking = `${repo.share?.remote}/${repo.identity.headMode.kind === "attached" ? repo.identity.headMode.branch : ""}`;
+			const expectedTracking = `${repo.share.remote}/${repo.identity.headMode.kind === "attached" ? repo.identity.headMode.branch : ""}`;
 			const isUnexpected =
-				repo.share !== null &&
-				repo.share.refMode === "configured" &&
-				repo.share.ref !== null &&
-				repo.share.ref !== expectedTracking;
+				repo.share.refMode === "configured" && repo.share.ref !== null && repo.share.ref !== expectedTracking;
 			remoteNameColored = isUnexpected || isDrifted ? yellow(cell.remoteName) : cell.remoteName;
 		} else {
 			remoteNameColored = "";
@@ -283,12 +277,12 @@ async function runStatus(
 			remoteDiffColored = cell.remoteDiff;
 		} else if (
 			cell.remoteDiff === "not pushed" ||
-			(repo.share !== null && repo.share.toPush === 0 && repo.share.toPull !== null && repo.share.toPull > 0)
+			(repo.share.toPush === 0 && repo.share.toPull !== null && repo.share.toPull > 0)
 		) {
 			remoteDiffColored = cell.remoteDiff;
 		} else if (flags.isUnpushed) {
-			const rebased = repo.share?.rebased ?? 0;
-			const netNew = (repo.share?.toPush ?? 0) - rebased;
+			const rebased = repo.share.rebased ?? 0;
+			const netNew = (repo.share.toPush ?? 0) - rebased;
 			if (rebased > 0 && netNew <= 0) {
 				remoteDiffColored = cell.remoteDiff; // default color for rebased-only
 			} else {
@@ -317,10 +311,7 @@ async function runStatus(
 		}
 
 		// Remote group (name + diff)
-		if (isLocal) {
-			// Local repos: columns 5-6 collapse to "local"
-			line += `    ${remoteNameColored}${" ".repeat(remoteNamePad + 2 + maxRemoteDiff)}`;
-		} else if (isDetached) {
+		if (isDetached) {
 			// Detached: show "detached" with no diff
 			line += `    ${remoteNameColored}${" ".repeat(remoteNamePad + 2 + maxRemoteDiff)}`;
 		} else {
@@ -384,19 +375,17 @@ function plainCells(repo: RepoStatus): CellData {
 
 	// Col 5: remote name
 	let remoteName: string;
-	if (repo.share === null) {
-		remoteName = "local";
-	} else if (isDetached) {
+	if (isDetached) {
 		remoteName = "detached";
 	} else if (repo.share.refMode === "configured" && repo.share.ref) {
 		remoteName = repo.share.ref;
 	} else {
-		remoteName = `${repo.share?.remote}/${actualBranch}`;
+		remoteName = `${repo.share.remote}/${actualBranch}`;
 	}
 
 	// Col 6: remote diff
 	let remoteDiff = "";
-	if (repo.share !== null && !isDetached) {
+	if (!isDetached) {
 		remoteDiff = plainRemoteDiff(repo);
 	}
 
@@ -418,8 +407,6 @@ function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
 }
 
 function plainRemoteDiff(repo: RepoStatus): string {
-	if (repo.share === null) return "";
-
 	const merged = repo.base?.mergedIntoBase != null;
 
 	if (repo.share.refMode === "gone") {
@@ -544,7 +531,7 @@ async function gatherVerboseDetail(repo: RepoStatus, wsDir: string): Promise<Ver
 	}
 
 	// Unpushed to remote
-	if (repo.share !== null && repo.share.toPush !== null && repo.share.toPush > 0 && repo.share.ref) {
+	if (repo.share.toPush !== null && repo.share.toPush > 0 && repo.share.ref) {
 		let rebasedHashes: Set<string> | null = null;
 		if (repo.share.rebased != null && repo.share.rebased > 0) {
 			const detection = await detectRebasedCommits(repoDir, repo.share.ref);

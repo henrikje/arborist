@@ -154,14 +154,11 @@ describe("remotes", () => {
 	});
 
 	describe("resolveRemotesMap", () => {
-		test("skips repos without remotes", async () => {
+		test("propagates errors for repos without remotes", async () => {
 			const local = join(tmpDir, "local");
 			Bun.spawnSync(["git", "init", local]);
 
-			const result = await resolveRemotesMap(["repo", "local"], tmpDir);
-
-			expect(result.get("repo")).toEqual({ upstream: "origin", share: "origin" });
-			expect(result.has("local")).toBe(false);
+			expect(resolveRemotesMap(["repo", "local"], tmpDir)).rejects.toThrow("No remotes configured");
 		});
 
 		test("rethrows ambiguous remote configuration errors", async () => {
