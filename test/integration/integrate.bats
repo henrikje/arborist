@@ -137,40 +137,6 @@ load test_helper/common-setup
     [[ "$output" == *"HEAD $expected_sha"* ]]
 }
 
-@test "arb rebase shows up to date when nothing to do" {
-    arb create my-feature repo-a
-    cd "$TEST_DIR/project/my-feature"
-    run arb rebase --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"up to date"* ]]
-}
-
-@test "arb rebase skips dirty repos with autostash hint" {
-    arb create my-feature repo-a
-
-    # Push upstream change
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-
-    # Make worktree dirty
-    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
-    cd "$TEST_DIR/project/my-feature"
-    run arb rebase --yes
-    [[ "$output" == *"skipped"* ]]
-    [[ "$output" == *"uncommitted changes (use --autostash)"* ]]
-}
-
-@test "arb rebase skips wrong branch" {
-    arb create my-feature repo-a
-
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-
-    git -C "$TEST_DIR/project/my-feature/repo-a" checkout -b experiment >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    run arb rebase --yes
-    [[ "$output" == *"skipped"* ]]
-    [[ "$output" == *"expected my-feature"* ]]
-}
-
 @test "arb rebase continues past conflict and shows consolidated report" {
     arb create my-feature repo-a repo-b
 
@@ -210,56 +176,6 @@ load test_helper/common-setup
     [[ "$output" != *"repo-b"* ]]
 }
 
-@test "arb rebase --yes skips confirmation" {
-    arb create my-feature repo-a
-
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb rebase --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Rebased"* ]]
-    [[ "$output" == *"Skipping confirmation"* ]]
-}
-
-@test "arb rebase non-TTY without --yes errors" {
-    arb create my-feature repo-a
-
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    # Pipe to force non-TTY
-    run bash -c 'echo "" | arb rebase'
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"Not a terminal"* ]] || [[ "$output" == *"--yes"* ]]
-}
-
-@test "arb rebase --no-fetch skips fetching" {
-    arb create my-feature repo-a
-
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    # Fetch manually so rebase has fresh refs, then test --no-fetch skips fetching
-    fetch_all_repos
-    run arb rebase --no-fetch --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" != *"Fetched"* ]]
-    [[ "$output" == *"Rebased"* ]]
-}
-
-@test "arb rebase -F fetches (short for --fetch)" {
-    arb create my-feature repo-a
-
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb rebase -F --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Fetched"* ]]
-    [[ "$output" == *"Rebased"* ]]
-}
-
 @test "arb rebase with custom base branch" {
     # Create a base branch with a commit
     git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
@@ -284,26 +200,6 @@ load test_helper/common-setup
     # Verify the upstream commit is reachable
     run git -C "$TEST_DIR/project/stacked/repo-a" log --oneline
     [[ "$output" == *"new auth commit"* ]]
-}
-
-@test "arb rebase skips in-progress operation" {
-    arb create my-feature repo-a
-
-    # Create conflicting changes for a manual rebase
-    echo "base" > "$TEST_DIR/project/my-feature/repo-a/conflict.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add conflict.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "base" >/dev/null 2>&1
-
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream-conflict" > conflict.txt && git add conflict.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    fetch_all_repos
-    # Start a rebase that will conflict (need fresh refs for manual git rebase)
-    git -C "$TEST_DIR/project/my-feature/repo-a" rebase origin/main >/dev/null 2>&1 || true
-
-    run arb rebase --yes
-    [[ "$output" == *"skipped"* ]]
-    [[ "$output" == *"rebase in progress"* ]]
 }
 
 # ── merge ────────────────────────────────────────────────────────
@@ -335,14 +231,6 @@ load test_helper/common-setup
     [[ "$output" == *"HEAD $expected_sha"* ]]
 }
 
-@test "arb merge shows up to date when nothing to do" {
-    arb create my-feature repo-a
-    cd "$TEST_DIR/project/my-feature"
-    run arb merge --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"up to date"* ]]
-}
-
 @test "arb merge continues past conflict and shows consolidated report" {
     arb create my-feature repo-a repo-b
 
@@ -367,31 +255,6 @@ load test_helper/common-setup
     [[ "$output" == *"git merge --abort"* ]]
     # repo-b was still processed successfully
     [[ "$output" == *"Merged 1 repo, 1 conflicted"* ]]
-}
-
-@test "arb merge -F fetches (short for --fetch)" {
-    arb create my-feature repo-a
-
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb merge -F --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Fetched"* ]]
-    [[ "$output" == *"Merged"* ]]
-}
-
-@test "arb merge --no-fetch skips fetching" {
-    arb create my-feature repo-a
-
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    fetch_all_repos
-    run arb merge --no-fetch --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" != *"Fetched"* ]]
-    [[ "$output" == *"Merged"* ]]
 }
 
 
@@ -420,190 +283,6 @@ load test_helper/common-setup
     run git -C "$TEST_DIR/project/.arb/repos/repo-a" log --oneline origin/my-feature
     [[ "$output" == *"feature"* ]]
     [[ "$output" == *"upstream"* ]]
-}
-
-@test "arb push --force does not imply --yes" {
-    arb create my-feature repo-a
-    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-
-    # Push an upstream change to main to create divergence after rebase
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-
-    # Rebase the feature branch
-    cd "$TEST_DIR/project/my-feature"
-    arb rebase --yes >/dev/null 2>&1
-
-    # Push with --force only (no --yes) in non-TTY — should require --yes
-    run arb push --force
-    [ "$status" -eq 1 ]
-    [[ "$output" == *"Not a terminal"* ]]
-}
-
-@test "arb push --force --yes skips confirmation" {
-    arb create my-feature repo-a
-    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-
-    # Push an upstream change to main to create divergence after rebase
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-
-    # Rebase the feature branch
-    cd "$TEST_DIR/project/my-feature"
-    arb rebase --yes >/dev/null 2>&1
-
-    # Push with --force --yes — should skip confirmation and push
-    run arb push --force --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Pushed"* ]]
-    [[ "$output" == *"Skipping confirmation"* ]]
-}
-
-
-# ── conflict prediction ─────────────────────────────────────────
-
-@test "arb rebase --dry-run shows conflict likely for overlapping changes" {
-    arb create my-feature repo-a
-
-    # Create a shared file on main
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "original" > shared.txt && git add shared.txt && git commit -m "add shared" && git push) >/dev/null 2>&1
-
-    # Pull the shared file into the feature branch
-    cd "$TEST_DIR/project/my-feature"
-    arb rebase --yes >/dev/null 2>&1
-
-    # Now create a conflicting change on the feature branch
-    echo "feature version" > "$TEST_DIR/project/my-feature/repo-a/shared.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add shared.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature change" >/dev/null 2>&1
-
-    # And a conflicting change on main
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "main version" > shared.txt && git add shared.txt && git commit -m "main change" && git push) >/dev/null 2>&1
-
-    run arb rebase --dry-run
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"conflict likely"* ]]
-}
-
-@test "arb rebase --dry-run shows conflict unlikely for non-overlapping changes" {
-    arb create my-feature repo-a
-
-    # Make a local commit on the feature branch (different file)
-    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature commit" >/dev/null 2>&1
-
-    # Push an upstream change (different file)
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb rebase --dry-run
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"conflict unlikely"* ]]
-}
-
-@test "arb rebase --dry-run shows conflict unlikely for fast-forward" {
-    arb create my-feature repo-a
-
-    # Push an upstream change (repo-a is behind only, no local commits)
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb rebase --dry-run
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"conflict unlikely"* ]]
-}
-
-@test "arb merge --dry-run shows will conflict for overlapping changes" {
-    arb create my-feature repo-a
-
-    # Create a shared file on main
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "original" > shared.txt && git add shared.txt && git commit -m "add shared" && git push) >/dev/null 2>&1
-
-    # Pull the shared file into the feature branch
-    cd "$TEST_DIR/project/my-feature"
-    arb rebase --yes >/dev/null 2>&1
-
-    # Now create a conflicting change on the feature branch
-    echo "feature version" > "$TEST_DIR/project/my-feature/repo-a/shared.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add shared.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature change" >/dev/null 2>&1
-
-    # And a conflicting change on main
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "main version" > shared.txt && git add shared.txt && git commit -m "main change" && git push) >/dev/null 2>&1
-
-    run arb merge --dry-run
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"will conflict"* ]]
-}
-
-@test "arb pull --dry-run shows conflict unlikely for simple pull" {
-    arb create my-feature repo-a
-
-    # Push the feature branch first
-    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "local" > local.txt && git add local.txt && git commit -m "local" && git push -u origin my-feature) >/dev/null 2>&1
-
-    # Push a remote commit to the feature branch via a tmp clone
-    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
-    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > remote.txt && git add remote.txt && git commit -m "remote" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb pull --dry-run
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"conflict unlikely"* ]]
-}
-
-
-# ── two-phase plan rendering ────────────────────────────────────
-
-@test "arb push --no-fetch shows plan without fetch line" {
-    arb create my-feature repo-a
-    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    run arb push --no-fetch --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" != *"Fetching"* ]]
-    [[ "$output" != *"Fetched"* ]]
-    [[ "$output" == *"to push"* ]]
-    [[ "$output" == *"Pushed"* ]]
-}
-
-@test "arb rebase skips repo when fetch fails" {
-    arb create my-feature repo-a repo-b
-
-    # Push an upstream change to repo-a so rebase would have work to do
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-
-    # Break repo-a's remote URL so fetch fails
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" remote set-url origin "file:///nonexistent/repo.git"
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb rebase --yes
-    [[ "$output" == *"fetch failed"* ]]
-    [[ "$output" == *"repo-a"*"skipped"* ]]
-}
-
-@test "arb pull skips repo when fetch fails" {
-    arb create my-feature repo-a repo-b
-    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "change" > file.txt && git add file.txt && git commit -m "change" && git push -u origin my-feature) >/dev/null 2>&1
-
-    # Push a remote commit so there's something to pull
-    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
-    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote" && git push) >/dev/null 2>&1
-
-    # Break repo-a's remote URL so fetch fails
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" remote set-url origin "file:///nonexistent/repo.git"
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb pull --yes
-    [[ "$output" == *"fetch failed"* ]]
-    [[ "$output" == *"repo-a"*"skipped"* ]]
 }
 
 
@@ -671,89 +350,6 @@ load test_helper/common-setup
     # Status should show "base merged"
     run arb status
     [[ "$output" == *"base merged"* ]]
-}
-
-@test "arb rebase skips repo when base branch is merged" {
-    # Create feat/auth branch
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
-    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
-
-    # Create stacked workspace
-    arb create stacked --base feat/auth -b feat/auth-ui repo-a
-
-    # Add a commit
-    echo "ui" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
-    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui feature" >/dev/null 2>&1
-
-    # Merge feat/auth into main
-    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
-    (cd "$TEST_DIR/tmp-merge" && git merge origin/feat/auth --no-ff -m "merge feat/auth" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/stacked"
-    run arb rebase --yes
-    [[ "$output" == *"was merged into default"* ]]
-    [[ "$output" == *"--retarget"* ]]
-    [[ "$output" == *"skipped"* ]]
-}
-
-@test "arb push skips when base branch is merged (not deleted)" {
-    # Create feat/auth branch
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
-    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
-
-    # Create stacked workspace
-    arb create stacked --base feat/auth -b feat/auth-ui repo-a
-
-    # Add a commit
-    echo "ui" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
-    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui feature" >/dev/null 2>&1
-
-    # Merge feat/auth into main (do NOT delete feat/auth)
-    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
-    (cd "$TEST_DIR/tmp-merge" && git merge origin/feat/auth --no-ff -m "merge feat/auth" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/stacked"
-    run arb push --yes
-    [[ "$output" == *"was merged into default"* ]]
-    [[ "$output" == *"retarget"* ]]
-    [[ "$output" == *"skipped"* ]]
-}
-
-@test "arb pull skips when base branch is merged (not deleted)" {
-    # Create feat/auth branch
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
-    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth feature" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
-
-    # Create stacked workspace and push
-    arb create stacked --base feat/auth -b feat/auth-ui repo-a
-    echo "ui" > "$TEST_DIR/project/stacked/repo-a/ui.txt"
-    git -C "$TEST_DIR/project/stacked/repo-a" add ui.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/stacked/repo-a" commit -m "ui feature" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/stacked/repo-a" push -u origin feat/auth-ui >/dev/null 2>&1
-
-    # Merge feat/auth into main (do NOT delete feat/auth)
-    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-merge" >/dev/null 2>&1
-    (cd "$TEST_DIR/tmp-merge" && git merge origin/feat/auth --no-ff -m "merge feat/auth" && git push) >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/stacked"
-    run arb pull --yes
-    [[ "$output" == *"was merged into default"* ]]
-    [[ "$output" == *"retarget"* ]]
-    [[ "$output" == *"skipped"* ]]
 }
 
 @test "arb rebase --retarget rebases onto default branch (merge commit)" {
@@ -1443,53 +1039,6 @@ load test_helper/common-setup
     [ -f "$TEST_DIR/project/my-feature/repo-a/dirty.txt" ]
 }
 
-@test "arb rebase --autostash plan shows stash pop conflict warning" {
-    arb create my-feature repo-a
-
-    # Create a shared file on main
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "original" > shared.txt && git add shared.txt && git commit -m "add shared" && git push) >/dev/null 2>&1
-
-    # Pull the shared file into the feature branch
-    cd "$TEST_DIR/project/my-feature"
-    arb rebase --yes >/dev/null 2>&1
-
-    # Create a conflicting upstream change
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "main version" > shared.txt && git add shared.txt && git commit -m "main change" && git push) >/dev/null 2>&1
-
-    # Make local dirty change to the same file
-    echo "dirty version" > "$TEST_DIR/project/my-feature/repo-a/shared.txt"
-
-    # Also need a local commit so there's ahead+behind for the rebase
-    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature commit" >/dev/null 2>&1
-
-    run arb rebase --autostash --dry-run
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"autostash"* ]]
-    [[ "$output" == *"stash pop conflict likely"* ]]
-}
-
-@test "arb rebase --autostash with untracked-only proceeds without stashing" {
-    arb create my-feature repo-a
-
-    # Push upstream change
-    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
-
-    # Add only an untracked file (not staged or modified)
-    echo "untracked" > "$TEST_DIR/project/my-feature/repo-a/untracked.txt"
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb rebase --autostash --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Rebased"* ]]
-    # Should NOT show autostash hint (untracked-only doesn't need stashing)
-    [[ "$output" != *"autostash"* ]]
-
-    # Untracked file should still be present
-    [ -f "$TEST_DIR/project/my-feature/repo-a/untracked.txt" ]
-}
-
 @test "arb merge --autostash stashes and merges dirty repo" {
     arb create my-feature repo-a
 
@@ -1565,26 +1114,6 @@ load test_helper/common-setup
 
     # Dirty file should still be present
     [ -f "$TEST_DIR/project/my-feature/repo-a/dirty.txt" ]
-}
-
-@test "arb pull skips dirty repos without --autostash" {
-    arb create my-feature repo-a
-
-    # Push the feature branch first
-    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "local" > local.txt && git add local.txt && git commit -m "local" && git push -u origin my-feature) >/dev/null 2>&1
-
-    # Push a remote commit to the feature branch via a tmp clone
-    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
-    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > remote.txt && git add remote.txt && git commit -m "remote" && git push) >/dev/null 2>&1
-
-    # Make worktree dirty
-    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add dirty.txt >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb pull --yes
-    [[ "$output" == *"skipped"* ]]
-    [[ "$output" == *"uncommitted changes (use --autostash)"* ]]
 }
 
 @test "arb rebase --retarget --autostash stashes dirty repo during retarget" {
@@ -1726,27 +1255,6 @@ load test_helper/common-setup
     # repo-a should have upstream commit
     run git -C "$TEST_DIR/project/my-feature/repo-a" log --oneline
     [[ "$output" == *"upstream a"* ]]
-}
-
-@test "arb pull --autostash --dry-run shows stash hints" {
-    arb create my-feature repo-a
-
-    # Push the feature branch first
-    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "local" > local.txt && git add local.txt && git commit -m "local" && git push -u origin my-feature) >/dev/null 2>&1
-
-    # Push a remote commit to the feature branch via a tmp clone
-    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
-    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > remote.txt && git add remote.txt && git commit -m "remote" && git push) >/dev/null 2>&1
-
-    # Make worktree dirty
-    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
-    git -C "$TEST_DIR/project/my-feature/repo-a" add dirty.txt >/dev/null 2>&1
-
-    cd "$TEST_DIR/project/my-feature"
-    run arb pull --autostash --dry-run
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"autostash"* ]]
-    [[ "$output" == *"Dry run"* ]]
 }
 
 @test "arb pull --autostash reports stash pop failure (merge)" {

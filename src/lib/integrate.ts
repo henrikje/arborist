@@ -21,7 +21,7 @@ import { requireBranch, requireWorkspace } from "./workspace-context";
 
 type IntegrateMode = "rebase" | "merge";
 
-interface RepoAssessment {
+export interface RepoAssessment {
 	repo: string;
 	repoDir: string;
 	outcome: "will-operate" | "up-to-date" | "skip";
@@ -273,7 +273,7 @@ export async function integrate(
 	}
 }
 
-function formatIntegratePlan(assessments: RepoAssessment[], mode: IntegrateMode, branch: string): string {
+export function formatIntegratePlan(assessments: RepoAssessment[], mode: IntegrateMode, branch: string): string {
 	let out = "\n";
 	for (const a of assessments) {
 		if (a.outcome === "will-operate") {
@@ -363,17 +363,14 @@ async function predictIntegrateConflicts(assessments: RepoAssessment[]): Promise
 	);
 }
 
-async function assessRepo(
+export function classifyRepo(
 	status: RepoStatus,
 	repoDir: string,
 	branch: string,
 	fetchFailed: string[],
-	retarget = false,
-	retargetExplicit: string | null = null,
-	autostash = false,
-): Promise<RepoAssessment> {
-	const headSha = await getShortHead(repoDir);
-
+	autostash: boolean,
+	headSha: string,
+): RepoAssessment {
 	const base: RepoAssessment = {
 		repo: status.name,
 		repoDir,
@@ -425,106 +422,13 @@ async function assessRepo(
 	if (!status.base.remote) {
 		return { ...base, skipReason: "no upstream remote" };
 	}
-	const upstreamRemote = status.base.remote;
-	base.upstreamRemote = upstreamRemote;
+	base.upstreamRemote = status.base.remote;
 
-	// Explicit retarget to a specified branch
-	if (retargetExplicit) {
-		// Fell-back repos (never truly stacked) get a normal rebase, not a retarget
-		if (status.base.configuredRef !== null && status.base.baseMergedIntoDefault == null) {
-			// This repo fell back to its default branch — not truly stacked
-			if (status.base.behind === 0) {
-				return { ...base, outcome: "up-to-date", baseBranch: status.base.ref, behind: 0, ahead: status.base.ahead };
-			}
-			return {
-				...base,
-				outcome: "will-operate",
-				baseBranch: status.base.ref,
-				behind: status.base.behind,
-				ahead: status.base.ahead,
-			};
-		}
-
-		// Validate target branch exists on remote
-		const targetExists = await remoteBranchExists(repoDir, retargetExplicit, upstreamRemote);
-		if (!targetExists) {
-			return {
-				...base,
-				skipReason: `target branch ${retargetExplicit} not found on ${upstreamRemote}`,
-				retargetBlocked: true,
-			};
-		}
-
-		// Resolve old base ref (the branch we're retargeting away from)
-		const oldBaseName = status.base.configuredRef ?? status.base.ref;
-		const oldBaseRemoteExists = await remoteBranchExists(repoDir, oldBaseName, upstreamRemote);
-		const oldBaseLocalExists = !oldBaseRemoteExists ? await branchExistsLocally(repoDir, oldBaseName) : false;
-		if (!oldBaseRemoteExists && !oldBaseLocalExists) {
-			return {
-				...base,
-				skipReason: `base branch ${oldBaseName} not found — cannot determine rebase boundary`,
-				retargetBlocked: true,
-			};
-		}
-
-		// Per-repo merge detection
-		const targetRef = `${upstreamRemote}/${retargetExplicit}`;
-		const oldBaseRef = oldBaseRemoteExists ? `${upstreamRemote}/${oldBaseName}` : oldBaseName;
-		let retargetWarning: string | undefined;
-		const mergeResult = await detectBranchMerged(repoDir, targetRef, 200, oldBaseRef);
-		if (mergeResult === null) {
-			retargetWarning = `base branch ${oldBaseName} may not be merged`;
-		}
-
-		// Up-to-date check: already on target and 0 behind
-		if (status.base.ref === retargetExplicit && status.base.behind === 0) {
-			return { ...base, outcome: "up-to-date", baseBranch: retargetExplicit };
-		}
-
-		return {
-			...base,
-			outcome: "will-operate",
-			baseBranch: retargetExplicit,
-			retargetFrom: oldBaseName,
-			retargetTo: retargetExplicit,
-			retargetWarning,
-			behind: status.base.behind,
-			ahead: status.base.ahead,
-		};
-	}
-
-	// Stacked base branch has been merged into default (auto-detect)
+	// Stacked base branch has been merged into default
 	if (status.base.baseMergedIntoDefault != null) {
-		if (!retarget) {
-			return {
-				...base,
-				skipReason: `base branch ${status.base.configuredRef ?? status.base.ref} was merged into default (use --retarget)`,
-			};
-		}
-
-		// Resolve the true default branch for retarget
-		const trueDefault = await getDefaultBranch(repoDir, upstreamRemote);
-		if (!trueDefault) {
-			return { ...base, skipReason: "cannot resolve default branch for retarget" };
-		}
-
-		// For squash-merged repos, check if already retargeted
-		if (status.base.baseMergedIntoDefault === "squash") {
-			const defaultRef = `${upstreamRemote}/${trueDefault}`;
-			const alreadyOnDefault = await git(repoDir, "merge-base", "--is-ancestor", defaultRef, "HEAD");
-			if (alreadyOnDefault.exitCode === 0) {
-				return { ...base, outcome: "up-to-date", baseBranch: trueDefault };
-			}
-		}
-
 		return {
 			...base,
-			outcome: "will-operate",
-			baseBranch: trueDefault,
-			retargetFrom: status.base.configuredRef ?? status.base.ref,
-			retargetTo: trueDefault,
-			behind: status.base.behind,
-			ahead: status.base.ahead,
+			skipReason: `base branch ${status.base.configuredRef ?? status.base.ref} was merged into default (use --retarget)`,
 		};
 	}
 
@@ -540,4 +444,117 @@ async function assessRepo(
 		behind: status.base.behind,
 		ahead: status.base.ahead,
 	};
+}
+
+async function assessRepo(
+	status: RepoStatus,
+	repoDir: string,
+	branch: string,
+	fetchFailed: string[],
+	retarget = false,
+	retargetExplicit: string | null = null,
+	autostash = false,
+): Promise<RepoAssessment> {
+	const headSha = await getShortHead(repoDir);
+	const classified = classifyRepo(status, repoDir, branch, fetchFailed, autostash, headSha);
+
+	// Hard skips from basic checks (steps 1–7) — retarget can't help.
+	// Only the baseMergedIntoDefault skip should pass through to retarget logic.
+	if (classified.outcome === "skip" && !classified.skipReason?.includes("was merged into default")) {
+		return classified;
+	}
+
+	const upstreamRemote = classified.upstreamRemote;
+	const base = status.base;
+
+	// Explicit retarget to a specified branch
+	if (retargetExplicit) {
+		// Fell-back repos (configuredRef set, baseMergedIntoDefault null) get normal classification
+		if (base && base.configuredRef !== null && base.baseMergedIntoDefault == null) {
+			return classified;
+		}
+
+		// Validate target branch exists on remote
+		const targetExists = await remoteBranchExists(repoDir, retargetExplicit, upstreamRemote);
+		if (!targetExists) {
+			return {
+				...classified,
+				outcome: "skip",
+				skipReason: `target branch ${retargetExplicit} not found on ${upstreamRemote}`,
+				retargetBlocked: true,
+			};
+		}
+
+		// Resolve old base ref (the branch we're retargeting away from)
+		const oldBaseName = base?.configuredRef ?? base?.ref ?? "";
+		const oldBaseRemoteExists = await remoteBranchExists(repoDir, oldBaseName, upstreamRemote);
+		const oldBaseLocalExists = !oldBaseRemoteExists ? await branchExistsLocally(repoDir, oldBaseName) : false;
+		if (!oldBaseRemoteExists && !oldBaseLocalExists) {
+			return {
+				...classified,
+				outcome: "skip",
+				skipReason: `base branch ${oldBaseName} not found — cannot determine rebase boundary`,
+				retargetBlocked: true,
+			};
+		}
+
+		// Per-repo merge detection
+		const targetRef = `${upstreamRemote}/${retargetExplicit}`;
+		const oldBaseRef = oldBaseRemoteExists ? `${upstreamRemote}/${oldBaseName}` : oldBaseName;
+		let retargetWarning: string | undefined;
+		const mergeResult = await detectBranchMerged(repoDir, targetRef, 200, oldBaseRef);
+		if (mergeResult === null) {
+			retargetWarning = `base branch ${oldBaseName} may not be merged`;
+		}
+
+		// Up-to-date check: already on target and 0 behind
+		if (base?.ref === retargetExplicit && base?.behind === 0) {
+			return { ...classified, outcome: "up-to-date", baseBranch: retargetExplicit };
+		}
+
+		return {
+			...classified,
+			outcome: "will-operate",
+			baseBranch: retargetExplicit,
+			retargetFrom: oldBaseName,
+			retargetTo: retargetExplicit,
+			retargetWarning,
+			behind: base?.behind ?? 0,
+			ahead: base?.ahead ?? 0,
+		};
+	}
+
+	// Stacked base branch has been merged into default (auto-detect)
+	if (base?.baseMergedIntoDefault != null) {
+		if (!retarget) {
+			return classified;
+		}
+
+		// Resolve the true default branch for retarget
+		const trueDefault = await getDefaultBranch(repoDir, upstreamRemote);
+		if (!trueDefault) {
+			return { ...classified, outcome: "skip", skipReason: "cannot resolve default branch for retarget" };
+		}
+
+		// For squash-merged repos, check if already retargeted
+		if (base.baseMergedIntoDefault === "squash") {
+			const defaultRef = `${upstreamRemote}/${trueDefault}`;
+			const alreadyOnDefault = await git(repoDir, "merge-base", "--is-ancestor", defaultRef, "HEAD");
+			if (alreadyOnDefault.exitCode === 0) {
+				return { ...classified, outcome: "up-to-date", baseBranch: trueDefault };
+			}
+		}
+
+		return {
+			...classified,
+			outcome: "will-operate",
+			baseBranch: trueDefault,
+			retargetFrom: base.configuredRef ?? base.ref,
+			retargetTo: trueDefault,
+			behind: base.behind,
+			ahead: base.ahead,
+		};
+	}
+
+	return classified;
 }
