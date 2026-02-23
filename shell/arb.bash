@@ -94,7 +94,7 @@ __arb_repo_names() {
 }
 
 __arb_where_filters() {
-    printf '%s\n' dirty unpushed behind-remote behind-base drifted detached operation local gone shallow at-risk stale
+    printf '%s\n' dirty unpushed behind-share behind-base diverged drifted detached operation local gone shallow merged base-merged base-missing at-risk stale
 }
 
 __arb_template_names() {
@@ -134,17 +134,21 @@ __arb_template_names() {
 __arb_complete_where_value() {
     local cur="$1"
     local prefix=""
-    if [[ "$cur" == *,* ]]; then
-        prefix="${cur%,*},"
-        cur="${cur##*,}"
+    # Find the last separator (comma or +) and split there
+    local rest="$cur"
+    if [[ "$cur" == *[,+]* ]]; then
+        local without_last="${cur%[,+]*}"
+        local sep_and_rest="${cur:${#without_last}}"
+        prefix="${without_last}${sep_and_rest:0:1}"
+        rest="${sep_and_rest:1}"
     fi
     local filter
     while IFS= read -r filter; do
-        if [[ "$filter" == "$cur"* ]]; then
+        if [[ "$filter" == "$rest"* ]]; then
             COMPREPLY+=("${prefix}${filter}")
         fi
     done < <(__arb_where_filters)
-    # Suppress trailing space so user can add more comma-separated values
+    # Suppress trailing space so user can add more values
     type compopt &>/dev/null && compopt -o nospace
 }
 

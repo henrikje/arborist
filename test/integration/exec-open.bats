@@ -539,6 +539,33 @@ SCRIPT
     [[ "$output" != *"repo-b"* ]]
 }
 
+@test "arb exec --where dirty+unpushed runs only in repos matching both" {
+    arb create my-feature repo-a repo-b
+    # repo-a: dirty only
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    # repo-b: dirty AND unpushed
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-b/dirty.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-b" add -A
+    git -C "$TEST_DIR/project/my-feature/repo-b" commit -m "unpushed" >/dev/null 2>&1
+    echo "more" > "$TEST_DIR/project/my-feature/repo-b/dirty2.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb exec --where dirty+unpushed pwd
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-b"* ]]
+    [[ "$output" != *"repo-a"* ]]
+}
+
+@test "arb exec --where dirty+unpushed skips repos matching only one term" {
+    arb create my-feature repo-a repo-b
+    # repo-a: dirty only (no unpushed commits)
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb exec --where dirty+unpushed pwd
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
 @test "arb exec --dirty still works as shortcut" {
     arb create my-feature repo-a repo-b
     echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"

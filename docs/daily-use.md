@@ -74,9 +74,11 @@ Use `--where` (`-w`) to filter the table to repos matching a condition:
 arb status --where dirty              # only repos with uncommitted changes
 arb status --where unpushed           # only repos with commits to push
 arb status --where behind-base        # only repos that need rebasing
+arb status --where dirty+unpushed     # only repos that are both dirty AND unpushed
+arb status --where dirty,gone         # dirty OR gone (comma = OR)
 ```
 
-Multiple terms can be comma-separated (OR logic): `--where dirty,unpushed`. See [Scripting & automation](scripting-automation.md#filtering) for the full list of filter terms.
+Use `,` for OR (match any term) and `+` for AND (match all terms). `+` binds tighter than `,`: `dirty+unpushed,gone` means (dirty AND unpushed) OR gone. See [Scripting & automation](scripting-automation.md#filtering) for the full list of filter terms and more examples.
 
 See `arb status --help` for all options.
 

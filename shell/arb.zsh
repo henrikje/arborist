@@ -35,19 +35,33 @@ arb() {
 }
 
 _arb_where_filter() {
-    _values -s , 'filter term' \
-        'dirty[Repos with local changes]' \
-        'unpushed[Repos with commits not yet pushed]' \
-        'behind-remote[Repos behind their remote branch]' \
-        'behind-base[Repos behind the base branch]' \
-        'drifted[Repos on the wrong branch]' \
-        'detached[Repos in detached HEAD state]' \
-        'operation[Repos with an in-progress operation]' \
-        'local[Repos with no remote]' \
-        'gone[Repos whose remote branch was deleted]' \
-        'shallow[Repos that are shallow clones]' \
-        'at-risk[Repos with data safety or infrastructure concerns]' \
-        'stale[Repos that are behind their base or share branch]'
+    local -a all_terms=(
+        dirty unpushed behind-share behind-base diverged drifted detached
+        operation local gone shallow merged base-merged base-missing at-risk stale
+    )
+    # Parse already-entered terms (split on , and +) to offer remaining ones
+    local input="${PREFIX}${SUFFIX}"
+    local -a used=()
+    if [[ "$input" == *[,+]* ]]; then
+        local prefix="${input%[,+]*}"
+        used=("${(@s:,:)prefix}")
+        local -a expanded=()
+        for u in "${used[@]}"; do
+            expanded+=("${(@s:+:)u}")
+        done
+        used=("${expanded[@]}")
+    fi
+    local -a remaining=()
+    for t in "${all_terms[@]}"; do
+        if (( ! ${used[(Ie)$t]} )); then
+            remaining+=("$t")
+        fi
+    done
+    # Set up prefix for completion after the last separator
+    if [[ "$input" == *[,+]* ]]; then
+        compset -P "*[,+]"
+    fi
+    compadd -S '' -a remaining
 }
 
 _arb_template_names() {

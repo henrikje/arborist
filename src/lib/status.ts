@@ -239,8 +239,9 @@ const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
 const VALID_TERMS = Object.keys(FILTER_TERMS);
 
 export function validateWhere(where: string): string | null {
-	const terms = where.split(",");
-	const invalid = terms.filter((t) => !FILTER_TERMS[t]);
+	const groups = where.split(",");
+	const allTerms = groups.flatMap((g) => g.split("+"));
+	const invalid = allTerms.filter((t) => !FILTER_TERMS[t]);
 	if (invalid.length > 0) {
 		return `Unknown filter ${invalid.length === 1 ? "term" : "terms"}: ${invalid.join(", ")}. Valid terms: ${VALID_TERMS.join(", ")}`;
 	}
@@ -248,8 +249,11 @@ export function validateWhere(where: string): string | null {
 }
 
 export function repoMatchesWhere(flags: RepoFlags, where: string): boolean {
-	const terms = where.split(",");
-	return terms.some((t) => FILTER_TERMS[t]?.(flags) ?? false);
+	const groups = where.split(",");
+	return groups.some((group) => {
+		const terms = group.split("+");
+		return terms.every((t) => FILTER_TERMS[t]?.(flags) ?? false);
+	});
 }
 
 export function workspaceMatchesWhere(repos: RepoStatus[], branch: string, where: string): boolean {

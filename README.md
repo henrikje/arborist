@@ -191,11 +191,12 @@ Synchronization commands automatically fetch all repos in parallel before operat
 ### Filter by status
 
 ```bash
-arb status --where dirty,unpushed
+arb status --where dirty,unpushed        # OR — repos matching either
+arb status --where dirty+unpushed        # AND — repos matching both
 arb list --where at-risk
 ```
 
-Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, drifted, and more. The `--where` flag lets you filter by any combination, and works across `status`, `list`, `exec`, `open`, and `delete` — so you can check which workspaces need attention, run commands only in dirty repos, or clean up safely. Use `--dirty` as a shorthand for `--where dirty`.
+Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, drifted, and more. The `--where` flag lets you filter by any combination, and works across `status`, `list`, `exec`, `open`, `diff`, and `delete`, so you can check which workspaces need attention, run commands only in dirty repos, or clean up safely. Use `--dirty` as a shorthand for `--where dirty`.
 
 ### Run commands across repos
 
