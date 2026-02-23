@@ -364,7 +364,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 					}
 
 					if (!skipPrompts) {
-						if (!isTTY()) {
+						if (!isTTY() || !process.stdin.isTTY) {
 							error("Not a terminal. Use --yes to skip confirmation.");
 							process.exit(1);
 						}
@@ -456,7 +456,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 
 				// Confirm
 				if (!skipPrompts) {
-					if (!isTTY()) {
+					if (!isTTY() || !process.stdin.isTTY) {
 						error("Not a terminal. Use --yes to skip confirmation.");
 						process.exit(1);
 					}

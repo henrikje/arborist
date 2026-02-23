@@ -69,7 +69,7 @@ export async function confirmOrExit(options: {
 	skipFlag?: string;
 }): Promise<void> {
 	if (!options.yes) {
-		if (!isTTY()) {
+		if (!isTTY() || !process.stdin.isTTY) {
 			error("Not a terminal. Use --yes to skip confirmation.");
 			process.exit(1);
 		}
