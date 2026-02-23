@@ -22,11 +22,6 @@ teardown() {
     rm -rf "$TEST_DIR"
 }
 
-setup_local_repo() {
-    git init "$TEST_DIR/project/.arb/repos/local-lib" >/dev/null 2>&1
-    (cd "$TEST_DIR/project/.arb/repos/local-lib" && git commit --allow-empty -m "init") >/dev/null 2>&1
-}
-
 delete_workspace_config() {
     local name="$1"
     rm -f "$TEST_DIR/project/$name/.arbws/config"

@@ -209,27 +209,6 @@ load test_helper/common-setup
     [[ "$output" == *"repo-a: skipped"* ]]
 }
 
-@test "arb log shows no-base status for local repo without remote" {
-    setup_local_repo
-    arb create my-feature local-lib
-    echo "change" > "$TEST_DIR/project/my-feature/local-lib/file.txt"
-    git -C "$TEST_DIR/project/my-feature/local-lib" add file.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/my-feature/local-lib" commit -m "Local commit" >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    run arb log --json
-    [ "$status" -eq 0 ]
-    local repo_status
-    repo_status="$(echo "$output" | jq -r '.repos[0].status')"
-    [ "$repo_status" = "no-base" ]
-    local reason
-    reason="$(echo "$output" | jq -r '.repos[0].reason')"
-    [[ "$reason" == *"no base"* ]]
-    # Should still show commits (fallback to recent)
-    local count
-    count="$(echo "$output" | jq '.repos[0].commits | length')"
-    [ "$count" -ge 1 ]
-}
-
 @test "arb log shows fallback-base when configured base not found" {
     # repo-a has feat/auth branch, repo-b does NOT
     git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1

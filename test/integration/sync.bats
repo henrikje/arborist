@@ -124,16 +124,6 @@ load test_helper/common-setup
     [[ "$output" == *"HEAD $expected_sha"* ]]
 }
 
-@test "arb push skips local repos" {
-    setup_local_repo
-    arb create push-ws local-lib
-    cd "$TEST_DIR/project/push-ws"
-    run arb push --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"local repo"* ]]
-    [[ "$output" == *"skipped"* ]]
-}
-
 @test "arb push skips repo on wrong branch" {
     arb create my-feature repo-a repo-b
     git -C "$TEST_DIR/project/my-feature/repo-a" checkout -b experiment >/dev/null 2>&1

@@ -2,8 +2,8 @@ import { existsSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
-import { dim, error, info, plural, skipConfirmNotice, success } from "../lib/output";
-import { getRemoteUrl } from "../lib/remotes";
+import { dim, error, info, plural, skipConfirmNotice, success, yellow } from "../lib/output";
+import { getRemoteUrl, resolveRemotes } from "../lib/remotes";
 import { findRepoUsage, listRepos, selectInteractive } from "../lib/repos";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
@@ -94,7 +94,14 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 			const entries: { name: string; url: string }[] = [];
 			for (const r of repos) {
 				const repoDir = `${ctx.reposDir}/${r}`;
-				const url = await getRemoteUrl(repoDir, "origin");
+				let url: string | null = null;
+				try {
+					const remotes = await resolveRemotes(repoDir);
+					url = await getRemoteUrl(repoDir, remotes.share);
+				} catch {
+					// Ambiguous remotes — fall back to showing origin URL
+					url = await getRemoteUrl(repoDir, "origin");
+				}
 				entries.push({ name: r, url: url ?? "" });
 			}
 
@@ -102,7 +109,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 
 			process.stdout.write(`  ${dim("REPO")}${" ".repeat(maxRepo - 4)}    ${dim("URL")}\n`);
 			for (const { name, url } of entries) {
-				const urlDisplay = url || dim("(local)");
+				const urlDisplay = url || yellow("(remotes not resolved)");
 				process.stdout.write(`  ${name.padEnd(maxRepo)}    ${urlDisplay}\n`);
 			}
 		});

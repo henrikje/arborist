@@ -289,14 +289,3 @@ EOF
     git -C "$TEST_DIR/origin/repo-a.git" rev-parse --verify my-feature >/dev/null 2>&1
 }
 
-# ── local repo ───────────────────────────────────────────────────
-
-@test "arb rebranch works with local-only repos (no remote)" {
-    setup_local_repo
-    arb create my-feature repo-a local-lib >/dev/null 2>&1
-    cd "$TEST_DIR/project/my-feature"
-    run arb rebranch feat/new-name --yes --no-fetch
-    [ "$status" -eq 0 ]
-    [ "$(git -C "$TEST_DIR/project/my-feature/repo-a" branch --show-current)" = "feat/new-name" ]
-    [ "$(git -C "$TEST_DIR/project/my-feature/local-lib" branch --show-current)" = "feat/new-name" ]
-}

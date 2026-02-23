@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
-import { hasRemote } from "../lib/git";
 import type { ListJsonEntry } from "../lib/json-types";
 import { dim, green, info, red, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
@@ -42,7 +41,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		.command("list")
 		.summary("List all workspaces")
 		.description(
-			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --dirty / -d to show only workspaces with dirty repos, or --where <filter> for other status flags (any workspace with at least one matching repo is shown): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, local, gone, shallow, at-risk, stale. Comma-separated values use OR logic; use + for AND (e.g. --where dirty+unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. Use --quick to skip per-repo status gathering for faster output. Use -F/--fetch to fetch all repos before listing for fresh remote data (skip with --no-fetch). Use --json for machine-readable output.",
+			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --dirty / -d to show only workspaces with dirty repos, or --where <filter> for other status flags (any workspace with at least one matching repo is shown): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, at-risk, stale. Comma-separated values use OR logic; use + for AND (e.g. --where dirty+unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. Use --quick to skip per-repo status gathering for faster output. Use -F/--fetch to fetch all repos before listing for fresh remote data (skip with --no-fetch). Use --json for machine-readable output.",
 		)
 		.option("-F, --fetch", "Fetch all repos before listing")
 		.option("--no-fetch", "Skip fetching (default)", false)
@@ -74,22 +73,10 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 			// Fetch all canonical repos (benefits all workspaces)
 			if (options.fetch) {
 				const allRepoNames = listRepos(ctx.reposDir);
-				const fetchDirs: string[] = [];
-				const localRepos: string[] = [];
-				for (const repo of allRepoNames) {
-					const repoDir = `${ctx.reposDir}/${repo}`;
-					if (await hasRemote(repoDir)) {
-						fetchDirs.push(repoDir);
-					} else {
-						localRepos.push(repo);
-					}
-				}
-				if (fetchDirs.length > 0) {
-					const remoteRepoNames = allRepoNames.filter((r) => !localRepos.includes(r));
-					const remotesMap = await resolveRemotesMap(remoteRepoNames, ctx.reposDir);
-					const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
-					reportFetchFailures(allRepoNames, localRepos, fetchResults);
-				}
+				const fetchDirs = allRepoNames.map((r) => `${ctx.reposDir}/${r}`);
+				const remotesMap = await resolveRemotesMap(allRepoNames, ctx.reposDir);
+				const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
+				reportFetchFailures(allRepoNames, fetchResults);
 			}
 
 			const workspaces = listWorkspaces(ctx.baseDir);
@@ -200,13 +187,22 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				// Gather all workspace summaries (no progress display in JSON mode)
 				const results = await Promise.all(
 					toScan.map(async (entry) => {
-						const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir);
-						return { index: entry.index, summary };
+						try {
+							const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir);
+							return { index: entry.index, summary };
+						} catch {
+							return { index: entry.index, summary: null };
+						}
 					}),
 				);
 
 				const summaryMap = new Map<number, WorkspaceSummary>();
 				for (const { index, summary } of results) {
+					if (!summary) {
+						const entry = jsonEntries[index];
+						if (entry) entry.status = "error";
+						continue;
+					}
 					summaryMap.set(index, summary);
 					const entry = jsonEntries[index];
 					if (entry && entry.status === null) {
@@ -340,13 +336,17 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				// Run all workspace scans in parallel
 				const results = await Promise.all(
 					toScan.map(async (entry) => {
-						const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir, (scanned, total) => {
-							// On first callback from this workspace, add its total to the aggregate
-							if (scanned === 1) totalRepos += total;
-							scannedRepos++;
-							updateProgress();
-						});
-						return { index: entry.index, summary };
+						try {
+							const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir, (scanned, total) => {
+								// On first callback from this workspace, add its total to the aggregate
+								if (scanned === 1) totalRepos += total;
+								scannedRepos++;
+								updateProgress();
+							});
+							return { index: entry.index, summary };
+						} catch {
+							return { index: entry.index, summary: null };
+						}
 					}),
 				);
 
@@ -355,6 +355,11 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 				// Apply results to rows
 				for (const { index, summary } of results) {
+					if (!summary) {
+						const row = rows[index];
+						if (row) row.statusColored = yellow("(remotes not resolved)");
+						continue;
+					}
 					summaryByIndex.set(index, summary);
 					const row = rows[index];
 					if (row) applySummaryToRow(row, summary);
@@ -382,12 +387,21 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				// Non-TTY or nothing to scan: gather all data, output once
 				const results = await Promise.all(
 					toScan.map(async (entry) => {
-						const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir);
-						return { index: entry.index, summary };
+						try {
+							const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir);
+							return { index: entry.index, summary };
+						} catch {
+							return { index: entry.index, summary: null };
+						}
 					}),
 				);
 
 				for (const { index, summary } of results) {
+					if (!summary) {
+						const row = rows[index];
+						if (row) row.statusColored = yellow("(remotes not resolved)");
+						continue;
+					}
 					summaryByIndex.set(index, summary);
 					const row = rows[index];
 					if (row) applySummaryToRow(row, summary);

@@ -7,7 +7,7 @@ describe("reportFetchFailures", () => {
 			["repo-a", { exitCode: 0, output: "" }],
 			["repo-b", { exitCode: 0, output: "" }],
 		]);
-		const failed = reportFetchFailures(["repo-a", "repo-b"], [], results);
+		const failed = reportFetchFailures(["repo-a", "repo-b"], results);
 		expect(failed).toEqual([]);
 	});
 
@@ -16,26 +16,19 @@ describe("reportFetchFailures", () => {
 			["repo-a", { exitCode: 0, output: "" }],
 			["repo-b", { exitCode: 1, output: "error" }],
 		]);
-		const failed = reportFetchFailures(["repo-a", "repo-b"], [], results);
+		const failed = reportFetchFailures(["repo-a", "repo-b"], results);
 		expect(failed).toEqual(["repo-b"]);
-	});
-
-	test("skips local repos", () => {
-		const results = new Map([["repo-a", { exitCode: 1, output: "error" }]]);
-		const failed = reportFetchFailures(["repo-a", "repo-b"], ["repo-a"], results);
-		// repo-a is local so it's skipped; repo-b has no result so it's a failure
-		expect(failed).not.toContain("repo-a");
 	});
 
 	test("identifies timeout (exitCode 124)", () => {
 		const results = new Map([["repo-a", { exitCode: 124, output: "timed out" }]]);
-		const failed = reportFetchFailures(["repo-a"], [], results);
+		const failed = reportFetchFailures(["repo-a"], results);
 		expect(failed).toEqual(["repo-a"]);
 	});
 
 	test("handles missing results", () => {
 		const results = new Map<string, { exitCode: number; output: string }>();
-		const failed = reportFetchFailures(["repo-a"], [], results);
+		const failed = reportFetchFailures(["repo-a"], results);
 		expect(failed).toEqual(["repo-a"]);
 	});
 });

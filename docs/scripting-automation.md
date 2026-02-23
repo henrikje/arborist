@@ -60,7 +60,6 @@ The full list of filter terms:
 | `drifted` | the worktree is on a different branch than the workspace expects |
 | `detached` | the worktree is in detached HEAD state |
 | `operation` | a git operation is in progress (rebase, merge, cherry-pick, etc.) |
-| `local` | the repo has no remote (local-only) |
 | `gone` | the tracking branch has been deleted from the remote |
 | `shallow` | the clone is shallow |
 | `merged` | the feature branch has been merged into the base branch |

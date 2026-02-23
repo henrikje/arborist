@@ -260,65 +260,30 @@ SCRIPT
     [ "$status" -ne 0 ]
 }
 
-# ── local repos (no remote) ──────────────────────────────────────
+# ── remoteless repo validation ────────────────────────────────────
 
-@test "arb create with local repo creates worktree from local default branch" {
-    setup_local_repo
-    arb create local-ws local-lib
-    [ -d "$TEST_DIR/project/local-ws/local-lib" ]
-    local branch
-    branch="$(git -C "$TEST_DIR/project/local-ws/local-lib" branch --show-current)"
-    [ "$branch" = "local-ws" ]
-}
-
-@test "arb status shows local for push status on remoteless repos" {
-    setup_local_repo
-    arb create local-ws local-lib
-    cd "$TEST_DIR/project/local-ws"
-    run arb status
-    # Local-only repos don't count as issues — exit 0
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"local-lib"* ]]
-    [[ "$output" == *"local"* ]]
-    [[ "$output" != *"not pushed"* ]]
-}
-
-@test "arb pull skips local repos with informational message" {
-    setup_local_repo
-    arb create local-ws local-lib
-    cd "$TEST_DIR/project/local-ws"
-    run arb pull --yes
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"local repo"* ]]
-    [[ "$output" == *"skipped"* ]]
-}
-
-@test "arb delete cleans up local repo without attempting remote operations" {
-    setup_local_repo
-    arb create local-ws local-lib
-    arb delete local-ws --force
-    [ ! -d "$TEST_DIR/project/local-ws" ]
-    # Branch should be deleted from canonical repo
-    run git -C "$TEST_DIR/project/.arb/repos/local-lib" show-ref --verify "refs/heads/local-ws"
+@test "arb create with remoteless repo errors with actionable message" {
+    git init "$TEST_DIR/project/.arb/repos/local-lib" >/dev/null 2>&1
+    (cd "$TEST_DIR/project/.arb/repos/local-lib" && git commit --allow-empty -m "init") >/dev/null 2>&1
+    run arb create local-ws local-lib
     [ "$status" -ne 0 ]
+    [[ "$output" == *"local-lib"* ]]
+    [[ "$output" == *"remote"* ]]
 }
 
-@test "mixed workspace with remote and local repos works correctly" {
-    setup_local_repo
-    arb create mixed-ws repo-a local-lib
-    [ -d "$TEST_DIR/project/mixed-ws/repo-a" ]
-    [ -d "$TEST_DIR/project/mixed-ws/local-lib" ]
-
-    cd "$TEST_DIR/project/mixed-ws"
-
-    # status works for both (exit 0 — fresh branch with no commits is not unpushed)
-    run arb status
-    [[ "$output" == *"repo-a"* ]]
-    [[ "$output" == *"local-lib"* ]]
-
-    # pull skips local
-    run arb pull --yes
-    [ "$status" -eq 0 ]
+@test "arb create with ambiguous remotes errors with actionable message" {
+    # Create a repo with two non-conventional remotes and no pushDefault
+    git init --bare "$TEST_DIR/origin/ambig.git" -b main >/dev/null 2>&1
+    git init --bare "$TEST_DIR/fork/ambig.git" -b main >/dev/null 2>&1
+    git clone "$TEST_DIR/origin/ambig.git" "$TEST_DIR/project/.arb/repos/ambig" >/dev/null 2>&1
+    (cd "$TEST_DIR/project/.arb/repos/ambig" && git commit --allow-empty -m "init" && git push) >/dev/null 2>&1
+    # Add a second remote named "fork" (not "upstream", so convention doesn't apply)
+    git -C "$TEST_DIR/project/.arb/repos/ambig" remote add fork "$TEST_DIR/fork/ambig.git"
+    # Do NOT set pushDefault — this makes remotes ambiguous
+    run arb create ambig-ws ambig
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"ambig"* ]]
+    [[ "$output" == *"remote"* ]]
 }
 
 

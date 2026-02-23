@@ -2,7 +2,6 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import checkbox from "@inquirer/checkbox";
 import confirm from "@inquirer/confirm";
-import { hasRemote } from "./git";
 import { error } from "./output";
 
 export function listWorkspaces(baseDir: string): string[] {
@@ -111,23 +110,4 @@ export function findRepoUsage(baseDir: string, repoName: string): string[] {
 		}
 	}
 	return using;
-}
-
-export async function classifyRepos(
-	wsDir: string,
-	reposDir: string,
-): Promise<{ repos: string[]; fetchDirs: string[]; localRepos: string[] }> {
-	const repos: string[] = [];
-	const fetchDirs: string[] = [];
-	const localRepos: string[] = [];
-	for (const repoDir of workspaceRepoDirs(wsDir)) {
-		const repo = basename(repoDir);
-		repos.push(repo);
-		if (!(await hasRemote(`${reposDir}/${repo}`))) {
-			localRepos.push(repo);
-		} else {
-			fetchDirs.push(repoDir);
-		}
-	}
-	return { repos, fetchDirs, localRepos };
 }

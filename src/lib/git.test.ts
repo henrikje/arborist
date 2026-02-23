@@ -9,7 +9,6 @@ import {
 	detectRebasedCommits,
 	getCommitsBetweenFull,
 	getDefaultBranch,
-	hasRemote,
 	isRepoDirty,
 	parseGitStatus,
 	predictMergeConflict,
@@ -107,18 +106,6 @@ describe("git repo functions", () => {
 			// git init defaults vary, but should be a non-empty string
 			if (!branch) throw new Error("expected default branch");
 			expect(branch.length).toBeGreaterThan(0);
-		});
-	});
-
-	describe("hasRemote", () => {
-		test("returns true for repo with remote", async () => {
-			expect(await hasRemote(repoDir)).toBe(true);
-		});
-
-		test("returns false for repo without remote", async () => {
-			const localDir = join(tmpDir, "local");
-			Bun.spawnSync(["git", "init", localDir]);
-			expect(await hasRemote(localDir)).toBe(false);
 		});
 	});
 

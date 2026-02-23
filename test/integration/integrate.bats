@@ -574,17 +574,6 @@ load test_helper/common-setup
     [[ "$output" == *"Pushed"* ]]
 }
 
-@test "arb pull --dry-run with no remote repos shows plan" {
-    setup_local_repo
-    arb create local-ws local-lib
-    cd "$TEST_DIR/project/local-ws"
-    run arb pull --dry-run
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"local repo"* ]]
-    [[ "$output" != *"Fetching"* ]]
-    [[ "$output" != *"Fetched"* ]]
-}
-
 @test "arb rebase skips repo when fetch fails" {
     arb create my-feature repo-a repo-b
 
