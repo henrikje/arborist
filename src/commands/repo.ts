@@ -145,7 +145,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 		.option("-y, --yes", "Skip confirmation prompt")
 		.summary("Remove canonical repos from .arb/repos/")
 		.description(
-			"Remove one or more canonical repository clones from .arb/repos/ and their associated template files from .arb/templates/repos/. This is the inverse of 'arb repo clone'.\n\nRefuses to remove repos that have worktrees in any workspace. Run 'arb drop <repo>' or 'arb remove <workspace>' first, then retry. Prompts with a repo picker when run without arguments.",
+			"Remove one or more canonical repository clones from .arb/repos/ and their associated template files from .arb/templates/repos/. This is the inverse of 'arb repo clone'.\n\nRefuses to remove repos that have worktrees in any workspace. Run 'arb detach <repo>' or 'arb delete <workspace>' first, then retry. Prompts with a repo picker when run without arguments.",
 		)
 		.action(async (nameArgs: string[], options: { allRepos?: boolean; yes?: boolean }) => {
 			const ctx = getCtx();
@@ -189,7 +189,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 					error(
 						`Cannot remove ${name} — used by ${usedBy.length === 1 ? "workspace" : "workspaces"}: ${usedBy.join(", ")}`,
 					);
-					info(`  Run 'arb drop ${name}' in each workspace, or 'arb remove <workspace>' first.`);
+					info(`  Run 'arb detach ${name}' in each workspace, or 'arb delete <workspace>' first.`);
 					process.exit(1);
 				}
 			}

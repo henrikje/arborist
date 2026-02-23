@@ -213,7 +213,7 @@ __arb_complete_create() {
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
 }
 
-__arb_complete_remove() {
+__arb_complete_delete() {
     local base_dir="$1" cur="$2"
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
     if [[ "$prev" == "-w" || "$prev" == "--where" ]]; then
@@ -307,7 +307,7 @@ __arb_complete_cd() {
     fi
 }
 
-__arb_complete_add() {
+__arb_complete_attach() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
         COMPREPLY=($(compgen -W "-a --all-repos" -- "$cur"))
@@ -316,7 +316,7 @@ __arb_complete_add() {
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
 }
 
-__arb_complete_drop() {
+__arb_complete_detach() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
         COMPREPLY=($(compgen -W "-f --force -a --all-repos --delete-branch" -- "$cur"))
@@ -517,12 +517,12 @@ _arb() {
         init)     __arb_complete_init "$cur" ;;
         repo)     __arb_complete_repo "$base_dir" "$cur" ;;
         create)   __arb_complete_create "$base_dir" "$cur" ;;
-        delete)   __arb_complete_remove "$base_dir" "$cur" ;;
+        delete)   __arb_complete_delete "$base_dir" "$cur" ;;
         list)     __arb_complete_list "$cur" ;;
         path)     __arb_complete_path "$base_dir" "$cur" ;;
         cd)       __arb_complete_cd "$base_dir" "$cur" ;;
-        attach)   __arb_complete_add "$base_dir" "$cur" ;;
-        detach)   __arb_complete_drop "$base_dir" "$cur" ;;
+        attach)   __arb_complete_attach "$base_dir" "$cur" ;;
+        detach)   __arb_complete_detach "$base_dir" "$cur" ;;
         status)   __arb_complete_status "$cur" ;;
         fetch)    __arb_complete_fetch ;;
         pull)     __arb_complete_pull "$base_dir" "$cur" ;;
