@@ -332,17 +332,44 @@ __arb_complete_status() {
         __arb_complete_where_value "$cur"
         return
     fi
-    COMPREPLY=($(compgen -W "-d --dirty -w --where -F --fetch -v --verbose -q --quiet --json" -- "$cur"))
+    COMPREPLY=($(compgen -W "-d --dirty -w --where -F --fetch --no-fetch -v --verbose -q --quiet --json" -- "$cur"))
 }
 
-__arb_complete_fetch() {
-    return  # No flags or arguments
+__arb_complete_rebranch() {
+    local base_dir="$1" cur="$2"
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "--continue --abort --delete-remote-old -F --fetch --no-fetch -n --dry-run -y --yes --include-in-progress" -- "$cur"))
+        return
+    fi
+}
+
+__arb_complete_log() {
+    local base_dir="$1" cur="$2"
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "-F --fetch --no-fetch -n --max-count --json" -- "$cur"))
+        return
+    fi
+    COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
+}
+
+__arb_complete_diff() {
+    local base_dir="$1" cur="$2"
+    local prev="${COMP_WORDS[COMP_CWORD-1]}"
+    if [[ "$prev" == "-w" || "$prev" == "--where" ]]; then
+        __arb_complete_where_value "$cur"
+        return
+    fi
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "-F --fetch --no-fetch --stat --json -d --dirty -w --where" -- "$cur"))
+        return
+    fi
+    COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
 }
 
 __arb_complete_pull() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-y --yes -n --dry-run --rebase --merge" -- "$cur"))
+        COMPREPLY=($(compgen -W "-y --yes -n --dry-run --rebase --merge --autostash" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -351,7 +378,7 @@ __arb_complete_pull() {
 __arb_complete_push() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-f --force --no-fetch -y --yes -n --dry-run" -- "$cur"))
+        COMPREPLY=($(compgen -W "-f --force -F --fetch --no-fetch -y --yes -n --dry-run" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -360,7 +387,7 @@ __arb_complete_push() {
 __arb_complete_rebase() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-F --no-fetch -y --yes -n --dry-run" -- "$cur"))
+        COMPREPLY=($(compgen -W "-F --fetch --no-fetch -y --yes -n --dry-run --retarget --autostash" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -369,7 +396,7 @@ __arb_complete_rebase() {
 __arb_complete_merge() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-F --no-fetch -y --yes -n --dry-run" -- "$cur"))
+        COMPREPLY=($(compgen -W "-F --fetch --no-fetch -y --yes -n --dry-run --autostash" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -501,7 +528,7 @@ _arb() {
 
     # Completing the subcommand itself
     if ((COMP_CWORD <= cmd_pos)); then
-        local commands="init repo create delete list path cd attach detach status fetch pull push rebase merge exec open template help"
+        local commands="init repo create delete list path cd attach detach status pull push rebase merge rebranch log diff exec open template help"
         # Also complete global flags
         if [[ "$cur" == -* ]]; then
             COMPREPLY=($(compgen -W "-C -h --help -v --version" -- "$cur"))
@@ -524,11 +551,13 @@ _arb() {
         attach)   __arb_complete_attach "$base_dir" "$cur" ;;
         detach)   __arb_complete_detach "$base_dir" "$cur" ;;
         status)   __arb_complete_status "$cur" ;;
-        fetch)    __arb_complete_fetch ;;
         pull)     __arb_complete_pull "$base_dir" "$cur" ;;
         push)     __arb_complete_push "$base_dir" "$cur" ;;
         rebase)   __arb_complete_rebase "$base_dir" "$cur" ;;
         merge)    __arb_complete_merge "$base_dir" "$cur" ;;
+        rebranch) __arb_complete_rebranch "$base_dir" "$cur" ;;
+        log)      __arb_complete_log "$base_dir" "$cur" ;;
+        diff)     __arb_complete_diff "$base_dir" "$cur" ;;
         exec)     __arb_complete_exec "$base_dir" "$cur" ;;
         open)     __arb_complete_open "$base_dir" "$cur" ;;
         template) __arb_complete_template "$base_dir" "$cur" ;;
