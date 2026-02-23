@@ -73,3 +73,10 @@ push_then_delete_remote() {
     # Prune so the local tracking ref is gone
     git -C "$TEST_DIR/project/.arb/repos/$repo" fetch --prune >/dev/null 2>&1
 }
+
+fetch_all_repos() {
+    for repo_dir in "$TEST_DIR/project/.arb/repos"/*/; do
+        [ -d "$repo_dir/.git" ] || continue
+        git -C "$repo_dir" fetch --prune 2>/dev/null || true
+    done
+}

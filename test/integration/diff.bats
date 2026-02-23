@@ -232,7 +232,7 @@ load test_helper/common-setup
 
     arb create stacked --base feat/auth -b feat/auth-ui repo-a repo-b
     cd "$TEST_DIR/project/stacked"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb diff --json
     [ "$status" -eq 0 ]
     # repo-b should be fallback-base (feat/auth doesn't exist, fell back to main)

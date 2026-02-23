@@ -132,7 +132,6 @@ load test_helper/common-setup
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     expected_sha=$(git -C "$TEST_DIR/project/my-feature/repo-a" rev-parse --short HEAD)
     run arb rebase --yes
     [[ "$output" == *"HEAD $expected_sha"* ]]
@@ -242,7 +241,7 @@ load test_helper/common-setup
 
     cd "$TEST_DIR/project/my-feature"
     # Fetch manually so rebase has fresh refs, then test --no-fetch skips fetching
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb rebase --no-fetch --yes
     [ "$status" -eq 0 ]
     [[ "$output" != *"Fetched"* ]]
@@ -298,7 +297,7 @@ load test_helper/common-setup
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream-conflict" > conflict.txt && git add conflict.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     # Start a rebase that will conflict (need fresh refs for manual git rebase)
     git -C "$TEST_DIR/project/my-feature/repo-a" rebase origin/main >/dev/null 2>&1 || true
 
@@ -331,7 +330,6 @@ load test_helper/common-setup
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     expected_sha=$(git -C "$TEST_DIR/project/my-feature/repo-a" rev-parse --short HEAD)
     run arb merge --yes
     [[ "$output" == *"HEAD $expected_sha"* ]]
@@ -389,7 +387,7 @@ load test_helper/common-setup
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb merge --no-fetch --yes
     [ "$status" -eq 0 ]
     [[ "$output" != *"Fetched"* ]]
@@ -476,7 +474,6 @@ load test_helper/common-setup
 
     # Pull the shared file into the feature branch
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     arb rebase --yes >/dev/null 2>&1
 
     # Now create a conflicting change on the feature branch
@@ -529,7 +526,6 @@ load test_helper/common-setup
 
     # Pull the shared file into the feature branch
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     arb rebase --yes >/dev/null 2>&1
 
     # Now create a conflicting change on the feature branch
@@ -647,7 +643,7 @@ load test_helper/common-setup
 
     # Fetch in the stacked workspace
     cd "$TEST_DIR/project/stacked"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
 
     # Status should show "base merged"
     run arb status
@@ -681,7 +677,7 @@ load test_helper/common-setup
 
     # Fetch in the stacked workspace
     cd "$TEST_DIR/project/stacked"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
 
     # Status should show "base merged"
     run arb status
@@ -867,7 +863,7 @@ load test_helper/common-setup
     (cd "$TEST_DIR/tmp-merge" && git merge origin/feat/auth --no-ff -m "merge feat/auth" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/stacked"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
     run arb status --json
     [[ "$output" == *"baseMergedIntoDefault"* ]]
     [[ "$output" == *'"merge"'* ]]
@@ -891,7 +887,7 @@ load test_helper/common-setup
 
     # Fetch to pick up the merge
     cd "$TEST_DIR/project/stacked"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
 
     # arb list should show "base merged" in the status column
     cd "$TEST_DIR/project"
@@ -928,7 +924,7 @@ load test_helper/common-setup
 
     # Fetch with prune in the stacked workspace
     cd "$TEST_DIR/project/stacked"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
 
     # Status should show "base merged" but NOT "base missing"
     run arb status
@@ -969,7 +965,7 @@ load test_helper/common-setup
 
     # Fetch with prune in the stacked workspace
     cd "$TEST_DIR/project/stacked"
-    arb fetch >/dev/null 2>&1
+    fetch_all_repos
 
     # Status should show "base merged" but NOT "base missing"
     run arb status
@@ -1466,7 +1462,6 @@ load test_helper/common-setup
 
     # Pull the shared file into the feature branch
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     arb rebase --yes >/dev/null 2>&1
 
     # Create a conflicting upstream change
@@ -1794,7 +1789,6 @@ load test_helper/common-setup
 
     # Pull the shared file into the feature branch
     cd "$TEST_DIR/project/my-feature"
-    arb fetch >/dev/null 2>&1
     arb rebase --yes >/dev/null 2>&1
 
     # Create upstream change to the shared file

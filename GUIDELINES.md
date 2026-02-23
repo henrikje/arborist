@@ -20,7 +20,7 @@ Arborist operates across many repositories, so clarity is non-negotiable. The de
 
 ### Coordination and overview, not authoring
 
-Arborist coordinates multi-repo operations (fetch, push, rebase, merge) and provides workspace-level overview (status, log, diff). It does not replace Git for authoring operations. Committing, staging, interactive rebase, and PR creation belong to the developer's direct interaction with each repository. `arb exec` bridges the gap for any per-repo operation Arborist doesn't cover.
+Arborist coordinates multi-repo operations (push, rebase, merge) and provides workspace-level overview (status, log, diff). It does not replace Git for authoring operations. Committing, staging, interactive rebase, and PR creation belong to the developer's direct interaction with each repository. `arb exec` bridges the gap for any per-repo operation Arborist doesn't cover.
 
 ### Do one thing and do it well
 
@@ -189,7 +189,7 @@ The parallel pre-fetch also serves a performance purpose: `parallelFetch()` fetc
 
 ### Repo classification: local vs remote
 
-`classifyRepos()` separates repos into those with remotes and local-only repos. Commands that interact with remotes (fetch, pull, integrate) use this to gracefully skip local repos with a reason. This allows mixed local/remote workspaces.
+`classifyRepos()` separates repos into those with remotes and local-only repos. Commands that interact with remotes (pull, integrate) use this to gracefully skip local repos with a reason. This allows mixed local/remote workspaces.
 
 ### In-progress state for partially-completing commands
 

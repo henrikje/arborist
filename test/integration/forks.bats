@@ -83,27 +83,6 @@ load test_helper/common-setup
     [ -f "$TEST_DIR/project/fork-rebase/repo-a/update.txt" ]
 }
 
-@test "fork: fetch fetches both remotes" {
-    setup_fork_repo repo-a
-    arb create fork-fetch repo-a
-
-    # Add a commit to upstream
-    local tmp_clone="$TEST_DIR/tmp-upstream-fetch"
-    git clone "$TEST_DIR/upstream/repo-a.git" "$tmp_clone" >/dev/null 2>&1
-    (cd "$tmp_clone" && echo "new" > new.txt && git add new.txt && git commit -m "new on upstream" && git push) >/dev/null 2>&1
-    rm -rf "$tmp_clone"
-
-    cd "$TEST_DIR/project/fork-fetch"
-    run arb fetch
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Fetched"* ]]
-
-    # upstream/main should have the new commit
-    local upstream_log
-    upstream_log="$(git -C "$TEST_DIR/project/.arb/repos/repo-a" log --oneline upstream/main)"
-    [[ "$upstream_log" == *"new on upstream"* ]]
-}
-
 @test "fork: status shows upstream remote in BASE column" {
     setup_fork_repo repo-a
     arb create fork-status repo-a
