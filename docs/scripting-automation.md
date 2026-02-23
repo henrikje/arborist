@@ -56,7 +56,7 @@ The full list of filter terms:
 | `unpushed` | local commits haven't been pushed to the share remote |
 | `behind-share` | the share remote has commits not yet pulled |
 | `behind-base` | the base branch has moved ahead (repo needs rebase/merge) |
-| `diverged` | the share remote and local branch have diverged |
+| `diverged` | the base branch and local branch have diverged (both ahead and behind) |
 | `drifted` | the worktree is on a different branch than the workspace expects |
 | `detached` | the worktree is in detached HEAD state |
 | `operation` | a git operation is in progress (rebase, merge, cherry-pick, etc.) |
@@ -66,7 +66,7 @@ The full list of filter terms:
 | `base-merged` | the configured base branch has been merged into the default branch |
 | `base-missing` | the configured base branch no longer exists (fell back to default) |
 | `at-risk` | the repo has unpushed commits, local changes, or is in a dirty operation state |
-| `stale` | the repo matches any staleness condition (at-risk, operation, drifted, etc.) |
+| `stale` | the repo needs pulling, rebasing, or has diverged from base |
 
 ## Quiet output
 
@@ -133,13 +133,7 @@ arb status --json --verbose | jq '[.repos[] | select(.verbose.unstaged | length 
 
 ## Exit codes
 
-`0` means success, `1` means failure or issues detected, `130` means the user aborted a confirmation prompt. `arb status` returns `1` when any repo has issues, making it useful as a health check:
-
-```bash
-if arb -C my-feature status > /dev/null; then
-  echo "all clean"
-fi
-```
+`0` means success, `1` means failure, `130` means the user aborted a confirmation prompt.
 
 ## Output separation
 
