@@ -485,7 +485,8 @@ export async function gatherRepoStatus(
 	// Ancestor check is cheap (single git command), always run when there's divergence.
 	// Squash check is more expensive — only run when branch is gone OR share is up to date.
 	const hasWork = baseStatus !== null && (baseStatus.ahead > 0 || baseStatus.behind > 0);
-	if (baseStatus !== null && !detached && hasWork) {
+	const isOnBaseBranch = actualBranch === baseStatus?.ref;
+	if (baseStatus !== null && !detached && hasWork && !isOnBaseBranch) {
 		const compareRef = upstreamRemote ? `${upstreamRemote}/${baseStatus.ref}` : baseStatus.ref;
 		const shareUpToDate =
 			shareStatus !== null && shareStatus.toPush === 0 && shareStatus.toPull === 0 && shareStatus.refMode !== "noRef";
