@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import type { ListJsonEntry } from "../lib/json-types";
-import { dim, green, info, red, yellow } from "../lib/output";
+import { dim, error, green, info, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, listWorkspaces, workspaceRepoDirs } from "../lib/repos";
@@ -63,24 +63,24 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 				// Conflict checks
 				if (options.quiet && options.json) {
-					process.stderr.write("Cannot combine --quiet with --json.\n");
+					error("Cannot combine --quiet with --json.");
 					process.exit(1);
 				}
 
 				// Resolve --dirty as shorthand for --where dirty
 				if (options.dirty && options.where) {
-					process.stderr.write("Cannot combine --dirty with --where. Use --where dirty,... instead.\n");
+					error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
 					process.exit(1);
 				}
 				const whereFilter = options.dirty ? "dirty" : options.where;
 				if (whereFilter) {
-					const err = validateWhere(whereFilter);
-					if (err) {
-						process.stderr.write(`${err}\n`);
+					const validationErr = validateWhere(whereFilter);
+					if (validationErr) {
+						error(validationErr);
 						process.exit(1);
 					}
 					if (options.status === false) {
-						process.stderr.write("Cannot combine --no-status with --where. --where requires status gathering.\n");
+						error("Cannot combine --no-status with --where. --where requires status gathering.");
 						process.exit(1);
 					}
 				}
@@ -120,7 +120,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 							base: "",
 							baseFellBack: false,
 							repos: "",
-							statusColored: red("(config missing)"),
+							statusColored: yellow("(config missing)"),
 							lastCommit: null,
 							special: "config-missing",
 						});

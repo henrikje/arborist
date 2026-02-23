@@ -92,7 +92,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 			const ctx = getCtx();
 
 			if (options.quiet && options.json) {
-				process.stderr.write("Cannot combine --quiet with --json.\n");
+				error("Cannot combine --quiet with --json.");
 				process.exit(1);
 			}
 
