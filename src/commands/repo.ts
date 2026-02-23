@@ -2,6 +2,7 @@ import { existsSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
+import type { RepoListJsonEntry } from "../lib/json-types";
 import { dim, error, info, plural, skipConfirmNotice, success, yellow } from "../lib/output";
 import { getRemoteUrl, resolveRemotes } from "../lib/remotes";
 import { findRepoUsage, listRepos, selectInteractive } from "../lib/repos";
@@ -82,16 +83,32 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 
 	repo
 		.command("list")
+		.option("-q, --quiet", "Output one repo name per line")
+		.option("--json", "Output structured JSON")
 		.summary("List cloned repos")
 		.description(
-			"List all repositories that have been cloned into .arb/repos/. These are the canonical clones that workspaces create worktrees from.",
+			"List all repositories that have been cloned into .arb/repos/. These are the canonical clones that workspaces create worktrees from. Use --quiet for plain enumeration (one name per line). Use --json for machine-readable output.",
 		)
-		.action(async () => {
+		.action(async (options: { quiet?: boolean; json?: boolean }) => {
 			const ctx = getCtx();
+
+			if (options.quiet && options.json) {
+				process.stderr.write("Cannot combine --quiet with --json.\n");
+				process.exit(1);
+			}
+
 			const repos = listRepos(ctx.reposDir);
 			if (repos.length === 0) return;
 
-			const entries: { name: string; url: string }[] = [];
+			// Quiet output — skip URL resolution for speed
+			if (options.quiet) {
+				for (const r of repos) {
+					process.stdout.write(`${r}\n`);
+				}
+				return;
+			}
+
+			const entries: RepoListJsonEntry[] = [];
 			for (const r of repos) {
 				const repoDir = `${ctx.reposDir}/${r}`;
 				let url: string | null = null;
@@ -103,6 +120,12 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 					url = await getRemoteUrl(repoDir, "origin");
 				}
 				entries.push({ name: r, url: url ?? "" });
+			}
+
+			// JSON output
+			if (options.json) {
+				process.stdout.write(`${JSON.stringify(entries, null, 2)}\n`);
+				return;
 			}
 
 			const maxRepo = Math.max(4, ...entries.map((e) => e.name.length));

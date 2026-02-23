@@ -16,6 +16,7 @@ import {
 	repoMatchesWhere,
 	validateWhere,
 } from "../lib/status";
+import { readNamesFromStdin } from "../lib/stdin";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -70,7 +71,12 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
 					if (failed.length > 0) process.exit(1);
 				}
 
-				const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
+				let repoNames = repoArgs;
+				if (repoNames.length === 0) {
+					const stdinNames = await readNamesFromStdin();
+					if (stdinNames.length > 0) repoNames = stdinNames;
+				}
+				const selectedRepos = resolveRepoSelection(wsDir, repoNames);
 
 				// Resolve --dirty as shorthand for --where dirty
 				if (options.dirty && options.where) {

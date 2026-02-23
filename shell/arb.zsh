@@ -268,7 +268,12 @@ _arb() {
                                     '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                                     '*:repo:($repo_names)'
                                 ;;
-                            list) ;;
+                            list)
+                                shift words; (( CURRENT-- ))
+                                _arguments \
+                                    '(-q --quiet --json)'{-q,--quiet}'[Output one repo name per line]' \
+                                    '(--json -q --quiet)--json[Output structured JSON]'
+                                ;;
                         esac
                     fi
                     ;;
@@ -277,19 +282,21 @@ _arb() {
                     ;;
                 list)
                     _arguments \
-                        '(-f --fetch)'{-f,--fetch}'[Fetch all repos before listing]' \
-                        '(-q --quick -w --where -d --dirty)'{-q,--quick}'[Skip per-repo status]' \
-                        '(-d --dirty -w --where -q --quick)'{-d,--dirty}'[Only list dirty workspaces]' \
-                        '(-d --dirty -w --where -q --quick)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
-                        '--json[Output structured JSON]'
+                        '(-F --fetch)'{-F,--fetch}'[Fetch all repos before listing]' \
+                        '--no-status[Skip per-repo status (faster for large setups)]' \
+                        '(-q --quiet --json)'{-q,--quiet}'[Output one workspace name per line]' \
+                        '(-d --dirty -w --where)'{-d,--dirty}'[Only list dirty workspaces]' \
+                        '(-d --dirty -w --where)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
+                        '(--json -q --quiet)--json[Output structured JSON]'
                     ;;
                 status)
                     _arguments \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only show dirty repos]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '(-f --fetch)'{-f,--fetch}'[Fetch before showing status]' \
-                        '(-v --verbose)'{-v,--verbose}'[Show file-level detail]' \
-                        '--json[Output structured JSON]'
+                        '(-F --fetch)'{-F,--fetch}'[Fetch before showing status]' \
+                        '(-v --verbose -q --quiet)'{-v,--verbose}'[Show file-level detail]' \
+                        '(-q --quiet --json -v --verbose)'{-q,--quiet}'[Output one repo name per line]' \
+                        '(--json -q --quiet)--json[Output structured JSON]'
                     ;;
                 exec)
                     _arguments \

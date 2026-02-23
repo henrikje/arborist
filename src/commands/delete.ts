@@ -29,6 +29,7 @@ import {
 	workspaceMatchesWhere,
 	wouldLoseWork,
 } from "../lib/status";
+import { readNamesFromStdin } from "../lib/stdin";
 import { type TemplateDiff, diffTemplates, displayTemplateDiffs } from "../lib/templates";
 import {
 	type LastCommitWidths,
@@ -396,19 +397,23 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 
 				let names = nameArgs;
 				if (names.length === 0) {
-					if (!isTTY()) {
+					const stdinNames = await readNamesFromStdin();
+					if (stdinNames.length > 0) {
+						names = stdinNames;
+					} else if (!isTTY()) {
 						error("No workspace specified.");
 						process.exit(1);
-					}
-					const workspaces = listWorkspaces(ctx.baseDir);
-					if (workspaces.length === 0) {
-						error("No workspaces found.");
-						process.exit(1);
-					}
-					names = await selectInteractive(workspaces, "Select workspaces to delete");
-					if (names.length === 0) {
-						error("No workspaces selected.");
-						process.exit(1);
+					} else {
+						const workspaces = listWorkspaces(ctx.baseDir);
+						if (workspaces.length === 0) {
+							error("No workspaces found.");
+							process.exit(1);
+						}
+						names = await selectInteractive(workspaces, "Select workspaces to delete");
+						if (names.length === 0) {
+							error("No workspaces selected.");
+							process.exit(1);
+						}
 					}
 				}
 

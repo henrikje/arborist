@@ -193,7 +193,9 @@ __arb_complete_repo() {
                 COMPREPLY=($(compgen -W "$repo_names" -- "$cur"))
             fi
             ;;
-        list) ;;
+        list)
+            COMPREPLY=($(compgen -W "-q --quiet --json" -- "$cur"))
+            ;;
     esac
 }
 
@@ -232,7 +234,7 @@ __arb_complete_list() {
         __arb_complete_where_value "$cur"
         return
     fi
-    COMPREPLY=($(compgen -W "-f --fetch -q --quick -d --dirty -w --where --json" -- "$cur"))
+    COMPREPLY=($(compgen -W "-F --fetch --no-fetch --no-status -q --quiet -d --dirty -w --where --json" -- "$cur"))
 }
 
 __arb_complete_path() {
@@ -330,7 +332,7 @@ __arb_complete_status() {
         __arb_complete_where_value "$cur"
         return
     fi
-    COMPREPLY=($(compgen -W "-d --dirty -w --where -f --fetch -v --verbose --json" -- "$cur"))
+    COMPREPLY=($(compgen -W "-d --dirty -w --where -F --fetch -v --verbose -q --quiet --json" -- "$cur"))
 }
 
 __arb_complete_fetch() {

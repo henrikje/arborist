@@ -8,6 +8,7 @@ import type { RepoRemotes } from "../lib/remotes";
 import { resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import { type RepoStatus, gatherRepoStatus } from "../lib/status";
+import { readNamesFromStdin } from "../lib/stdin";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
@@ -45,7 +46,12 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				const { wsDir, workspace } = requireWorkspace(ctx);
 				const branch = await requireBranch(wsDir, workspace);
 
-				const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
+				let repoNames = repoArgs;
+				if (repoNames.length === 0) {
+					const stdinNames = await readNamesFromStdin();
+					if (stdinNames.length > 0) repoNames = stdinNames;
+				}
+				const selectedRepos = resolveRepoSelection(wsDir, repoNames);
 				const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
 				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 

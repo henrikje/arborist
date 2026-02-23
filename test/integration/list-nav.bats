@@ -87,9 +87,9 @@ load test_helper/common-setup
     [[ "$output" == *"STATUS"* ]]
 }
 
-@test "arb list --quick hides LAST COMMIT column" {
+@test "arb list --no-status hides LAST COMMIT column" {
     arb create ws-one repo-a
-    run arb list --quick
+    run arb list --no-status
     [[ "$output" != *"LAST COMMIT"* ]]
 }
 
@@ -152,10 +152,10 @@ load test_helper/common-setup
     [[ "$output" != *"BASE"* ]]
 }
 
-@test "arb list --quick shows workspaces without STATUS column" {
+@test "arb list --no-status shows workspaces without STATUS column" {
     arb create ws-one repo-a
     arb create ws-two repo-b
-    run arb list --quick
+    run arb list --no-status
     [ "$status" -eq 0 ]
     [[ "$output" == *"ws-one"* ]]
     [[ "$output" == *"ws-two"* ]]
@@ -166,12 +166,17 @@ load test_helper/common-setup
     [[ "$output" != *"no issues"* ]]
 }
 
-@test "arb list --quick -q shorthand works" {
+@test "arb list -q outputs one workspace name per line" {
     arb create ws-one repo-a
+    arb create ws-two repo-b
     run arb list -q
     [ "$status" -eq 0 ]
     [[ "$output" == *"ws-one"* ]]
+    [[ "$output" == *"ws-two"* ]]
+    # No headers, no ANSI
+    [[ "$output" != *"WORKSPACE"* ]]
     [[ "$output" != *"STATUS"* ]]
+    [[ "$output" != *$'\033'* ]]
 }
 
 @test "arb list piped output has no progress escape sequences" {
@@ -268,9 +273,9 @@ assert ws['branch'] == 'empty-ws'
 "
 }
 
-@test "arb list --json --quick omits aggregate fields" {
+@test "arb list --json --no-status omits aggregate fields" {
     arb create my-feature repo-a
-    run arb list --json --quick
+    run arb list --json --no-status
     echo "$output" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
@@ -283,9 +288,9 @@ assert 'statusLabels' not in ws
 "
 }
 
-@test "arb list --json --quick includes basic metadata" {
+@test "arb list --json --no-status includes basic metadata" {
     arb create my-feature repo-a
-    run arb list --json --quick
+    run arb list --json --no-status
     echo "$output" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
@@ -547,7 +552,7 @@ assert data == []
 @test "arb -C with list shows workspaces" {
     arb create my-feature repo-a
     cd /tmp
-    run arb -C "$TEST_DIR/project" list -q
+    run arb -C "$TEST_DIR/project" list --no-status
     [ "$status" -eq 0 ]
     [[ "$output" == *"my-feature"* ]]
 }
@@ -595,11 +600,66 @@ assert data == []
     [[ "$output" == *"Cannot combine --dirty with --where"* ]]
 }
 
-@test "arb list --dirty --quick conflicts" {
+@test "arb list --dirty --no-status conflicts" {
     arb create ws-one repo-a
-    run arb list --dirty --quick
+    run arb list --dirty --no-status
     [ "$status" -ne 0 ]
     [[ "$output" == *"--where"* ]]
+}
+
+@test "arb list --quiet outputs workspace names only" {
+    arb create ws-one repo-a
+    arb create ws-two repo-b
+    run arb list --quiet
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-one"* ]]
+    [[ "$output" == *"ws-two"* ]]
+    [[ "$output" != *"WORKSPACE"* ]]
+    [[ "$output" != *"BRANCH"* ]]
+}
+
+@test "arb list --quiet --where filters workspace names" {
+    arb create ws-clean repo-a
+    arb create ws-dirty repo-a
+    echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
+    run arb list --quiet --where dirty
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-dirty"* ]]
+    [[ "$output" != *"ws-clean"* ]]
+}
+
+@test "arb list --quiet --json conflicts" {
+    arb create ws-one repo-a
+    run arb list --quiet --json
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot combine --quiet with --json"* ]]
+}
+
+@test "arb repo list --quiet outputs repo names only" {
+    run arb repo list -q
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"repo-b"* ]]
+    [[ "$output" != *"REPO"* ]]
+    [[ "$output" != *"URL"* ]]
+}
+
+@test "arb repo list --json outputs valid JSON" {
+    run arb repo list --json
+    [ "$status" -eq 0 ]
+    echo "$output" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+assert len(data) == 2
+assert 'name' in data[0]
+assert 'url' in data[0]
+"
+}
+
+@test "arb repo list --quiet --json conflicts" {
+    run arb repo list --quiet --json
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot combine --quiet with --json"* ]]
 }
 
 @test "arb -C is visible in --help output" {
