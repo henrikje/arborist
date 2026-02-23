@@ -20,6 +20,7 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
 		.action(async (repoArgs: string[], options: { allRepos?: boolean }) => {
 			const ctx = getCtx();
 			const { wsDir, workspace } = requireWorkspace(ctx);
+			const branch = await requireBranch(wsDir, workspace);
 
 			const allRepos = listRepos(ctx.reposDir);
 			const currentRepos = new Set(workspaceRepoDirs(wsDir).map((d) => basename(d)));
@@ -53,7 +54,6 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
 					process.exit(1);
 				}
 			}
-			const branch = await requireBranch(wsDir, workspace);
 			const base = configGet(`${wsDir}/.arbws/config`, "base") ?? undefined;
 
 			const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);

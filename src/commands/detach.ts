@@ -21,6 +21,7 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 		.action(async (repoArgs: string[], options: { force?: boolean; allRepos?: boolean; deleteBranch?: boolean }) => {
 			const ctx = getCtx();
 			const { wsDir, workspace } = requireWorkspace(ctx);
+			const branch = await requireBranch(wsDir, workspace);
 
 			const currentRepos = workspaceRepoDirs(wsDir).map((d) => basename(d));
 
@@ -46,7 +47,6 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 					process.exit(1);
 				}
 			}
-			const branch = await requireBranch(wsDir, workspace);
 
 			const detached: string[] = [];
 			const skipped: string[] = [];
