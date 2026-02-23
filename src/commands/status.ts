@@ -56,8 +56,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 			}) => {
 				const ctx = getCtx();
 				requireWorkspace(ctx);
-				const code = await runStatus(ctx, options);
-				process.exitCode = code;
+				await runStatus(ctx, options);
 			},
 		);
 }
@@ -77,13 +76,13 @@ export interface CellData {
 async function runStatus(
 	ctx: ArbContext,
 	options: { dirty?: boolean; where?: string; fetch?: boolean; verbose?: boolean; quiet?: boolean; json?: boolean },
-): Promise<number> {
+): Promise<void> {
 	const wsDir = `${ctx.baseDir}/${ctx.currentWorkspace}`;
 
 	// Resolve --dirty as shorthand for --where dirty
 	if (options.dirty && options.where) {
 		process.stderr.write("Cannot combine --dirty with --where. Use --where dirty,... instead.\n");
-		return 1;
+		process.exit(1);
 	}
 	const where = options.dirty ? "dirty" : options.where;
 
@@ -92,7 +91,7 @@ async function runStatus(
 		const err = validateWhere(where);
 		if (err) {
 			process.stderr.write(`${err}\n`);
-			return 1;
+			process.exit(1);
 		}
 	}
 
@@ -113,7 +112,7 @@ async function runStatus(
 		const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
 		const results = await parallelFetch(fetchDirs, undefined, remotesMap);
 		const failed = reportFetchFailures(repos, results);
-		if (failed.length > 0) return 1;
+		if (failed.length > 0) process.exit(1);
 	}
 
 	const tty = isTTY();
@@ -141,7 +140,7 @@ async function runStatus(
 		for (const repo of filteredSummary.repos) {
 			process.stdout.write(`${repo.name}\n`);
 		}
-		return filteredSummary.atRiskCount > 0 ? 1 : 0;
+		return;
 	}
 
 	// JSON output
@@ -157,14 +156,14 @@ async function runStatus(
 			output = { ...filteredSummary, repos: reposWithVerbose };
 		}
 		process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
-		return filteredSummary.atRiskCount > 0 ? 1 : 0;
+		return;
 	}
 
 	const repos = filteredSummary.repos;
 
 	if (repos.length === 0) {
 		process.stdout.write("  (no repos)\n");
-		return 0;
+		return;
 	}
 
 	// Predict conflicts for diverged repos (both ahead and behind base)
@@ -356,8 +355,6 @@ async function runStatus(
 			}
 		}
 	}
-
-	return filteredSummary.atRiskCount > 0 ? 1 : 0;
 }
 
 // Plain-text cell computation (no ANSI codes) for width measurement
