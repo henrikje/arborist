@@ -21,16 +21,32 @@ This is especially useful in scripted or AI-driven workflows where you want to i
 
 ## Filtering
 
-Use `--where` (`-w`) to limit commands to repos matching specific conditions. Multiple terms can be comma-separated and are combined with OR logic — a repo is included if it matches _any_ of the listed terms.
+Use `--where` (`-w`) to limit commands to repos matching specific conditions.
+
+Comma-separated terms use **OR** logic — a repo matches if it satisfies _any_ term:
 
 ```bash
-arb status --where dirty                # repos with uncommitted changes
-arb exec --where unpushed git stash     # run a command only in repos with unpushed commits
-arb remove --all-safe --where gone      # batch-remove workspaces whose branches are gone from the remote
+arb status --where dirty,unpushed       # repos that are dirty OR unpushed
 arb list --where stale                  # workspaces with stale repos
 ```
 
-`--where` is supported on `status`, `exec`, `open`, `list`, and `remove`. On `exec` and `open`, the shorthand `--dirty` (`-d`) is equivalent to `--where dirty`.
+Use `+` for **AND** — a repo must satisfy _all_ terms in the group:
+
+```bash
+arb exec --where dirty+unpushed git stash   # only repos that are both dirty AND unpushed
+arb status --where dirty+behind-base        # dirty repos that also need rebasing
+```
+
+`+` binds tighter than `,`, so you can mix both:
+
+```bash
+arb status --where dirty+unpushed,gone      # (dirty AND unpushed) OR gone
+arb delete --all-safe --where gone          # batch-remove workspaces whose branches are gone
+```
+
+For workspace-level commands (`list`, `delete`), AND applies per-repo: a workspace matches `dirty+unpushed` only if a _single_ repo is both dirty and unpushed, not if one repo is dirty and a different repo is unpushed.
+
+`--where` is supported on `status`, `exec`, `open`, `diff`, `list`, and `delete`. On `exec` and `open`, the shorthand `--dirty` (`-d`) is equivalent to `--where dirty`.
 
 The full list of filter terms:
 

@@ -21,10 +21,11 @@ Use `--fetch` (`-f`) to fetch all repos before listing, ensuring the status refl
 ```bash
 arb list --fetch                   # fetch first, then list
 arb list --where at-risk           # workspaces with at-risk repos
+arb list --where dirty+unpushed    # workspaces where a repo is both dirty AND unpushed
 arb list --where stale             # workspaces that may need attention
 ```
 
-See [Scripting & automation](scripting-automation.md#filtering) for the full list of filter terms.
+Use `,` for OR and `+` for AND. See [Scripting & automation](scripting-automation.md#filtering) for the full list of filter terms and syntax details.
 
 ## Navigate
 
