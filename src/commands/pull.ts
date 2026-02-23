@@ -128,7 +128,8 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 
 				for (const a of willPull) {
 					inlineStart(a.repo, `pulling (${a.pullMode})`);
-					const pullRemote = remotesMap.get(a.repo)?.share ?? "origin";
+					const pullRemote = remotesMap.get(a.repo)?.share;
+					if (!pullRemote) continue;
 
 					if (a.pullMode === "rebase") {
 						// Rebase mode: pass --autostash to git pull --rebase when needed
@@ -354,7 +355,8 @@ async function predictPullConflicts(
 		assessments
 			.filter((a) => a.outcome === "will-pull")
 			.map(async (a) => {
-				const shareRemote = remotesMap.get(a.repo)?.share ?? "origin";
+				const shareRemote = remotesMap.get(a.repo)?.share;
+				if (!shareRemote) return;
 				const ref = `${shareRemote}/${branch}`;
 				if (a.behind > 0 && a.toPush > 0) {
 					const prediction = await predictMergeConflict(a.repoDir, ref);

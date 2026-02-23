@@ -371,8 +371,6 @@ async function assessRepo(
 	retargetExplicit: string | null = null,
 	autostash = false,
 ): Promise<RepoAssessment> {
-	const upstreamRemote = status.base?.remote ?? "origin";
-
 	const headSha = await getShortHead(repoDir);
 
 	const base: RepoAssessment = {
@@ -381,7 +379,7 @@ async function assessRepo(
 		outcome: "skip",
 		behind: 0,
 		ahead: 0,
-		upstreamRemote,
+		upstreamRemote: "",
 		headSha,
 		shallow: status.identity.shallow,
 	};
@@ -425,6 +423,14 @@ async function assessRepo(
 	if (status.base === null) {
 		return { ...base, skipReason: "no base branch" };
 	}
+
+	// After this point, status.base is guaranteed non-null.
+	// Remote repos must have a resolved upstream remote to proceed.
+	if (!status.base.remote) {
+		return { ...base, skipReason: "no upstream remote" };
+	}
+	const upstreamRemote = status.base.remote;
+	base.upstreamRemote = upstreamRemote;
 
 	// Explicit retarget to a specified branch
 	if (retargetExplicit) {

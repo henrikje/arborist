@@ -14,6 +14,7 @@ import { resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos } from "../lib/repos";
 import {
 	type RepoStatus,
+	baseRef,
 	computeFlags,
 	computeSummaryAggregates,
 	gatherWorkspaceSummary,
@@ -155,7 +156,7 @@ async function runStatus(
 				const repoDir = `${wsDir}/${r.name}`;
 				const base = r.base;
 				if (!base) return;
-				const ref = `${base.remote}/${base.ref}`;
+				const ref = baseRef(base);
 				const prediction = await predictMergeConflict(repoDir, ref);
 				if (prediction?.hasConflict) {
 					conflictRepos.add(r.name);
@@ -363,9 +364,8 @@ function plainCells(repo: RepoStatus): CellData {
 	// Col 3: base name — always show remote/ref for clarity
 	let baseName: string;
 	if (repo.base) {
-		baseName = repo.base.configuredRef
-			? `${repo.base.remote}/${repo.base.configuredRef}`
-			: `${repo.base.remote}/${repo.base.ref}`;
+		const branch = repo.base.configuredRef ?? repo.base.ref;
+		baseName = repo.base.remote ? `${repo.base.remote}/${branch}` : branch;
 	} else {
 		baseName = "";
 	}
@@ -391,7 +391,7 @@ function plainCells(repo: RepoStatus): CellData {
 	} else if (repo.share.refMode === "configured" && repo.share.ref) {
 		remoteName = repo.share.ref;
 	} else {
-		remoteName = `${repo.share?.remote ?? "origin"}/${actualBranch}`;
+		remoteName = `${repo.share?.remote}/${actualBranch}`;
 	}
 
 	// Col 6: remote diff
@@ -527,8 +527,8 @@ async function gatherVerboseDetail(repo: RepoStatus, wsDir: string): Promise<Ver
 
 	// Ahead of base (suppress when base fell back — numbers are against the fallback, not the configured base)
 	if (repo.base && repo.base.ahead > 0 && !repo.base.configuredRef) {
-		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
-		const commits = await getCommitsBetweenFull(repoDir, baseRef, "HEAD");
+		const ref = baseRef(repo.base);
+		const commits = await getCommitsBetweenFull(repoDir, ref, "HEAD");
 		if (commits.length > 0) {
 			verbose.aheadOfBase = commits.map((c) => ({ hash: c.fullHash, shortHash: c.shortHash, subject: c.subject }));
 		}
@@ -536,8 +536,8 @@ async function gatherVerboseDetail(repo: RepoStatus, wsDir: string): Promise<Ver
 
 	// Behind base (suppress when base fell back)
 	if (repo.base && repo.base.behind > 0 && !repo.base.configuredRef) {
-		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
-		const commits = await getCommitsBetweenFull(repoDir, "HEAD", baseRef);
+		const ref = baseRef(repo.base);
+		const commits = await getCommitsBetweenFull(repoDir, "HEAD", ref);
 		if (commits.length > 0) {
 			verbose.behindBase = commits.map((c) => ({ hash: c.fullHash, shortHash: c.shortHash, subject: c.subject }));
 		}
@@ -592,9 +592,9 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 
 	// Merged into base
 	if (repo.base?.mergedIntoBase) {
-		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
+		const ref = baseRef(repo.base);
 		const strategy = repo.base.mergedIntoBase === "squash" ? "squash" : "merge";
-		sections.push(`\n${SECTION_INDENT}Branch merged into ${baseRef} (${strategy})\n`);
+		sections.push(`\n${SECTION_INDENT}Branch merged into ${ref} (${strategy})\n`);
 	}
 
 	// Base branch merged into default
@@ -608,7 +608,8 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 
 	// Configured base not found (fell back to default) — skip when base merged already covers it
 	if (repo.base?.configuredRef && !repo.base.baseMergedIntoDefault) {
-		let section = `\n${SECTION_INDENT}Configured base branch ${repo.base.configuredRef} not found on ${repo.base.remote}\n`;
+		const remoteSuffix = repo.base.remote ? ` on ${repo.base.remote}` : "";
+		let section = `\n${SECTION_INDENT}Configured base branch ${repo.base.configuredRef} not found${remoteSuffix}\n`;
 		section += `${SECTION_INDENT}Run 'arb rebase --retarget' to rebase onto the default branch\n`;
 		sections.push(section);
 	}
@@ -618,8 +619,8 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 
 	// Ahead of base
 	if (verbose?.aheadOfBase && repo.base) {
-		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
-		let section = `\n${SECTION_INDENT}Ahead of ${baseRef}:\n`;
+		const ref = baseRef(repo.base);
+		let section = `\n${SECTION_INDENT}Ahead of ${ref}:\n`;
 		for (const c of verbose.aheadOfBase) {
 			section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}\n`;
 		}
@@ -628,8 +629,8 @@ async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void
 
 	// Behind base
 	if (verbose?.behindBase && repo.base) {
-		const baseRef = `${repo.base.remote}/${repo.base.ref}`;
-		let section = `\n${SECTION_INDENT}Behind ${baseRef}:\n`;
+		const ref = baseRef(repo.base);
+		let section = `\n${SECTION_INDENT}Behind ${ref}:\n`;
 		for (const c of verbose.behindBase) {
 			section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}\n`;
 		}

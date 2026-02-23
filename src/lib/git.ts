@@ -53,7 +53,7 @@ export async function getShortHead(repoDir: string): Promise<string> {
 	return result.exitCode === 0 ? result.stdout.trim() : "";
 }
 
-export async function getDefaultBranch(repoDir: string, remote = "origin"): Promise<string | null> {
+export async function getDefaultBranch(repoDir: string, remote: string): Promise<string | null> {
 	// Try remote HEAD first
 	const symRef = await git(repoDir, "symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`);
 	if (symRef.exitCode === 0) {
@@ -107,7 +107,7 @@ export async function branchExistsLocally(repoDir: string, branch: string): Prom
 	return result.exitCode === 0;
 }
 
-export async function remoteBranchExists(repoDir: string, branch: string, remote = "origin"): Promise<boolean> {
+export async function remoteBranchExists(repoDir: string, branch: string, remote: string): Promise<boolean> {
 	const result = await git(repoDir, "show-ref", "--verify", "--quiet", `refs/remotes/${remote}/${branch}`);
 	return result.exitCode === 0;
 }

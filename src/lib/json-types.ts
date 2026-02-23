@@ -14,7 +14,7 @@ export interface StatusJsonRepo {
 	};
 	local: { staged: number; modified: number; untracked: number; conflicts: number };
 	base: {
-		remote: string;
+		remote: string | null;
 		ref: string;
 		configuredRef: string | null;
 		ahead: number;

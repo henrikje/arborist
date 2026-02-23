@@ -180,8 +180,6 @@ async function assessPushRepo(
 	branch: string,
 	options?: { force?: boolean },
 ): Promise<PushAssessment> {
-	const shareRemote = status.share?.remote ?? "origin";
-
 	const headSha = await getShortHead(repoDir);
 
 	const behindBase = status.base?.behind ?? 0;
@@ -194,7 +192,7 @@ async function assessPushRepo(
 		behind: 0,
 		rebased: 0,
 		branch,
-		shareRemote,
+		shareRemote: status.share?.remote ?? "",
 		newBranch: false,
 		headSha,
 		recreate: false,
@@ -205,6 +203,10 @@ async function assessPushRepo(
 	if (status.share === null) {
 		return { ...base, skipReason: "local repo" };
 	}
+
+	// After this point, status.share is guaranteed non-null.
+	const shareRemote = status.share.remote;
+	base.shareRemote = shareRemote;
 
 	// Branch check — detached or drifted
 	if (status.identity.headMode.kind === "detached") {

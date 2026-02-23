@@ -103,7 +103,7 @@ describe("git repo functions", () => {
 
 	describe("getDefaultBranch", () => {
 		test("returns the HEAD branch name", async () => {
-			const branch = await getDefaultBranch(repoDir);
+			const branch = await getDefaultBranch(repoDir, "origin");
 			// git init defaults vary, but should be a non-empty string
 			if (!branch) throw new Error("expected default branch");
 			expect(branch.length).toBeGreaterThan(0);
@@ -176,7 +176,7 @@ describe("git repo functions", () => {
 
 	describe("checkBranchMatch", () => {
 		test("matches when on expected branch", async () => {
-			const defaultBranch = await getDefaultBranch(repoDir);
+			const defaultBranch = await getDefaultBranch(repoDir, "origin");
 			if (!defaultBranch) throw new Error("expected default branch");
 			const result = await checkBranchMatch(repoDir, defaultBranch);
 			expect(result.matches).toBe(true);
@@ -200,7 +200,7 @@ describe("git repo functions", () => {
 			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "feature commit"]);
 
 			// Add a different change on the default branch
-			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
 			writeFileSync(join(repoDir, "main.txt"), "main content");
 			Bun.spawnSync(["git", "-C", repoDir, "add", "main.txt"]);
@@ -215,7 +215,7 @@ describe("git repo functions", () => {
 		});
 
 		test("returns conflict for overlapping changes", async () => {
-			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
 
 			// Create a shared file on the default branch (common ancestor)
 			writeFileSync(join(repoDir, "shared.txt"), "original");
@@ -250,7 +250,7 @@ describe("git repo functions", () => {
 
 	describe("detectRebasedCommits", () => {
 		test("detects rebased commits after rebase onto advanced main", async () => {
-			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
 
 			// Create feature branch with two commits
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
@@ -331,7 +331,7 @@ describe("git repo functions", () => {
 
 	describe("getCommitsBetweenFull", () => {
 		test("returns short and full hashes with subjects", async () => {
-			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
 
 			// Create a feature branch with commits
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
@@ -354,7 +354,7 @@ describe("git repo functions", () => {
 
 	describe("detectBranchMerged", () => {
 		test("detects merge commit", async () => {
-			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
 
 			// Create feature branch with a commit
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
@@ -373,7 +373,7 @@ describe("git repo functions", () => {
 		});
 
 		test("detects single-commit rebase merge via patch-id", async () => {
-			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
 
 			// Create feature branch with a commit
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
@@ -396,7 +396,7 @@ describe("git repo functions", () => {
 		});
 
 		test("detects squash merge via patch-id", async () => {
-			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
 
 			// Create feature branch with multiple commits
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
@@ -419,7 +419,7 @@ describe("git repo functions", () => {
 		});
 
 		test("returns null for unmerged branch", async () => {
-			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
 
 			// Create feature branch with a commit (don't merge it)
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
@@ -432,7 +432,7 @@ describe("git repo functions", () => {
 		});
 
 		test("returns null for modified squash (patch-id mismatch)", async () => {
-			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
 
 			// Create feature branch with a commit
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
@@ -452,7 +452,7 @@ describe("git repo functions", () => {
 		});
 
 		test("returns merge for empty branch (no commits ahead of base)", async () => {
-			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
 
 			// Create feature branch at same point as main (no extra commits)
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
@@ -463,7 +463,7 @@ describe("git repo functions", () => {
 		});
 
 		test("respects commit limit", async () => {
-			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
 
 			// Create feature branch with a commit
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
@@ -494,7 +494,7 @@ describe("git repo functions", () => {
 		});
 
 		test("detects merge commit with explicit branchRef", async () => {
-			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
 
 			// Create a base branch with a commit
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feat/auth"]);
@@ -512,7 +512,7 @@ describe("git repo functions", () => {
 		});
 
 		test("detects squash merge with explicit branchRef", async () => {
-			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
 
 			// Create a base branch with commits
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feat/auth"]);
@@ -531,7 +531,7 @@ describe("git repo functions", () => {
 		});
 
 		test("returns null with explicit branchRef when not merged", async () => {
-			const defaultBranch = (await getDefaultBranch(repoDir)) ?? "main";
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
 
 			// Create a base branch with a commit (not merged into main)
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feat/auth"]);

@@ -5,7 +5,7 @@ import { bold, dim, error, plural, stdout, success, yellow } from "../lib/output
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { classifyRepos, resolveRepoSelection } from "../lib/repos";
-import { type RepoStatus, computeFlags, gatherWorkspaceSummary } from "../lib/status";
+import { type RepoStatus, baseRef, computeFlags, gatherWorkspaceSummary } from "../lib/status";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -116,8 +116,8 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, max
 			note = "no base branch, showing recent";
 		} else {
 			const baseFellBack = repo.base.configuredRef != null && repo.base.baseMergedIntoDefault == null;
-			const baseRef = `${repo.base.remote}/${repo.base.ref}`;
-			gitArgs.push(`${baseRef}..HEAD`);
+			const ref = baseRef(repo.base);
+			gitArgs.push(`${ref}..HEAD`);
 			if (maxCount !== undefined) {
 				gitArgs.push("-n", `${maxCount}`);
 			}
@@ -195,8 +195,8 @@ async function gatherRepoLog(
 	}
 
 	const baseFellBack = repo.base.configuredRef != null && repo.base.baseMergedIntoDefault == null;
-	const baseRef = `${repo.base.remote}/${repo.base.ref}`;
-	let commits = await getCommitsBetweenFull(repoDir, baseRef, "HEAD");
+	const ref = baseRef(repo.base);
+	let commits = await getCommitsBetweenFull(repoDir, ref, "HEAD");
 
 	if (maxCount !== undefined && commits.length > maxCount) {
 		commits = commits.slice(0, maxCount);

@@ -32,6 +32,12 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
 					process.exit(1);
 				}
 				repos = available;
+			} else if (repos.length > 0) {
+				const unknown = repos.filter((r) => !allRepos.includes(r));
+				if (unknown.length > 0) {
+					error(`Unknown repos: ${unknown.join(", ")}. Not found in .arb/repos/.`);
+					process.exit(1);
+				}
 			} else if (repos.length === 0) {
 				if (!process.stdin.isTTY) {
 					error("No repos specified. Pass repo names or use --all-repos.");
