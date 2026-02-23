@@ -144,7 +144,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				if (repos.length === 0) {
 					success(`Created workspace ${name}`);
 					info(`  ${dim(wsDir)}`);
-					warn("No repos added. Use 'arb add' to add repos to this workspace.");
+					warn("No repos added. Use 'arb attach' to add repos to this workspace.");
 				} else if (result.failed.length === 0 && result.skipped.length === 0) {
 					success(`Created workspace ${name} (${plural(result.created.length, "repo")})${branchSuffix}`);
 					info(`  ${dim(wsDir)}`);

@@ -73,7 +73,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 		.command("template")
 		.summary("Manage workspace templates")
 		.description(
-			"Manage template files that are automatically seeded into new workspaces. Templates live in .arb/templates/ and are copied into workspaces during 'arb create' and 'arb add'. Files ending with .arbtemplate undergo placeholder substitution (__WORKSPACE_PATH__, __WORKTREE_PATH__, etc.) and have the extension stripped at the destination. Use subcommands to add, remove, list, diff, and apply templates.",
+			"Manage template files that are automatically seeded into new workspaces. Templates live in .arb/templates/ and are copied into workspaces during 'arb create' and 'arb attach'. Files ending with .arbtemplate undergo placeholder substitution (__WORKSPACE_PATH__, __WORKTREE_PATH__, etc.) and have the extension stripped at the destination. Use subcommands to add, remove, list, diff, and apply templates.",
 		);
 
 	// ── template add ─────────────────────────────────────────────────

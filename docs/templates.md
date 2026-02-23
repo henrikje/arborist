@@ -31,8 +31,8 @@ All template commands support `--repo <name>` and `--workspace` flags for explic
 ## When templates are applied
 
 - **`arb create`** — seeds workspace templates + repo templates for all created repos
-- **`arb add`** — seeds repo templates for newly added repos only (workspace already set up)
-- **`arb remove`** — lists any template files that differ from their originals, so you can update templates before the workspace is gone
+- **`arb attach`** — seeds repo templates for newly attached repos only (workspace already set up)
+- **`arb delete`** — lists any template files that differ from their originals, so you can update templates before the workspace is gone
 - **No templates dir?** — silently skipped, zero noise
 
 ## Copy-if-missing semantics
@@ -69,7 +69,7 @@ Files ending with `.arbtemplate` undergo placeholder substitution when seeded. T
 
 `__WORKTREE_NAME__` and `__WORKTREE_PATH__` are only replaced in repo-scoped templates. In workspace-scoped templates they are left as literal text.
 
-Substitution happens wherever `.arbtemplate` files are processed: `arb create`, `arb add`, `arb template apply`, `arb template diff`, and `arb template apply --force`.
+Substitution happens wherever `.arbtemplate` files are processed: `arb create`, `arb attach`, `arb template apply`, `arb template diff`, and `arb template apply --force`.
 
 ## Version-controlling templates
 

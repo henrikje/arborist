@@ -48,7 +48,7 @@ Use `,` for OR and `+` for AND — `+` binds tighter, so `dirty+unpushed,gone` m
 After PRs are merged, clean up in one pass:
 
 ```bash
-arb remove --all-safe --where gone    # remove workspaces whose branches are gone from the remote
+arb delete --all-safe --where gone    # delete workspaces whose branches are gone from the remote
 ```
 
 Add `--delete-remote` to also delete the remote branches if they haven't been cleaned up by the merge.
