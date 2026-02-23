@@ -84,7 +84,7 @@ See `arb status --help` for all options.
 
 ## Stay in sync
 
-Arborist's synchronization commands — `push`, `pull`, `rebase`, and `merge` — keep your workspace current. They automatically fetch all repos before operating, so you always work against the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh. Overview commands (`status`, `log`, `diff`, `list`) accept `--fetch` to opt in to a pre-fetch.
+Arborist's synchronization commands — `push`, `rebase`, and `merge` — keep your workspace current. They automatically fetch all repos before operating, so you always work against the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh. `pull` always fetches (no `--no-fetch`). Overview commands (`status`, `log`, `diff`, `list`) accept `--fetch` to opt in to a pre-fetch.
 
 **Integration axis** — when the base branch has moved forward (e.g. teammates merged PRs to `main`), rebase your feature branches onto it:
 
@@ -100,7 +100,7 @@ Arb auto-detects each repo's default branch, so repos using `main`, `master`, or
 
 ```bash
 arb pull
-arb pull --rebase     # pull with rebase instead of the default fast-forward
+arb pull --rebase     # pull with rebase instead of the default merge
 arb pull --merge      # pull with merge commit
 arb push
 arb push --force      # after rebasing (prompts for confirmation)
@@ -108,7 +108,7 @@ arb push --force      # after rebasing (prompts for confirmation)
 
 Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
 
-All state-changing commands (`rebase`, `merge`, `push`, `pull`) automatically fetch before operating, ensuring they work with the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh. Read-only commands (`status`, `list`) do not fetch by default — use `--fetch` to opt in. If fetching fails (e.g. offline), the command warns and continues with stale data.
+State-changing commands (`rebase`, `merge`, `push`) automatically fetch before operating, ensuring they work with the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh. `pull` always fetches. Read-only commands (`status`, `list`) do not fetch by default — use `--fetch` to opt in. If fetching fails (e.g. offline), the command warns and continues with stale data.
 
 All commands show a plan before proceeding. See `arb help <command>` for options.
 

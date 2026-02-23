@@ -16,7 +16,7 @@ Shows all workspaces with their branch, repo count, last commit date, and aggreg
 
 The active workspace (the one you're currently inside) is marked with `*`. The LAST COMMIT column shows when work last happened (the most recent commit author date across all repos), helping you gauge workspace staleness.
 
-Use `--fetch` (`-f`) to fetch all repos before listing, ensuring the status reflects the latest remote state. Use `--where` (`-w`) to filter workspaces by repo status — only workspaces containing at least one repo matching the filter are shown:
+Use `--fetch` (`-F`) to fetch all repos before listing, ensuring the status reflects the latest remote state. Use `--where` (`-w`) to filter workspaces by repo status — only workspaces containing at least one repo matching the filter are shown:
 
 ```bash
 arb list --fetch                   # fetch first, then list
