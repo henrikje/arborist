@@ -28,42 +28,150 @@ arb template remove .env --repo api
 
 All template commands support `--repo <name>` and `--workspace` flags for explicit scope control. See `arb template --help` for all options.
 
-## When templates are applied
+## Template scopes
 
-- **`arb create`** — seeds workspace templates + repo templates for all created repos
-- **`arb attach`** — seeds repo templates for newly attached repos, regenerates worktree-aware templates across all scopes
-- **`arb detach`** — regenerates worktree-aware templates for remaining repos
-- **`arb delete`** — lists any template files that differ from their originals, so you can update templates before the workspace is gone
-- **No templates dir?** — silently skipped, zero noise
+Templates exist at two levels: **workspace** and **repo**. The scope determines where a template is overlaid and what variables are available during rendering.
 
-## Copy-if-missing and user-edit protection
+### Workspace scope
 
-Template files are only copied when the target doesn't already exist. For worktree-aware templates (those referencing `workspace.worktrees`), membership changes (`arb attach` / `arb detach`) trigger re-rendering:
+Workspace templates live in `.arb/templates/workspace/` and are overlaid onto the workspace root directory. Use them for files that belong at the workspace level or that need to reference all repos in the workspace.
 
-1. If the file matches the previous render → safe to overwrite → **regenerated**
-2. If the file differs from the previous render → user has edited → **skipped** (not overwritten)
+Typical uses:
+- IDE project files that list all repos as modules
+- AI agent config with permissions scoped to each repo
+- Shared editor config (`.editorconfig`, `.prettierrc`)
+- Workspace-level documentation or scripts
 
-This means your customizations are always preserved. Use `arb template apply --force` to reset a file to the template version.
+### Repo scope
 
-## Template directory structure
+Repo templates live in `.arb/templates/repos/<name>/` and are overlaid into the corresponding worktree. Use them for files that belong inside individual repos.
+
+Typical uses:
+- `.env` files with service-specific defaults
+- Local config overrides (`.vscode/settings.json`)
+- Git hooks or tool config
+
+### Scope detection
+
+When you run `arb template add`, the scope is auto-detected from your working directory:
+
+| CWD is inside… | Detected scope |
+|---|---|
+| A repo worktree (has `.git`) | `repo` (for that repo) |
+| A workspace (has `.arbws`) but not a repo | `workspace` |
+
+Override with `--repo <name>` or `--workspace` when the auto-detection isn't what you want.
+
+### Directory structure
 
 ```
 .arb/
   templates/
-    workspace/         # overlaid onto workspace root
-      .editorconfig
+    workspace/                    # → overlaid onto <workspace>/
+      .editorconfig               #     plain file, copied verbatim
+      .claude/
+        settings.local.json.arbtemplate  #     rendered, .arbtemplate stripped
+      .idea/
+        jb-workspace.xml.arbtemplate
     repos/
-      api/             # overlaid onto api/ worktree
+      api/                        # → overlaid onto <workspace>/api/
         .env
-      web/             # overlaid onto web/ worktree
+      web/                        # → overlaid onto <workspace>/web/
         .env
 ```
 
 The template tree mirrors the workspace structure. `workspace/` files land at the workspace root, `repos/<name>/` files land inside the corresponding worktree.
 
+## Template lifecycle
+
+### Initial seed on `arb create`
+
+When you create a workspace, all templates are rendered and copied into the new workspace:
+
+1. Workspace templates are overlaid onto the workspace root
+2. Repo templates are overlaid into each attached worktree
+
+Every file that doesn't already exist at the destination is **seeded** — written for the first time.
+
+```bash
+arb create my-feature --all-repos
+# → Seeded 5 template file(s)
+```
+
+### Regeneration on `arb attach`
+
+When repos are added to an existing workspace, templates are re-evaluated:
+
+1. Repo templates for the newly attached repos are seeded (the new worktrees didn't have them yet)
+2. All `.arbtemplate` files across both scopes are checked — if a template's output would change because the worktree list grew (e.g. a `{% for wt in workspace.worktrees %}` loop now has an extra entry), the file is regenerated
+
+```bash
+arb attach shared
+# → Seeded 1 template file(s), regenerated 2
+```
+
+### Regeneration on `arb detach`
+
+When repos are removed, the same regeneration logic runs for the remaining repos. Templates that reference `workspace.worktrees` are re-rendered to reflect the smaller membership.
+
+```bash
+arb detach shared
+# → Regenerated 2 template file(s)
+```
+
+### Drift detection on `arb delete`
+
+Before deleting a workspace, arb checks whether any template-generated files have been modified. If they have, the modified files are listed so you can capture changes back into your templates before the workspace is gone.
+
+### Manual re-application
+
+`arb template apply` re-seeds missing files into an existing workspace. Combined with `--force`, it also resets drifted files to the current template output:
+
+```bash
+arb template apply              # seed only missing files (safe, non-destructive)
+arb template apply --force      # also overwrite files that differ from template output
+```
+
+### No templates directory?
+
+If `.arb/templates/` doesn't exist, all template operations are silently skipped — zero noise.
+
+## User-edit protection
+
+Template files are only copied when the target doesn't already exist. Once seeded, the file belongs to the workspace and you're free to edit it. Arborist never overwrites your changes during normal operation.
+
+### How regeneration protects edits
+
+When a membership change triggers regeneration of `.arbtemplate` files, arborist uses a three-way comparison to decide whether overwriting is safe:
+
+1. **Render with new context** — render the template with the updated worktree list
+2. **Compare to existing file** — if the file already matches the new render, it's already correct → **skip**
+3. **Render with previous context** — reconstruct the worktree list from *before* the membership change and render the template with it
+4. **Compare existing to previous render:**
+   - Matches previous render → user hasn't touched it → safe to overwrite → **regenerated**
+   - Differs from previous render → user has edited → **skipped** (not overwritten)
+
+The previous state is reconstructed by reversing the membership change: on attach, the newly added repos are removed from the current list; on detach, the removed repos are added back.
+
+This means:
+- If you've never edited a template-generated file, it stays in sync automatically as repos come and go
+- If you've customized a file, your edits are always preserved — arborist never silently overwrites them
+- If you want to reset a file to the template version, use `arb template apply --force`
+
+### Detecting drift
+
+Use `arb template diff` to see which files have diverged from their templates:
+
+```bash
+arb template diff                   # show all drift
+arb template diff .env --repo api   # check a specific file
+```
+
+`arb template list` also annotates modified files when run inside a workspace.
+
 ## LiquidJS rendering
 
-Files ending with `.arbtemplate` are rendered with [LiquidJS](https://liquidjs.com/) when seeded. The extension is stripped at the destination (`config.json.arbtemplate` → `config.json`). Files without the extension are copied verbatim.
+Files ending with `.arbtemplate` are rendered with [LiquidJS](https://liquidjs.com/) when seeded or regenerated. The extension is stripped at the destination (`config.json.arbtemplate` → `config.json`). Files without the extension are copied verbatim.
 
 ### Available variables
 
@@ -72,7 +180,7 @@ Files ending with `.arbtemplate` are rendered with [LiquidJS](https://liquidjs.c
 | `{{ root.path }}` | Absolute path to the arb root | all |
 | `{{ workspace.name }}` | Workspace directory name | all |
 | `{{ workspace.path }}` | Absolute path to the workspace | all |
-| `{{ workspace.worktrees }}` | Array of worktree objects for all repos (each has `name`, `path`, `baseRemote`, `shareRemote`) | all |
+| `{{ workspace.worktrees }}` | Array of worktree objects (each has `name`, `path`, `baseRemote`, `shareRemote`) | all |
 | `{{ worktree.name }}` | Repo/worktree directory name | repo only |
 | `{{ worktree.path }}` | Absolute path to the worktree | repo only |
 | `{{ worktree.baseRemote.name }}` | Git remote name for the base (integration target) | repo only |
@@ -82,9 +190,9 @@ Files ending with `.arbtemplate` are rendered with [LiquidJS](https://liquidjs.c
 
 The same `baseRemote` and `shareRemote` fields are available on each item in `workspace.worktrees` (e.g. `wt.baseRemote.url` in a `{% for %}` loop) in all scopes.
 
-`worktree.name` and `worktree.path` are only populated in repo-scoped templates. `workspace.worktrees` is available in all scopes — a repo template can reference sibling repos.
+`worktree.*` variables are only populated in repo-scoped templates. `workspace.worktrees` is available in all scopes — a repo template can reference sibling repos.
 
-The base remote is the integration target (rebase/merge towards), while the share remote is where feature branches are pushed. If remotes can't be resolved for a repo, both fields default to empty strings.
+The base remote is the integration target (rebase/merge towards), while the share remote is where feature branches are pushed. In fork workflows these point to different remotes (`upstream` vs `origin`). If remotes can't be resolved for a repo, both fields default to empty strings.
 
 ### Iteration
 
@@ -104,67 +212,78 @@ Use `forloop.last` for trailing comma handling in JSON:
 {%- endfor %}
 ```
 
-Use `{%-` and `-%}` for whitespace control.
+Use `{%-` and `-%}` for whitespace control — the `-` strips whitespace on that side of the tag.
 
-### Examples
+### Static vs dynamic files
 
-**Claude permissions** (`.arb/templates/workspace/.claude/settings.local.json.arbtemplate`):
+Not every template needs LiquidJS. A plain file without the `.arbtemplate` extension is copied verbatim — no rendering, no variables. Use plain files for static content like `.env` defaults. Use `.arbtemplate` when the content depends on workspace context.
+
+If both `file.json` and `file.json.arbtemplate` exist in the same template directory, arb reports a conflict and skips the file.
+
+## Examples
+
+### Claude Code permissions per worktree
+
+Grant file access and tool permissions scoped to each repo in the workspace.
+
+`.arb/templates/workspace/.claude/settings.local.json.arbtemplate`:
 
 ```liquid
 {
   "permissions": {
     "allow": [
+      "Bash(arb:*)",
+      "Bash(git status)",
 {%- for wt in workspace.worktrees %}
-      "Read({{ wt.path }})",
-      "Write({{ wt.path }})"{% unless forloop.last %},{% endunless %}
+      "Bash(arb -C {{ wt.path }} :*)",
+      "Bash(git -C {{ wt.path }} status)",
 {%- endfor %}
+      "Read({{ workspace.path }}/**)",
+      "Write({{ workspace.path }}/**)"
     ]
   }
 }
 ```
 
-**IntelliJ modules** (`.arb/templates/workspace/.idea/workspace.xml.arbtemplate`):
+When you attach or detach repos, the permissions list is regenerated to include exactly the repos in the current workspace.
+
+### JetBrains workspace with all worktrees
+
+Register each worktree as a separate project in a JetBrains IDE workspace.
+
+`.arb/templates/workspace/.idea/jb-workspace.xml.arbtemplate`:
 
 ```liquid
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="ProjectModuleManager">
-    <modules>
+  <component name="WorkspaceSettings">
 {%- for wt in workspace.worktrees %}
-      <module fileurl="file://{{ wt.path }}/{{ wt.name }}.iml" filepath="{{ wt.path }}/{{ wt.name }}.iml" />
+    <project name="{{ wt.name }}" path="$PROJECT_DIR$/{{ wt.name }}">
+      <vcs id="Git" remoteUrl="{{ wt.shareRemote.url }}" />
+    </project>
 {%- endfor %}
-    </modules>
+    <option name="workspace" value="true" />
   </component>
 </project>
 ```
 
-**Repo remote URLs** (`.arb/templates/workspace/remotes.yaml.arbtemplate`):
+### Static `.env` per repo
 
-```liquid
-repos:
-{%- for wt in workspace.worktrees %}
-  {{ wt.name }}:
-    base: {{ wt.baseRemote.url }}
-    share: {{ wt.shareRemote.url }}
-{%- endfor %}
+It is common for repos to contain an `.env.example` file that you are expected to copy to `.env` and customize.
+
+`.arb/templates/repos/api/.env`:
+
+```
+DATABASE_URL=postgres://localhost:5432/myapp_dev
+REDIS_URL=redis://localhost:6379
 ```
 
-Rendering happens wherever `.arbtemplate` files are processed: `arb create`, `arb attach`, `arb detach`, `arb template apply`, `arb template diff`, and `arb template apply --force`.
+`.arb/templates/repos/web/.env`:
+
+```
+API_URL=http://localhost:3000
+```
 
 ## Version-controlling templates
 
 `arb init` creates `.arb/.gitignore` with a `repos/` entry, which means everything else in `.arb/` — including `templates/` — is version-controllable. You can commit your templates to a dotfiles repo, a team bootstrap repo, or just keep them local.
-
-## Example: setting up `.env` templates
-
-```bash
-# From inside a workspace, capture files as templates
-cd my-feature/api
-arb template add .env.example
-cd ../web
-arb template add .env.example
-
-# Every new workspace gets these automatically
-arb create my-feature --all-repos
-# → Seeded 2 template file(s)
-```
