@@ -156,8 +156,14 @@ async function runStatus(
 
 	const repos = filteredSummary.repos;
 
+	// Branch header line (TTY only)
+	const branchHeader = filteredSummary.base
+		? `On branch ${summary.branch}  ${dim(`(base: ${filteredSummary.base})`)}`
+		: `On branch ${summary.branch}`;
+	process.stdout.write(`${branchHeader}\n`);
+
 	if (repos.length === 0) {
-		process.stdout.write("  (no repos)\n");
+		process.stdout.write("\n  (no repos)\n");
 		return;
 	}
 
@@ -260,7 +266,8 @@ async function runStatus(
 	}
 	const finalRemoteGroupWidth = maxRemoteName + 2 + maxRemoteDiff;
 
-	// Header line
+	// Table header line
+	process.stdout.write("\n");
 	let header = `  ${dim("REPO")}${" ".repeat(maxRepo - 4)}`;
 	if (showBranch) {
 		header += `    ${dim("BRANCH")}${" ".repeat(maxBranch - 6)}`;
