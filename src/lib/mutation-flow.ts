@@ -1,5 +1,5 @@
 import confirm from "@inquirer/confirm";
-import { clearLines, countLines, dim, error, plural, skipConfirmNotice, stderr } from "./output";
+import { clearLines, countLines, dim, error, info, plural, skipConfirmNotice, stderr } from "./output";
 import { getFetchFailedRepos, parallelFetch, reportFetchFailures } from "./parallel-fetch";
 import type { RepoRemotes } from "./remotes";
 import { isTTY } from "./tty";
@@ -81,7 +81,7 @@ export async function confirmOrExit(options: {
 			{ output: process.stderr },
 		);
 		if (!ok) {
-			process.stderr.write("Aborted.\n");
+			info("Aborted.");
 			process.exit(130);
 		}
 		return;
