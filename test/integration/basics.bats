@@ -190,7 +190,8 @@ load test_helper/common-setup
     run arb repo remove remove-me --yes
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/.arb/repos/remove-me" ]
-    [[ "$output" == *"Removed repo remove-me"* ]]
+    [[ "$output" == *"[remove-me] removed"* ]]
+    [[ "$output" == *"Removed 1 repo"* ]]
 }
 
 @test "arb repo remove cleans up template directory" {

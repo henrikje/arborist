@@ -485,11 +485,10 @@ export function forceApplyRepoTemplates(baseDir: string, wsDir: string, repos: s
 export function displayTemplateDiffs(
 	templateDiffs: TemplateDiff[],
 	write: (text: string) => void,
-	warnFn: (text: string) => void,
 	suffix?: string,
 ): void {
 	if (templateDiffs.length === 0) return;
-	warnFn(`      Template files modified${suffix ?? ""}:`);
+	write(`      Template files modified${suffix ?? ""}:\n`);
 	for (const diff of templateDiffs) {
 		const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
 		write(`          ${prefix}${diff.relPath}\n`);
