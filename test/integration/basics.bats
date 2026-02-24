@@ -46,8 +46,17 @@ load test_helper/common-setup
     [ "$count" -eq 3 ]
 }
 
-@test "arb repo list shows remote URL for each repo" {
+@test "arb repo list shows SHARE and UPSTREAM columns" {
     run arb repo list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"SHARE"* ]]
+    [[ "$output" == *"UPSTREAM"* ]]
+    # Single-remote repos show origin as share, dash as upstream
+    [[ "$output" == *"origin"* ]]
+}
+
+@test "arb repo list --verbose shows URLs" {
+    run arb repo list --verbose
     [ "$status" -eq 0 ]
     [[ "$output" == *"origin/repo-a.git"* ]]
     [[ "$output" == *"origin/repo-b.git"* ]]

@@ -273,8 +273,9 @@ _arb() {
                             list)
                                 shift words; (( CURRENT-- ))
                                 _arguments \
-                                    '(-q --quiet --json)'{-q,--quiet}'[Output one repo name per line]' \
-                                    '(--json -q --quiet)--json[Output structured JSON]'
+                                    '(-q --quiet --json -v --verbose)'{-q,--quiet}'[Output one repo name per line]' \
+                                    '(-v --verbose -q --quiet --json)'{-v,--verbose}'[Show remote URLs alongside names]' \
+                                    '(--json -q --quiet -v --verbose)--json[Output structured JSON]'
                                 ;;
                         esac
                     fi
