@@ -1,6 +1,7 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
+import { loadArbIgnore } from "../lib/arbignore";
 import { branchExistsLocally, git, remoteBranchExists, validateWorkspaceName } from "../lib/git";
 import { confirmOrExit } from "../lib/mutation-flow";
 import {
@@ -16,7 +17,7 @@ import {
 	yellow,
 } from "../lib/output";
 import { resolveRemotes } from "../lib/remotes";
-import { listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
+import { listNonWorkspaces, listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import {
 	LOSE_WORK_FLAGS,
 	type WorkspaceSummary,
@@ -40,6 +41,16 @@ import {
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
+
+function hintNonWorkspaces(baseDir: string): void {
+	const ignored = loadArbIgnore(baseDir);
+	const nonWorkspaces = listNonWorkspaces(baseDir, ignored);
+	if (nonWorkspaces.length > 0) {
+		info(
+			`  ${plural(nonWorkspaces.length, "non-workspace directory", "non-workspace directories")} found. Run 'arb clean' to review.`,
+		);
+	}
+}
 
 interface WorkspaceAssessment {
 	name: string;
@@ -377,6 +388,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 
 					process.stderr.write("\n");
 					success(`Deleted ${plural(safeEntries.length, "workspace")}`);
+					hintNonWorkspaces(ctx.baseDir);
 					return;
 				}
 
@@ -467,6 +479,8 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 				// Summarize
 				process.stderr.write("\n");
 				success(`Deleted ${plural(assessments.length, "workspace")}`);
+
+				hintNonWorkspaces(ctx.baseDir);
 			},
 		);
 }

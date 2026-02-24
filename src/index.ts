@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { Command, type Help } from "commander";
 import { registerAttachCommand } from "./commands/attach";
 import { registerCdCommand } from "./commands/cd";
+import { registerCleanCommand } from "./commands/clean";
 import { registerCreateCommand } from "./commands/create";
 import { registerDeleteCommand } from "./commands/delete";
 import { registerDetachCommand } from "./commands/detach";
@@ -35,7 +36,7 @@ const COMMAND_GROUPS = [
 	{
 		title: "Workspace Commands:",
 		description: "  Create and manage workspaces.",
-		commands: ["create", "delete", "list", "path", "cd", "attach", "detach"],
+		commands: ["create", "delete", "clean", "list", "path", "cd", "attach", "detach"],
 	},
 	{
 		title: "Inspection Commands:",
@@ -174,6 +175,7 @@ registerInitCommand(program);
 registerRepoCommand(program, getCtx);
 registerCreateCommand(program, getCtx);
 registerDeleteCommand(program, getCtx);
+registerCleanCommand(program, getCtx);
 registerListCommand(program, getCtx);
 registerPathCommand(program, getCtx);
 registerCdCommand(program, getCtx);

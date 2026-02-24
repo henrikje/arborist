@@ -135,6 +135,7 @@ _arb() {
                 'repo:Manage canonical repos'
                 'create:Create a new workspace'
                 'delete:Remove a workspace'
+                'clean:Clean up non-workspace directories and stale git state'
                 'list:List all workspaces'
                 'path:Print the path to the arb root or a workspace'
                 'cd:Navigate to a workspace directory'
@@ -166,6 +167,22 @@ _arb() {
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-a --all-safe)'{-a,--all-safe}'[Remove all safe workspaces]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]'
+                    ;;
+                clean)
+                    # Complete non-workspace directory names
+                    local -a non_ws_names=()
+                    if [[ -n "$base_dir" ]]; then
+                        for d in "$base_dir"/*(N/); do
+                            local name="${d:t}"
+                            [[ "$name" == .* ]] && continue
+                            [[ -d "$d/.arbws" ]] && continue
+                            non_ws_names+=("$name")
+                        done
+                    fi
+                    _arguments \
+                        '*:directory:($non_ws_names)' \
+                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]'
                     ;;
                 path)

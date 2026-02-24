@@ -1,0 +1,55 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { getDefaultBranch, git } from "./git";
+import { listRepos } from "./repos";
+
+export async function findStaleWorktrees(reposDir: string): Promise<string[]> {
+	const repos = listRepos(reposDir);
+	const stale: string[] = [];
+	for (const repo of repos) {
+		const repoDir = join(reposDir, repo);
+		const result = await git(repoDir, "worktree", "list", "--porcelain");
+		if (result.exitCode !== 0) continue;
+		// Parse porcelain output: each worktree block starts with "worktree <path>"
+		for (const line of result.stdout.split("\n")) {
+			if (line.startsWith("worktree ")) {
+				const wtPath = line.slice("worktree ".length);
+				// The first entry is the main worktree (the canonical repo itself) — skip it
+				if (wtPath === repoDir) continue;
+				if (!existsSync(wtPath)) {
+					stale.push(repo);
+					break;
+				}
+			}
+		}
+	}
+	return stale;
+}
+
+export async function pruneWorktrees(reposDir: string): Promise<void> {
+	const repos = listRepos(reposDir);
+	for (const repo of repos) {
+		await git(join(reposDir, repo), "worktree", "prune");
+	}
+}
+
+export async function findOrphanedBranches(
+	reposDir: string,
+	workspaceBranches: Set<string>,
+): Promise<{ repo: string; branch: string }[]> {
+	const repos = listRepos(reposDir);
+	const orphaned: { repo: string; branch: string }[] = [];
+	for (const repo of repos) {
+		const repoDir = join(reposDir, repo);
+		const result = await git(repoDir, "for-each-ref", "refs/heads/", "--format=%(refname:short)");
+		if (result.exitCode !== 0) continue;
+		const defaultBranch = await getDefaultBranch(repoDir, "origin");
+		for (const branch of result.stdout.split("\n").filter(Boolean)) {
+			if (branch === defaultBranch) continue;
+			if (!workspaceBranches.has(branch)) {
+				orphaned.push({ repo, branch });
+			}
+		}
+	}
+	return orphaned;
+}
