@@ -644,7 +644,7 @@ assert data == []
     [[ "$output" != *"URL"* ]]
 }
 
-@test "arb repo list --json outputs valid JSON" {
+@test "arb repo list --json outputs valid JSON with share and upstream" {
     run arb repo list --json
     [ "$status" -eq 0 ]
     echo "$output" | python3 -c "
@@ -653,6 +653,12 @@ data = json.load(sys.stdin)
 assert len(data) == 2
 assert 'name' in data[0]
 assert 'url' in data[0]
+assert 'share' in data[0]
+assert 'upstream' in data[0]
+assert 'name' in data[0]['share']
+assert 'url' in data[0]['share']
+assert 'name' in data[0]['upstream']
+assert 'url' in data[0]['upstream']
 "
 }
 
@@ -660,6 +666,18 @@ assert 'url' in data[0]
     run arb repo list --quiet --json
     [ "$status" -ne 0 ]
     [[ "$output" == *"Cannot combine --quiet with --json"* ]]
+}
+
+@test "arb repo list --verbose --quiet conflicts" {
+    run arb repo list --verbose --quiet
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot combine --quiet with --verbose"* ]]
+}
+
+@test "arb repo list --verbose --json conflicts" {
+    run arb repo list --verbose --json
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Cannot combine --verbose with --json"* ]]
 }
 
 @test "arb -C is visible in --help output" {

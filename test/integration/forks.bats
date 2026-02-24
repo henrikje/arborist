@@ -307,3 +307,35 @@ load test_helper/common-setup
     [ "$status" -ne 0 ]
     [[ "$output" == *"Failed to fetch upstream"* ]]
 }
+
+@test "fork: arb repo list shows upstream remote for fork repos" {
+    setup_fork_repo repo-a
+    # repo-b stays single-origin from setup()
+
+    run arb repo list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"SHARE"* ]]
+    [[ "$output" == *"UPSTREAM"* ]]
+    # repo-a is a fork — UPSTREAM column should show "upstream"
+    # repo-b is single-origin — UPSTREAM column should show dash (em dash)
+    local repo_a_line repo_b_line
+    repo_a_line="$(echo "$output" | grep "repo-a")"
+    repo_b_line="$(echo "$output" | grep "repo-b")"
+    [[ "$repo_a_line" == *"upstream"* ]]
+    [[ "$repo_b_line" == *"—"* ]]
+}
+
+@test "fork: arb repo list --verbose shows both URLs for fork repos" {
+    setup_fork_repo repo-a
+
+    run arb repo list --verbose
+    [ "$status" -eq 0 ]
+    # Verbose output includes URLs in parentheses
+    local repo_a_line
+    repo_a_line="$(echo "$output" | grep "repo-a")"
+    [[ "$repo_a_line" == *"origin"* ]]
+    [[ "$repo_a_line" == *"upstream"* ]]
+    # Should contain fork URL and upstream URL
+    [[ "$repo_a_line" == *"fork/repo-a.git"* ]]
+    [[ "$repo_a_line" == *"upstream/repo-a.git"* ]]
+}

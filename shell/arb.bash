@@ -194,7 +194,7 @@ __arb_complete_repo() {
             fi
             ;;
         list)
-            COMPREPLY=($(compgen -W "-q --quiet --json" -- "$cur"))
+            COMPREPLY=($(compgen -W "-q --quiet -v --verbose --json" -- "$cur"))
             ;;
     esac
 }

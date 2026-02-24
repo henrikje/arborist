@@ -111,6 +111,8 @@ export interface DiffJsonOutput {
 export interface RepoListJsonEntry {
 	name: string;
 	url: string;
+	share: { name: string; url: string };
+	upstream: { name: string; url: string };
 }
 
 // ── List JSON types ──

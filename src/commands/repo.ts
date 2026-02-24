@@ -83,16 +83,25 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 	repo
 		.command("list")
 		.option("-q, --quiet", "Output one repo name per line")
+		.option("-v, --verbose", "Show remote URLs alongside names")
 		.option("--json", "Output structured JSON")
 		.summary("List cloned repos")
 		.description(
-			"List all repositories that have been cloned into .arb/repos/. These are the canonical clones that workspaces create worktrees from. Use --quiet for plain enumeration (one name per line). Use --json for machine-readable output.",
+			"List all repositories that have been cloned into .arb/repos/. Shows resolved SHARE and UPSTREAM remote names for each repo. Use --verbose to include remote URLs alongside names. Use --quiet for plain enumeration (one name per line). Use --json for machine-readable output.",
 		)
-		.action(async (options: { quiet?: boolean; json?: boolean }) => {
+		.action(async (options: { quiet?: boolean; verbose?: boolean; json?: boolean }) => {
 			const ctx = getCtx();
 
 			if (options.quiet && options.json) {
 				error("Cannot combine --quiet with --json.");
+				process.exit(1);
+			}
+			if (options.quiet && options.verbose) {
+				error("Cannot combine --quiet with --verbose.");
+				process.exit(1);
+			}
+			if (options.verbose && options.json) {
+				error("Cannot combine --verbose with --json.");
 				process.exit(1);
 			}
 
@@ -110,15 +119,32 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 			const entries: RepoListJsonEntry[] = [];
 			for (const r of repos) {
 				const repoDir = `${ctx.reposDir}/${r}`;
-				let url: string | null = null;
+				let shareName = "";
+				let shareUrl = "";
+				let upstreamName = "";
+				let upstreamUrl = "";
 				try {
 					const remotes = await resolveRemotes(repoDir);
-					url = await getRemoteUrl(repoDir, remotes.share);
+					shareName = remotes.share;
+					upstreamName = remotes.upstream;
+					const [sUrl, uUrl] = await Promise.all([
+						getRemoteUrl(repoDir, remotes.share),
+						getRemoteUrl(repoDir, remotes.upstream),
+					]);
+					shareUrl = sUrl ?? "";
+					upstreamUrl = uUrl ?? "";
 				} catch {
-					// Ambiguous remotes — fall back to showing origin URL
-					url = await getRemoteUrl(repoDir, "origin");
+					// Ambiguous remotes — fall back to origin URL with warning
+					const url = await getRemoteUrl(repoDir, "origin");
+					shareUrl = url ?? "";
+					upstreamUrl = url ?? "";
 				}
-				entries.push({ name: r, url: url ?? "" });
+				entries.push({
+					name: r,
+					url: shareUrl,
+					share: { name: shareName, url: shareUrl },
+					upstream: { name: upstreamName, url: upstreamUrl },
+				});
 			}
 
 			// JSON output
@@ -129,10 +155,45 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 
 			const maxRepo = Math.max(4, ...entries.map((e) => e.name.length));
 
-			process.stdout.write(`  ${dim("REPO")}${" ".repeat(maxRepo - 4)}    ${dim("URL")}\n`);
-			for (const { name, url } of entries) {
-				const urlDisplay = url || yellow("(remotes not resolved)");
-				process.stdout.write(`  ${name.padEnd(maxRepo)}    ${urlDisplay}\n`);
+			if (options.verbose) {
+				const sharePlain = entries.map((e) =>
+					e.share.name ? `${e.share.name} (${e.share.url})` : "(remotes not resolved)",
+				);
+				const shareDisplay = sharePlain.map((v, i) => (entries[i]?.share.name ? v : yellow(v)));
+				const maxShare = Math.max(5, ...sharePlain.map((v) => v.length));
+
+				process.stdout.write(
+					`  ${dim("REPO")}${" ".repeat(maxRepo - 4)}    ${dim("SHARE")}${" ".repeat(maxShare - 5)}    ${dim("UPSTREAM")}\n`,
+				);
+				for (const [i, e] of entries.entries()) {
+					const share = shareDisplay[i] ?? yellow("(remotes not resolved)");
+					const sharePad = " ".repeat(Math.max(0, maxShare - (sharePlain[i]?.length ?? 0)));
+					const upstreamDisplay =
+						!e.share.name && !e.upstream.name
+							? yellow("(remotes not resolved)")
+							: e.upstream.name === e.share.name
+								? "\u2014"
+								: `${e.upstream.name} (${e.upstream.url})`;
+					process.stdout.write(`  ${e.name.padEnd(maxRepo)}    ${share}${sharePad}    ${upstreamDisplay}\n`);
+				}
+			} else {
+				const maxShare = Math.max(5, ...entries.map((e) => (e.share.name || "(remotes not resolved)").length));
+
+				process.stdout.write(
+					`  ${dim("REPO")}${" ".repeat(maxRepo - 4)}    ${dim("SHARE")}${" ".repeat(maxShare - 5)}    ${dim("UPSTREAM")}\n`,
+				);
+				for (const e of entries) {
+					const sharePlain = e.share.name || "(remotes not resolved)";
+					const shareCol = e.share.name ? sharePlain : yellow(sharePlain);
+					const sharePad = " ".repeat(Math.max(0, maxShare - sharePlain.length));
+					const upstreamDisplay =
+						!e.share.name && !e.upstream.name
+							? yellow("(remotes not resolved)")
+							: e.upstream.name === e.share.name
+								? "\u2014"
+								: e.upstream.name;
+					process.stdout.write(`  ${e.name.padEnd(maxRepo)}    ${shareCol}${sharePad}    ${upstreamDisplay}\n`);
+				}
 			}
 		});
 
