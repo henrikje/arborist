@@ -351,6 +351,14 @@ describe("formatPullPlan", () => {
 		expect(plan).toContain("conflict likely");
 	});
 
+	test("shows no conflict hint for no-conflict prediction", () => {
+		const plan = formatPullPlan(
+			[makeAssessment({ conflictPrediction: "no-conflict" })],
+			makeRemotesMap(["repo-a", {}]),
+		);
+		expect(plan).toContain("no conflict");
+	});
+
 	test("shows conflict unlikely hint", () => {
 		const plan = formatPullPlan([makeAssessment({ conflictPrediction: "clean" })], makeRemotesMap(["repo-a", {}]));
 		expect(plan).toContain("conflict unlikely");
