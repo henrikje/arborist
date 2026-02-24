@@ -175,6 +175,20 @@ load test_helper/common-setup
     [[ "$output" != *"merged"* ]]
 }
 
+@test "arb status never-pushed branch behind base does not show merged" {
+    arb create never-pushed repo-a
+    # Advance origin's main so the branch is behind base
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-advance" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-advance" && echo "new" > new.txt && git add new.txt && git commit -m "advance main" && git push) >/dev/null 2>&1
+    rm -rf "$TEST_DIR/tmp-advance"
+    cd "$TEST_DIR/project/never-pushed"
+    fetch_all_repos
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"not pushed"* ]]
+    [[ "$output" != *"merged"* ]]
+}
+
 @test "arb status shows pushed and synced repo as up to date" {
     arb create my-feature repo-a
     echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"

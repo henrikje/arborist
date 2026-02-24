@@ -369,3 +369,82 @@ r = d['repos'][0]
 assert r['base']['mergedIntoBase'] == 'squash', f'expected squash, got {r[\"base\"][\"mergedIntoBase\"]}'
 "
 }
+
+@test "arb status detects regular merge when remote branch is deleted" {
+    arb create merge-gone repo-a
+    local wt="$TEST_DIR/project/merge-gone/repo-a"
+
+    # Make feature work and push
+    echo "feature" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    cd "$TEST_DIR/project/merge-gone"
+    arb push --yes >/dev/null 2>&1
+
+    # Regular merge (not squash, --no-ff to create merge commit) + delete remote branch
+    local bare="$TEST_DIR/origin/repo-a.git"
+    local tmp="$TEST_DIR/tmp-merge-gone"
+    git clone "$bare" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && git merge --no-ff origin/merge-gone -m "merge feature" && git push origin main) >/dev/null 2>&1
+    rm -rf "$tmp"
+    git -C "$bare" branch -D merge-gone >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/merge-gone"
+    fetch_all_repos
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merged"* ]]
+    [[ "$output" == *"gone"* ]]
+}
+
+@test "arb status detects fast-forward merge when remote branch is deleted" {
+    arb create ff-gone repo-a
+    local wt="$TEST_DIR/project/ff-gone/repo-a"
+
+    # Make feature work and push
+    echo "feature" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    cd "$TEST_DIR/project/ff-gone"
+    arb push --yes >/dev/null 2>&1
+
+    # Fast-forward merge (no merge commit) + delete remote branch
+    local bare="$TEST_DIR/origin/repo-a.git"
+    local tmp="$TEST_DIR/tmp-ff-gone"
+    git clone "$bare" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && git merge --ff-only origin/ff-gone && git push origin main) >/dev/null 2>&1
+    rm -rf "$tmp"
+    git -C "$bare" branch -D ff-gone >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/ff-gone"
+    fetch_all_repos
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merged"* ]]
+    [[ "$output" == *"gone"* ]]
+}
+
+@test "arb status detects regular merge when remote branch still exists" {
+    arb create merge-kept repo-a
+    local wt="$TEST_DIR/project/merge-kept/repo-a"
+
+    # Make feature work and push
+    echo "feature" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    cd "$TEST_DIR/project/merge-kept"
+    arb push --yes >/dev/null 2>&1
+
+    # Regular merge (not squash, --no-ff to create merge commit), keep remote branch
+    local bare="$TEST_DIR/origin/repo-a.git"
+    local tmp="$TEST_DIR/tmp-merge-kept"
+    git clone "$bare" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && git merge --no-ff origin/merge-kept -m "merge feature" && git push origin main) >/dev/null 2>&1
+    rm -rf "$tmp"
+
+    cd "$TEST_DIR/project/merge-kept"
+    fetch_all_repos
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merged"* ]]
+}
