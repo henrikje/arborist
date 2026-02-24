@@ -61,14 +61,14 @@ describe("remotes", () => {
 	describe("resolveRemotes", () => {
 		test("single origin → both roles", async () => {
 			const result = await resolveRemotes(repoDir);
-			expect(result).toEqual({ upstream: "origin", share: "origin" });
+			expect(result).toEqual({ base: "origin", share: "origin" });
 		});
 
 		test("single non-origin remote → both roles", async () => {
 			// Rename origin to something else
 			Bun.spawnSync(["git", "-C", repoDir, "remote", "rename", "origin", "my-remote"]);
 			const result = await resolveRemotes(repoDir);
-			expect(result).toEqual({ upstream: "my-remote", share: "my-remote" });
+			expect(result).toEqual({ base: "my-remote", share: "my-remote" });
 		});
 
 		test("origin + upstream convention", async () => {
@@ -76,7 +76,7 @@ describe("remotes", () => {
 			Bun.spawnSync(["git", "init", "--bare", upstreamBare]);
 			Bun.spawnSync(["git", "-C", repoDir, "remote", "add", "upstream", upstreamBare]);
 			const result = await resolveRemotes(repoDir);
-			expect(result).toEqual({ upstream: "upstream", share: "origin" });
+			expect(result).toEqual({ base: "upstream", share: "origin" });
 		});
 
 		test("remote.pushDefault set", async () => {
@@ -85,7 +85,7 @@ describe("remotes", () => {
 			Bun.spawnSync(["git", "-C", repoDir, "remote", "add", "upstream", upstreamBare]);
 			Bun.spawnSync(["git", "-C", repoDir, "config", "remote.pushDefault", "origin"]);
 			const result = await resolveRemotes(repoDir);
-			expect(result).toEqual({ upstream: "upstream", share: "origin" });
+			expect(result).toEqual({ base: "upstream", share: "origin" });
 		});
 
 		test("remote.pushDefault with non-standard names", async () => {
@@ -94,7 +94,7 @@ describe("remotes", () => {
 			Bun.spawnSync(["git", "-C", repoDir, "remote", "add", "canonical", canonicalBare]);
 			Bun.spawnSync(["git", "-C", repoDir, "config", "remote.pushDefault", "origin"]);
 			const result = await resolveRemotes(repoDir);
-			expect(result).toEqual({ upstream: "canonical", share: "origin" });
+			expect(result).toEqual({ base: "canonical", share: "origin" });
 		});
 
 		test("three remotes with pushDefault — upstream named 'upstream'", async () => {
@@ -106,7 +106,7 @@ describe("remotes", () => {
 			Bun.spawnSync(["git", "-C", repoDir, "remote", "add", "staging", stagingBare]);
 			Bun.spawnSync(["git", "-C", repoDir, "config", "remote.pushDefault", "origin"]);
 			const result = await resolveRemotes(repoDir);
-			expect(result).toEqual({ upstream: "upstream", share: "origin" });
+			expect(result).toEqual({ base: "upstream", share: "origin" });
 		});
 
 		test("three remotes with pushDefault — no 'upstream' name → error", async () => {
@@ -117,7 +117,7 @@ describe("remotes", () => {
 			Bun.spawnSync(["git", "-C", repoDir, "remote", "add", "fork", forkBare]);
 			Bun.spawnSync(["git", "-C", repoDir, "remote", "add", "staging", stagingBare]);
 			Bun.spawnSync(["git", "-C", repoDir, "config", "remote.pushDefault", "fork"]);
-			expect(resolveRemotes(repoDir)).rejects.toThrow("Cannot determine upstream remote");
+			expect(resolveRemotes(repoDir)).rejects.toThrow("Cannot determine base remote");
 		});
 
 		test("three remotes without pushDefault → error", async () => {
@@ -149,7 +149,7 @@ describe("remotes", () => {
 			// Only one remote "origin" exists, pushDefault doesn't match any remote
 			// Falls through to single-remote logic since pushDefault is not in remotes list
 			const result = await resolveRemotes(repoDir);
-			expect(result).toEqual({ upstream: "origin", share: "origin" });
+			expect(result).toEqual({ base: "origin", share: "origin" });
 		});
 	});
 

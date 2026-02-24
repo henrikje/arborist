@@ -179,7 +179,7 @@ load test_helper/common-setup
     cd "$TEST_DIR/project/custom-ws"
 
     run arb status
-    # Should show canonical/main since canonical is the upstream remote
+    # Should show canonical/main since canonical is the base remote
     [[ "$output" == *"canonical/main"* ]]
 }
 
@@ -308,16 +308,16 @@ load test_helper/common-setup
     [[ "$output" == *"Failed to fetch upstream"* ]]
 }
 
-@test "fork: arb repo list shows upstream remote for fork repos" {
+@test "fork: arb repo list shows base remote for fork repos" {
     setup_fork_repo repo-a
     # repo-b stays single-origin from setup()
 
     run arb repo list
     [ "$status" -eq 0 ]
     [[ "$output" == *"SHARE"* ]]
-    [[ "$output" == *"UPSTREAM"* ]]
-    # repo-a is a fork — UPSTREAM column should show "upstream"
-    # repo-b is single-origin — UPSTREAM column should show dash (em dash)
+    [[ "$output" == *"BASE"* ]]
+    # repo-a is a fork — BASE column should show "upstream"
+    # repo-b is single-origin — BASE column should show dash (em dash)
     local repo_a_line repo_b_line
     repo_a_line="$(echo "$output" | grep "repo-a")"
     repo_b_line="$(echo "$output" | grep "repo-b")"

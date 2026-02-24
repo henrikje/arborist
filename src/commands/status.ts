@@ -72,7 +72,7 @@ async function runStatus(
 	ctx: ArbContext,
 	options: { dirty?: boolean; where?: string; fetch?: boolean; verbose?: boolean; quiet?: boolean; json?: boolean },
 ): Promise<void> {
-	const wsDir = `${ctx.baseDir}/${ctx.currentWorkspace}`;
+	const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
 
 	// Resolve --dirty as shorthand for --where dirty
 	if (options.dirty && options.where) {

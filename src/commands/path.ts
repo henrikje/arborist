@@ -15,7 +15,7 @@ export function registerPathCommand(program: Command, getCtx: () => ArbContext):
 		.action((input?: string) => {
 			const ctx = getCtx();
 			if (!input) {
-				process.stdout.write(`${ctx.baseDir}\n`);
+				process.stdout.write(`${ctx.arbRootDir}\n`);
 				return;
 			}
 
@@ -25,7 +25,7 @@ export function registerPathCommand(program: Command, getCtx: () => ArbContext):
 				const wsName = input.slice(0, slashIdx);
 				const subpath = input.slice(slashIdx + 1);
 
-				const wsDir = `${ctx.baseDir}/${wsName}`;
+				const wsDir = `${ctx.arbRootDir}/${wsName}`;
 				if (!existsSync(wsDir)) {
 					error(`Workspace '${wsName}' does not exist`);
 					process.exit(1);
@@ -46,7 +46,7 @@ export function registerPathCommand(program: Command, getCtx: () => ArbContext):
 
 			// No slash — scope-aware resolution
 			if (ctx.currentWorkspace) {
-				const wsDir = `${ctx.baseDir}/${ctx.currentWorkspace}`;
+				const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
 				const worktreeNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
 
 				if (worktreeNames.includes(input)) {
@@ -56,7 +56,7 @@ export function registerPathCommand(program: Command, getCtx: () => ArbContext):
 			}
 
 			// Fall back to workspace resolution
-			const wsDir = `${ctx.baseDir}/${input}`;
+			const wsDir = `${ctx.arbRootDir}/${input}`;
 			if (!existsSync(wsDir)) {
 				if (ctx.currentWorkspace) {
 					error(`'${input}' is not a worktree in workspace '${ctx.currentWorkspace}' or a workspace`);

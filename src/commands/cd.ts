@@ -23,7 +23,7 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 				}
 
 				if (ctx.currentWorkspace) {
-					const wsDir = `${ctx.baseDir}/${ctx.currentWorkspace}`;
+					const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
 					const worktreeNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
 					if (worktreeNames.length === 0) {
 						error(`No worktrees in workspace '${ctx.currentWorkspace}'.`);
@@ -44,7 +44,7 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 					return;
 				}
 
-				const workspaces = listWorkspaces(ctx.baseDir);
+				const workspaces = listWorkspaces(ctx.arbRootDir);
 				if (workspaces.length === 0) {
 					error("No workspaces found.");
 					process.exit(1);
@@ -59,7 +59,7 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 					{ output: process.stderr },
 				);
 
-				process.stdout.write(`${ctx.baseDir}/${selected}\n`);
+				process.stdout.write(`${ctx.arbRootDir}/${selected}\n`);
 				printHintIfNeeded();
 				return;
 			}
@@ -70,7 +70,7 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 				const wsName = input.slice(0, slashIdx);
 				const subpath = input.slice(slashIdx + 1);
 
-				const wsDir = `${ctx.baseDir}/${wsName}`;
+				const wsDir = `${ctx.arbRootDir}/${wsName}`;
 				if (!existsSync(`${wsDir}/.arbws`)) {
 					error(`Workspace '${wsName}' does not exist`);
 					process.exit(1);
@@ -93,7 +93,7 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 
 			// No slash — scope-aware resolution
 			if (ctx.currentWorkspace) {
-				const wsDir = `${ctx.baseDir}/${ctx.currentWorkspace}`;
+				const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
 				const worktreeNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
 
 				if (worktreeNames.includes(input)) {
@@ -104,7 +104,7 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 			}
 
 			// Fall back to workspace resolution
-			const wsDir = `${ctx.baseDir}/${input}`;
+			const wsDir = `${ctx.arbRootDir}/${input}`;
 			if (!existsSync(`${wsDir}/.arbws`)) {
 				if (ctx.currentWorkspace) {
 					error(`'${input}' is not a worktree in workspace '${ctx.currentWorkspace}' or a workspace`);

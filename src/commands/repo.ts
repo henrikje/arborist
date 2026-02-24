@@ -70,8 +70,8 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 				}
 				await Bun.$`git -C ${target} remote set-head upstream --auto`.cwd(target).quiet().nothrow();
 
-				info(`  share:    origin (${url})`);
-				info(`  upstream: upstream (${options.upstream})`);
+				info(`  share: origin (${url})`);
+				info(`  base:  upstream (${options.upstream})`);
 				success(`Cloned repo ${repoName}`);
 			} else {
 				success(`Cloned repo ${repoName}`);
@@ -87,7 +87,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 		.option("--json", "Output structured JSON")
 		.summary("List cloned repos")
 		.description(
-			"List all repositories that have been cloned into .arb/repos/. Shows resolved SHARE and UPSTREAM remote names for each repo. Use --verbose to include remote URLs alongside names. Use --quiet for plain enumeration (one name per line). Use --json for machine-readable output.",
+			"List all repositories that have been cloned into .arb/repos/. Shows resolved SHARE and BASE remote names for each repo. Use --verbose to include remote URLs alongside names. Use --quiet for plain enumeration (one name per line). Use --json for machine-readable output.",
 		)
 		.action(async (options: { quiet?: boolean; verbose?: boolean; json?: boolean }) => {
 			const ctx = getCtx();
@@ -121,29 +121,29 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 				const repoDir = `${ctx.reposDir}/${r}`;
 				let shareName = "";
 				let shareUrl = "";
-				let upstreamName = "";
-				let upstreamUrl = "";
+				let baseName = "";
+				let baseUrl = "";
 				try {
 					const remotes = await resolveRemotes(repoDir);
 					shareName = remotes.share;
-					upstreamName = remotes.upstream;
-					const [sUrl, uUrl] = await Promise.all([
+					baseName = remotes.base;
+					const [sUrl, bUrl] = await Promise.all([
 						getRemoteUrl(repoDir, remotes.share),
-						getRemoteUrl(repoDir, remotes.upstream),
+						getRemoteUrl(repoDir, remotes.base),
 					]);
 					shareUrl = sUrl ?? "";
-					upstreamUrl = uUrl ?? "";
+					baseUrl = bUrl ?? "";
 				} catch {
 					// Ambiguous remotes — fall back to origin URL with warning
 					const url = await getRemoteUrl(repoDir, "origin");
 					shareUrl = url ?? "";
-					upstreamUrl = url ?? "";
+					baseUrl = url ?? "";
 				}
 				entries.push({
 					name: r,
 					url: shareUrl,
 					share: { name: shareName, url: shareUrl },
-					upstream: { name: upstreamName, url: upstreamUrl },
+					base: { name: baseName, url: baseUrl },
 				});
 			}
 
@@ -163,36 +163,36 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 				const maxShare = Math.max(5, ...sharePlain.map((v) => v.length));
 
 				process.stdout.write(
-					`  ${dim("REPO")}${" ".repeat(maxRepo - 4)}    ${dim("SHARE")}${" ".repeat(maxShare - 5)}    ${dim("UPSTREAM")}\n`,
+					`  ${dim("REPO")}${" ".repeat(maxRepo - 4)}    ${dim("SHARE")}${" ".repeat(maxShare - 5)}    ${dim("BASE")}\n`,
 				);
 				for (const [i, e] of entries.entries()) {
 					const share = shareDisplay[i] ?? yellow("(remotes not resolved)");
 					const sharePad = " ".repeat(Math.max(0, maxShare - (sharePlain[i]?.length ?? 0)));
-					const upstreamDisplay =
-						!e.share.name && !e.upstream.name
+					const baseDisplay =
+						!e.share.name && !e.base.name
 							? yellow("(remotes not resolved)")
-							: e.upstream.name === e.share.name
+							: e.base.name === e.share.name
 								? "\u2014"
-								: `${e.upstream.name} (${e.upstream.url})`;
-					process.stdout.write(`  ${e.name.padEnd(maxRepo)}    ${share}${sharePad}    ${upstreamDisplay}\n`);
+								: `${e.base.name} (${e.base.url})`;
+					process.stdout.write(`  ${e.name.padEnd(maxRepo)}    ${share}${sharePad}    ${baseDisplay}\n`);
 				}
 			} else {
 				const maxShare = Math.max(5, ...entries.map((e) => (e.share.name || "(remotes not resolved)").length));
 
 				process.stdout.write(
-					`  ${dim("REPO")}${" ".repeat(maxRepo - 4)}    ${dim("SHARE")}${" ".repeat(maxShare - 5)}    ${dim("UPSTREAM")}\n`,
+					`  ${dim("REPO")}${" ".repeat(maxRepo - 4)}    ${dim("SHARE")}${" ".repeat(maxShare - 5)}    ${dim("BASE")}\n`,
 				);
 				for (const e of entries) {
 					const sharePlain = e.share.name || "(remotes not resolved)";
 					const shareCol = e.share.name ? sharePlain : yellow(sharePlain);
 					const sharePad = " ".repeat(Math.max(0, maxShare - sharePlain.length));
-					const upstreamDisplay =
-						!e.share.name && !e.upstream.name
+					const baseDisplay =
+						!e.share.name && !e.base.name
 							? yellow("(remotes not resolved)")
-							: e.upstream.name === e.share.name
+							: e.base.name === e.share.name
 								? "\u2014"
-								: e.upstream.name;
-					process.stdout.write(`  ${e.name.padEnd(maxRepo)}    ${shareCol}${sharePad}    ${upstreamDisplay}\n`);
+								: e.base.name;
+					process.stdout.write(`  ${e.name.padEnd(maxRepo)}    ${shareCol}${sharePad}    ${baseDisplay}\n`);
 				}
 			}
 		});
@@ -244,7 +244,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 
 			// Check workspace usage — hard refuse if any repo is in use
 			for (const name of repos) {
-				const usedBy = findRepoUsage(ctx.baseDir, name);
+				const usedBy = findRepoUsage(ctx.arbRootDir, name);
 				if (usedBy.length > 0) {
 					error(
 						`Cannot remove ${name} — used by ${usedBy.length === 1 ? "workspace" : "workspaces"}: ${usedBy.join(", ")}`,
@@ -271,7 +271,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 			for (const name of repos) {
 				inlineStart(name, "removing");
 				rmSync(`${ctx.reposDir}/${name}`, { recursive: true, force: true });
-				const templateDir = join(ctx.baseDir, ".arb", "templates", "repos", name);
+				const templateDir = join(ctx.arbRootDir, ".arb", "templates", "repos", name);
 				if (existsSync(templateDir)) {
 					rmSync(templateDir, { recursive: true, force: true });
 				}

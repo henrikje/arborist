@@ -37,21 +37,21 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 			const skipPrompts = options.yes ?? false;
 
 			// ── Section 1: Non-workspace directories ─────────────────
-			const ignored = loadArbIgnore(ctx.baseDir);
-			const allNonWorkspacesUnfiltered = listNonWorkspaces(ctx.baseDir);
-			const allNonWorkspaces = listNonWorkspaces(ctx.baseDir, ignored);
+			const ignored = loadArbIgnore(ctx.arbRootDir);
+			const allNonWorkspacesUnfiltered = listNonWorkspaces(ctx.arbRootDir);
+			const allNonWorkspaces = listNonWorkspaces(ctx.arbRootDir, ignored);
 			const ignoredCount = allNonWorkspacesUnfiltered.length - allNonWorkspaces.length;
 
 			// Validate positional args
 			let targetDirs: string[];
 			if (nameArgs.length > 0) {
 				for (const name of nameArgs) {
-					if (existsSync(join(ctx.baseDir, name, ".arbws"))) {
+					if (existsSync(join(ctx.arbRootDir, name, ".arbws"))) {
 						error(`'${name}' is a workspace. Use 'arb delete ${name}' instead.`);
 						process.exit(1);
 					}
 					if (!allNonWorkspacesUnfiltered.includes(name)) {
-						if (!existsSync(join(ctx.baseDir, name))) {
+						if (!existsSync(join(ctx.arbRootDir, name))) {
 							error(`Directory '${name}' does not exist.`);
 						} else {
 							error(`Directory '${name}' is not a non-workspace directory.`);
@@ -68,10 +68,10 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 			const staleWorktreeRepos = await findStaleWorktrees(ctx.reposDir);
 
 			// ── Section 3: Orphaned local branches ───────────────────
-			const workspaces = listWorkspaces(ctx.baseDir);
+			const workspaces = listWorkspaces(ctx.arbRootDir);
 			const workspaceBranches = new Set<string>();
 			for (const ws of workspaces) {
-				const wb = await workspaceBranch(join(ctx.baseDir, ws));
+				const wb = await workspaceBranch(join(ctx.arbRootDir, ws));
 				if (wb) workspaceBranches.add(wb.branch);
 			}
 			const orphanedBranches = await findOrphanedBranches(ctx.reposDir, workspaceBranches);
@@ -93,7 +93,7 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 				const descriptions: string[] = [];
 				for (const name of targetDirs) {
 					if (name.length > maxName) maxName = name.length;
-					descriptions.push(describeContents(join(ctx.baseDir, name)));
+					descriptions.push(describeContents(join(ctx.arbRootDir, name)));
 				}
 
 				process.stderr.write(`  ${dim("DIRECTORY")}${" ".repeat(maxName - 9)}    ${dim("CONTENTS")}\n`);
@@ -178,7 +178,7 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 
 			// ── Execute ──────────────────────────────────────────────
 			for (const name of selectedDirs) {
-				rmSync(join(ctx.baseDir, name), { recursive: true, force: true });
+				rmSync(join(ctx.arbRootDir, name), { recursive: true, force: true });
 			}
 
 			if (hasStale) {

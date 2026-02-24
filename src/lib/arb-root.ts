@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 
-export function detectBaseDir(startDir?: string): string | null {
+export function detectArbRoot(startDir?: string): string | null {
 	let dir = startDir ?? process.cwd();
 	while (dir !== "/") {
 		if (existsSync(`${dir}/.arb`)) {
@@ -14,13 +14,13 @@ export function detectBaseDir(startDir?: string): string | null {
 	return null;
 }
 
-export function detectWorkspace(baseDir: string): string | null {
+export function detectWorkspace(arbRootDir: string): string | null {
 	const cwd = process.cwd();
-	const prefix = `${baseDir}/`;
+	const prefix = `${arbRootDir}/`;
 	if (!cwd.startsWith(prefix)) return null;
 	const firstSegment = cwd.slice(prefix.length).split("/")[0];
 	if (!firstSegment) return null;
-	if (existsSync(`${baseDir}/${firstSegment}/.arbws`)) {
+	if (existsSync(`${arbRootDir}/${firstSegment}/.arbws`)) {
 		return firstSegment;
 	}
 	return null;

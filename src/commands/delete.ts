@@ -42,9 +42,9 @@ import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
 
-function hintNonWorkspaces(baseDir: string): void {
-	const ignored = loadArbIgnore(baseDir);
-	const nonWorkspaces = listNonWorkspaces(baseDir, ignored);
+function hintNonWorkspaces(arbRootDir: string): void {
+	const ignored = loadArbIgnore(arbRootDir);
+	const nonWorkspaces = listNonWorkspaces(arbRootDir, ignored);
 	if (nonWorkspaces.length > 0) {
 		info(
 			`  ${plural(nonWorkspaces.length, "non-workspace directory", "non-workspace directories")} found. Run 'arb clean' to review.`,
@@ -70,7 +70,7 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 		process.exit(1);
 	}
 
-	const wsDir = `${ctx.baseDir}/${name}`;
+	const wsDir = `${ctx.arbRootDir}/${name}`;
 	if (!existsSync(wsDir)) {
 		error(`No workspace found for ${name}`);
 		process.exit(1);
@@ -131,7 +131,7 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 	}
 
 	// Template drift detection
-	const templateDiffs = await diffTemplates(ctx.baseDir, wsDir, repos);
+	const templateDiffs = await diffTemplates(ctx.arbRootDir, wsDir, repos);
 
 	return {
 		name,
@@ -331,7 +331,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 						process.exit(1);
 					}
 
-					const allWorkspaces = listWorkspaces(ctx.baseDir);
+					const allWorkspaces = listWorkspaces(ctx.arbRootDir);
 					const candidates = allWorkspaces.filter((ws) => ws !== ctx.currentWorkspace);
 
 					if (candidates.length === 0) {
@@ -341,7 +341,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 
 					const safeEntries: WorkspaceAssessment[] = [];
 					for (const ws of candidates) {
-						const wsDir = `${ctx.baseDir}/${ws}`;
+						const wsDir = `${ctx.arbRootDir}/${ws}`;
 						if (!existsSync(`${wsDir}/.arbws/config`)) continue;
 
 						const assessment = await assessWorkspace(ws, ctx);
@@ -388,14 +388,14 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 
 					process.stderr.write("\n");
 					success(`Deleted ${plural(safeEntries.length, "workspace")}`);
-					hintNonWorkspaces(ctx.baseDir);
+					hintNonWorkspaces(ctx.arbRootDir);
 					return;
 				}
 
 				let names = nameArgs;
 				if (names.length === 0 && whereFilter) {
 					// --where replaces positional args: select from all workspaces
-					const allWorkspaces = listWorkspaces(ctx.baseDir);
+					const allWorkspaces = listWorkspaces(ctx.arbRootDir);
 					names = allWorkspaces.filter((ws) => ws !== ctx.currentWorkspace);
 				} else if (names.length === 0) {
 					const stdinNames = await readNamesFromStdin();
@@ -405,7 +405,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 						error("No workspace specified.");
 						process.exit(1);
 					} else {
-						const workspaces = listWorkspaces(ctx.baseDir);
+						const workspaces = listWorkspaces(ctx.arbRootDir);
 						if (workspaces.length === 0) {
 							error("No workspaces found.");
 							process.exit(1);
@@ -480,7 +480,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 				process.stderr.write("\n");
 				success(`Deleted ${plural(assessments.length, "workspace")}`);
 
-				hintNonWorkspaces(ctx.baseDir);
+				hintNonWorkspaces(ctx.arbRootDir);
 			},
 		);
 }

@@ -243,7 +243,7 @@ The `--base` flag creates a workspace that branches from a specific base instead
 arb repo clone https://github.com/you/api.git --upstream https://github.com/org/api.git
 ```
 
-One command clones your fork and registers the canonical repository. Arborist auto-detects remote roles from git config, so `rebase` targets upstream while `push` goes to your fork — no arb-specific configuration needed. Different repos in the same workspace can use different remote layouts — some forked, some single-origin — and arb resolves remote roles independently for each, so `rebase` targets the right upstream and `push` goes to the right fork without per-repo configuration.
+One command clones your fork and registers the canonical repository. Arborist auto-detects remote roles from git config, so `rebase` targets the base while `push` goes to your fork — no arb-specific configuration needed. Different repos in the same workspace can use different remote layouts — some forked, some single-origin — and arb resolves remote roles independently for each, so `rebase` targets the right base and `push` goes to the right fork without per-repo configuration.
 
 ### Script-friendly by design
 

@@ -46,12 +46,12 @@ load test_helper/common-setup
     [ "$count" -eq 3 ]
 }
 
-@test "arb repo list shows SHARE and UPSTREAM columns" {
+@test "arb repo list shows SHARE and BASE columns" {
     run arb repo list
     [ "$status" -eq 0 ]
     [[ "$output" == *"SHARE"* ]]
-    [[ "$output" == *"UPSTREAM"* ]]
-    # Single-remote repos show origin as share, dash as upstream
+    [[ "$output" == *"BASE"* ]]
+    # Single-remote repos show origin as share, dash as base
     [[ "$output" == *"origin"* ]]
 }
 

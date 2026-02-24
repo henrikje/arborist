@@ -383,7 +383,7 @@ export async function gatherRepoStatus(
 	// Resolve remote names (upstream for base, share for tracking).
 	// When caller didn't pre-resolve, resolve here. Errors propagate.
 	const resolvedRemotes = remotes ?? (await resolveRemotes(repoPath));
-	const upstreamRemote = resolvedRemotes.upstream;
+	const baseRemote = resolvedRemotes.base;
 	const shareRemote = resolvedRemotes.share;
 
 	// ── Section 2: Local (working tree status) ──
@@ -397,25 +397,25 @@ export async function gatherRepoStatus(
 		let defaultBranch: string | null = null;
 		let fellBack = false;
 		if (configBase) {
-			const baseExists = await remoteBranchExists(repoPath, configBase, upstreamRemote);
+			const baseExists = await remoteBranchExists(repoPath, configBase, baseRemote);
 			if (baseExists) {
 				defaultBranch = configBase;
 			}
 		}
-		if (!defaultBranch && upstreamRemote) {
-			defaultBranch = await getDefaultBranch(repoPath, upstreamRemote);
+		if (!defaultBranch && baseRemote) {
+			defaultBranch = await getDefaultBranch(repoPath, baseRemote);
 			if (configBase && defaultBranch) fellBack = true;
 		}
 
 		if (defaultBranch) {
-			const compareRef = upstreamRemote ? `${upstreamRemote}/${defaultBranch}` : defaultBranch;
+			const compareRef = baseRemote ? `${baseRemote}/${defaultBranch}` : defaultBranch;
 			const lr = await git(repoDir, "rev-list", "--left-right", "--count", `${compareRef}...HEAD`);
 			if (lr.exitCode === 0) {
 				const parts = lr.stdout.trim().split(/\s+/);
 				const behind = Number.parseInt(parts[0] ?? "0", 10);
 				const ahead = Number.parseInt(parts[1] ?? "0", 10);
 				baseStatus = {
-					remote: upstreamRemote ?? null,
+					remote: baseRemote ?? null,
 					ref: defaultBranch,
 					configuredRef: fellBack ? configBase : null,
 					ahead,
@@ -519,7 +519,7 @@ export async function gatherRepoStatus(
 	const isOnBaseBranch = actualBranch === baseStatus?.ref;
 	const skipForNeverPushed = baseStatus !== null && baseStatus.ahead === 0 && shareStatus.refMode === "noRef";
 	if (baseStatus !== null && !detached && (hasWork || isGone) && !isOnBaseBranch && !skipForNeverPushed) {
-		const compareRef = upstreamRemote ? `${upstreamRemote}/${baseStatus.ref}` : baseStatus.ref;
+		const compareRef = baseRemote ? `${baseRemote}/${baseStatus.ref}` : baseStatus.ref;
 		const shareUpToDate =
 			shareStatus !== null && shareStatus.toPush === 0 && shareStatus.toPull === 0 && shareStatus.refMode !== "noRef";
 		const shouldCheckSquash = (shareStatus !== null && shareStatus.refMode === "gone") || shareUpToDate;
@@ -537,20 +537,20 @@ export async function gatherRepoStatus(
 	// ── Stacked base merge detection ──
 	// When configBase is set and resolved, check if the base branch itself
 	// has been merged into the repo's true default branch.
-	if (configBase && baseStatus !== null && upstreamRemote && !detached) {
+	if (configBase && baseStatus !== null && baseRemote && !detached) {
 		if (baseStatus.ref === configBase) {
 			// Base branch exists on remote — use remote ref for detection
-			const trueDefault = await getDefaultBranch(repoPath, upstreamRemote);
+			const trueDefault = await getDefaultBranch(repoPath, baseRemote);
 			if (trueDefault && trueDefault !== configBase) {
-				const configBaseRef = `${upstreamRemote}/${configBase}`;
-				const defaultRef = `${upstreamRemote}/${trueDefault}`;
+				const configBaseRef = `${baseRemote}/${configBase}`;
+				const defaultRef = `${baseRemote}/${trueDefault}`;
 				baseStatus.baseMergedIntoDefault = await detectBranchMerged(repoDir, defaultRef, 200, configBaseRef);
 			}
 		} else {
 			// Base branch gone from remote — try local branch ref for detection
 			const localExists = await branchExistsLocally(repoPath, configBase);
 			if (localExists) {
-				const defaultRef = `${upstreamRemote}/${baseStatus.ref}`;
+				const defaultRef = `${baseRemote}/${baseStatus.ref}`;
 				baseStatus.baseMergedIntoDefault = await detectBranchMerged(repoDir, defaultRef, 200, configBase);
 			}
 		}

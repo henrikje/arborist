@@ -36,17 +36,17 @@ Always use these Bun scripts instead of running commands directly.
 
 ### Commands (`src/commands/`)
 
-Each command exports a `register*Command(program, getCtx)` function. The `getCtx` callback lazily resolves `ArbContext` (base dir, repos dir, current workspace).
+Each command exports a `register*Command(program, getCtx)` function. The `getCtx` callback lazily resolves `ArbContext` (arb root dir, repos dir, current workspace).
 
 ### Core Libraries (`src/lib/`)
 
-- **`types.ts`** — `ArbContext` interface (baseDir, reposDir, currentWorkspace)
-- **`base-dir.ts`** — walks up the directory tree to find the `.arb/` marker and detects if cwd is inside a workspace
+- **`types.ts`** — `ArbContext` interface (arbRootDir, reposDir, currentWorkspace)
+- **`arb-root.ts`** — walks up the directory tree to find the `.arb/` marker and detects if cwd is inside a workspace
 - **`git.ts`** — git process spawning, branch validation, status parsing, remote detection, default branch resolution
-- **`remotes.ts`** — resolves remote roles (upstream/share) for fork workflows; supports `remote.pushDefault`, `upstream`+`origin` convention, and single-remote repos
+- **`remotes.ts`** — resolves remote roles (base/share) for fork workflows; supports `remote.pushDefault`, `upstream`+`origin` convention, and single-remote repos
 - **`status.ts`** — the canonical status model. Defines `RepoStatus` (5-section model: identity, local, base, share, operation), `RepoFlags` (independent boolean flags), named flag sets (`AT_RISK_FLAGS`, `LOSE_WORK_FLAGS`, `STALE_FLAGS`), and shared functions (`computeFlags`, `isAtRisk`, `wouldLoseWork`, `flagLabels`). Also provides `gatherRepoStatus` and `gatherWorkspaceSummary`. This is Arborist's single source of truth for repository state — all commands that need to understand repo state must use this model, not invent local representations. See the "Canonical status model" section in GUIDELINES.md
 - **`integrate.ts`** — shared rebase/merge logic: assess repos, display plan, confirm, execute sequentially with conflict recovery guidance
-- **`worktrees.ts`** — two-phase worktree creation: parallel fetch then sequential worktree add, with upstream tracking setup
+- **`worktrees.ts`** — two-phase worktree creation: parallel fetch then sequential worktree add, with base remote tracking setup
 - **`workspace-branch.ts`** — resolves the branch for a workspace from `.arbws/config`, with fallback inference from the first worktree
 - **`workspace-context.ts`** — `requireWorkspace()` and `requireBranch()` helpers that exit on missing context
 - **`repos.ts`** — lists workspaces (dirs containing `.arbws`), canonical repos, interactive repo selection, and workspace repo enumeration

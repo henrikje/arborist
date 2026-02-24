@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Command } from "commander";
-import { detectBaseDir } from "../lib/base-dir";
+import { detectArbRoot } from "../lib/arb-root";
 import { dim, error, info, success } from "../lib/output";
 
 export function registerInitCommand(program: Command): void {
@@ -24,7 +24,7 @@ export function registerInitCommand(program: Command): void {
 				process.exit(1);
 			}
 
-			const existingRoot = detectBaseDir(target);
+			const existingRoot = detectArbRoot(target);
 			if (existingRoot) {
 				error(`Cannot init inside existing arb root: ${existingRoot}`);
 				process.exit(1);
