@@ -28,7 +28,7 @@ import {
 	forceApplyWorkspaceTemplates,
 	listTemplates,
 	removeTemplate,
-	substitutePlaceholders,
+	renderTemplate,
 	templateFilePath,
 	workspaceFilePath,
 } from "../lib/templates";
@@ -73,7 +73,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 		.command("template")
 		.summary("Manage workspace templates")
 		.description(
-			"Manage template files that are automatically seeded into new workspaces. Templates live in .arb/templates/ and are copied into workspaces during 'arb create' and 'arb attach'. Files ending with .arbtemplate undergo placeholder substitution (__WORKSPACE_PATH__, __WORKTREE_PATH__, etc.) and have the extension stripped at the destination. Use subcommands to add, remove, list, diff, and apply templates.",
+			"Manage template files that are automatically seeded into new workspaces. Templates live in .arb/templates/ and are copied into workspaces during 'arb create' and 'arb attach'. Files ending with .arbtemplate are rendered with LiquidJS ({{ workspace.path }}, {% for wt in workspace.worktrees %}, etc.) and have the extension stripped at the destination. Templates referencing workspace.worktrees are automatically regenerated when repos are attached or detached. Use subcommands to add, remove, list, diff, and apply templates.",
 		);
 
 	// ── template add ─────────────────────────────────────────────────
@@ -308,22 +308,24 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 						: `.arb/templates/repos/${diff.repo}/${diff.relPath}`;
 				const wsLabel = diff.scope === "workspace" ? diff.relPath : `${diff.repo}/${diff.relPath}`;
 
-				// For .arbtemplate files, substitute placeholders before diffing
+				// For .arbtemplate files, render with Liquid before diffing
 				const isArbtpl = tplPath.endsWith(ARBTEMPLATE_EXT);
 				let diffSrcPath = tplPath;
 				let tmpFile: string | null = null;
 				if (isArbtpl) {
 					const repoDir = diff.scope === "repo" && diff.repo ? join(wsDir, diff.repo) : undefined;
+					const allRepos = workspaceRepoDirs(wsDir).map((d) => ({ name: basename(d), path: d }));
 					const tplCtx: TemplateContext = {
 						rootPath: ctx.baseDir,
 						workspaceName: basename(wsDir),
 						workspacePath: wsDir,
 						worktreeName: diff.scope === "repo" ? diff.repo : undefined,
 						worktreePath: repoDir,
+						repos: allRepos,
 					};
 					const content = readFileSync(tplPath, "utf-8");
 					tmpFile = join(tmpdir(), `arb-diff-${process.pid}-${Date.now()}`);
-					writeFileSync(tmpFile, substitutePlaceholders(content, tplCtx));
+					writeFileSync(tmpFile, renderTemplate(content, tplCtx));
 					diffSrcPath = tmpFile;
 				}
 
@@ -410,7 +412,7 @@ function applySingleFile(
 		mkdirSync(dirname(destPath), { recursive: true });
 		if (isArbtpl && ctx) {
 			const content = readFileSync(tplPath, "utf-8");
-			writeFileSync(destPath, substitutePlaceholders(content, ctx));
+			writeFileSync(destPath, renderTemplate(content, ctx));
 		} else {
 			copyFileSync(tplPath, destPath);
 		}
@@ -420,7 +422,7 @@ function applySingleFile(
 		return { status: "skipped" };
 	}
 	const srcContent =
-		isArbtpl && ctx ? Buffer.from(substitutePlaceholders(readFileSync(tplPath, "utf-8"), ctx)) : readFileSync(tplPath);
+		isArbtpl && ctx ? Buffer.from(renderTemplate(readFileSync(tplPath, "utf-8"), ctx)) : readFileSync(tplPath);
 	const destContent = readFileSync(destPath);
 	if (srcContent.equals(destContent)) {
 		return { status: "unchanged" };
@@ -445,6 +447,7 @@ function applyDefaultMode(
 
 	if (fileFilter) {
 		const entries = resolveTemplatesToApply(ctx, applyWorkspace, repos, fileFilter);
+		const allRepos = workspaceRepoDirs(wsDir).map((d) => ({ name: basename(d), path: d }));
 		for (const entry of entries) {
 			const tplPath = templateFilePath(ctx.baseDir, entry.scope, entry.relPath, entry.repo);
 			const destPath = workspaceFilePath(wsDir, entry.scope, entry.relPath, entry.repo);
@@ -456,6 +459,7 @@ function applyDefaultMode(
 				workspacePath: wsDir,
 				worktreeName: entry.scope === "repo" ? entry.repo : undefined,
 				worktreePath: repoDir,
+				repos: allRepos,
 			};
 			const { status } = applySingleFile(tplPath, destPath, false, tplCtx);
 			const label = status === "skipped" ? yellow("skipped (exists)") : "seeded";
@@ -499,6 +503,7 @@ function applyForceMode(
 
 	if (fileFilter) {
 		const entries = resolveTemplatesToApply(ctx, applyWorkspace, repos, fileFilter);
+		const allRepos = workspaceRepoDirs(wsDir).map((d) => ({ name: basename(d), path: d }));
 		for (const entry of entries) {
 			const tplPath = templateFilePath(ctx.baseDir, entry.scope, entry.relPath, entry.repo);
 			const destPath = workspaceFilePath(wsDir, entry.scope, entry.relPath, entry.repo);
@@ -510,6 +515,7 @@ function applyForceMode(
 				workspacePath: wsDir,
 				worktreeName: entry.scope === "repo" ? entry.repo : undefined,
 				worktreePath: repoDir,
+				repos: allRepos,
 			};
 			const { status } = applySingleFile(tplPath, destPath, true, tplCtx);
 			process.stderr.write(`  [${scope}] ${entry.relPath.padEnd(40)} ${status}\n`);
@@ -546,6 +552,9 @@ function applyForceMode(
 function displayOverlayResults(result: OverlayResult, scope: string): void {
 	for (const f of result.seeded) {
 		process.stderr.write(`  [${scope}] ${f.padEnd(40)} seeded\n`);
+	}
+	for (const f of result.regenerated) {
+		process.stderr.write(`  [${scope}] ${f.padEnd(40)} regenerated\n`);
 	}
 	for (const f of result.skipped) {
 		process.stderr.write(`  [${scope}] ${f.padEnd(40)} ${yellow("skipped (exists)")}\n`);

@@ -2,9 +2,10 @@ import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { branchExistsLocally, git, isRepoDirty, parseGitStatus } from "../lib/git";
-import { error, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
+import { error, info, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
 import { selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import { isLocalDirty } from "../lib/status";
+import { applyRepoTemplates, applyWorkspaceTemplates } from "../lib/templates";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
@@ -16,7 +17,7 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 		.option("--delete-branch", "Delete the local branch from the canonical repo")
 		.summary("Detach repos from the workspace")
 		.description(
-			"Detach one or more repos from the current workspace without deleting the workspace itself. Skips repos with uncommitted changes unless --force is used. Use --all-repos to detach all repos. Use --delete-branch to also delete the local branch from the canonical repo.",
+			"Detach one or more repos from the current workspace without deleting the workspace itself. Regenerates worktree-aware templates (those using {% for wt in workspace.worktrees %}) to reflect the updated repo list. Skips repos with uncommitted changes unless --force is used. Use --all-repos to detach all repos. Use --delete-branch to also delete the local branch from the canonical repo.",
 		)
 		.action(async (repoArgs: string[], options: { force?: boolean; allRepos?: boolean; deleteBranch?: boolean }) => {
 			const ctx = getCtx();
@@ -97,6 +98,20 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 				}
 
 				detached.push(repo);
+			}
+
+			if (detached.length > 0) {
+				const changed = { removed: detached };
+				const remainingRepos = workspaceRepoDirs(wsDir).map((d) => basename(d));
+				const wsTemplates = applyWorkspaceTemplates(ctx.baseDir, wsDir, changed);
+				const repoTemplates = applyRepoTemplates(ctx.baseDir, wsDir, remainingRepos, changed);
+				const totalRegenerated = wsTemplates.regenerated.length + repoTemplates.regenerated.length;
+				if (totalRegenerated > 0) {
+					info(`Regenerated ${plural(totalRegenerated, "template file")}`);
+				}
+				for (const f of [...wsTemplates.failed, ...repoTemplates.failed]) {
+					warn(`Failed to copy template ${f.path}: ${f.error}`);
+				}
 			}
 
 			process.stderr.write("\n");

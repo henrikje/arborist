@@ -83,21 +83,6 @@ load test_helper/common-setup
     [[ "$output" == "ADDED=true" ]]
 }
 
-@test "arb attach does not reapply workspace templates" {
-    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    echo "ws-only" > "$TEST_DIR/project/.arb/templates/workspace/marker.txt"
-
-    arb create tpl-add-nows repo-a
-    # Remove the workspace template file that was seeded during create
-    rm "$TEST_DIR/project/tpl-add-nows/marker.txt"
-
-    cd "$TEST_DIR/project/tpl-add-nows"
-    arb attach repo-b
-
-    # The file should NOT be re-seeded by arb attach
-    [ ! -f "$TEST_DIR/project/tpl-add-nows/marker.txt" ]
-}
-
 @test "template for a repo not in the workspace is silently ignored" {
     mkdir -p "$TEST_DIR/project/.arb/templates/repos/nonexistent-repo"
     echo "ignored" > "$TEST_DIR/project/.arb/templates/repos/nonexistent-repo/.env"
@@ -766,11 +751,11 @@ load test_helper/common-setup
     [[ "$output" == *"some-longer-filename.txt"*"(modified)"* ]]
 }
 
-# ── .arbtemplate placeholder substitution ─────────────────────────
+# ── .arbtemplate LiquidJS rendering ───────────────────────────────
 
-@test "arb create applies .arbtemplate with workspace placeholders" {
+@test "arb create applies .arbtemplate with workspace variables" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '__WORKSPACE_NAME__:__WORKSPACE_PATH__:__ROOT_PATH__' \
+    printf '{{ workspace.name }}:{{ workspace.path }}:{{ root.path }}' \
         > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
 
     arb create tpl-sub-ws repo-a
@@ -781,9 +766,9 @@ load test_helper/common-setup
     [[ "$content" == "tpl-sub-ws:$TEST_DIR/project/tpl-sub-ws:$TEST_DIR/project" ]]
 }
 
-@test "arb create applies .arbtemplate with repo placeholders" {
+@test "arb create applies .arbtemplate with repo variables" {
     mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
-    printf '__WORKTREE_NAME__:__WORKTREE_PATH__' \
+    printf '{{ worktree.name }}:{{ worktree.path }}' \
         > "$TEST_DIR/project/.arb/templates/repos/repo-a/settings.json.arbtemplate"
 
     arb create tpl-sub-repo repo-a
@@ -793,11 +778,11 @@ load test_helper/common-setup
     [[ "$content" == "repo-a:$TEST_DIR/project/tpl-sub-repo/repo-a" ]]
 }
 
-@test "arb template apply seeds .arbtemplate with substitution" {
+@test "arb template apply seeds .arbtemplate with rendering" {
     arb create tpl-apply-sub repo-a >/dev/null 2>&1
     # Set up templates AFTER create so they haven't been seeded yet
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '__WORKSPACE_NAME__' \
+    printf '{{ workspace.name }}' \
         > "$TEST_DIR/project/.arb/templates/workspace/marker.txt.arbtemplate"
     cd "$TEST_DIR/project/tpl-apply-sub"
     run arb template apply
@@ -806,9 +791,9 @@ load test_helper/common-setup
     [ "$(cat "$TEST_DIR/project/tpl-apply-sub/marker.txt")" = "tpl-apply-sub" ]
 }
 
-@test "arb template apply --force resets .arbtemplate files to substituted content" {
+@test "arb template apply --force resets .arbtemplate files to rendered content" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '__WORKSPACE_NAME__' \
+    printf '{{ workspace.name }}' \
         > "$TEST_DIR/project/.arb/templates/workspace/marker.txt.arbtemplate"
     arb create tpl-force-sub repo-a >/dev/null 2>&1
     echo "DRIFTED" > "$TEST_DIR/project/tpl-force-sub/marker.txt"
@@ -819,12 +804,12 @@ load test_helper/common-setup
     [ "$(cat "$TEST_DIR/project/tpl-force-sub/marker.txt")" = "tpl-force-sub" ]
 }
 
-@test "arb template diff compares substituted content for .arbtemplate" {
+@test "arb template diff compares rendered content for .arbtemplate" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '__WORKSPACE_NAME__' \
+    printf '{{ workspace.name }}' \
         > "$TEST_DIR/project/.arb/templates/workspace/marker.txt.arbtemplate"
     arb create tpl-diff-sub repo-a >/dev/null 2>&1
-    # Content matches substituted value — no drift expected
+    # Content matches rendered value — no drift expected
     cd "$TEST_DIR/project/tpl-diff-sub"
     run arb template diff
     [ "$status" -eq 0 ]
@@ -838,20 +823,18 @@ load test_helper/common-setup
 
 @test "arb template list shows (template) annotation for .arbtemplate" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '__WORKSPACE_NAME__' \
+    printf '{{ workspace.name }}' \
         > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
     echo "static" > "$TEST_DIR/project/.arb/templates/workspace/plain.txt"
     run arb template list
     [ "$status" -eq 0 ]
     [[ "$output" == *"config.json"*"(template)"* ]]
     [[ "$output" == *"plain.txt"* ]]
-    # plain.txt should NOT have (template) annotation
-    # (We can't easily test absence per-line in BATS, but config.json should have it)
 }
 
 @test "arb template remove works with stripped name for .arbtemplate" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '__WORKSPACE_NAME__' \
+    printf '{{ workspace.name }}' \
         > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
     arb create my-feature repo-a >/dev/null 2>&1
     cd "$TEST_DIR/project/my-feature"
@@ -863,7 +846,7 @@ load test_helper/common-setup
 
 @test "mix of .arbtemplate and regular files in same template directory" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '__WORKSPACE_NAME__' \
+    printf '{{ workspace.name }}' \
         > "$TEST_DIR/project/.arb/templates/workspace/dynamic.txt.arbtemplate"
     echo "static content" > "$TEST_DIR/project/.arb/templates/workspace/static.txt"
 
@@ -874,23 +857,12 @@ load test_helper/common-setup
     [ "$(cat "$TEST_DIR/project/tpl-mix-test/static.txt")" = "static content" ]
 }
 
-@test "worktree placeholders left as-is in workspace-scoped templates" {
-    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '__WORKTREE_NAME__:__WORKTREE_PATH__' \
-        > "$TEST_DIR/project/.arb/templates/workspace/ws-only.txt.arbtemplate"
-
-    arb create tpl-wt-literal repo-a
-    local content
-    content="$(cat "$TEST_DIR/project/tpl-wt-literal/ws-only.txt")"
-    [[ "$content" == "__WORKTREE_NAME__:__WORKTREE_PATH__" ]]
-}
-
 # ── template conflict detection ──────────────────────────────────
 
 @test "arb create warns when both plain and .arbtemplate exist" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
     echo "plain" > "$TEST_DIR/project/.arb/templates/workspace/config.json"
-    printf '__WORKSPACE_NAME__' \
+    printf '{{ workspace.name }}' \
         > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
 
     run arb create tpl-conflict-test repo-a
@@ -904,7 +876,7 @@ load test_helper/common-setup
 @test "arb template list shows conflict annotation when both variants exist" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
     echo "plain" > "$TEST_DIR/project/.arb/templates/workspace/config.json"
-    printf '__WORKSPACE_NAME__' \
+    printf '{{ workspace.name }}' \
         > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
 
     run arb template list
@@ -913,3 +885,183 @@ load test_helper/common-setup
     [[ "$output" == *"(conflict)"* ]]
 }
 
+# ── worktree-aware templates (iteration) ─────────────────────────
+
+@test "arb create renders template with worktree list" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
+
+    arb create tpl-iter repo-a repo-b
+    [ -f "$TEST_DIR/project/tpl-iter/repos.txt" ]
+    local content
+    content="$(cat "$TEST_DIR/project/tpl-iter/repos.txt")"
+    [[ "$content" == *"repo-a"* ]]
+    [[ "$content" == *"repo-b"* ]]
+}
+
+@test "arb attach regenerates worktree-aware workspace template" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
+
+    arb create tpl-attach-regen repo-a
+    # Should have been seeded with just repo-a
+    local before
+    before="$(cat "$TEST_DIR/project/tpl-attach-regen/repos.txt")"
+    [[ "$before" == *"repo-a"* ]]
+    [[ "$before" != *"repo-b"* ]]
+
+    cd "$TEST_DIR/project/tpl-attach-regen"
+    run arb attach repo-b
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Regenerated"* ]]
+
+    local after
+    after="$(cat "$TEST_DIR/project/tpl-attach-regen/repos.txt")"
+    [[ "$after" == *"repo-a"* ]]
+    [[ "$after" == *"repo-b"* ]]
+}
+
+@test "arb detach regenerates worktree-aware workspace template" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
+
+    arb create tpl-detach-regen repo-a repo-b
+    local before
+    before="$(cat "$TEST_DIR/project/tpl-detach-regen/repos.txt")"
+    [[ "$before" == *"repo-a"* ]]
+    [[ "$before" == *"repo-b"* ]]
+
+    cd "$TEST_DIR/project/tpl-detach-regen"
+    run arb detach repo-b
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Regenerated"* ]]
+
+    local after
+    after="$(cat "$TEST_DIR/project/tpl-detach-regen/repos.txt")"
+    [[ "$after" == *"repo-a"* ]]
+    [[ "$after" != *"repo-b"* ]]
+}
+
+@test "arb attach skips overwrite when user has edited worktree-aware template" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
+
+    arb create tpl-user-edit repo-a
+    # User edits the file
+    echo "my custom repos list" > "$TEST_DIR/project/tpl-user-edit/repos.txt"
+
+    cd "$TEST_DIR/project/tpl-user-edit"
+    arb attach repo-b
+
+    # File should NOT be overwritten
+    local content
+    content="$(cat "$TEST_DIR/project/tpl-user-edit/repos.txt")"
+    [[ "$content" == "my custom repos list" ]]
+}
+
+@test "arb template apply --force overwrites user-edited worktree-aware template" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
+
+    arb create tpl-force-regen repo-a repo-b
+    echo "user edited" > "$TEST_DIR/project/tpl-force-regen/repos.txt"
+
+    cd "$TEST_DIR/project/tpl-force-regen"
+    run arb template apply --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"reset"* ]]
+    local content
+    content="$(cat "$TEST_DIR/project/tpl-force-regen/repos.txt")"
+    [[ "$content" == *"repo-a"* ]]
+    [[ "$content" == *"repo-b"* ]]
+}
+
+@test "forloop.last works for trailing comma in JSON template" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    cat > "$TEST_DIR/project/.arb/templates/workspace/modules.json.arbtemplate" << 'TMPL'
+{%- for wt in workspace.worktrees %}
+"{{ wt.name }}"{% unless forloop.last %},{% endunless %}
+{%- endfor %}
+TMPL
+
+    arb create tpl-comma repo-a repo-b
+    local content
+    content="$(cat "$TEST_DIR/project/tpl-comma/modules.json")"
+    # Should have comma between items but not after last
+    [[ "$content" == *'"repo-a",'* ]]
+    [[ "$content" == *'"repo-b"'* ]]
+    # Last item should NOT have trailing comma
+    [[ "$content" != *'"repo-b",'* ]]
+}
+
+@test "workspace.worktrees available in repo-scoped template" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    printf 'siblings: {%% for wt in workspace.worktrees %%}{{ wt.name }} {%% endfor %%}' \
+        > "$TEST_DIR/project/.arb/templates/repos/repo-a/siblings.txt.arbtemplate"
+
+    arb create tpl-siblings repo-a repo-b
+    [ -f "$TEST_DIR/project/tpl-siblings/repo-a/siblings.txt" ]
+    local content
+    content="$(cat "$TEST_DIR/project/tpl-siblings/repo-a/siblings.txt")"
+    [[ "$content" == *"repo-a"* ]]
+    [[ "$content" == *"repo-b"* ]]
+}
+
+@test "sequential attach/detach maintains correct template state" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
+
+    arb create tpl-seq repo-a
+    cd "$TEST_DIR/project/tpl-seq"
+
+    # Attach repo-b
+    arb attach repo-b
+    local after_attach
+    after_attach="$(cat "$TEST_DIR/project/tpl-seq/repos.txt")"
+    [[ "$after_attach" == *"repo-a"* ]]
+    [[ "$after_attach" == *"repo-b"* ]]
+
+    # Detach repo-a
+    arb detach repo-a
+    local after_detach
+    after_detach="$(cat "$TEST_DIR/project/tpl-seq/repos.txt")"
+    [[ "$after_detach" != *"repo-a"* ]]
+    [[ "$after_detach" == *"repo-b"* ]]
+}
+
+@test "arb template diff detects drift with worktree-aware template" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
+
+    arb create tpl-diff-iter repo-a repo-b
+    # No drift initially
+    cd "$TEST_DIR/project/tpl-diff-iter"
+    run arb template diff
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"No changes"* ]]
+
+    # Modify the file
+    echo "wrong" > "$TEST_DIR/project/tpl-diff-iter/repos.txt"
+    run arb template diff
+    [ "$status" -eq 1 ]
+}
+
+@test "arb template list shows drift for worktree-aware template" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
+
+    arb create tpl-list-iter repo-a
+    cd "$TEST_DIR/project/tpl-list-iter"
+    echo "wrong" > "$TEST_DIR/project/tpl-list-iter/repos.txt"
+    run arb template list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"(modified)"* ]]
+}

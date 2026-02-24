@@ -4,7 +4,7 @@ import { configGet } from "../lib/config";
 import { error, info, plural, success, warn } from "../lib/output";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
-import { applyRepoTemplates } from "../lib/templates";
+import { applyRepoTemplates, applyWorkspaceTemplates } from "../lib/templates";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 import { addWorktrees } from "../lib/worktrees";
@@ -15,7 +15,7 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
 		.option("-a, --all-repos", "Attach all remaining repos")
 		.summary("Attach repos to the workspace")
 		.description(
-			"Attach one or more repos to the current workspace on the workspace's feature branch. If the workspace has a configured base branch, new worktrees branch from it. Automatically seeds files from .arb/templates/repos/ into newly attached repos. Prompts with a repo picker when run without arguments. Use --all-repos to attach all repos not yet in the workspace.",
+			"Attach one or more repos to the current workspace on the workspace's feature branch. If the workspace has a configured base branch, new worktrees branch from it. Automatically seeds files from .arb/templates/repos/ into newly attached repos and regenerates worktree-aware templates (those using {% for wt in workspace.worktrees %}). Prompts with a repo picker when run without arguments. Use --all-repos to attach all repos not yet in the workspace.",
 		)
 		.action(async (repoArgs: string[], options: { allRepos?: boolean }) => {
 			const ctx = getCtx();
@@ -59,11 +59,19 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
 			const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
 			const result = await addWorktrees(workspace, branch, repos, ctx.reposDir, ctx.baseDir, base, remotesMap);
 
-			const repoTemplates = applyRepoTemplates(ctx.baseDir, wsDir, result.created);
-			if (repoTemplates.seeded.length > 0) {
-				info(`Seeded ${plural(repoTemplates.seeded.length, "template file")}`);
+			const changed = { added: result.created };
+			const wsRepoNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
+			const repoTemplates = applyRepoTemplates(ctx.baseDir, wsDir, wsRepoNames, changed);
+			const wsTemplates = applyWorkspaceTemplates(ctx.baseDir, wsDir, changed);
+			const totalSeeded = repoTemplates.seeded.length + wsTemplates.seeded.length;
+			const totalRegenerated = repoTemplates.regenerated.length + wsTemplates.regenerated.length;
+			if (totalSeeded > 0) {
+				info(`Seeded ${plural(totalSeeded, "template file")}`);
 			}
-			for (const f of repoTemplates.failed) {
+			if (totalRegenerated > 0) {
+				info(`Regenerated ${plural(totalRegenerated, "template file")}`);
+			}
+			for (const f of [...repoTemplates.failed, ...wsTemplates.failed]) {
 				warn(`Failed to copy template ${f.path}: ${f.error}`);
 			}
 
