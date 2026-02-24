@@ -226,6 +226,14 @@ arb template add .env
 
 Templates let you capture files and have them seeded into every new workspace. Common uses include `.env` files, IDE settings, and AI agent config. Templates live in `.arb/templates/` and are version-controllable.
 
+### Clean up leftover directories
+
+```bash
+arb clean
+```
+
+After deleting a workspace, tools like IntelliJ may recreate the directory by writing config files (e.g. `.idea/`) on close. These "shell" directories lack `.arbws/`, so they don't appear in `arb list` or `arb delete`. `arb clean` finds and removes them, along with stale worktree references and orphaned local branches in canonical repos. `arb delete` will hint when non-workspace directories are detected. Create a `.arbignore` file in the arb root to exclude directories from cleanup.
+
 ### Rename a workspace branch
 
 ```bash
