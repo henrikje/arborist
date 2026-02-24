@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
 	AT_RISK_FLAGS,
 	LOSE_WORK_FLAGS,
+	MERGED_IMPLIED_FLAGS,
 	type RepoStatus,
+	STALE_FLAGS,
 	computeFlags,
 	computeSummaryAggregates,
 	flagLabels,
@@ -549,7 +551,7 @@ describe("flagLabels", () => {
 			}),
 			"feature",
 		);
-		expect(flagLabels(flags)).toEqual(["merged", "gone", "behind base"]);
+		expect(flagLabels(flags)).toEqual(["merged", "gone"]);
 	});
 
 	test("puts work-safety labels before lifecycle labels when both exist", () => {
@@ -569,7 +571,7 @@ describe("flagLabels", () => {
 			}),
 			"feature",
 		);
-		expect(flagLabels(flags)).toEqual(["dirty", "merged", "gone", "behind base"]);
+		expect(flagLabels(flags)).toEqual(["dirty", "merged", "gone"]);
 	});
 
 	test("includes base merged label when isBaseMerged", () => {
@@ -588,6 +590,64 @@ describe("flagLabels", () => {
 			"feature",
 		);
 		expect(flagLabels(flags)).toContain("base merged");
+	});
+
+	test("suppresses behind-base when merged (ancestor merge)", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 5,
+					mergedIntoBase: "merge",
+					baseMergedIntoDefault: null,
+				},
+			}),
+			"feature",
+		);
+		expect(flagLabels(flags)).toEqual(["merged"]);
+		expect(flagLabels(flags)).not.toContain("behind base");
+	});
+
+	test("suppresses diverged and behind-base when merged (squash merge)", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 3,
+					behind: 5,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: null,
+				},
+			}),
+			"feature",
+		);
+		expect(flagLabels(flags)).toEqual(["merged"]);
+		expect(flagLabels(flags)).not.toContain("diverged");
+		expect(flagLabels(flags)).not.toContain("behind base");
+	});
+
+	test("does NOT suppress diverged when not merged", () => {
+		const flags = computeFlags(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 2,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+				},
+			}),
+			"feature",
+		);
+		expect(flagLabels(flags)).toContain("diverged");
+		expect(flagLabels(flags)).toContain("behind base");
 	});
 });
 
@@ -1180,8 +1240,8 @@ describe("computeSummaryAggregates decoupled display gate", () => {
 			}),
 		];
 		const result = computeSummaryAggregates(repos, "feature");
-		expect(result.statusCounts.map((c) => c.label)).toEqual(["dirty", "merged", "gone", "behind base"]);
-		expect(result.statusLabels).toEqual(["dirty", "merged", "gone", "behind base"]);
+		expect(result.statusCounts.map((c) => c.label)).toEqual(["dirty", "merged", "gone"]);
+		expect(result.statusLabels).toEqual(["dirty", "merged", "gone"]);
 	});
 
 	test("statusCounts includes stale flags even when not at-risk", () => {
@@ -1216,6 +1276,50 @@ describe("computeSummaryAggregates decoupled display gate", () => {
 		expect(result.atRiskCount).toBe(0);
 		expect(result.statusCounts.some((c) => c.key === "isGone")).toBe(true);
 		expect(result.statusLabels).toContain("gone");
+	});
+
+	test("suppresses implied flags for merged repos but keeps them for non-merged repos", () => {
+		const repos = [
+			// Merged repo: behind base should be suppressed
+			makeRepo({
+				name: "merged-repo",
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 3,
+					behind: 5,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: null,
+				},
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+			}),
+			// Non-merged repo: behind base should be kept
+			makeRepo({
+				name: "stale-repo",
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 2,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+				},
+			}),
+		];
+		const result = computeSummaryAggregates(repos, "feature");
+		// "behind base" should appear with count 1 (only the non-merged repo)
+		const behindBase = result.statusCounts.find((c) => c.key === "needsRebase");
+		expect(behindBase).toBeDefined();
+		expect(behindBase?.count).toBe(1);
+		// "diverged" should not appear (only the merged repo had it, and it's suppressed)
+		const diverged = result.statusCounts.find((c) => c.key === "isDiverged");
+		expect(diverged).toBeUndefined();
+		// "merged" and "gone" should appear
+		expect(result.statusLabels).toContain("merged");
+		expect(result.statusLabels).toContain("gone");
+		expect(result.statusLabels).toContain("behind base");
 	});
 
 	test("atRiskCount only counts repos with at-risk flags", () => {
@@ -1326,6 +1430,12 @@ describe("flag set alignment", () => {
 	test("LOSE_WORK_FLAGS is a subset of AT_RISK_FLAGS", () => {
 		for (const flag of LOSE_WORK_FLAGS) {
 			expect(AT_RISK_FLAGS.has(flag)).toBe(true);
+		}
+	});
+
+	test("MERGED_IMPLIED_FLAGS is a subset of STALE_FLAGS", () => {
+		for (const flag of MERGED_IMPLIED_FLAGS) {
+			expect(STALE_FLAGS.has(flag)).toBe(true);
 		}
 	});
 });
