@@ -36,9 +36,63 @@ interface RepoDiffResult {
 	annotation: string;
 	stat: RepoDiffStat;
 	fileStat: DiffJsonFileStat[];
+	diffRef?: string;
 }
 
 const NO_BASE_FALLBACK_LIMIT = 10;
+
+interface DiffTarget {
+	ref: string;
+	status: RepoDiffStatus;
+	reason?: string;
+	note: string;
+}
+
+async function resolveDiffTarget(repoDir: string, repo: RepoStatus): Promise<DiffTarget | null> {
+	if (!repo.base) {
+		const rangeResult = await git(repoDir, "log", "--format=%H", "-n", `${NO_BASE_FALLBACK_LIMIT}`, "HEAD");
+		if (rangeResult.exitCode !== 0 || !rangeResult.stdout.trim()) {
+			return null;
+		}
+		const hashes = rangeResult.stdout.trim().split("\n");
+		const oldest = hashes[hashes.length - 1];
+		if (!oldest) return null;
+
+		const parentCheck = await git(repoDir, "rev-parse", "--verify", `${oldest}^`);
+		let ref: string;
+		if (parentCheck.exitCode === 0) {
+			const parent = parentCheck.stdout.trim();
+			const mb = await git(repoDir, "merge-base", parent, "HEAD");
+			ref = mb.exitCode === 0 && mb.stdout.trim() ? mb.stdout.trim() : parent;
+		} else {
+			const emptyTree = await git(repoDir, "hash-object", "-t", "tree", "/dev/null");
+			ref = emptyTree.stdout.trim();
+		}
+
+		return {
+			ref,
+			status: "no-base",
+			reason: "no base branch resolved",
+			note: "no base branch, showing recent",
+		};
+	}
+
+	const baseFellBack = repo.base.configuredRef != null && repo.base.baseMergedIntoDefault == null;
+	const baseRefStr = baseRef(repo.base);
+	const mb = await git(repoDir, "merge-base", baseRefStr, "HEAD");
+	const ref = mb.exitCode === 0 && mb.stdout.trim() ? mb.stdout.trim() : baseRefStr;
+
+	if (baseFellBack) {
+		return {
+			ref,
+			status: "fallback-base",
+			reason: `base ${repo.base.configuredRef} not found, using ${repo.base.ref}`,
+			note: `base ${repo.base.configuredRef} not found, showing against ${repo.base.ref}`,
+		};
+	}
+
+	return { ref, status: "ok", note: "" };
+}
 
 export function registerDiffCommand(program: Command, getCtx: () => ArbContext): void {
 	program
@@ -51,7 +105,7 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
 		.option("-w, --where <filter>", "Only diff repos matching status filter (comma = OR, + = AND)")
 		.summary("Show feature branch diff across repos")
 		.description(
-			"Show the cumulative diff of the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what has this feature branch changed?' by showing the total change set.\n\nUses the three-dot merge-base diff (base...HEAD) to show what the feature branch introduced, matching what a PR reviewer would see. Use -F/--fetch to fetch before showing diff (skip with --no-fetch). Use --stat for a summary of changed files. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Use --where to filter by status flags (comma = OR, + = AND; e.g. --where dirty+unpushed). Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
+			"Show the cumulative diff of the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what has this feature branch changed?' by showing the total change set.\n\nDiffs from the merge-base to the working tree, so the output includes committed, staged, and unstaged changes to tracked files — the complete change set of the feature branch. Use -F/--fetch to fetch before showing diff (skip with --no-fetch). Use --stat for a summary of changed files. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Use --where to filter by status flags (comma = OR, + = AND; e.g. --where dirty+unpushed). Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
 		)
 		.action(
 			async (
@@ -118,7 +172,7 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
 					if (options.json) {
 						outputJson(summary.workspace, summary.branch, summary.base, results, options.stat);
 					} else {
-						await outputPipe(repos, wsDir, branch, results, options.stat);
+						await outputPipe(repos, wsDir, results, options.stat);
 					}
 				}
 			},
@@ -156,36 +210,10 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
 			continue;
 		}
 
-		// Build git diff args
-		const gitArgs: string[] = [];
-		let note = "";
-
-		if (!repo.base) {
-			// No base branch — diff recent commits
-			const rangeResult = await git(repoDir, "log", "--format=%H", "-n", `${NO_BASE_FALLBACK_LIMIT}`, "HEAD");
-			if (rangeResult.exitCode === 0 && rangeResult.stdout.trim()) {
-				const hashes = rangeResult.stdout.trim().split("\n");
-				const oldest = hashes[hashes.length - 1];
-				if (oldest) {
-					const parentCheck = await git(repoDir, "rev-parse", "--verify", `${oldest}^`);
-					if (parentCheck.exitCode === 0) {
-						gitArgs.push(`${oldest}^...HEAD`);
-					} else {
-						// Root commit — diff against empty tree (two-dot since merge-base can't be computed)
-						const emptyTree = await git(repoDir, "hash-object", "-t", "tree", "/dev/null");
-						gitArgs.push(`${emptyTree.stdout.trim()}..HEAD`);
-					}
-				}
-			}
-			note = "no base branch, showing recent";
-		} else {
-			const baseFellBack = repo.base.configuredRef != null && repo.base.baseMergedIntoDefault == null;
-			const ref = baseRef(repo.base);
-			gitArgs.push(`${ref}...HEAD`);
-			if (baseFellBack) {
-				note = `base ${repo.base.configuredRef} not found, showing against ${repo.base.ref}`;
-			}
-		}
+		// Resolve the merge-base ref (single ref: compares merge-base to working tree)
+		const target = await resolveDiffTarget(repoDir, repo);
+		const gitArgs = target ? [target.ref] : [];
+		let note = target?.note ?? "";
 
 		if (repo.operation) {
 			note = note ? `${note}, ${repo.operation} in progress` : `${repo.operation} in progress`;
@@ -254,58 +282,27 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
 		};
 	}
 
-	// Determine the diff range
-	let range: string;
-	let status: RepoDiffStatus = "ok";
-	let reason: string | undefined;
-	let note = "";
-
-	if (!repo.base) {
-		// No base branch — diff recent commits
-		const rangeResult = await git(repoDir, "log", "--format=%H", "-n", `${NO_BASE_FALLBACK_LIMIT}`, "HEAD");
-		if (rangeResult.exitCode !== 0 || !rangeResult.stdout.trim()) {
-			return {
-				name: repo.name,
-				status: "no-base",
-				reason: "no base branch resolved",
-				annotation: "no base branch, no commits",
-				stat: emptyStat,
-				fileStat: [],
-			};
-		}
-		const hashes = rangeResult.stdout.trim().split("\n");
-		const oldest = hashes[hashes.length - 1];
-		// Check if the oldest commit has a parent; if not (root commit), diff against empty tree
-		const parentCheck = await git(repoDir, "rev-parse", "--verify", `${oldest}^`);
-		if (parentCheck.exitCode === 0) {
-			range = `${oldest}^...HEAD`;
-		} else {
-			// Root commit — diff against empty tree (two-dot: tree objects can't be used with three-dot)
-			const emptyTree = await git(repoDir, "hash-object", "-t", "tree", "/dev/null");
-			range = `${emptyTree.stdout.trim()}..HEAD`;
-		}
-		status = "no-base";
-		reason = "no base branch resolved";
-		note = "no base branch, showing recent";
-	} else {
-		const baseFellBack = repo.base.configuredRef != null && repo.base.baseMergedIntoDefault == null;
-		const ref = baseRef(repo.base);
-		range = `${ref}...HEAD`;
-		if (baseFellBack) {
-			status = "fallback-base";
-			reason = `base ${repo.base.configuredRef} not found, using ${repo.base.ref}`;
-			note = `base ${repo.base.configuredRef} not found, showing against ${repo.base.ref}`;
-		}
+	// Resolve the merge-base ref (single ref: compares merge-base to working tree)
+	const target = await resolveDiffTarget(repoDir, repo);
+	if (!target) {
+		return {
+			name: repo.name,
+			status: "no-base",
+			reason: "no base branch resolved",
+			annotation: "no base branch, no commits",
+			stat: emptyStat,
+			fileStat: [],
+		};
 	}
 
 	// Run numstat
-	const result = await git(repoDir, "diff", "--numstat", range);
+	const result = await git(repoDir, "diff", "--numstat", target.ref);
 	if (result.exitCode !== 0) {
 		return {
 			name: repo.name,
-			status,
-			reason,
-			annotation: note || "diff failed",
+			status: target.status,
+			reason: target.reason,
+			annotation: target.note || "diff failed",
 			stat: emptyStat,
 			fileStat: [],
 		};
@@ -322,19 +319,20 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
 		{ files: 0, insertions: 0, deletions: 0 },
 	);
 
-	if (stat.files === 0 && status === "ok") {
+	if (stat.files === 0 && target.status === "ok") {
 		return {
 			name: repo.name,
 			status: "clean",
 			annotation: "no changes",
 			stat: emptyStat,
 			fileStat: [],
+			diffRef: target.ref,
 		};
 	}
 
 	let annotation = `${plural(stat.files, "file")} changed, +${stat.insertions} -${stat.deletions}`;
-	if (note) {
-		annotation = `${note}, ${annotation}`;
+	if (target.note) {
+		annotation = `${target.note}, ${annotation}`;
 	}
 
 	if (repo.operation) {
@@ -343,11 +341,12 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
 
 	return {
 		name: repo.name,
-		status,
-		reason,
+		status: target.status,
+		reason: target.reason,
 		annotation,
 		stat,
 		fileStat,
+		diffRef: target.ref,
 	};
 }
 
@@ -356,7 +355,6 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
 async function outputPipe(
 	repos: RepoStatus[],
 	wsDir: string,
-	branch: string,
 	results: RepoDiffResult[],
 	stat?: boolean,
 ): Promise<void> {
@@ -368,41 +366,15 @@ async function outputPipe(
 	}
 
 	// Output diff for each repo
-	for (let i = 0; i < repos.length; i++) {
+	for (let i = 0; i < results.length; i++) {
 		const repo = repos[i];
 		const result = results[i];
 		if (!repo || !result) continue;
 		if (result.status === "detached" || result.status === "drifted" || result.status === "clean") continue;
+		if (!result.diffRef) continue;
 
 		const repoDir = `${wsDir}/${repo.name}`;
-		const flags = computeFlags(repo, branch);
-		if (flags.isDetached || flags.isDrifted) continue;
-
-		// Build the same range as gatherRepoDiff
-		let range: string | undefined;
-		if (!repo.base) {
-			const rangeResult = await git(repoDir, "log", "--format=%H", "-n", `${NO_BASE_FALLBACK_LIMIT}`, "HEAD");
-			if (rangeResult.exitCode === 0 && rangeResult.stdout.trim()) {
-				const hashes = rangeResult.stdout.trim().split("\n");
-				const oldest = hashes[hashes.length - 1];
-				if (oldest) {
-					const parentCheck = await git(repoDir, "rev-parse", "--verify", `${oldest}^`);
-					if (parentCheck.exitCode === 0) {
-						range = `${oldest}^...HEAD`;
-					} else {
-						const emptyTree = await git(repoDir, "hash-object", "-t", "tree", "/dev/null");
-						range = `${emptyTree.stdout.trim()}..HEAD`;
-					}
-				}
-			}
-		} else {
-			const ref = baseRef(repo.base);
-			range = `${ref}...HEAD`;
-		}
-
-		if (!range) continue;
-
-		const diffArgs = stat ? ["diff", "--stat", range] : ["diff", range];
+		const diffArgs = stat ? ["diff", "--stat", result.diffRef] : ["diff", result.diffRef];
 		const diffResult = await git(repoDir, ...diffArgs);
 		if (diffResult.exitCode === 0 && diffResult.stdout.trim()) {
 			stdout(diffResult.stdout);
