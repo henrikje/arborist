@@ -676,3 +676,45 @@ load test_helper/common-setup
     [ "$status" -ne 0 ]
     [[ "$output" == *"Cannot combine --quiet with --verbose"* ]]
 }
+
+# ── positive filter terms ─────────────────────────────────────────
+
+@test "arb status --where clean shows only clean repos" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    echo "dirty" > repo-a/dirty.txt
+    run arb status --quiet --where clean
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-b"* ]]
+    [[ "$output" != *"repo-a"* ]]
+}
+
+@test "arb status --where safe shows repos with no at-risk flags" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    echo "dirty" > repo-a/dirty.txt
+    run arb status --quiet --where safe
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-b"* ]]
+    [[ "$output" != *"repo-a"* ]]
+}
+
+# ── ^ negation prefix ─────────────────────────────────────────────
+
+@test "arb status --where ^dirty matches clean repos" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    echo "dirty" > repo-a/dirty.txt
+    run arb status --quiet --where ^dirty
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-b"* ]]
+    [[ "$output" != *"repo-a"* ]]
+}
+
+@test "arb status --where with invalid ^term shows error" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --where ^invalid
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Unknown filter term"* ]]
+}

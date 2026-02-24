@@ -102,10 +102,10 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
 		.option("--stat", "Show diffstat summary instead of full diff")
 		.option("--json", "Output structured JSON to stdout")
 		.option("-d, --dirty", "Only diff dirty repos (shorthand for --where dirty)")
-		.option("-w, --where <filter>", "Only diff repos matching status filter (comma = OR, + = AND)")
+		.option("-w, --where <filter>", "Only diff repos matching status filter (comma = OR, + = AND, ^ = negate)")
 		.summary("Show feature branch diff across repos")
 		.description(
-			"Show the cumulative diff of the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what has this feature branch changed?' by showing the total change set.\n\nDiffs from the merge-base to the working tree, so the output includes committed, staged, and unstaged changes to tracked files — the complete change set of the feature branch. Use -F/--fetch to fetch before showing diff (skip with --no-fetch). Use --stat for a summary of changed files. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Use --where to filter by status flags (comma = OR, + = AND; e.g. --where dirty+unpushed). Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
+			"Show the cumulative diff of the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what has this feature branch changed?' by showing the total change set.\n\nDiffs from the merge-base to the working tree, so the output includes committed, staged, and unstaged changes to tracked files — the complete change set of the feature branch. Use -F/--fetch to fetch before showing diff (skip with --no-fetch). Use --stat for a summary of changed files. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Use --where to filter by status flags (comma = OR, + = AND; e.g. --where dirty+unpushed). Prefix any term with ^ to negate (e.g. --where ^dirty). Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
 		)
 		.action(
 			async (

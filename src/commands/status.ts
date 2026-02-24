@@ -30,7 +30,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 	program
 		.command("status")
 		.option("-d, --dirty", "Only show repos with local changes (shorthand for --where dirty)")
-		.option("-w, --where <filter>", "Filter repos by status flags (comma = OR, + = AND)")
+		.option("-w, --where <filter>", "Filter repos by status flags (comma = OR, + = AND, ^ = negate)")
 		.option("-F, --fetch", "Fetch from all remotes before showing status")
 		.option("--no-fetch", "Skip fetching (default)", false)
 		.option("-v, --verbose", "Show file-level detail for each repo")
@@ -38,7 +38,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("--json", "Output structured JSON (combine with --verbose for commit and file detail)")
 		.summary("Show workspace status")
 		.description(
-			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use + for AND (e.g. --where dirty+unpushed matches repos that are both dirty and unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. Use -F/--fetch to update remote tracking info first (skip with --no-fetch). Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.",
+			"Show each worktree's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show worktrees with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Positive/healthy terms: clean, pushed, synced-base, synced-share, synced, safe. Prefix any term with ^ to negate (e.g. --where ^dirty is equivalent to --where clean). Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use + for AND (e.g. --where dirty+unpushed matches repos that are both dirty and unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. Use -F/--fetch to update remote tracking info first (skip with --no-fetch). Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.",
 		)
 		.action(
 			async (options: {
