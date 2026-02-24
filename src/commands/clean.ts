@@ -169,7 +169,7 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 					{ output: process.stderr },
 				);
 				if (!shouldProceed) {
-					process.stderr.write("Aborted.\n");
+					info("Aborted.");
 					process.exit(130);
 				}
 			} else {

@@ -23,7 +23,7 @@ import { registerRepoCommand } from "./commands/repo";
 import { registerStatusCommand } from "./commands/status";
 import { registerTemplateCommand } from "./commands/template";
 import { detectBaseDir, detectWorkspace } from "./lib/base-dir";
-import { bold, dim, error } from "./lib/output";
+import { bold, dim, error, info } from "./lib/output";
 import type { ArbContext } from "./lib/types";
 import { ARB_VERSION } from "./version";
 
@@ -193,11 +193,17 @@ registerDiffCommand(program, getCtx);
 registerOpenCommand(program, getCtx);
 registerTemplateCommand(program, getCtx);
 
+process.on("SIGINT", () => {
+	info("Aborted.");
+	process.exit(130);
+});
+
 try {
 	await program.parseAsync();
 } catch (err) {
 	if (err instanceof Error && err.name === "ExitPromptError") {
-		process.stderr.write("\nAborted.\n");
+		process.stderr.write("\n");
+		info("Aborted.");
 		process.exit(130);
 	}
 	throw err;
