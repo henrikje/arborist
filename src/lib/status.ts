@@ -223,6 +223,7 @@ export function wouldLoseWork(flags: RepoFlags): boolean {
 // ── Where Filtering ──
 
 const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
+	// Negative / problem-condition terms
 	dirty: (f) => f.isDirty,
 	unpushed: (f) => f.isUnpushed,
 	"behind-share": (f) => f.needsPull,
@@ -238,16 +239,29 @@ const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
 	"base-missing": (f) => f.baseFellBack,
 	"at-risk": (f) => isAtRisk(f),
 	stale: (f) => hasAnyFlag(f, STALE_FLAGS),
+	// Positive / healthy-state terms
+	clean: (f) => !f.isDirty,
+	pushed: (f) => !f.isUnpushed,
+	"synced-base": (f) => !f.needsRebase && !f.isDiverged,
+	"synced-share": (f) => !f.needsPull,
+	synced: (f) => !hasAnyFlag(f, STALE_FLAGS),
+	safe: (f) => !isAtRisk(f),
 };
 
 const VALID_TERMS = Object.keys(FILTER_TERMS);
 
+/** Strip a leading `^` negation prefix, returning the base term and whether it was negated. */
+function parseNegation(term: string): { base: string; negated: boolean } {
+	if (term.startsWith("^")) return { base: term.slice(1), negated: true };
+	return { base: term, negated: false };
+}
+
 export function validateWhere(where: string): string | null {
 	const groups = where.split(",");
 	const allTerms = groups.flatMap((g) => g.split("+"));
-	const invalid = allTerms.filter((t) => !FILTER_TERMS[t]);
+	const invalid = allTerms.filter((t) => !FILTER_TERMS[parseNegation(t).base]);
 	if (invalid.length > 0) {
-		return `Unknown filter ${invalid.length === 1 ? "term" : "terms"}: ${invalid.join(", ")}. Valid terms: ${VALID_TERMS.join(", ")}`;
+		return `Unknown filter ${invalid.length === 1 ? "term" : "terms"}: ${invalid.join(", ")}. Valid terms: ${VALID_TERMS.join(", ")} (prefix with ^ to negate)`;
 	}
 	return null;
 }
@@ -256,7 +270,11 @@ export function repoMatchesWhere(flags: RepoFlags, where: string): boolean {
 	const groups = where.split(",");
 	return groups.some((group) => {
 		const terms = group.split("+");
-		return terms.every((t) => FILTER_TERMS[t]?.(flags) ?? false);
+		return terms.every((t) => {
+			const { base, negated } = parseNegation(t);
+			const result = FILTER_TERMS[base]?.(flags) ?? false;
+			return negated ? !result : result;
+		});
 	});
 }
 

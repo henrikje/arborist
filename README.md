@@ -190,9 +190,11 @@ If a rebase or merge does hit a conflict, Arborist continues with the remaining 
 arb status --where dirty,unpushed        # OR — repos matching either
 arb status --where dirty+unpushed        # AND — repos matching both
 arb list --where at-risk
+arb list --where safe                    # workspaces with no issues
+arb delete --where ^at-risk              # ^ negates any term
 ```
 
-Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, drifted, and more. The `--where` flag lets you filter by any combination, and works across `status`, `list`, `exec`, `open`, `diff`, and `delete`, so you can check which workspaces need attention, run commands only in dirty repos, or clean up safely. Use `--dirty` as a shorthand for `--where dirty`.
+Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, drifted, and more — plus their positive counterparts like clean, pushed, synced-base, and safe. The `--where` flag lets you filter by any combination, and works across `status`, `list`, `exec`, `open`, `diff`, and `delete`, so you can find what needs attention or confirm what's good. Prefix any term with `^` to negate it (e.g. `^shallow`). Use `--dirty` as a shorthand for `--where dirty`.
 
 ### Run commands across repos
 
