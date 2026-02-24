@@ -32,7 +32,7 @@ export interface RepoAssessment {
 	ahead: number;
 	headSha: string;
 	shallow: boolean;
-	conflictPrediction?: "clean" | "conflict" | null;
+	conflictPrediction?: "no-conflict" | "clean" | "conflict" | null;
 	retargetFrom?: string;
 	retargetTo?: string;
 	retargetBlocked?: boolean;
@@ -307,6 +307,8 @@ export function formatIntegratePlan(assessments: RepoAssessment[], mode: Integra
 				let conflictHint = "";
 				if (a.conflictPrediction === "conflict") {
 					conflictHint = mode === "merge" ? ` ${yellow("(will conflict)")}` : ` ${yellow("(conflict likely)")}`;
+				} else if (a.conflictPrediction === "no-conflict") {
+					conflictHint = " (no conflict)";
 				} else if (a.conflictPrediction === "clean") {
 					conflictHint = mode === "merge" ? " (no conflict)" : " (conflict unlikely)";
 				}
@@ -353,7 +355,7 @@ async function predictIntegrateConflicts(assessments: RepoAssessment[]): Promise
 					const prediction = await predictMergeConflict(a.repoDir, ref);
 					a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
 				} else if (!a.retargetFrom) {
-					a.conflictPrediction = "clean";
+					a.conflictPrediction = "no-conflict";
 				}
 				if (a.needsStash) {
 					const stashPrediction = await predictStashPopConflict(a.repoDir, ref);

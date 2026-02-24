@@ -339,6 +339,16 @@ describe("formatIntegratePlan", () => {
 		expect(plan).toContain("will conflict");
 	});
 
+	test("shows no conflict for rebase with no-conflict prediction", () => {
+		const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "no-conflict" })], "rebase", "feature");
+		expect(plan).toContain("no conflict");
+	});
+
+	test("shows no conflict for merge with no-conflict prediction", () => {
+		const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "no-conflict" })], "merge", "feature");
+		expect(plan).toContain("no conflict");
+	});
+
 	test("shows conflict unlikely for rebase", () => {
 		const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "clean" })], "rebase", "feature");
 		expect(plan).toContain("conflict unlikely");

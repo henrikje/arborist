@@ -33,7 +33,7 @@ export interface PullAssessment {
 	rebased: number;
 	pullMode: "rebase" | "merge";
 	headSha: string;
-	conflictPrediction?: "clean" | "conflict" | null;
+	conflictPrediction?: "no-conflict" | "clean" | "conflict" | null;
 	needsStash?: boolean;
 	stashPopConflictFiles?: string[];
 }
@@ -322,6 +322,8 @@ export function formatPullPlan(assessments: PullAssessment[], remotesMap: Map<st
 			let conflictHint = "";
 			if (a.conflictPrediction === "conflict") {
 				conflictHint = `, ${yellow("conflict likely")}`;
+			} else if (a.conflictPrediction === "no-conflict") {
+				conflictHint = ", no conflict";
 			} else if (a.conflictPrediction === "clean") {
 				conflictHint = ", conflict unlikely";
 			}
@@ -363,7 +365,7 @@ async function predictPullConflicts(
 					const prediction = await predictMergeConflict(a.repoDir, ref);
 					a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
 				} else {
-					a.conflictPrediction = "clean";
+					a.conflictPrediction = "no-conflict";
 				}
 				if (a.needsStash) {
 					const stashPrediction = await predictStashPopConflict(a.repoDir, ref);
