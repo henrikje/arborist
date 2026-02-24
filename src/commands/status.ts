@@ -212,6 +212,13 @@ async function runStatus(
 	}
 	const lcWidths = computeLastCommitWidths(cells.map((c) => c.lastCommit));
 
+	// Detect drift — only show BRANCH column when at least one repo is drifted or detached
+	const showBranch = repos.some(
+		(r) =>
+			r.identity.headMode.kind === "detached" ||
+			(r.identity.headMode.kind === "attached" && r.identity.headMode.branch !== summary.branch),
+	);
+
 	// Ensure minimum widths for header labels
 	if (maxRepo < 4) maxRepo = 4; // "REPO"
 	if (maxBranch < 6) maxBranch = 6; // "BRANCH"
@@ -221,14 +228,46 @@ async function runStatus(
 	if (maxRemoteName + 2 + maxRemoteDiff < 5) maxRemoteDiff = Math.max(maxRemoteDiff, 5 - maxRemoteName - 2);
 	if (maxLocal < 5) maxLocal = 5; // "LOCAL"
 
-	// Header line
+	// Terminal-aware truncation of SHARE remote name
 	const baseGroupWidth = maxBaseName + 2 + maxBaseDiff;
 	const remoteGroupWidth = maxRemoteName + 2 + maxRemoteDiff;
+	const totalWidth =
+		2 +
+		maxRepo +
+		4 +
+		(showBranch ? maxBranch + 4 : 0) +
+		lcWidths.total +
+		4 +
+		baseGroupWidth +
+		4 +
+		remoteGroupWidth +
+		4 +
+		maxLocal;
+	const envCols = Number(process.env.COLUMNS);
+	const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
+	if (termCols > 0 && totalWidth > termCols) {
+		const overflow = totalWidth - termCols;
+		// Minimum: preserve the remote prefix (e.g. "origin/") + 3 branch chars + ellipsis
+		let minRemoteName = 10;
+		for (const cell of cells) {
+			const slashIdx = cell.remoteName.indexOf("/");
+			if (slashIdx >= 0) {
+				// prefix/ + 3 visible branch chars + 1 ellipsis
+				minRemoteName = Math.max(minRemoteName, slashIdx + 1 + 3 + 1);
+			}
+		}
+		maxRemoteName = Math.max(minRemoteName, maxRemoteName - overflow);
+	}
+	const finalRemoteGroupWidth = maxRemoteName + 2 + maxRemoteDiff;
+
+	// Header line
 	let header = `  ${dim("REPO")}${" ".repeat(maxRepo - 4)}`;
-	header += `    ${dim("BRANCH")}${" ".repeat(maxBranch - 6)}`;
+	if (showBranch) {
+		header += `    ${dim("BRANCH")}${" ".repeat(maxBranch - 6)}`;
+	}
 	header += `    ${dim("LAST COMMIT")}${" ".repeat(lcWidths.total - 11)}`;
 	header += `    ${dim("BASE")}${" ".repeat(baseGroupWidth - 4)}`;
-	header += `    ${dim("SHARE")}${" ".repeat(remoteGroupWidth - 5)}`;
+	header += `    ${dim("SHARE")}${" ".repeat(finalRemoteGroupWidth - 5)}`;
 	header += `    ${dim("LOCAL")}`;
 	process.stdout.write(`${header}\n`);
 
@@ -271,19 +310,20 @@ async function runStatus(
 				: cell.baseDiff;
 		const baseDiffPad = maxBaseDiff - cell.baseDiff.length;
 
-		// Col 5: Remote name
+		// Col 5: Remote name (truncated if needed)
+		const truncatedRemoteName = truncateRemoteName(cell.remoteName, maxRemoteName);
 		let remoteNameColored: string;
 		if (isDetached) {
-			remoteNameColored = yellow(cell.remoteName);
-		} else if (cell.remoteName) {
+			remoteNameColored = yellow(truncatedRemoteName);
+		} else if (truncatedRemoteName) {
 			const expectedTracking = `${repo.share.remote}/${repo.identity.headMode.kind === "attached" ? repo.identity.headMode.branch : ""}`;
 			const isUnexpected =
 				repo.share.refMode === "configured" && repo.share.ref !== null && repo.share.ref !== expectedTracking;
-			remoteNameColored = isUnexpected || isDrifted ? yellow(cell.remoteName) : cell.remoteName;
+			remoteNameColored = isUnexpected || isDrifted ? yellow(truncatedRemoteName) : truncatedRemoteName;
 		} else {
 			remoteNameColored = "";
 		}
-		const remoteNamePad = maxRemoteName - cell.remoteName.length;
+		const remoteNamePad = maxRemoteName - truncatedRemoteName.length;
 
 		// Col 6: Remote diff
 		let remoteDiffColored: string;
@@ -310,9 +350,11 @@ async function runStatus(
 		// Col 7: Local changes
 		const localColored = colorLocal(repo);
 
-		// Assemble line: [repo]  4sp  [branch]  4sp  [lastCommit]  4sp  [baseName  2sp  baseDiff]  4sp  [remoteName  2sp  remoteDiff]  4sp  [local]
+		// Assemble line
 		let line = `${marker}${repoName}${" ".repeat(repoPad)}`;
-		line += `    ${branchColored}${" ".repeat(branchPad)}`;
+		if (showBranch) {
+			line += `    ${branchColored}${" ".repeat(branchPad)}`;
+		}
 
 		// Last commit (number right-aligned, unit left-aligned)
 		line += `    ${formatLastCommitCell(cell.lastCommit, lcWidths, true)}`;
@@ -479,6 +521,16 @@ export function plainLocal(repo: RepoStatus): string {
 }
 
 // Colored helpers
+
+/** Truncate a remote name (e.g. "origin/long-branch"), preserving the remote prefix and at least 3 chars of the branch. */
+function truncateRemoteName(text: string, max: number): string {
+	if (text.length <= max) return text;
+	const slashIdx = text.indexOf("/");
+	if (slashIdx < 0) return text;
+	// prefix = "origin/", minimum = prefix + 3 visible branch chars + ellipsis
+	if (max < slashIdx + 1 + 3 + 1) return text;
+	return `${text.slice(0, max - 1)}…`;
+}
 
 function colorLocal(repo: RepoStatus): string {
 	const parts: string[] = [];

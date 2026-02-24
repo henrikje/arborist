@@ -518,6 +518,69 @@ load test_helper/common-setup
     [[ "$output" == *"second feature"* ]]
 }
 
+# ── compact status display ────────────────────────────────────────
+
+@test "arb status hides BRANCH column when no repos are drifted" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"BRANCH"* ]]
+    [[ "$output" == *"REPO"* ]]
+    [[ "$output" == *"SHARE"* ]]
+}
+
+@test "arb status shows BRANCH column when a repo is drifted" {
+    arb create my-feature repo-a repo-b
+    git -C "$TEST_DIR/project/my-feature/repo-a" checkout -b experiment >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"BRANCH"* ]]
+}
+
+@test "arb status shows BRANCH column when a repo is detached" {
+    arb create my-feature repo-a
+    local head_sha
+    head_sha="$(git -C "$TEST_DIR/project/my-feature/repo-a" rev-parse HEAD)"
+    git -C "$TEST_DIR/project/my-feature/repo-a" checkout "$head_sha" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"BRANCH"* ]]
+}
+
+@test "arb status truncates SHARE column on narrow terminal" {
+    arb create my-long-branch-name-that-will-be-truncated repo-a repo-b
+    cd "$TEST_DIR/project/my-long-branch-name-that-will-be-truncated"
+
+    # First, get the untruncated width
+    COLUMNS=999 run arb status
+    local full_width=0
+    while IFS= read -r line; do
+        local plain
+        plain="$(printf '%s' "$line" | sed $'s/\033\\[[0-9;]*m//g')"
+        local len=${#plain}
+        (( len > full_width )) && full_width=$len
+    done <<< "$output"
+
+    # Now run with a terminal narrower than the full width
+    local narrow=$(( full_width - 10 ))
+    COLUMNS=$narrow run arb status
+    [ "$status" -eq 0 ]
+    # The ellipsis character indicates truncation occurred
+    [[ "$output" == *"…"* ]]
+    # No content line should exceed the narrow terminal width
+    local max_width=0
+    while IFS= read -r line; do
+        local plain
+        plain="$(printf '%s' "$line" | sed $'s/\033\\[[0-9;]*m//g')"
+        local len=${#plain}
+        (( len > max_width )) && max_width=$len
+    done <<< "$output"
+    (( max_width <= narrow ))
+}
+
 # ── quiet output ──────────────────────────────────────────────────
 
 @test "arb status -q outputs repo names only" {
