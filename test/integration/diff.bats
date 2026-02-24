@@ -266,6 +266,80 @@ load test_helper/common-setup
     [[ "$result" == *"file.txt"* ]]
 }
 
+# ── working tree changes ──────────────────────────────────────────
+
+@test "arb diff includes uncommitted unstaged changes" {
+    arb create my-feature repo-a
+    # Commit a file first so it's tracked
+    echo "original" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "Add file" >/dev/null 2>&1
+    # Modify it without staging (unstaged change on top of committed change)
+    echo "modified" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb diff --json
+    [ "$status" -eq 0 ]
+    local total_files
+    total_files="$(echo "$output" | jq '.totalFiles')"
+    [ "$total_files" -eq 1 ]
+    # The unstaged modification should show: "modified" has 1 line, vs 0 in base
+    local total_ins
+    total_ins="$(echo "$output" | jq '.totalInsertions')"
+    [ "$total_ins" -eq 1 ]
+}
+
+@test "arb diff includes staged but uncommitted changes" {
+    arb create my-feature repo-a
+    echo "staged" > "$TEST_DIR/project/my-feature/repo-a/staged.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add staged.txt >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb diff --json
+    [ "$status" -eq 0 ]
+    local total_files
+    total_files="$(echo "$output" | jq '.totalFiles')"
+    [ "$total_files" -eq 1 ]
+}
+
+@test "arb diff combines committed and staged uncommitted changes" {
+    arb create my-feature repo-a
+    echo "committed" > "$TEST_DIR/project/my-feature/repo-a/committed.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add committed.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "Add committed file" >/dev/null 2>&1
+    # Stage a second file without committing
+    echo "staged" > "$TEST_DIR/project/my-feature/repo-a/staged.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add staged.txt >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb diff --json
+    [ "$status" -eq 0 ]
+    local total_files
+    total_files="$(echo "$output" | jq '.totalFiles')"
+    [ "$total_files" -eq 2 ]
+}
+
+@test "arb diff piped includes staged uncommitted changes" {
+    arb create my-feature repo-a
+    echo "staged-content" > "$TEST_DIR/project/my-feature/repo-a/staged.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add staged.txt >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    local result
+    result="$(arb diff | cat)"
+    [[ "$result" == *"staged-content"* ]]
+}
+
+@test "arb diff does not report clean when repo has staged changes" {
+    arb create my-feature repo-a
+    echo "staged" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb diff --json
+    [ "$status" -eq 0 ]
+    local repo_status
+    repo_status="$(echo "$output" | jq -r '.repos[0].status')"
+    [ "$repo_status" != "clean" ]
+}
+
+# ── fetch ─────────────────────────────────────────────────────────
+
 @test "arb diff --fetch fetches before showing diff" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
