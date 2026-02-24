@@ -220,7 +220,7 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
 		}
 
 		// Gather stats for summary
-		const numstatResult = await git(repoDir, "diff", "--numstat", ...gitArgs);
+		const numstatResult = await git(repoDir, "diff", "-M", "--numstat", ...gitArgs);
 		if (numstatResult.exitCode === 0 && numstatResult.stdout.trim()) {
 			const parsed = parseGitNumstat(numstatResult.stdout);
 			for (const f of parsed) {
@@ -235,7 +235,9 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
 		process.stderr.write(note ? `${header} ${dim(note)}\n` : `${header}\n`);
 
 		// Let git render the diff
-		const diffArgs = stat ? ["diff", "--stat", "--color=always", ...gitArgs] : ["diff", "--color=always", ...gitArgs];
+		const diffArgs = stat
+			? ["diff", "-M", "--stat", "--color=always", ...gitArgs]
+			: ["diff", "-M", "--color=always", ...gitArgs];
 		const result = await git(repoDir, ...diffArgs);
 		if (result.exitCode === 0 && result.stdout.trim()) {
 			stdout(result.stdout);
@@ -296,7 +298,7 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
 	}
 
 	// Run numstat
-	const result = await git(repoDir, "diff", "--numstat", target.ref);
+	const result = await git(repoDir, "diff", "-M", "--numstat", target.ref);
 	if (result.exitCode !== 0) {
 		return {
 			name: repo.name,
@@ -374,7 +376,7 @@ async function outputPipe(
 		if (!result.diffRef) continue;
 
 		const repoDir = `${wsDir}/${repo.name}`;
-		const diffArgs = stat ? ["diff", "--stat", result.diffRef] : ["diff", result.diffRef];
+		const diffArgs = stat ? ["diff", "-M", "--stat", result.diffRef] : ["diff", "-M", result.diffRef];
 		const diffResult = await git(repoDir, ...diffArgs);
 		if (diffResult.exitCode === 0 && diffResult.stdout.trim()) {
 			stdout(diffResult.stdout);

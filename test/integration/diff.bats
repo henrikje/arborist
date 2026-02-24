@@ -348,6 +348,32 @@ load test_helper/common-setup
     [[ "$output" == *"Fetched"* ]]
 }
 
+@test "arb diff shows renames instead of delete+add" {
+    # Add a file on the base branch (main) so it exists before the feature branch
+    local canonical="$TEST_DIR/project/.arb/repos/repo-a"
+    git -C "$canonical" checkout main >/dev/null 2>&1
+    echo "rename me" > "$canonical/old-name.txt"
+    git -C "$canonical" add old-name.txt >/dev/null 2>&1
+    git -C "$canonical" commit -m "Add file on main" >/dev/null 2>&1
+    git -C "$canonical" push >/dev/null 2>&1
+    git -C "$canonical" checkout --detach >/dev/null 2>&1
+
+    arb create my-feature repo-a
+    # Rename the file on the feature branch
+    git -C "$TEST_DIR/project/my-feature/repo-a" mv old-name.txt new-name.txt
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "Rename file" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb diff --stat --json
+    [ "$status" -eq 0 ]
+    # Should show a rename (=> in the file name), not separate delete+add
+    local file_count
+    file_count="$(echo "$output" | jq '.repos[] | select(.name == "repo-a") | .fileStat | length')"
+    [ "$file_count" -eq 1 ]
+    local file_name
+    file_name="$(echo "$output" | jq -r '.repos[] | select(.name == "repo-a") | .fileStat[0].file')"
+    [[ "$file_name" == *"=>"* ]]
+}
+
 @test "arb diff -F fetches before showing diff (short for --fetch)" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
