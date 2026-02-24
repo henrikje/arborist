@@ -481,12 +481,18 @@ export async function gatherRepoStatus(
 	}
 
 	// ── Merge detection ──
-	// Skip when branch is at the exact same point as base (ahead=0, behind=0) — nothing to detect.
-	// Ancestor check is cheap (single git command), always run when there's divergence.
+	// Run when there's divergence from base (ahead/behind > 0), OR when the remote branch is
+	// gone (catches fast-forward merges where ahead=0, behind=0 after the branch was deleted).
+	// Skip when on the base branch itself (base-is-share scenario, e.g. main tracking origin/main).
+	// Skip when branch was never pushed and has no unique commits — the ancestor check would
+	// trivially pass (HEAD is always an ancestor of a ref ahead of it with no diverging commits).
+	// Ancestor check is cheap (single git command), always run when eligible.
 	// Squash check is more expensive — only run when branch is gone OR share is up to date.
 	const hasWork = baseStatus !== null && (baseStatus.ahead > 0 || baseStatus.behind > 0);
+	const isGone = shareStatus.refMode === "gone";
 	const isOnBaseBranch = actualBranch === baseStatus?.ref;
-	if (baseStatus !== null && !detached && hasWork && !isOnBaseBranch) {
+	const skipForNeverPushed = baseStatus !== null && baseStatus.ahead === 0 && shareStatus.refMode === "noRef";
+	if (baseStatus !== null && !detached && (hasWork || isGone) && !isOnBaseBranch && !skipForNeverPushed) {
 		const compareRef = upstreamRemote ? `${upstreamRemote}/${baseStatus.ref}` : baseStatus.ref;
 		const shareUpToDate =
 			shareStatus !== null && shareStatus.toPush === 0 && shareStatus.toPull === 0 && shareStatus.refMode !== "noRef";

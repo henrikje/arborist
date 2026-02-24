@@ -471,14 +471,12 @@ export function plainRemoteDiff(repo: RepoStatus): string {
 		return "gone";
 	}
 
-	if (merged && (repo.share.toPull ?? 0) === 0) return "merged";
-
 	if (repo.share.refMode === "noRef") {
-		if (repo.base !== null && repo.base.ahead > 0) {
-			return `${repo.base.ahead} to push`;
-		}
+		if (repo.base !== null && repo.base.ahead > 0) return `${repo.base.ahead} to push`;
 		return "not pushed";
 	}
+
+	if (merged && (repo.share.toPull ?? 0) === 0) return "merged";
 	// configured or implicit — use toPush/toPull
 	const toPush = repo.share.toPush ?? 0;
 	const toPull = repo.share.toPull ?? 0;
