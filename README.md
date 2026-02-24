@@ -120,9 +120,9 @@ git commit -am "Add dark mode API endpoint"
 Let's run `arb status` to get an overview. The hotfix landed on `main` while you were away, so `frontend` is now one commit behind:
 
 ```
-  REPO        BRANCH          LAST COMMIT    BASE                               SHARE                               LOCAL
-* backend     add-dark-mode   just now       origin/main  1 ahead               origin/add-dark-mode  1 to push     clean
-  frontend    add-dark-mode   5 minutes      origin/main  1 ahead, 1 behind     origin/add-dark-mode  1 to push     clean
+  REPO        LAST COMMIT    BASE                               SHARE                               LOCAL
+* backend     just now       origin/main  1 ahead               origin/add-dark-mode  1 to push     clean
+  frontend    5 minutes      origin/main  1 ahead, 1 behind     origin/add-dark-mode  1 to push     clean
 ```
 
 Rebase to integrate the upstream changes:
