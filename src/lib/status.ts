@@ -89,7 +89,10 @@ export const AT_RISK_FLAGS = new Set<keyof RepoFlags>([
 	"baseFellBack",
 ]);
 
-const STALE_FLAGS = new Set<keyof RepoFlags>(["needsPull", "needsRebase", "isDiverged"]);
+export const STALE_FLAGS = new Set<keyof RepoFlags>(["needsPull", "needsRebase", "isDiverged"]);
+
+/** Flags that are always true when isMerged is true — displaying them adds noise. */
+export const MERGED_IMPLIED_FLAGS = new Set<keyof RepoFlags>(["needsRebase", "isDiverged"]);
 
 function hasAnyFlag(flags: RepoFlags, set: Set<keyof RepoFlags>): boolean {
 	for (const key of set) {
@@ -187,7 +190,11 @@ const FLAG_LABELS: { key: keyof RepoFlags; label: string }[] = [
 ];
 
 export function flagLabels(flags: RepoFlags): string[] {
-	return FLAG_LABELS.filter(({ key }) => flags[key]).map(({ label }) => label);
+	return FLAG_LABELS.filter(({ key }) => {
+		if (!flags[key]) return false;
+		if (flags.isMerged && MERGED_IMPLIED_FLAGS.has(key)) return false;
+		return true;
+	}).map(({ label }) => label);
 }
 
 export function formatStatusCounts(
@@ -302,6 +309,7 @@ export function computeSummaryAggregates(
 		}
 		for (const { key, label } of FLAG_LABELS) {
 			if (flags[key]) {
+				if (flags.isMerged && MERGED_IMPLIED_FLAGS.has(key)) continue;
 				allLabels.add(label);
 				flagCounts.set(key, (flagCounts.get(key) ?? 0) + 1);
 			}

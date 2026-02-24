@@ -680,6 +680,34 @@ assert 'url' in data[0]['upstream']
     [[ "$output" == *"Cannot combine --verbose with --json"* ]]
 }
 
+@test "arb list suppresses diverged and behind-base for squash-merged workspace" {
+    arb create merged-ws repo-a
+    local wt="$TEST_DIR/project/merged-ws/repo-a"
+
+    # Make feature work and push
+    echo "feature content" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    cd "$TEST_DIR/project/merged-ws"
+    arb push --yes >/dev/null 2>&1
+
+    # Squash merge + delete remote branch
+    local bare="$TEST_DIR/origin/repo-a.git"
+    local tmp="$TEST_DIR/tmp-squash-list"
+    git clone "$bare" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && git merge --squash origin/merged-ws && git commit -m "squash merge") >/dev/null 2>&1
+    (cd "$tmp" && git push origin main) >/dev/null 2>&1
+    rm -rf "$tmp"
+    git -C "$bare" branch -D merged-ws >/dev/null 2>&1
+    fetch_all_repos
+
+    run arb list
+    [[ "$output" == *"merged"* ]]
+    [[ "$output" == *"gone"* ]]
+    [[ "$output" != *"diverged"* ]]
+    [[ "$output" != *"behind base"* ]]
+}
+
 @test "arb -C is visible in --help output" {
     run arb --help
     [ "$status" -eq 0 ]
