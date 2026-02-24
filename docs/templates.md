@@ -72,11 +72,19 @@ Files ending with `.arbtemplate` are rendered with [LiquidJS](https://liquidjs.c
 | `{{ root.path }}` | Absolute path to the arb root | all |
 | `{{ workspace.name }}` | Workspace directory name | all |
 | `{{ workspace.path }}` | Absolute path to the workspace | all |
-| `{{ workspace.worktrees }}` | Array of `{ name, path }` for all repos | all |
+| `{{ workspace.worktrees }}` | Array of worktree objects for all repos (each has `name`, `path`, `baseRemote`, `shareRemote`) | all |
 | `{{ worktree.name }}` | Repo/worktree directory name | repo only |
 | `{{ worktree.path }}` | Absolute path to the worktree | repo only |
+| `{{ worktree.baseRemote.name }}` | Git remote name for the base (integration target) | repo only |
+| `{{ worktree.baseRemote.url }}` | Git remote URL for the base | repo only |
+| `{{ worktree.shareRemote.name }}` | Git remote name for sharing (push/pull) | repo only |
+| `{{ worktree.shareRemote.url }}` | Git remote URL for sharing | repo only |
+
+The same `baseRemote` and `shareRemote` fields are available on each item in `workspace.worktrees` (e.g. `wt.baseRemote.url` in a `{% for %}` loop) in all scopes.
 
 `worktree.name` and `worktree.path` are only populated in repo-scoped templates. `workspace.worktrees` is available in all scopes — a repo template can reference sibling repos.
+
+The base remote is the integration target (rebase/merge towards), while the share remote is where feature branches are pushed. If remotes can't be resolved for a repo, both fields default to empty strings.
 
 ### Iteration
 
@@ -128,6 +136,17 @@ Use `{%-` and `-%}` for whitespace control.
     </modules>
   </component>
 </project>
+```
+
+**Repo remote URLs** (`.arb/templates/workspace/remotes.yaml.arbtemplate`):
+
+```liquid
+repos:
+{%- for wt in workspace.worktrees %}
+  {{ wt.name }}:
+    base: {{ wt.baseRemote.url }}
+    share: {{ wt.shareRemote.url }}
+{%- endfor %}
 ```
 
 Rendering happens wherever `.arbtemplate` files are processed: `arb create`, `arb attach`, `arb detach`, `arb template apply`, `arb template diff`, and `arb template apply --force`.

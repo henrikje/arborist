@@ -131,7 +131,7 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 	}
 
 	// Template drift detection
-	const templateDiffs = diffTemplates(ctx.baseDir, wsDir, repos);
+	const templateDiffs = await diffTemplates(ctx.baseDir, wsDir, repos);
 
 	return {
 		name,
