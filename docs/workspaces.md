@@ -29,24 +29,24 @@ Use `,` for OR and `+` for AND. See [Scripting & automation](scripting-automatio
 
 ## Navigate
 
-`arb cd` changes into a workspace or worktree directory. It requires the shell integration installed by `install.sh`:
+`arb cd` changes into a workspace or repo directory. It requires the shell integration installed by `install.sh`:
 
 ```bash
 arb cd fix-login              # cd into workspace
-arb cd fix-login/frontend     # cd into a specific worktree
+arb cd fix-login/frontend     # cd into a specific repo
 arb cd                        # interactive workspace picker
 ```
 
-When run from inside a workspace, names are resolved as worktrees first — so you can switch between repos without typing the workspace name:
+When run from inside a workspace, names are resolved as repos first — so you can switch between repos without typing the workspace name:
 
 ```bash
-arb cd frontend               # cd into the frontend worktree (when inside a workspace)
-arb cd                        # interactive worktree picker (when inside a workspace)
+arb cd frontend               # cd into the frontend repo (when inside a workspace)
+arb cd                        # interactive repo picker (when inside a workspace)
 ```
 
-If the name doesn't match a worktree, it falls back to workspace resolution. You can always use the explicit `workspace/repo` syntax to be unambiguous.
+If the name doesn't match a repo, it falls back to workspace resolution. You can always use the explicit `workspace/repo` syntax to be unambiguous.
 
-`arb path` prints the absolute path to the arb root, a workspace, or a worktree — useful in scripts and shell pipelines. It follows the same scope-aware resolution as `arb cd`:
+`arb path` prints the absolute path to the arb root, a workspace, or a repo — useful in scripts and shell pipelines. It follows the same scope-aware resolution as `arb cd`:
 
 ```bash
 arb path                       # /home/you/my-project (the arb root)
@@ -64,7 +64,7 @@ arb attach shared
 arb attach --all-repos
 ```
 
-If the workspace has a configured base branch, new worktrees branch from it. Running without arguments opens an interactive repo picker.
+If the workspace has a configured base branch, new branches are created from it. Running without arguments opens an interactive repo picker.
 
 To detach a repo from a workspace without deleting the workspace itself:
 
@@ -83,7 +83,7 @@ When a feature is done:
 arb delete fix-login
 ```
 
-This shows the status of each worktree and walks you through deletion. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before deleting the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-safe` to batch-delete every workspace with safe status. Combine `--all-safe --where gone` to target merged-and-safe workspaces specifically. See `arb delete --help` for all options.
+This shows the status of each repo and walks you through deletion. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before deleting the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-safe` to batch-delete every workspace with safe status. Combine `--all-safe --where gone` to target merged-and-safe workspaces specifically. See `arb delete --help` for all options.
 
 ## List repos
 

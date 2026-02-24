@@ -22,7 +22,7 @@ Running `arb create` without arguments walks you through it interactively. See `
 
 ## Work in your repos as usual
 
-Each directory in a workspace is a regular Git worktree. You edit files, run builds, and use Git exactly as you normally would:
+Each directory in a workspace is a working copy of a repository. You edit files, run builds, and use Git exactly as you normally would:
 
 ```bash
 cd ~/my-project/fix-login/frontend
@@ -33,7 +33,7 @@ git commit -m "Fix the bug on the login page"
 
 There is no `arb commit` — you commit in each repo individually.
 
-The commands below run from inside a workspace or worktree. You can also target a workspace from anywhere using `-C`:
+The commands below run from inside a workspace or repo. You can also target a workspace from anywhere using `-C`:
 
 ```bash
 arb -C ~/my-project status                    # run from the arb root
@@ -50,7 +50,7 @@ Once you've made some changes, you can check the status of your workspace:
 arb status
 ```
 
-This shows the state of each worktree in a compact table with labeled columns:
+This shows the state of each repo in a compact table with labeled columns:
 
 ```
   REPO         BRANCH        LAST COMMIT    BASE                     SHARE                          LOCAL
@@ -122,7 +122,7 @@ arb exec --dirty git diff -d                 # --dirty is arb's, -d goes to git 
 arb exec --where unpushed git stash          # only repos with unpushed commits
 ```
 
-Runs the given command in each worktree sequentially. It supports running interactive commands. Each execution of the command uses the corresponding worktree as working directory. Use `--dirty` (`-d`) to limit to repos with uncommitted changes, or `--where` (`-w`) for any status filter. Arb flags come before the command — everything after the command name passes through verbatim. See `arb exec --help` for all options.
+Runs the given command in each repo sequentially. It supports running interactive commands. Each execution of the command uses the corresponding repo directory as working directory. Use `--dirty` (`-d`) to limit to repos with uncommitted changes, or `--where` (`-w`) for any status filter. Arb flags come before the command — everything after the command name passes through verbatim. See `arb exec --help` for all options.
 
 ## Open in your editor
 
@@ -136,4 +136,4 @@ arb open --where unpushed code    # only open repos matching a status filter
 arb open code -n --add            # -n and --add are passed to code
 ```
 
-Runs the given command with all worktree directories as arguments — useful for opening them in an editor like VS Code. All directories are specified as absolute paths. Use `--dirty` (`-d`) or `--where` (`-w`) to limit which repos are opened. Arb flags come before the command — everything after the command name passes through verbatim. See `arb open --help` for all options.
+Runs the given command with all repo directories as arguments — useful for opening them in an editor like VS Code. All directories are specified as absolute paths. Use `--dirty` (`-d`) or `--where` (`-w`) to limit which repos are opened. Arb flags come before the command — everything after the command name passes through verbatim. See `arb open --help` for all options.

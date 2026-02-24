@@ -10,14 +10,14 @@ import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 export function registerExecCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("exec")
-		.argument("<command...>", "Command to run in each worktree")
+		.argument("<command...>", "Command to run in each repo")
 		.option("--repo <name>", "Only run in specified repos (repeatable)", collectRepo, [])
 		.option("-d, --dirty", "Only run in dirty repos (shorthand for --where dirty)")
 		.option("-w, --where <filter>", "Only run in repos matching status filter (comma = OR, + = AND, ^ = negate)")
 		.passThroughOptions()
-		.summary("Run a command in each worktree")
+		.summary("Run a command in each repo")
 		.description(
-			"Run the given command sequentially in each worktree and report which succeeded or failed. Each worktree is preceded by an ==> repo <== header. The command inherits your terminal, so interactive programs work.\n\nUse --repo <name> to target specific repos (repeatable). Use --dirty to only run in repos with local changes, or --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Positive/healthy terms: clean, pushed, synced-base, synced-share, synced, safe. Prefix any term with ^ to negate (e.g. --where ^dirty is equivalent to --where clean). Comma-separated values use OR logic; use + for AND (e.g. --where dirty+unpushed matches repos that are both dirty and unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. --repo and --where/--dirty can be combined (AND logic).\n\nArb flags must come before the command. Everything after the command name is passed through verbatim:\n\n  arb exec --repo api --repo web -- npm test\n  arb exec --dirty git diff -d    # --dirty → arb, -d → git diff",
+			"Run the given command sequentially in each repo and report which succeeded or failed. Each repo is preceded by an ==> repo <== header. The command inherits your terminal, so interactive programs work.\n\nUse --repo <name> to target specific repos (repeatable). Use --dirty to only run in repos with local changes, or --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Positive/healthy terms: clean, pushed, synced-base, synced-share, synced, safe. Prefix any term with ^ to negate (e.g. --where ^dirty is equivalent to --where clean). Comma-separated values use OR logic; use + for AND (e.g. --where dirty+unpushed matches repos that are both dirty and unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. --repo and --where/--dirty can be combined (AND logic).\n\nArb flags must come before the command. Everything after the command name is passed through verbatim:\n\n  arb exec --repo api --repo web -- npm test\n  arb exec --dirty git diff -d    # --dirty → arb, -d → git diff",
 		)
 		.action(async (args: string[], options: { repo?: string[]; dirty?: boolean; where?: string }) => {
 			const ctx = getCtx();

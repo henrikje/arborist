@@ -9,9 +9,9 @@ import type { ArbContext } from "../lib/types";
 export function registerCdCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("cd [name]")
-		.summary("Navigate to a workspace or worktree directory")
+		.summary("Navigate to a workspace or repo directory")
 		.description(
-			'Change into a workspace or worktree directory. When run from inside a workspace, names are resolved as worktrees first (e.g. "arb cd backend" navigates to the backend worktree). Use "workspace/repo" to be explicit. When run without arguments in a TTY, shows an interactive picker (worktrees when inside a workspace, workspaces otherwise).\n\nRequires shell integration (installed by install.sh) to change the shell\'s working directory. Without it, the resolved path is printed to stdout.',
+			'Change into a workspace or repo directory. When run from inside a workspace, names are resolved as repos first (e.g. "arb cd backend" navigates to the backend repo). Use "workspace/repo" to be explicit. When run without arguments in a TTY, shows an interactive picker (repos when inside a workspace, workspaces otherwise).\n\nRequires shell integration (installed by install.sh) to change the shell\'s working directory. Without it, the resolved path is printed to stdout.',
 		)
 		.action(async (input?: string) => {
 			const ctx = getCtx();
@@ -26,13 +26,13 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 					const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
 					const worktreeNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
 					if (worktreeNames.length === 0) {
-						error(`No worktrees in workspace '${ctx.currentWorkspace}'.`);
+						error(`No repos in workspace '${ctx.currentWorkspace}'.`);
 						process.exit(1);
 					}
 
 					const selected = await select(
 						{
-							message: `Select a worktree in '${ctx.currentWorkspace}'`,
+							message: `Select a repo in '${ctx.currentWorkspace}'`,
 							choices: worktreeNames.map((name) => ({ name, value: name })),
 							pageSize: 20,
 						},
@@ -107,7 +107,7 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 			const wsDir = `${ctx.arbRootDir}/${input}`;
 			if (!existsSync(`${wsDir}/.arbws`)) {
 				if (ctx.currentWorkspace) {
-					error(`'${input}' is not a worktree in workspace '${ctx.currentWorkspace}' or a workspace`);
+					error(`'${input}' is not a repo in workspace '${ctx.currentWorkspace}' or a workspace`);
 				} else {
 					error(`Workspace '${input}' does not exist`);
 				}

@@ -74,7 +74,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 		.command("template")
 		.summary("Manage workspace templates")
 		.description(
-			"Manage template files that are automatically seeded into new workspaces. Templates live in .arb/templates/ and are copied into workspaces during 'arb create' and 'arb attach'. Files ending with .arbtemplate are rendered with LiquidJS ({{ workspace.path }}, {% for wt in workspace.worktrees %}, etc.) and have the extension stripped at the destination. Templates referencing workspace.worktrees are automatically regenerated when repos are attached or detached. Use subcommands to add, remove, list, diff, and apply templates.",
+			"Manage template files that are automatically seeded into new workspaces. Templates live in .arb/templates/ and are copied into workspaces during 'arb create' and 'arb attach'. Files ending with .arbtemplate are rendered with LiquidJS ({{ workspace.path }}, {% for repo in workspace.repos %}, etc.) and have the extension stripped at the destination. Templates referencing workspace.repos are automatically regenerated when repos are attached or detached. Use subcommands to add, remove, list, diff, and apply templates.",
 		);
 
 	// ── template add ─────────────────────────────────────────────────
@@ -322,8 +322,8 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 						rootPath: ctx.arbRootDir,
 						workspaceName: basename(wsDir),
 						workspacePath: wsDir,
-						worktreeName: diff.scope === "repo" ? diff.repo : undefined,
-						worktreePath: repoDir,
+						repoName: diff.scope === "repo" ? diff.repo : undefined,
+						repoPath: repoDir,
 						repos: allRepos,
 					};
 					const content = readFileSync(tplPath, "utf-8");
@@ -461,8 +461,8 @@ async function applyDefaultMode(
 				rootPath: ctx.arbRootDir,
 				workspaceName: basename(wsDir),
 				workspacePath: wsDir,
-				worktreeName: entry.scope === "repo" ? entry.repo : undefined,
-				worktreePath: repoDir,
+				repoName: entry.scope === "repo" ? entry.repo : undefined,
+				repoPath: repoDir,
 				repos: allRepos,
 			};
 			const { status } = applySingleFile(tplPath, destPath, false, tplCtx);
@@ -518,8 +518,8 @@ async function applyForceMode(
 				rootPath: ctx.arbRootDir,
 				workspaceName: basename(wsDir),
 				workspacePath: wsDir,
-				worktreeName: entry.scope === "repo" ? entry.repo : undefined,
-				worktreePath: repoDir,
+				repoName: entry.scope === "repo" ? entry.repo : undefined,
+				repoPath: repoDir,
 				repos: allRepos,
 			};
 			const { status } = applySingleFile(tplPath, destPath, true, tplCtx);

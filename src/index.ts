@@ -50,7 +50,7 @@ const COMMAND_GROUPS = [
 	},
 	{
 		title: "Execution Commands:",
-		description: "  Run commands or open tools across all workspace worktrees.",
+		description: "  Run commands or open tools across workspace repos.",
 		commands: ["exec", "open"],
 	},
 ] as const;

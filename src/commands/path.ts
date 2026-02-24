@@ -8,9 +8,9 @@ import type { ArbContext } from "../lib/types";
 export function registerPathCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("path [name]")
-		.summary("Print a path (arb root, workspace, or worktree)")
+		.summary("Print a path (arb root, workspace, or repo)")
 		.description(
-			'Print the absolute path to the arb root, a workspace, or a worktree within a workspace. When run from inside a workspace, names are resolved as worktrees first (e.g. "arb path backend" prints the backend worktree path). Use "workspace/repo" to be explicit.',
+			'Print the absolute path to the arb root, a workspace, or a repo within a workspace. When run from inside a workspace, names are resolved as repos first (e.g. "arb path backend" prints the backend repo path). Use "workspace/repo" to be explicit.',
 		)
 		.action((input?: string) => {
 			const ctx = getCtx();
@@ -59,7 +59,7 @@ export function registerPathCommand(program: Command, getCtx: () => ArbContext):
 			const wsDir = `${ctx.arbRootDir}/${input}`;
 			if (!existsSync(wsDir)) {
 				if (ctx.currentWorkspace) {
-					error(`'${input}' is not a worktree in workspace '${ctx.currentWorkspace}' or a workspace`);
+					error(`'${input}' is not a repo in workspace '${ctx.currentWorkspace}' or a workspace`);
 				} else {
 					error(`Workspace '${input}' does not exist`);
 				}

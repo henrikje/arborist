@@ -10,14 +10,14 @@ import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 export function registerOpenCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("open")
-		.argument("<command...>", "Command to open worktrees with")
+		.argument("<command...>", "Command to open repos with")
 		.option("--repo <name>", "Only open specified repos (repeatable)", collectRepo, [])
-		.option("-d, --dirty", "Only open dirty worktrees (shorthand for --where dirty)")
-		.option("-w, --where <filter>", "Only open worktrees matching status filter (comma = OR, + = AND, ^ = negate)")
+		.option("-d, --dirty", "Only open dirty repos (shorthand for --where dirty)")
+		.option("-w, --where <filter>", "Only open repos matching status filter (comma = OR, + = AND, ^ = negate)")
 		.passThroughOptions()
-		.summary("Open worktrees in an application")
+		.summary("Open repos in an application")
 		.description(
-			'Run a command with all worktree directories as arguments, using absolute paths. Useful for opening worktrees in an editor, e.g. "arb open code". The command must exist in your PATH.\n\nUse --repo <name> to target specific repos (repeatable). Use --dirty to only open worktrees with local changes, or --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Positive/healthy terms: clean, pushed, synced-base, synced-share, synced, safe. Prefix any term with ^ to negate (e.g. --where ^dirty is equivalent to --where clean). Comma-separated values use OR logic; use + for AND (e.g. --where dirty+unpushed matches repos that are both dirty and unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. --repo and --where/--dirty can be combined (AND logic).\n\nArb flags must come before the command. Everything after the command name is passed through verbatim:\n\n  arb open --repo api --repo web code\n  arb open --dirty code -n --add    # --dirty → arb, -n --add → code',
+			'Run a command with all repo directories as arguments, using absolute paths. Useful for opening repos in an editor, e.g. "arb open code". The command must exist in your PATH.\n\nUse --repo <name> to target specific repos (repeatable). Use --dirty to only open repos with local changes, or --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Positive/healthy terms: clean, pushed, synced-base, synced-share, synced, safe. Prefix any term with ^ to negate (e.g. --where ^dirty is equivalent to --where clean). Comma-separated values use OR logic; use + for AND (e.g. --where dirty+unpushed matches repos that are both dirty and unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. --repo and --where/--dirty can be combined (AND logic).\n\nArb flags must come before the command. Everything after the command name is passed through verbatim:\n\n  arb open --repo api --repo web code\n  arb open --dirty code -n --add    # --dirty → arb, -n --add → code',
 		)
 		.action(async (args: string[], options: { repo?: string[]; dirty?: boolean; where?: string }) => {
 			const [command = "", ...extraFlags] = args;
@@ -82,9 +82,9 @@ export function registerOpenCommand(program: Command, getCtx: () => ArbContext):
 
 			if (dirsToOpen.length === 0) {
 				if (where) {
-					info("No worktrees match the filter");
+					info("No repos match the filter");
 				} else {
-					info("No worktrees in workspace");
+					info("No repos in workspace");
 				}
 				return;
 			}

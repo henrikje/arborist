@@ -18,7 +18,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 		.option("-a, --all-repos", "Include all repos")
 		.summary("Create a new workspace")
 		.description(
-			"Create a workspace for a feature or issue. Sets up worktrees for selected repos on a shared feature branch, with isolated working directories. Automatically seeds files from .arb/templates/ into the new workspace. Prompts interactively for name, branch, and repos when run without arguments.",
+			"Create a workspace for a feature or issue. Creates a working copy of each selected repo on a shared feature branch, with isolated working directories. Automatically seeds files from .arb/templates/ into the new workspace. Prompts interactively for name, branch, and repos when run without arguments.",
 		)
 		.action(
 			async (

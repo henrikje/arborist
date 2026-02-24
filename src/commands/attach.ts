@@ -15,7 +15,7 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
 		.option("-a, --all-repos", "Attach all remaining repos")
 		.summary("Attach repos to the workspace")
 		.description(
-			"Attach one or more repos to the current workspace on the workspace's feature branch. If the workspace has a configured base branch, new worktrees branch from it. Automatically seeds files from .arb/templates/repos/ into newly attached repos and regenerates worktree-aware templates (those using {% for wt in workspace.worktrees %}). Prompts with a repo picker when run without arguments. Use --all-repos to attach all repos not yet in the workspace.",
+			"Attach one or more repos to the current workspace on the workspace's feature branch. If the workspace has a configured base branch, new branches are created from it. Automatically seeds files from .arb/templates/repos/ into newly attached repos and regenerates templates that reference the repo list (those using {% for repo in workspace.repos %}). Prompts with a repo picker when run without arguments. Use --all-repos to attach all repos not yet in the workspace.",
 		)
 		.action(async (repoArgs: string[], options: { allRepos?: boolean }) => {
 			const ctx = getCtx();
