@@ -132,8 +132,12 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				const wsTemplates = applyWorkspaceTemplates(ctx.baseDir, wsDir);
 				const repoTemplates = applyRepoTemplates(ctx.baseDir, wsDir, result.created);
 				const totalSeeded = wsTemplates.seeded.length + repoTemplates.seeded.length;
+				const totalRegenerated = wsTemplates.regenerated.length + repoTemplates.regenerated.length;
 				if (totalSeeded > 0) {
 					info(`Seeded ${plural(totalSeeded, "template file")}`);
+				}
+				if (totalRegenerated > 0) {
+					info(`Regenerated ${plural(totalRegenerated, "template file")}`);
 				}
 				for (const f of [...wsTemplates.failed, ...repoTemplates.failed]) {
 					warn(`Failed to copy template ${f.path}: ${f.error}`);
