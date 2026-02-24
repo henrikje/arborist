@@ -4,19 +4,19 @@ import checkbox from "@inquirer/checkbox";
 import confirm from "@inquirer/confirm";
 import { error } from "./output";
 
-export function listWorkspaces(baseDir: string): string[] {
-	return readdirSync(baseDir)
+export function listWorkspaces(arbRootDir: string): string[] {
+	return readdirSync(arbRootDir)
 		.filter((entry) => !entry.startsWith("."))
-		.filter((entry) => statSync(join(baseDir, entry)).isDirectory())
-		.filter((entry) => existsSync(join(baseDir, entry, ".arbws")))
+		.filter((entry) => statSync(join(arbRootDir, entry)).isDirectory())
+		.filter((entry) => existsSync(join(arbRootDir, entry, ".arbws")))
 		.sort();
 }
 
-export function listNonWorkspaces(baseDir: string, ignored?: Set<string>): string[] {
-	return readdirSync(baseDir)
+export function listNonWorkspaces(arbRootDir: string, ignored?: Set<string>): string[] {
+	return readdirSync(arbRootDir)
 		.filter((entry) => !entry.startsWith("."))
-		.filter((entry) => statSync(join(baseDir, entry)).isDirectory())
-		.filter((entry) => !existsSync(join(baseDir, entry, ".arbws")))
+		.filter((entry) => statSync(join(arbRootDir, entry)).isDirectory())
+		.filter((entry) => !existsSync(join(arbRootDir, entry, ".arbws")))
 		.filter((entry) => !ignored || !ignored.has(entry))
 		.sort();
 }
@@ -108,11 +108,11 @@ export function resolveRepoSelection(wsDir: string, repoArgs: string[]): string[
 	return allRepoNames;
 }
 
-export function findRepoUsage(baseDir: string, repoName: string): string[] {
-	const workspaces = listWorkspaces(baseDir);
+export function findRepoUsage(arbRootDir: string, repoName: string): string[] {
+	const workspaces = listWorkspaces(arbRootDir);
 	const using: string[] = [];
 	for (const ws of workspaces) {
-		const wsDir = join(baseDir, ws);
+		const wsDir = join(arbRootDir, ws);
 		const repos = workspaceRepoDirs(wsDir).map((d) => basename(d));
 		if (repos.includes(repoName)) {
 			using.push(ws);

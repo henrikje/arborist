@@ -316,7 +316,7 @@ export function formatPullPlan(assessments: PullAssessment[], remotesMap: Map<st
 	let out = "\n";
 	for (const a of assessments) {
 		const remotes = remotesMap.get(a.repo);
-		const forkSuffix = remotes && remotes.upstream !== remotes.share ? ` ← ${remotes.share}` : "";
+		const forkSuffix = remotes && remotes.base !== remotes.share ? ` ← ${remotes.share}` : "";
 		const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 		if (a.outcome === "will-pull") {
 			let conflictHint = "";

@@ -57,12 +57,12 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
 			const base = configGet(`${wsDir}/.arbws/config`, "base") ?? undefined;
 
 			const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
-			const result = await addWorktrees(workspace, branch, repos, ctx.reposDir, ctx.baseDir, base, remotesMap);
+			const result = await addWorktrees(workspace, branch, repos, ctx.reposDir, ctx.arbRootDir, base, remotesMap);
 
 			const changed = { added: result.created };
 			const wsRepoNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
-			const repoTemplates = await applyRepoTemplates(ctx.baseDir, wsDir, wsRepoNames, changed);
-			const wsTemplates = await applyWorkspaceTemplates(ctx.baseDir, wsDir, changed);
+			const repoTemplates = await applyRepoTemplates(ctx.arbRootDir, wsDir, wsRepoNames, changed);
+			const wsTemplates = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir, changed);
 			const totalSeeded = repoTemplates.seeded.length + wsTemplates.seeded.length;
 			const totalRegenerated = repoTemplates.regenerated.length + wsTemplates.regenerated.length;
 			if (totalSeeded > 0) {

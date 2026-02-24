@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export function loadArbIgnore(baseDir: string): Set<string> {
-	const ignoreFile = join(baseDir, ".arbignore");
+export function loadArbIgnore(arbRootDir: string): Set<string> {
+	const ignoreFile = join(arbRootDir, ".arbignore");
 	if (!existsSync(ignoreFile)) return new Set();
 	const content = readFileSync(ignoreFile, "utf-8");
 	const names = new Set<string>();

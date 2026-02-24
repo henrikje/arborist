@@ -94,7 +94,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					reportFetchFailures(allRepoNames, fetchResults);
 				}
 
-				const workspaces = listWorkspaces(ctx.baseDir);
+				const workspaces = listWorkspaces(ctx.arbRootDir);
 
 				// ── Phase 1: gather lightweight metadata (fast, sequential) ──
 				const rows: ListRow[] = [];
@@ -106,7 +106,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				let hasAnyBase = false;
 
 				for (const name of workspaces) {
-					const wsDir = `${ctx.baseDir}/${name}`;
+					const wsDir = `${ctx.arbRootDir}/${name}`;
 					const marker = name === ctx.currentWorkspace;
 					if (name.length > maxName) maxName = name.length;
 

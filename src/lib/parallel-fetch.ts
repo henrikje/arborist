@@ -48,10 +48,10 @@ export async function parallelFetch(
 			const repoRemotes = remotesMap?.get(repo);
 			const remotesToFetch = new Set<string>();
 			if (repoRemotes) {
-				remotesToFetch.add(repoRemotes.upstream);
+				remotesToFetch.add(repoRemotes.base);
 				remotesToFetch.add(repoRemotes.share);
 			}
-			const upstreamRemote = repoRemotes?.upstream;
+			const baseRemote = repoRemotes?.base;
 
 			let allOutput = "";
 			let lastExitCode = 0;
@@ -122,9 +122,9 @@ export async function parallelFetch(
 
 			results.set(repo, { repo, exitCode: lastExitCode, output: allOutput });
 
-			// Auto-detect remote HEAD on the upstream remote (only when we know which remote is upstream)
-			if (upstreamRemote) {
-				await Bun.$`git -C ${repoDir} remote set-head ${upstreamRemote} --auto`.cwd(repoDir).quiet().nothrow();
+			// Auto-detect remote HEAD on the base remote (only when we know which remote is base)
+			if (baseRemote) {
+				await Bun.$`git -C ${repoDir} remote set-head ${baseRemote} --auto`.cwd(repoDir).quiet().nothrow();
 			}
 		} catch {
 			results.set(repo, { repo, exitCode: 1, output: "fetch failed" });

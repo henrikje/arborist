@@ -45,7 +45,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 							validate: (v) => {
 								const formatError = validateWorkspaceName(v);
 								if (formatError) return formatError;
-								if (existsSync(`${ctx.baseDir}/${v}`)) return `Workspace '${v}' already exists`;
+								if (existsSync(`${ctx.arbRootDir}/${v}`)) return `Workspace '${v}' already exists`;
 								return true;
 							},
 						},
@@ -59,7 +59,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 					process.exit(1);
 				}
 
-				const wsDir = `${ctx.baseDir}/${name}`;
+				const wsDir = `${ctx.arbRootDir}/${name}`;
 				if (existsSync(wsDir)) {
 					error(`Workspace '${name}' already exists`);
 					process.exit(1);
@@ -126,11 +126,11 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				let result = { created: [] as string[], skipped: [] as string[], failed: [] as string[] };
 				if (repos.length > 0) {
 					const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
-					result = await addWorktrees(name, branch, repos, ctx.reposDir, ctx.baseDir, base, remotesMap);
+					result = await addWorktrees(name, branch, repos, ctx.reposDir, ctx.arbRootDir, base, remotesMap);
 				}
 
-				const wsTemplates = await applyWorkspaceTemplates(ctx.baseDir, wsDir);
-				const repoTemplates = await applyRepoTemplates(ctx.baseDir, wsDir, result.created);
+				const wsTemplates = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir);
+				const repoTemplates = await applyRepoTemplates(ctx.arbRootDir, wsDir, result.created);
 				const totalSeeded = wsTemplates.seeded.length + repoTemplates.seeded.length;
 				const totalRegenerated = wsTemplates.regenerated.length + repoTemplates.regenerated.length;
 				if (totalSeeded > 0) {

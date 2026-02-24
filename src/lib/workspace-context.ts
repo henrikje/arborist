@@ -8,7 +8,7 @@ export function requireWorkspace(ctx: ArbContext): { wsDir: string; workspace: s
 		error("Not inside a workspace. cd into one or use -C <workspace>");
 		process.exit(1);
 	}
-	const wsDir = `${ctx.baseDir}/${ctx.currentWorkspace}`;
+	const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
 	if (!existsSync(`${wsDir}/.arbws`)) {
 		error(`Workspace '${ctx.currentWorkspace}' does not exist`);
 		process.exit(1);

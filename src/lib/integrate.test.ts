@@ -169,7 +169,7 @@ describe("classifyRepo", () => {
 		expect(a.skipReason).toBe("no base branch");
 	});
 
-	test("skips when no upstream remote", () => {
+	test("skips when no base remote", () => {
 		const a = classifyRepo(
 			makeRepo({
 				base: {
@@ -189,7 +189,7 @@ describe("classifyRepo", () => {
 			SHA,
 		);
 		expect(a.outcome).toBe("skip");
-		expect(a.skipReason).toBe("no upstream remote");
+		expect(a.skipReason).toBe("no base remote");
 	});
 
 	test("skips when base branch merged into default", () => {
@@ -258,9 +258,9 @@ describe("classifyRepo", () => {
 		expect(a.headSha).toBe("deadbeef");
 	});
 
-	test("upstreamRemote is set from base.remote", () => {
+	test("baseRemote is set from base.remote", () => {
 		const a = classifyRepo(makeRepo(), DIR, "feature", [], false, SHA);
-		expect(a.upstreamRemote).toBe("origin");
+		expect(a.baseRemote).toBe("origin");
 	});
 
 	test("ahead passes through for up-to-date", () => {
@@ -295,7 +295,7 @@ describe("formatIntegratePlan", () => {
 			outcome: "will-operate",
 			behind: 3,
 			ahead: 1,
-			upstreamRemote: "origin",
+			baseRemote: "origin",
 			baseBranch: "main",
 			headSha: "abc1234",
 			shallow: false,

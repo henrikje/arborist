@@ -644,7 +644,7 @@ assert data == []
     [[ "$output" != *"URL"* ]]
 }
 
-@test "arb repo list --json outputs valid JSON with share and upstream" {
+@test "arb repo list --json outputs valid JSON with share and base" {
     run arb repo list --json
     [ "$status" -eq 0 ]
     echo "$output" | python3 -c "
@@ -654,11 +654,11 @@ assert len(data) == 2
 assert 'name' in data[0]
 assert 'url' in data[0]
 assert 'share' in data[0]
-assert 'upstream' in data[0]
+assert 'base' in data[0]
 assert 'name' in data[0]['share']
 assert 'url' in data[0]['share']
-assert 'name' in data[0]['upstream']
-assert 'url' in data[0]['upstream']
+assert 'name' in data[0]['base']
+assert 'url' in data[0]['base']
 "
 }
 

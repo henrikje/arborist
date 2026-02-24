@@ -15,11 +15,11 @@ export async function addWorktrees(
 	branch: string,
 	repos: string[],
 	reposDir: string,
-	baseDir: string,
+	arbRootDir: string,
 	baseBranch?: string,
 	remotesMap?: Map<string, RepoRemotes>,
 ): Promise<AddWorktreesResult> {
-	const wsDir = `${baseDir}/${name}`;
+	const wsDir = `${arbRootDir}/${name}`;
 	const result: AddWorktreesResult = { created: [], skipped: [], failed: [] };
 
 	// Phase 1: parallel fetch
@@ -82,15 +82,15 @@ export async function addWorktrees(
 
 		// Resolve remote names for this repo
 		const repoRemotes = remotesMap?.get(repo);
-		const upstreamRemote = repoRemotes?.upstream;
+		const baseRemote = repoRemotes?.base;
 
 		let effectiveBase: string | null;
 		if (baseBranch) {
-			const baseExists = upstreamRemote ? await remoteBranchExists(repoPath, baseBranch, upstreamRemote) : false;
+			const baseExists = baseRemote ? await remoteBranchExists(repoPath, baseBranch, baseRemote) : false;
 			if (baseExists) {
 				effectiveBase = baseBranch;
-			} else if (upstreamRemote) {
-				effectiveBase = await getDefaultBranch(repoPath, upstreamRemote);
+			} else if (baseRemote) {
+				effectiveBase = await getDefaultBranch(repoPath, baseRemote);
 				if (effectiveBase) {
 					warn(`  [${repo}] base branch '${baseBranch}' not found — using '${effectiveBase}'`);
 				} else {
@@ -99,19 +99,19 @@ export async function addWorktrees(
 					continue;
 				}
 			} else {
-				error(`  [${repo}] could not determine upstream remote`);
+				error(`  [${repo}] could not determine base remote`);
 				result.failed.push(repo);
 				continue;
 			}
-		} else if (upstreamRemote) {
-			effectiveBase = await getDefaultBranch(repoPath, upstreamRemote);
+		} else if (baseRemote) {
+			effectiveBase = await getDefaultBranch(repoPath, baseRemote);
 			if (!effectiveBase) {
 				error(`  [${repo}] could not determine default branch`);
 				result.failed.push(repo);
 				continue;
 			}
 		} else {
-			error(`  [${repo}] could not determine upstream remote`);
+			error(`  [${repo}] could not determine base remote`);
 			result.failed.push(repo);
 			continue;
 		}
@@ -136,7 +136,7 @@ export async function addWorktrees(
 			}
 			inlineResult(repo, `branch ${branch} attached`);
 		} else {
-			const startPoint = upstreamRemote ? `${upstreamRemote}/${effectiveBase}` : effectiveBase;
+			const startPoint = baseRemote ? `${baseRemote}/${effectiveBase}` : effectiveBase;
 			inlineStart(repo, `creating branch ${branch} from ${startPoint}`);
 			// Prevent git from auto-setting tracking config (branch.autoSetupMerge) when
 			// branching from a remote ref. We rely on tracking config being absent for fresh

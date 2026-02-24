@@ -1,7 +1,7 @@
 import { git } from "./git";
 
 export interface RepoRemotes {
-	upstream: string; // Source of base branches (rebase/merge targets, default branch)
+	base: string; // Source of base branches (rebase/merge targets, default branch)
 	share: string; // Where feature branches are shared (push, pull, tracking)
 }
 
@@ -10,9 +10,9 @@ export interface RepoRemotes {
  *
  * Resolution order:
  * 1. Single remote → use it for both roles
- * 2. Git config: remote.pushDefault → share; determine upstream from remaining remotes
- * 3. Convention: remote named "upstream" alongside "origin" → { upstream: "upstream", share: "origin" }
- * 4. Default: only "origin" → { upstream: "origin", share: "origin" }
+ * 2. Git config: remote.pushDefault → share; determine base from remaining remotes
+ * 3. Convention: remote named "upstream" alongside "origin" → { base: "upstream", share: "origin" }
+ * 4. Default: only "origin" → { base: "origin", share: "origin" }
  * 5. Ambiguous → error with guidance
  */
 export async function resolveRemotes(repoDir: string, knownRemoteNames?: string[]): Promise<RepoRemotes> {
@@ -25,31 +25,31 @@ export async function resolveRemotes(repoDir: string, knownRemoteNames?: string[
 	// Single remote — use it for both roles regardless of name
 	if (remotes.length === 1) {
 		const [single] = remotes as [string];
-		return { upstream: single, share: single };
+		return { base: single, share: single };
 	}
 
 	// Check remote.pushDefault
 	const pushDefault = await getPushDefault(repoDir);
 	if (pushDefault && remotes.includes(pushDefault)) {
 		const others = remotes.filter((r) => r !== pushDefault);
-		let upstream: string;
+		let baseRemote: string;
 		if (others.length === 1) {
-			[upstream] = others as [string];
+			[baseRemote] = others as [string];
 		} else if (others.includes("upstream")) {
-			upstream = "upstream";
+			baseRemote = "upstream";
 		} else {
 			const repoName = repoDir.split("/").pop() ?? repoDir;
 			throw new Error(
-				`Cannot determine upstream remote for ${repoName} (remotes: ${remotes.join(", ")}).\nAdd a remote named 'upstream' or reduce to two remotes.`,
+				`Cannot determine base remote for ${repoName} (remotes: ${remotes.join(", ")}).\nAdd a remote named 'upstream' or reduce to two remotes.`,
 			);
 		}
-		return { upstream, share: pushDefault };
+		return { base: baseRemote, share: pushDefault };
 	}
 
 	// Convention: "upstream" + "origin"
 	if (remotes.includes("upstream") && remotes.includes("origin")) {
 		if (remotes.length === 2) {
-			return { upstream: "upstream", share: "origin" };
+			return { base: "upstream", share: "origin" };
 		}
 		// 3+ remotes with both upstream and origin but no pushDefault — ambiguous share
 		const repoName = repoDir.split("/").pop() ?? repoDir;

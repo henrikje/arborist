@@ -171,15 +171,15 @@ export function overlayDirectory(srcDir: string, destDir: string, ctx?: Template
 }
 
 export async function applyWorkspaceTemplates(
-	baseDir: string,
+	arbRootDir: string,
 	wsDir: string,
 	changedRepos?: { added?: string[]; removed?: string[] },
 ): Promise<OverlayResult> {
-	const templateDir = join(baseDir, ".arb", "templates", "workspace");
-	const reposDir = join(baseDir, ".arb", "repos");
+	const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
+	const reposDir = join(arbRootDir, ".arb", "repos");
 	const repos = await workspaceRepoList(wsDir, reposDir);
 	const ctx: TemplateContext = {
-		rootPath: baseDir,
+		rootPath: arbRootDir,
 		workspaceName: basename(wsDir),
 		workspacePath: wsDir,
 		repos,
@@ -193,23 +193,23 @@ export async function applyWorkspaceTemplates(
 }
 
 export async function applyRepoTemplates(
-	baseDir: string,
+	arbRootDir: string,
 	wsDir: string,
 	repos: string[],
 	changedRepos?: { added?: string[]; removed?: string[] },
 ): Promise<OverlayResult> {
 	const result = emptyResult();
-	const reposDir = join(baseDir, ".arb", "repos");
+	const reposDir = join(arbRootDir, ".arb", "repos");
 	const allRepos = await workspaceRepoList(wsDir, reposDir);
 
 	for (const repo of repos) {
-		const templateDir = join(baseDir, ".arb", "templates", "repos", repo);
+		const templateDir = join(arbRootDir, ".arb", "templates", "repos", repo);
 		const repoDir = join(wsDir, repo);
 
 		if (!existsSync(templateDir) || !existsSync(repoDir)) continue;
 
 		const ctx: TemplateContext = {
-			rootPath: baseDir,
+			rootPath: arbRootDir,
 			workspaceName: basename(wsDir),
 			workspacePath: wsDir,
 			worktreeName: repo,
@@ -235,10 +235,10 @@ const emptyRemote: RemoteInfo = { name: "", url: "" };
 async function resolveRepoRemoteInfo(repoDir: string): Promise<{ baseRemote: RemoteInfo; shareRemote: RemoteInfo }> {
 	try {
 		const remotes = await resolveRemotes(repoDir);
-		const baseUrl = await getRemoteUrl(repoDir, remotes.upstream);
-		const shareUrl = remotes.share !== remotes.upstream ? await getRemoteUrl(repoDir, remotes.share) : baseUrl;
+		const baseUrl = await getRemoteUrl(repoDir, remotes.base);
+		const shareUrl = remotes.share !== remotes.base ? await getRemoteUrl(repoDir, remotes.share) : baseUrl;
 		return {
-			baseRemote: { name: remotes.upstream, url: baseUrl ?? "" },
+			baseRemote: { name: remotes.base, url: baseUrl ?? "" },
 			shareRemote: { name: remotes.share, url: shareUrl ?? "" },
 		};
 	} catch {
@@ -347,14 +347,14 @@ function diffDirectory(srcDir: string, destDir: string, ctx?: TemplateContext): 
 	return diffs;
 }
 
-export async function diffTemplates(baseDir: string, wsDir: string, repos: string[]): Promise<TemplateDiff[]> {
+export async function diffTemplates(arbRootDir: string, wsDir: string, repos: string[]): Promise<TemplateDiff[]> {
 	const result: TemplateDiff[] = [];
-	const reposDir = join(baseDir, ".arb", "repos");
+	const reposDir = join(arbRootDir, ".arb", "repos");
 	const allRepos = await workspaceRepoList(wsDir, reposDir);
 
-	const wsTemplateDir = join(baseDir, ".arb", "templates", "workspace");
+	const wsTemplateDir = join(arbRootDir, ".arb", "templates", "workspace");
 	const wsCtx: TemplateContext = {
-		rootPath: baseDir,
+		rootPath: arbRootDir,
 		workspaceName: basename(wsDir),
 		workspacePath: wsDir,
 		repos: allRepos,
@@ -364,12 +364,12 @@ export async function diffTemplates(baseDir: string, wsDir: string, repos: strin
 	}
 
 	for (const repo of repos) {
-		const repoTemplateDir = join(baseDir, ".arb", "templates", "repos", repo);
+		const repoTemplateDir = join(arbRootDir, ".arb", "templates", "repos", repo);
 		const repoDir = join(wsDir, repo);
 		if (!existsSync(repoDir)) continue;
 
 		const repoCtx: TemplateContext = {
-			rootPath: baseDir,
+			rootPath: arbRootDir,
 			workspaceName: basename(wsDir),
 			workspacePath: wsDir,
 			worktreeName: repo,
@@ -394,9 +394,9 @@ export interface TemplateEntry {
 	conflict?: boolean;
 }
 
-export function listTemplates(baseDir: string): TemplateEntry[] {
+export function listTemplates(arbRootDir: string): TemplateEntry[] {
 	const seen = new Map<string, TemplateEntry>();
-	const templatesDir = join(baseDir, ".arb", "templates");
+	const templatesDir = join(arbRootDir, ".arb", "templates");
 
 	function addEntry(entry: TemplateEntry): void {
 		const key = `${entry.scope}:${entry.repo ?? ""}:${entry.relPath}`;
@@ -469,8 +469,8 @@ export interface TemplateScope {
 	repo?: string;
 }
 
-export function detectTemplateScope(baseDir: string, cwd: string): TemplateScope | null {
-	const prefix = `${baseDir}/`;
+export function detectTemplateScope(arbRootDir: string, cwd: string): TemplateScope | null {
+	const prefix = `${arbRootDir}/`;
 	if (!cwd.startsWith(prefix)) return null;
 
 	const rest = cwd.slice(prefix.length);
@@ -479,10 +479,10 @@ export function detectTemplateScope(baseDir: string, cwd: string): TemplateScope
 	if (!firstSegment) return null;
 
 	// Check if first segment is a workspace
-	if (existsSync(join(baseDir, firstSegment, ".arbws"))) {
+	if (existsSync(join(arbRootDir, firstSegment, ".arbws"))) {
 		// Inside a workspace — check if we're in a repo worktree
 		const secondSegment = segments[1];
-		if (secondSegment && existsSync(join(baseDir, firstSegment, secondSegment, ".git"))) {
+		if (secondSegment && existsSync(join(arbRootDir, firstSegment, secondSegment, ".git"))) {
 			return { scope: "repo", repo: secondSegment };
 		}
 		return { scope: "workspace" };
@@ -491,12 +491,12 @@ export function detectTemplateScope(baseDir: string, cwd: string): TemplateScope
 	return null;
 }
 
-export function removeTemplate(baseDir: string, scope: "workspace" | "repo", relPath: string, repo?: string): void {
+export function removeTemplate(arbRootDir: string, scope: "workspace" | "repo", relPath: string, repo?: string): void {
 	const repoName = repo ?? "";
 	const plainPath =
 		scope === "workspace"
-			? join(baseDir, ".arb", "templates", "workspace", relPath)
-			: join(baseDir, ".arb", "templates", "repos", repoName, relPath);
+			? join(arbRootDir, ".arb", "templates", "workspace", relPath)
+			: join(arbRootDir, ".arb", "templates", "repos", repoName, relPath);
 
 	const arbtplPath = `${plainPath}${ARBTEMPLATE_EXT}`;
 	const templatePath = existsSync(plainPath) ? plainPath : existsSync(arbtplPath) ? arbtplPath : null;
@@ -510,8 +510,8 @@ export function removeTemplate(baseDir: string, scope: "workspace" | "repo", rel
 	// Clean up empty parent directories up to the scope root
 	const scopeRoot =
 		scope === "workspace"
-			? join(baseDir, ".arb", "templates", "workspace")
-			: join(baseDir, ".arb", "templates", "repos", repoName);
+			? join(arbRootDir, ".arb", "templates", "workspace")
+			: join(arbRootDir, ".arb", "templates", "repos", repoName);
 
 	let dir = dirname(templatePath);
 	while (dir !== scopeRoot && dir.startsWith(scopeRoot)) {
@@ -599,12 +599,12 @@ export function forceOverlayDirectory(srcDir: string, destDir: string, ctx?: Tem
 	return result;
 }
 
-export async function forceApplyWorkspaceTemplates(baseDir: string, wsDir: string): Promise<ForceOverlayResult> {
-	const templateDir = join(baseDir, ".arb", "templates", "workspace");
-	const reposDir = join(baseDir, ".arb", "repos");
+export async function forceApplyWorkspaceTemplates(arbRootDir: string, wsDir: string): Promise<ForceOverlayResult> {
+	const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
+	const reposDir = join(arbRootDir, ".arb", "repos");
 	const repos = await workspaceRepoList(wsDir, reposDir);
 	const ctx: TemplateContext = {
-		rootPath: baseDir,
+		rootPath: arbRootDir,
 		workspaceName: basename(wsDir),
 		workspacePath: wsDir,
 		repos,
@@ -613,22 +613,22 @@ export async function forceApplyWorkspaceTemplates(baseDir: string, wsDir: strin
 }
 
 export async function forceApplyRepoTemplates(
-	baseDir: string,
+	arbRootDir: string,
 	wsDir: string,
 	repos: string[],
 ): Promise<ForceOverlayResult> {
 	const result: ForceOverlayResult = { seeded: [], reset: [], unchanged: [], failed: [] };
-	const reposDir = join(baseDir, ".arb", "repos");
+	const reposDir = join(arbRootDir, ".arb", "repos");
 	const allRepos = await workspaceRepoList(wsDir, reposDir);
 
 	for (const repo of repos) {
-		const templateDir = join(baseDir, ".arb", "templates", "repos", repo);
+		const templateDir = join(arbRootDir, ".arb", "templates", "repos", repo);
 		const repoDir = join(wsDir, repo);
 
 		if (!existsSync(templateDir) || !existsSync(repoDir)) continue;
 
 		const ctx: TemplateContext = {
-			rootPath: baseDir,
+			rootPath: arbRootDir,
 			workspaceName: basename(wsDir),
 			workspacePath: wsDir,
 			worktreeName: repo,
@@ -659,11 +659,16 @@ export function displayTemplateDiffs(
 	write("\n");
 }
 
-export function templateFilePath(baseDir: string, scope: "workspace" | "repo", relPath: string, repo?: string): string {
+export function templateFilePath(
+	arbRootDir: string,
+	scope: "workspace" | "repo",
+	relPath: string,
+	repo?: string,
+): string {
 	const plainPath =
 		scope === "workspace"
-			? join(baseDir, ".arb", "templates", "workspace", relPath)
-			: join(baseDir, ".arb", "templates", "repos", repo ?? "", relPath);
+			? join(arbRootDir, ".arb", "templates", "workspace", relPath)
+			: join(arbRootDir, ".arb", "templates", "repos", repo ?? "", relPath);
 
 	if (existsSync(plainPath)) return plainPath;
 

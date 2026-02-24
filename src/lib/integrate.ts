@@ -27,7 +27,7 @@ export interface RepoAssessment {
 	outcome: "will-operate" | "up-to-date" | "skip";
 	skipReason?: string;
 	baseBranch?: string;
-	upstreamRemote: string;
+	baseRemote: string;
 	behind: number;
 	ahead: number;
 	headSha: string;
@@ -143,12 +143,12 @@ export async function integrate(
 	const conflicted: { assessment: RepoAssessment; stdout: string }[] = [];
 	const stashPopFailed: RepoAssessment[] = [];
 	for (const a of willOperate) {
-		const ref = `${a.upstreamRemote}/${a.baseBranch}`;
+		const ref = `${a.baseRemote}/${a.baseBranch}`;
 
 		let result: { exitCode: number; stdout: string };
 		if (a.retargetFrom) {
-			const remoteRefExists = await remoteBranchExists(a.repoDir, a.retargetFrom, a.upstreamRemote);
-			const oldBaseRef = remoteRefExists ? `${a.upstreamRemote}/${a.retargetFrom}` : a.retargetFrom;
+			const remoteRefExists = await remoteBranchExists(a.repoDir, a.retargetFrom, a.baseRemote);
+			const oldBaseRef = remoteRefExists ? `${a.baseRemote}/${a.retargetFrom}` : a.retargetFrom;
 			const progressMsg = `rebasing ${branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
 			inlineStart(a.repo, progressMsg);
 			const retargetArgs = ["rebase"];
@@ -242,7 +242,7 @@ export async function integrate(
 			// If retargeting to a non-default branch, set it as the new base
 			const firstRetarget = retargetAssessments[0];
 			const repoDefault = firstRetarget
-				? await getDefaultBranch(firstRetarget.repoDir, firstRetarget.upstreamRemote)
+				? await getDefaultBranch(firstRetarget.repoDir, firstRetarget.baseRemote)
 				: null;
 			if (repoDefault && retargetTo !== repoDefault) {
 				writeConfig(configFile, wsBranch, retargetTo);
@@ -277,7 +277,7 @@ export function formatIntegratePlan(assessments: RepoAssessment[], mode: Integra
 	let out = "\n";
 	for (const a of assessments) {
 		if (a.outcome === "will-operate") {
-			const baseRef = `${a.upstreamRemote}/${a.baseBranch}`;
+			const baseRef = `${a.baseRemote}/${a.baseBranch}`;
 
 			if (a.retargetFrom) {
 				// Retarget display
@@ -348,7 +348,7 @@ async function predictIntegrateConflicts(assessments: RepoAssessment[]): Promise
 		assessments
 			.filter((a) => a.outcome === "will-operate")
 			.map(async (a) => {
-				const ref = `${a.upstreamRemote}/${a.baseBranch}`;
+				const ref = `${a.baseRemote}/${a.baseBranch}`;
 				if (!a.retargetFrom && a.ahead > 0 && a.behind > 0) {
 					const prediction = await predictMergeConflict(a.repoDir, ref);
 					a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
@@ -377,7 +377,7 @@ export function classifyRepo(
 		outcome: "skip",
 		behind: 0,
 		ahead: 0,
-		upstreamRemote: "",
+		baseRemote: "",
 		headSha,
 		shallow: status.identity.shallow,
 	};
@@ -418,11 +418,11 @@ export function classifyRepo(
 	}
 
 	// After this point, status.base is guaranteed non-null.
-	// Remote repos must have a resolved upstream remote to proceed.
+	// Remote repos must have a resolved base remote to proceed.
 	if (!status.base.remote) {
-		return { ...base, skipReason: "no upstream remote" };
+		return { ...base, skipReason: "no base remote" };
 	}
-	base.upstreamRemote = status.base.remote;
+	base.baseRemote = status.base.remote;
 
 	// Stacked base branch has been merged into default
 	if (status.base.baseMergedIntoDefault != null) {
@@ -464,7 +464,7 @@ async function assessRepo(
 		return classified;
 	}
 
-	const upstreamRemote = classified.upstreamRemote;
+	const baseRemote = classified.baseRemote;
 	const base = status.base;
 
 	// Explicit retarget to a specified branch
@@ -475,19 +475,19 @@ async function assessRepo(
 		}
 
 		// Validate target branch exists on remote
-		const targetExists = await remoteBranchExists(repoDir, retargetExplicit, upstreamRemote);
+		const targetExists = await remoteBranchExists(repoDir, retargetExplicit, baseRemote);
 		if (!targetExists) {
 			return {
 				...classified,
 				outcome: "skip",
-				skipReason: `target branch ${retargetExplicit} not found on ${upstreamRemote}`,
+				skipReason: `target branch ${retargetExplicit} not found on ${baseRemote}`,
 				retargetBlocked: true,
 			};
 		}
 
 		// Resolve old base ref (the branch we're retargeting away from)
 		const oldBaseName = base?.configuredRef ?? base?.ref ?? "";
-		const oldBaseRemoteExists = await remoteBranchExists(repoDir, oldBaseName, upstreamRemote);
+		const oldBaseRemoteExists = await remoteBranchExists(repoDir, oldBaseName, baseRemote);
 		const oldBaseLocalExists = !oldBaseRemoteExists ? await branchExistsLocally(repoDir, oldBaseName) : false;
 		if (!oldBaseRemoteExists && !oldBaseLocalExists) {
 			return {
@@ -499,8 +499,8 @@ async function assessRepo(
 		}
 
 		// Per-repo merge detection
-		const targetRef = `${upstreamRemote}/${retargetExplicit}`;
-		const oldBaseRef = oldBaseRemoteExists ? `${upstreamRemote}/${oldBaseName}` : oldBaseName;
+		const targetRef = `${baseRemote}/${retargetExplicit}`;
+		const oldBaseRef = oldBaseRemoteExists ? `${baseRemote}/${oldBaseName}` : oldBaseName;
 		let retargetWarning: string | undefined;
 		const mergeResult = await detectBranchMerged(repoDir, targetRef, 200, oldBaseRef);
 		if (mergeResult === null) {
@@ -531,14 +531,14 @@ async function assessRepo(
 		}
 
 		// Resolve the true default branch for retarget
-		const trueDefault = await getDefaultBranch(repoDir, upstreamRemote);
+		const trueDefault = await getDefaultBranch(repoDir, baseRemote);
 		if (!trueDefault) {
 			return { ...classified, outcome: "skip", skipReason: "cannot resolve default branch for retarget" };
 		}
 
 		// For squash-merged repos, check if already retargeted
 		if (base.baseMergedIntoDefault === "squash") {
-			const defaultRef = `${upstreamRemote}/${trueDefault}`;
+			const defaultRef = `${baseRemote}/${trueDefault}`;
 			const alreadyOnDefault = await git(repoDir, "merge-base", "--is-ancestor", defaultRef, "HEAD");
 			if (alreadyOnDefault.exitCode === 0) {
 				return { ...classified, outcome: "up-to-date", baseBranch: trueDefault };

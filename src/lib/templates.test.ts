@@ -123,39 +123,39 @@ describe("templates", () => {
 
 	describe("applyWorkspaceTemplates", () => {
 		test("returns empty result when templates directory does not exist", async () => {
-			const baseDir = join(tmpDir, "project");
+			const arbRootDir = join(tmpDir, "project");
 			const wsDir = join(tmpDir, "project", "ws");
 			mkdirSync(wsDir, { recursive: true });
-			mkdirSync(join(baseDir, ".arb", "repos"), { recursive: true });
+			mkdirSync(join(arbRootDir, ".arb", "repos"), { recursive: true });
 
-			const result = await applyWorkspaceTemplates(baseDir, wsDir);
+			const result = await applyWorkspaceTemplates(arbRootDir, wsDir);
 			expect(result.seeded).toEqual([]);
 		});
 
 		test("copies workspace templates to workspace root", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
-			mkdirSync(join(baseDir, ".arb", "repos"), { recursive: true });
+			mkdirSync(join(arbRootDir, ".arb", "repos"), { recursive: true });
 			mkdirSync(wsDir, { recursive: true });
 			writeFileSync(join(templateDir, ".env"), "KEY=value");
 
-			const result = await applyWorkspaceTemplates(baseDir, wsDir);
+			const result = await applyWorkspaceTemplates(arbRootDir, wsDir);
 			expect(result.seeded).toEqual([".env"]);
 			expect(readFileSync(join(wsDir, ".env"), "utf-8")).toBe("KEY=value");
 		});
 
 		test("copies nested workspace templates", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace", ".claude");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace", ".claude");
 			mkdirSync(templateDir, { recursive: true });
-			mkdirSync(join(baseDir, ".arb", "repos"), { recursive: true });
+			mkdirSync(join(arbRootDir, ".arb", "repos"), { recursive: true });
 			mkdirSync(wsDir, { recursive: true });
 			writeFileSync(join(templateDir, "settings.local.json"), "{}");
 
-			const result = await applyWorkspaceTemplates(baseDir, wsDir);
+			const result = await applyWorkspaceTemplates(arbRootDir, wsDir);
 			expect(result.seeded).toEqual([join(".claude", "settings.local.json")]);
 			expect(existsSync(join(wsDir, ".claude", "settings.local.json"))).toBe(true);
 		});
@@ -163,135 +163,135 @@ describe("templates", () => {
 
 	describe("applyRepoTemplates", () => {
 		test("returns empty result when no template directories exist", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
 			mkdirSync(join(wsDir, "api"), { recursive: true });
-			mkdirSync(join(baseDir, ".arb", "repos"), { recursive: true });
+			mkdirSync(join(arbRootDir, ".arb", "repos"), { recursive: true });
 
-			const result = await applyRepoTemplates(baseDir, wsDir, ["api"]);
+			const result = await applyRepoTemplates(arbRootDir, wsDir, ["api"]);
 			expect(result.seeded).toEqual([]);
 		});
 
 		test("copies repo templates to correct worktrees", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
-			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
-			mkdirSync(join(baseDir, ".arb", "repos"), { recursive: true });
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			mkdirSync(join(arbRootDir, ".arb", "repos"), { recursive: true });
 			mkdirSync(join(wsDir, "api"), { recursive: true });
-			writeFileSync(join(baseDir, ".arb", "templates", "repos", "api", ".env"), "DB=localhost");
+			writeFileSync(join(arbRootDir, ".arb", "templates", "repos", "api", ".env"), "DB=localhost");
 
-			const result = await applyRepoTemplates(baseDir, wsDir, ["api"]);
+			const result = await applyRepoTemplates(arbRootDir, wsDir, ["api"]);
 			expect(result.seeded).toEqual([".env"]);
 			expect(readFileSync(join(wsDir, "api", ".env"), "utf-8")).toBe("DB=localhost");
 		});
 
 		test("handles multiple repos", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
-			mkdirSync(join(baseDir, ".arb", "repos"), { recursive: true });
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
+			mkdirSync(join(arbRootDir, ".arb", "repos"), { recursive: true });
 			for (const repo of ["api", "web"]) {
-				mkdirSync(join(baseDir, ".arb", "templates", "repos", repo), { recursive: true });
+				mkdirSync(join(arbRootDir, ".arb", "templates", "repos", repo), { recursive: true });
 				mkdirSync(join(wsDir, repo), { recursive: true });
-				writeFileSync(join(baseDir, ".arb", "templates", "repos", repo, ".env"), `APP=${repo}`);
+				writeFileSync(join(arbRootDir, ".arb", "templates", "repos", repo, ".env"), `APP=${repo}`);
 			}
 
-			const result = await applyRepoTemplates(baseDir, wsDir, ["api", "web"]);
+			const result = await applyRepoTemplates(arbRootDir, wsDir, ["api", "web"]);
 			expect(result.seeded).toHaveLength(2);
 			expect(readFileSync(join(wsDir, "api", ".env"), "utf-8")).toBe("APP=api");
 			expect(readFileSync(join(wsDir, "web", ".env"), "utf-8")).toBe("APP=web");
 		});
 
 		test("skips repos without template directories", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
 			mkdirSync(join(wsDir, "api"), { recursive: true });
 			mkdirSync(join(wsDir, "web"), { recursive: true });
-			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
-			mkdirSync(join(baseDir, ".arb", "repos"), { recursive: true });
-			writeFileSync(join(baseDir, ".arb", "templates", "repos", "api", ".env"), "yes");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			mkdirSync(join(arbRootDir, ".arb", "repos"), { recursive: true });
+			writeFileSync(join(arbRootDir, ".arb", "templates", "repos", "api", ".env"), "yes");
 
-			const result = await applyRepoTemplates(baseDir, wsDir, ["api", "web"]);
+			const result = await applyRepoTemplates(arbRootDir, wsDir, ["api", "web"]);
 			expect(result.seeded).toEqual([".env"]);
 		});
 
 		test("skips repos without worktree directories", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
-			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
-			mkdirSync(join(baseDir, ".arb", "repos"), { recursive: true });
-			writeFileSync(join(baseDir, ".arb", "templates", "repos", "api", ".env"), "yes");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			mkdirSync(join(arbRootDir, ".arb", "repos"), { recursive: true });
+			writeFileSync(join(arbRootDir, ".arb", "templates", "repos", "api", ".env"), "yes");
 			mkdirSync(wsDir, { recursive: true });
 
-			const result = await applyRepoTemplates(baseDir, wsDir, ["api"]);
+			const result = await applyRepoTemplates(arbRootDir, wsDir, ["api"]);
 			expect(result.seeded).toEqual([]);
 		});
 	});
 
 	describe("diffTemplates", () => {
 		test("returns empty array when no templates directory exists", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
 			mkdirSync(wsDir, { recursive: true });
 
-			const result = await diffTemplates(baseDir, wsDir, []);
+			const result = await diffTemplates(arbRootDir, wsDir, []);
 			expect(result).toEqual([]);
 		});
 
 		test("returns empty array when workspace files match templates", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
 			mkdirSync(wsDir, { recursive: true });
 			writeFileSync(join(templateDir, ".env"), "KEY=value");
 			writeFileSync(join(wsDir, ".env"), "KEY=value");
 
-			const result = await diffTemplates(baseDir, wsDir, []);
+			const result = await diffTemplates(arbRootDir, wsDir, []);
 			expect(result).toEqual([]);
 		});
 
 		test("detects modified workspace-scoped template files", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
 			mkdirSync(wsDir, { recursive: true });
 			writeFileSync(join(templateDir, ".env"), "KEY=value");
 			writeFileSync(join(wsDir, ".env"), "KEY=custom");
 
-			const result = await diffTemplates(baseDir, wsDir, []);
+			const result = await diffTemplates(arbRootDir, wsDir, []);
 			expect(result).toEqual([{ relPath: ".env", scope: "workspace" }]);
 		});
 
 		test("detects modified repo-scoped template files", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
-			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "repos", "api"), { recursive: true });
 			mkdirSync(join(wsDir, "api"), { recursive: true });
-			writeFileSync(join(baseDir, ".arb", "templates", "repos", "api", ".env"), "DB=localhost");
+			writeFileSync(join(arbRootDir, ".arb", "templates", "repos", "api", ".env"), "DB=localhost");
 			writeFileSync(join(wsDir, "api", ".env"), "DB=production");
 
-			const result = await diffTemplates(baseDir, wsDir, ["api"]);
+			const result = await diffTemplates(arbRootDir, wsDir, ["api"]);
 			expect(result).toEqual([{ relPath: ".env", scope: "repo", repo: "api" }]);
 		});
 
 		test("skips files deleted from workspace", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
 			mkdirSync(wsDir, { recursive: true });
 			writeFileSync(join(templateDir, ".env"), "KEY=value");
 			// No .env in wsDir — user deleted it
 
-			const result = await diffTemplates(baseDir, wsDir, []);
+			const result = await diffTemplates(arbRootDir, wsDir, []);
 			expect(result).toEqual([]);
 		});
 
 		test("skips symlinks in template directory", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
 			mkdirSync(wsDir, { recursive: true });
 			writeFileSync(join(templateDir, "real.txt"), "content");
@@ -299,56 +299,56 @@ describe("templates", () => {
 			writeFileSync(join(wsDir, "real.txt"), "modified");
 			writeFileSync(join(wsDir, "link.txt"), "modified");
 
-			const result = await diffTemplates(baseDir, wsDir, []);
+			const result = await diffTemplates(arbRootDir, wsDir, []);
 			expect(result).toEqual([{ relPath: "real.txt", scope: "workspace" }]);
 		});
 
 		test("handles nested template directory structures", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
-			mkdirSync(join(baseDir, ".arb", "templates", "workspace", ".claude"), { recursive: true });
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "workspace", ".claude"), { recursive: true });
 			mkdirSync(join(wsDir, ".claude"), { recursive: true });
-			writeFileSync(join(baseDir, ".arb", "templates", "workspace", ".claude", "settings.local.json"), "{}");
+			writeFileSync(join(arbRootDir, ".arb", "templates", "workspace", ".claude", "settings.local.json"), "{}");
 			writeFileSync(join(wsDir, ".claude", "settings.local.json"), '{"modified": true}');
 
-			const result = await diffTemplates(baseDir, wsDir, []);
+			const result = await diffTemplates(arbRootDir, wsDir, []);
 			expect(result).toEqual([{ relPath: join(".claude", "settings.local.json"), scope: "workspace" }]);
 		});
 
 		test("handles both workspace and repo diffs together", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
-			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
-			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "workspace"), { recursive: true });
+			mkdirSync(join(arbRootDir, ".arb", "templates", "repos", "api"), { recursive: true });
 			mkdirSync(join(wsDir, "api"), { recursive: true });
 
-			writeFileSync(join(baseDir, ".arb", "templates", "workspace", ".env"), "WS=original");
+			writeFileSync(join(arbRootDir, ".arb", "templates", "workspace", ".env"), "WS=original");
 			writeFileSync(join(wsDir, ".env"), "WS=modified");
 
-			writeFileSync(join(baseDir, ".arb", "templates", "repos", "api", ".env"), "API=original");
+			writeFileSync(join(arbRootDir, ".arb", "templates", "repos", "api", ".env"), "API=original");
 			writeFileSync(join(wsDir, "api", ".env"), "API=modified");
 
-			const result = await diffTemplates(baseDir, wsDir, ["api"]);
+			const result = await diffTemplates(arbRootDir, wsDir, ["api"]);
 			expect(result).toHaveLength(2);
 			expect(result).toContainEqual({ relPath: ".env", scope: "workspace" });
 			expect(result).toContainEqual({ relPath: ".env", scope: "repo", repo: "api" });
 		});
 
 		test("skips repos without worktree directories", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
-			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
-			writeFileSync(join(baseDir, ".arb", "templates", "repos", "api", ".env"), "yes");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			writeFileSync(join(arbRootDir, ".arb", "templates", "repos", "api", ".env"), "yes");
 			mkdirSync(wsDir, { recursive: true });
 
-			const result = await diffTemplates(baseDir, wsDir, ["api"]);
+			const result = await diffTemplates(arbRootDir, wsDir, ["api"]);
 			expect(result).toEqual([]);
 		});
 
 		test("detects binary file differences", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "ws");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "ws");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
 			mkdirSync(wsDir, { recursive: true });
 
@@ -357,47 +357,47 @@ describe("templates", () => {
 			writeFileSync(join(templateDir, "data.bin"), templateBuf);
 			writeFileSync(join(wsDir, "data.bin"), wsBuf);
 
-			const result = await diffTemplates(baseDir, wsDir, []);
+			const result = await diffTemplates(arbRootDir, wsDir, []);
 			expect(result).toEqual([{ relPath: "data.bin", scope: "workspace" }]);
 		});
 	});
 
 	describe("listTemplates", () => {
 		test("returns empty array when no templates directory exists", () => {
-			const baseDir = join(tmpDir, "project");
-			mkdirSync(join(baseDir, ".arb"), { recursive: true });
-			expect(listTemplates(baseDir)).toEqual([]);
+			const arbRootDir = join(tmpDir, "project");
+			mkdirSync(join(arbRootDir, ".arb"), { recursive: true });
+			expect(listTemplates(arbRootDir)).toEqual([]);
 		});
 
 		test("lists workspace templates", () => {
-			const baseDir = join(tmpDir, "project");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
 			writeFileSync(join(templateDir, ".env"), "KEY=value");
 
-			const result = listTemplates(baseDir);
+			const result = listTemplates(arbRootDir);
 			expect(result).toEqual([{ scope: "workspace", relPath: ".env" }]);
 		});
 
 		test("lists repo templates", () => {
-			const baseDir = join(tmpDir, "project");
-			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
-			writeFileSync(join(baseDir, ".arb", "templates", "repos", "api", ".env"), "DB=localhost");
+			const arbRootDir = join(tmpDir, "project");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			writeFileSync(join(arbRootDir, ".arb", "templates", "repos", "api", ".env"), "DB=localhost");
 
-			const result = listTemplates(baseDir);
+			const result = listTemplates(arbRootDir);
 			expect(result).toEqual([{ scope: "repo", repo: "api", relPath: ".env" }]);
 		});
 
 		test("lists both workspace and repo templates", () => {
-			const baseDir = join(tmpDir, "project");
-			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
-			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
-			mkdirSync(join(baseDir, ".arb", "templates", "repos", "web"), { recursive: true });
-			writeFileSync(join(baseDir, ".arb", "templates", "workspace", ".env"), "WS");
-			writeFileSync(join(baseDir, ".arb", "templates", "repos", "api", ".env"), "API");
-			writeFileSync(join(baseDir, ".arb", "templates", "repos", "web", ".env.local"), "WEB");
+			const arbRootDir = join(tmpDir, "project");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "workspace"), { recursive: true });
+			mkdirSync(join(arbRootDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			mkdirSync(join(arbRootDir, ".arb", "templates", "repos", "web"), { recursive: true });
+			writeFileSync(join(arbRootDir, ".arb", "templates", "workspace", ".env"), "WS");
+			writeFileSync(join(arbRootDir, ".arb", "templates", "repos", "api", ".env"), "API");
+			writeFileSync(join(arbRootDir, ".arb", "templates", "repos", "web", ".env.local"), "WEB");
 
-			const result = listTemplates(baseDir);
+			const result = listTemplates(arbRootDir);
 			expect(result).toHaveLength(3);
 			expect(result).toContainEqual({ scope: "workspace", relPath: ".env" });
 			expect(result).toContainEqual({ scope: "repo", repo: "api", relPath: ".env" });
@@ -405,112 +405,112 @@ describe("templates", () => {
 		});
 
 		test("handles nested template files", () => {
-			const baseDir = join(tmpDir, "project");
-			mkdirSync(join(baseDir, ".arb", "templates", "workspace", ".claude"), { recursive: true });
-			writeFileSync(join(baseDir, ".arb", "templates", "workspace", ".claude", "settings.local.json"), "{}");
+			const arbRootDir = join(tmpDir, "project");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "workspace", ".claude"), { recursive: true });
+			writeFileSync(join(arbRootDir, ".arb", "templates", "workspace", ".claude", "settings.local.json"), "{}");
 
-			const result = listTemplates(baseDir);
+			const result = listTemplates(arbRootDir);
 			expect(result).toEqual([{ scope: "workspace", relPath: join(".claude", "settings.local.json") }]);
 		});
 	});
 
 	describe("detectTemplateScope", () => {
 		test("returns workspace scope at workspace root", () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "my-ws");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "my-ws");
 			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
 
-			const result = detectTemplateScope(baseDir, wsDir);
+			const result = detectTemplateScope(arbRootDir, wsDir);
 			expect(result).toEqual({ scope: "workspace" });
 		});
 
 		test("returns repo scope inside a repo worktree", () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "my-ws");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "my-ws");
 			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
 			mkdirSync(join(wsDir, "api", ".git"), { recursive: true });
 
-			const result = detectTemplateScope(baseDir, join(wsDir, "api"));
+			const result = detectTemplateScope(arbRootDir, join(wsDir, "api"));
 			expect(result).toEqual({ scope: "repo", repo: "api" });
 		});
 
 		test("returns null outside a workspace", () => {
-			const baseDir = join(tmpDir, "project");
-			mkdirSync(baseDir, { recursive: true });
+			const arbRootDir = join(tmpDir, "project");
+			mkdirSync(arbRootDir, { recursive: true });
 
-			const result = detectTemplateScope(baseDir, baseDir);
+			const result = detectTemplateScope(arbRootDir, arbRootDir);
 			expect(result).toBeNull();
 		});
 
-		test("returns null when CWD is outside baseDir", () => {
-			const baseDir = join(tmpDir, "project");
-			mkdirSync(baseDir, { recursive: true });
+		test("returns null when CWD is outside arbRootDir", () => {
+			const arbRootDir = join(tmpDir, "project");
+			mkdirSync(arbRootDir, { recursive: true });
 
-			const result = detectTemplateScope(baseDir, "/tmp/somewhere-else");
+			const result = detectTemplateScope(arbRootDir, "/tmp/somewhere-else");
 			expect(result).toBeNull();
 		});
 
 		test("returns workspace scope when in workspace but not in a repo", () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "my-ws");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "my-ws");
 			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
 			mkdirSync(join(wsDir, "subdir"), { recursive: true });
 
-			const result = detectTemplateScope(baseDir, join(wsDir, "subdir"));
+			const result = detectTemplateScope(arbRootDir, join(wsDir, "subdir"));
 			expect(result).toEqual({ scope: "workspace" });
 		});
 	});
 
 	describe("removeTemplate", () => {
 		test("removes a workspace template file", () => {
-			const baseDir = join(tmpDir, "project");
-			const templatePath = join(baseDir, ".arb", "templates", "workspace", ".env");
-			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
+			const arbRootDir = join(tmpDir, "project");
+			const templatePath = join(arbRootDir, ".arb", "templates", "workspace", ".env");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "workspace"), { recursive: true });
 			writeFileSync(templatePath, "KEY=value");
 
-			removeTemplate(baseDir, "workspace", ".env");
+			removeTemplate(arbRootDir, "workspace", ".env");
 			expect(existsSync(templatePath)).toBe(false);
 		});
 
 		test("removes a repo template file", () => {
-			const baseDir = join(tmpDir, "project");
-			const templatePath = join(baseDir, ".arb", "templates", "repos", "api", ".env");
-			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			const arbRootDir = join(tmpDir, "project");
+			const templatePath = join(arbRootDir, ".arb", "templates", "repos", "api", ".env");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "repos", "api"), { recursive: true });
 			writeFileSync(templatePath, "DB=localhost");
 
-			removeTemplate(baseDir, "repo", ".env", "api");
+			removeTemplate(arbRootDir, "repo", ".env", "api");
 			expect(existsSync(templatePath)).toBe(false);
 		});
 
 		test("cleans up empty parent directories", () => {
-			const baseDir = join(tmpDir, "project");
-			const nestedDir = join(baseDir, ".arb", "templates", "workspace", "config", "deep");
+			const arbRootDir = join(tmpDir, "project");
+			const nestedDir = join(arbRootDir, ".arb", "templates", "workspace", "config", "deep");
 			mkdirSync(nestedDir, { recursive: true });
 			writeFileSync(join(nestedDir, "settings.json"), "{}");
 
-			removeTemplate(baseDir, "workspace", join("config", "deep", "settings.json"));
+			removeTemplate(arbRootDir, "workspace", join("config", "deep", "settings.json"));
 			expect(existsSync(nestedDir)).toBe(false);
-			expect(existsSync(join(baseDir, ".arb", "templates", "workspace", "config"))).toBe(false);
-			expect(existsSync(join(baseDir, ".arb", "templates", "workspace"))).toBe(true);
+			expect(existsSync(join(arbRootDir, ".arb", "templates", "workspace", "config"))).toBe(false);
+			expect(existsSync(join(arbRootDir, ".arb", "templates", "workspace"))).toBe(true);
 		});
 
 		test("does not remove non-empty parent directories", () => {
-			const baseDir = join(tmpDir, "project");
-			const configDir = join(baseDir, ".arb", "templates", "workspace", "config");
+			const arbRootDir = join(tmpDir, "project");
+			const configDir = join(arbRootDir, ".arb", "templates", "workspace", "config");
 			mkdirSync(configDir, { recursive: true });
 			writeFileSync(join(configDir, "a.json"), "a");
 			writeFileSync(join(configDir, "b.json"), "b");
 
-			removeTemplate(baseDir, "workspace", join("config", "a.json"));
+			removeTemplate(arbRootDir, "workspace", join("config", "a.json"));
 			expect(existsSync(join(configDir, "b.json"))).toBe(true);
 			expect(existsSync(configDir)).toBe(true);
 		});
 
 		test("throws when template does not exist", () => {
-			const baseDir = join(tmpDir, "project");
-			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
+			const arbRootDir = join(tmpDir, "project");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "workspace"), { recursive: true });
 
-			expect(() => removeTemplate(baseDir, "workspace", "nonexistent.txt")).toThrow("Template does not exist");
+			expect(() => removeTemplate(arbRootDir, "workspace", "nonexistent.txt")).toThrow("Template does not exist");
 		});
 	});
 
@@ -805,76 +805,76 @@ describe("templates", () => {
 
 	describe("diffTemplates with .arbtemplate", () => {
 		test("no drift when rendered content matches workspace file", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "my-ws");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "my-ws");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
 			mkdirSync(wsDir, { recursive: true });
 			writeFileSync(join(templateDir, `config.json${ARBTEMPLATE_EXT}`), "{{ workspace.name }}");
 			writeFileSync(join(wsDir, "config.json"), "my-ws");
 
-			const result = await diffTemplates(baseDir, wsDir, []);
+			const result = await diffTemplates(arbRootDir, wsDir, []);
 			expect(result).toEqual([]);
 		});
 
 		test("detects drift when rendered content differs", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "my-ws");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "my-ws");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
 			mkdirSync(wsDir, { recursive: true });
 			writeFileSync(join(templateDir, `config.json${ARBTEMPLATE_EXT}`), "{{ workspace.name }}");
 			writeFileSync(join(wsDir, "config.json"), "wrong-value");
 
-			const result = await diffTemplates(baseDir, wsDir, []);
+			const result = await diffTemplates(arbRootDir, wsDir, []);
 			expect(result).toEqual([{ relPath: "config.json", scope: "workspace" }]);
 		});
 
 		test("handles repo-scoped .arbtemplate with worktree variables", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "my-ws");
-			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "my-ws");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "repos", "api"), { recursive: true });
 			mkdirSync(join(wsDir, "api"), { recursive: true });
 			writeFileSync(
-				join(baseDir, ".arb", "templates", "repos", "api", `settings.json${ARBTEMPLATE_EXT}`),
+				join(arbRootDir, ".arb", "templates", "repos", "api", `settings.json${ARBTEMPLATE_EXT}`),
 				"{{ worktree.path }}",
 			);
 			writeFileSync(join(wsDir, "api", "settings.json"), join(wsDir, "api"));
 
-			const result = await diffTemplates(baseDir, wsDir, ["api"]);
+			const result = await diffTemplates(arbRootDir, wsDir, ["api"]);
 			expect(result).toEqual([]);
 		});
 	});
 
 	describe("listTemplates with .arbtemplate", () => {
 		test("strips extension and sets isTemplate flag", () => {
-			const baseDir = join(tmpDir, "project");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
 			writeFileSync(join(templateDir, `config.json${ARBTEMPLATE_EXT}`), "content");
 
-			const result = listTemplates(baseDir);
+			const result = listTemplates(arbRootDir);
 			expect(result).toEqual([{ scope: "workspace", relPath: "config.json", isTemplate: true }]);
 		});
 
 		test("regular files have no isTemplate flag", () => {
-			const baseDir = join(tmpDir, "project");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
 			writeFileSync(join(templateDir, "plain.txt"), "content");
 
-			const result = listTemplates(baseDir);
+			const result = listTemplates(arbRootDir);
 			expect(result).toEqual([{ scope: "workspace", relPath: "plain.txt" }]);
 		});
 
 		test("handles mix of .arbtemplate and regular files", () => {
-			const baseDir = join(tmpDir, "project");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
 			writeFileSync(join(templateDir, `dynamic.json${ARBTEMPLATE_EXT}`), "{{ workspace.name }}");
 			writeFileSync(join(templateDir, "static.txt"), "plain");
 
-			const result = listTemplates(baseDir);
+			const result = listTemplates(arbRootDir);
 			expect(result).toHaveLength(2);
 			expect(result).toContainEqual({ scope: "workspace", relPath: "dynamic.json", isTemplate: true });
 			expect(result).toContainEqual({ scope: "workspace", relPath: "static.txt" });
@@ -883,24 +883,24 @@ describe("templates", () => {
 
 	describe("removeTemplate with .arbtemplate", () => {
 		test("removes .arbtemplate file when called with stripped name", () => {
-			const baseDir = join(tmpDir, "project");
-			const templatePath = join(baseDir, ".arb", "templates", "workspace", `config.json${ARBTEMPLATE_EXT}`);
-			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
+			const arbRootDir = join(tmpDir, "project");
+			const templatePath = join(arbRootDir, ".arb", "templates", "workspace", `config.json${ARBTEMPLATE_EXT}`);
+			mkdirSync(join(arbRootDir, ".arb", "templates", "workspace"), { recursive: true });
 			writeFileSync(templatePath, "{{ workspace.name }}");
 
-			removeTemplate(baseDir, "workspace", "config.json");
+			removeTemplate(arbRootDir, "workspace", "config.json");
 			expect(existsSync(templatePath)).toBe(false);
 		});
 
 		test("prefers plain file over .arbtemplate when both exist", () => {
-			const baseDir = join(tmpDir, "project");
-			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
-			const plainPath = join(baseDir, ".arb", "templates", "workspace", "config.json");
-			const arbtplPath = join(baseDir, ".arb", "templates", "workspace", `config.json${ARBTEMPLATE_EXT}`);
+			const arbRootDir = join(tmpDir, "project");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "workspace"), { recursive: true });
+			const plainPath = join(arbRootDir, ".arb", "templates", "workspace", "config.json");
+			const arbtplPath = join(arbRootDir, ".arb", "templates", "workspace", `config.json${ARBTEMPLATE_EXT}`);
 			writeFileSync(plainPath, "plain");
 			writeFileSync(arbtplPath, "template");
 
-			removeTemplate(baseDir, "workspace", "config.json");
+			removeTemplate(arbRootDir, "workspace", "config.json");
 			expect(existsSync(plainPath)).toBe(false);
 			expect(existsSync(arbtplPath)).toBe(true);
 		});
@@ -908,33 +908,33 @@ describe("templates", () => {
 
 	describe("templateFilePath with .arbtemplate", () => {
 		test("resolves .arbtemplate variant when plain path does not exist", () => {
-			const baseDir = join(tmpDir, "project");
-			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
-			const arbtplPath = join(baseDir, ".arb", "templates", "workspace", `config.json${ARBTEMPLATE_EXT}`);
+			const arbRootDir = join(tmpDir, "project");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "workspace"), { recursive: true });
+			const arbtplPath = join(arbRootDir, ".arb", "templates", "workspace", `config.json${ARBTEMPLATE_EXT}`);
 			writeFileSync(arbtplPath, "content");
 
-			const result = templateFilePath(baseDir, "workspace", "config.json");
+			const result = templateFilePath(arbRootDir, "workspace", "config.json");
 			expect(result).toBe(arbtplPath);
 		});
 
 		test("returns plain path when both exist", () => {
-			const baseDir = join(tmpDir, "project");
-			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
-			const plainPath = join(baseDir, ".arb", "templates", "workspace", "config.json");
-			const arbtplPath = join(baseDir, ".arb", "templates", "workspace", `config.json${ARBTEMPLATE_EXT}`);
+			const arbRootDir = join(tmpDir, "project");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "workspace"), { recursive: true });
+			const plainPath = join(arbRootDir, ".arb", "templates", "workspace", "config.json");
+			const arbtplPath = join(arbRootDir, ".arb", "templates", "workspace", `config.json${ARBTEMPLATE_EXT}`);
 			writeFileSync(plainPath, "plain");
 			writeFileSync(arbtplPath, "template");
 
-			const result = templateFilePath(baseDir, "workspace", "config.json");
+			const result = templateFilePath(arbRootDir, "workspace", "config.json");
 			expect(result).toBe(plainPath);
 		});
 
 		test("returns plain path when neither exists", () => {
-			const baseDir = join(tmpDir, "project");
-			mkdirSync(join(baseDir, ".arb", "templates", "workspace"), { recursive: true });
+			const arbRootDir = join(tmpDir, "project");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "workspace"), { recursive: true });
 
-			const result = templateFilePath(baseDir, "workspace", "config.json");
-			expect(result).toBe(join(baseDir, ".arb", "templates", "workspace", "config.json"));
+			const result = templateFilePath(arbRootDir, "workspace", "config.json");
+			expect(result).toBe(join(arbRootDir, ".arb", "templates", "workspace", "config.json"));
 		});
 	});
 
@@ -1023,13 +1023,13 @@ describe("templates", () => {
 
 	describe("listTemplates conflict detection", () => {
 		test("deduplicates and flags conflict when both plain and .arbtemplate exist", () => {
-			const baseDir = join(tmpDir, "project");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
 			writeFileSync(join(templateDir, "config.json"), "plain");
 			writeFileSync(join(templateDir, `config.json${ARBTEMPLATE_EXT}`), "{{ workspace.name }}");
 
-			const result = listTemplates(baseDir);
+			const result = listTemplates(arbRootDir);
 			expect(result).toHaveLength(1);
 			const entry = result[0];
 			expect(entry?.relPath).toBe("config.json");
@@ -1037,25 +1037,25 @@ describe("templates", () => {
 		});
 
 		test("prefers plain file entry over .arbtemplate when both exist", () => {
-			const baseDir = join(tmpDir, "project");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
 			writeFileSync(join(templateDir, "config.json"), "plain");
 			writeFileSync(join(templateDir, `config.json${ARBTEMPLATE_EXT}`), "{{ workspace.name }}");
 
-			const result = listTemplates(baseDir);
+			const result = listTemplates(arbRootDir);
 			expect(result).toHaveLength(1);
 			// The kept entry should be the plain one (not isTemplate)
 			expect(result[0]?.isTemplate).toBeUndefined();
 		});
 
 		test("flags conflict for repo-scoped templates too", () => {
-			const baseDir = join(tmpDir, "project");
-			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
-			writeFileSync(join(baseDir, ".arb", "templates", "repos", "api", "config.json"), "plain");
-			writeFileSync(join(baseDir, ".arb", "templates", "repos", "api", `config.json${ARBTEMPLATE_EXT}`), "tpl");
+			const arbRootDir = join(tmpDir, "project");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			writeFileSync(join(arbRootDir, ".arb", "templates", "repos", "api", "config.json"), "plain");
+			writeFileSync(join(arbRootDir, ".arb", "templates", "repos", "api", `config.json${ARBTEMPLATE_EXT}`), "tpl");
 
-			const result = listTemplates(baseDir);
+			const result = listTemplates(arbRootDir);
 			expect(result).toHaveLength(1);
 			expect(result[0]?.conflict).toBe(true);
 			expect(result[0]?.scope).toBe("repo");
@@ -1063,13 +1063,13 @@ describe("templates", () => {
 		});
 
 		test("no conflict flag when only one variant exists", () => {
-			const baseDir = join(tmpDir, "project");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
 			writeFileSync(join(templateDir, "plain.txt"), "content");
 			writeFileSync(join(templateDir, `dynamic.json${ARBTEMPLATE_EXT}`), "{{ workspace.name }}");
 
-			const result = listTemplates(baseDir);
+			const result = listTemplates(arbRootDir);
 			expect(result).toHaveLength(2);
 			for (const entry of result) {
 				expect(entry.conflict).toBeUndefined();
@@ -1079,15 +1079,15 @@ describe("templates", () => {
 
 	describe("applyWorkspaceTemplates with .arbtemplate", () => {
 		test("renders workspace variables", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "my-ws");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "my-ws");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
-			mkdirSync(join(baseDir, ".arb", "repos"), { recursive: true });
+			mkdirSync(join(arbRootDir, ".arb", "repos"), { recursive: true });
 			mkdirSync(wsDir, { recursive: true });
 			writeFileSync(join(templateDir, `config.json${ARBTEMPLATE_EXT}`), "{{ workspace.name }}:{{ workspace.path }}");
 
-			const result = await applyWorkspaceTemplates(baseDir, wsDir);
+			const result = await applyWorkspaceTemplates(arbRootDir, wsDir);
 			expect(result.seeded).toEqual(["config.json"]);
 			expect(readFileSync(join(wsDir, "config.json"), "utf-8")).toBe(`my-ws:${wsDir}`);
 		});
@@ -1095,17 +1095,17 @@ describe("templates", () => {
 
 	describe("applyRepoTemplates with .arbtemplate", () => {
 		test("renders repo variables including worktree fields", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "my-ws");
-			mkdirSync(join(baseDir, ".arb", "templates", "repos", "api"), { recursive: true });
-			mkdirSync(join(baseDir, ".arb", "repos"), { recursive: true });
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "my-ws");
+			mkdirSync(join(arbRootDir, ".arb", "templates", "repos", "api"), { recursive: true });
+			mkdirSync(join(arbRootDir, ".arb", "repos"), { recursive: true });
 			mkdirSync(join(wsDir, "api"), { recursive: true });
 			writeFileSync(
-				join(baseDir, ".arb", "templates", "repos", "api", `config.json${ARBTEMPLATE_EXT}`),
+				join(arbRootDir, ".arb", "templates", "repos", "api", `config.json${ARBTEMPLATE_EXT}`),
 				"{{ worktree.name }}:{{ worktree.path }}",
 			);
 
-			const result = await applyRepoTemplates(baseDir, wsDir, ["api"]);
+			const result = await applyRepoTemplates(arbRootDir, wsDir, ["api"]);
 			expect(result.seeded).toEqual(["config.json"]);
 			expect(readFileSync(join(wsDir, "api", "config.json"), "utf-8")).toBe(`api:${join(wsDir, "api")}`);
 		});
@@ -1207,11 +1207,11 @@ describe("templates", () => {
 
 	describe("applyWorkspaceTemplates with membership change", () => {
 		test("regenerates worktree-aware template on attach", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "my-ws");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "my-ws");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
-			mkdirSync(join(baseDir, ".arb", "repos"), { recursive: true });
+			mkdirSync(join(arbRootDir, ".arb", "repos"), { recursive: true });
 			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
 			// Create two repo dirs with .git markers
 			for (const repo of ["api", "web"]) {
@@ -1224,17 +1224,17 @@ describe("templates", () => {
 			// Simulate previous state: only "api"
 			writeFileSync(join(wsDir, "repos.txt"), "api\n");
 
-			const result = await applyWorkspaceTemplates(baseDir, wsDir, { added: ["web"] });
+			const result = await applyWorkspaceTemplates(arbRootDir, wsDir, { added: ["web"] });
 			expect(result.regenerated).toEqual(["repos.txt"]);
 			expect(readFileSync(join(wsDir, "repos.txt"), "utf-8")).toBe("api\nweb\n");
 		});
 
 		test("skips user-edited file on membership change", async () => {
-			const baseDir = join(tmpDir, "project");
-			const wsDir = join(baseDir, "my-ws");
-			const templateDir = join(baseDir, ".arb", "templates", "workspace");
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "my-ws");
+			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 			mkdirSync(templateDir, { recursive: true });
-			mkdirSync(join(baseDir, ".arb", "repos"), { recursive: true });
+			mkdirSync(join(arbRootDir, ".arb", "repos"), { recursive: true });
 			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
 			for (const repo of ["api", "web"]) {
 				mkdirSync(join(wsDir, repo, ".git"), { recursive: true });
@@ -1246,7 +1246,7 @@ describe("templates", () => {
 			// User has edited the file
 			writeFileSync(join(wsDir, "repos.txt"), "my custom content\n");
 
-			const result = await applyWorkspaceTemplates(baseDir, wsDir, { added: ["web"] });
+			const result = await applyWorkspaceTemplates(arbRootDir, wsDir, { added: ["web"] });
 			expect(result.skipped).toContain("repos.txt");
 			expect(result.regenerated).toEqual([]);
 			expect(readFileSync(join(wsDir, "repos.txt"), "utf-8")).toBe("my custom content\n");

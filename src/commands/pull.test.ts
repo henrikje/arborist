@@ -326,7 +326,7 @@ describe("formatPullPlan", () => {
 	function makeRemotesMap(...entries: [string, Partial<RepoRemotes>][]): Map<string, RepoRemotes> {
 		const map = new Map<string, RepoRemotes>();
 		for (const [repo, remotes] of entries) {
-			map.set(repo, { upstream: "origin", share: "origin", ...remotes });
+			map.set(repo, { base: "origin", share: "origin", ...remotes });
 		}
 		return map;
 	}
@@ -391,19 +391,13 @@ describe("formatPullPlan", () => {
 		expect(plan).toContain("not pushed yet");
 	});
 
-	test("shows fork suffix when upstream differs from share", () => {
-		const plan = formatPullPlan(
-			[makeAssessment()],
-			makeRemotesMap(["repo-a", { upstream: "upstream", share: "origin" }]),
-		);
+	test("shows fork suffix when base differs from share", () => {
+		const plan = formatPullPlan([makeAssessment()], makeRemotesMap(["repo-a", { base: "upstream", share: "origin" }]));
 		expect(plan).toContain("← origin");
 	});
 
-	test("no fork suffix when upstream equals share", () => {
-		const plan = formatPullPlan(
-			[makeAssessment()],
-			makeRemotesMap(["repo-a", { upstream: "origin", share: "origin" }]),
-		);
+	test("no fork suffix when base equals share", () => {
+		const plan = formatPullPlan([makeAssessment()], makeRemotesMap(["repo-a", { base: "origin", share: "origin" }]));
 		expect(plan).not.toContain("←");
 	});
 });

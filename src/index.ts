@@ -22,7 +22,7 @@ import { registerRebranchCommand } from "./commands/rebranch";
 import { registerRepoCommand } from "./commands/repo";
 import { registerStatusCommand } from "./commands/status";
 import { registerTemplateCommand } from "./commands/template";
-import { detectBaseDir, detectWorkspace } from "./lib/base-dir";
+import { detectArbRoot, detectWorkspace } from "./lib/arb-root";
 import { bold, dim, error, info } from "./lib/output";
 import type { ArbContext } from "./lib/types";
 import { ARB_VERSION } from "./version";
@@ -130,15 +130,15 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 }
 
 function getCtx(): ArbContext {
-	const baseDir = detectBaseDir();
-	if (!baseDir) {
+	const arbRootDir = detectArbRoot();
+	if (!arbRootDir) {
 		error("Not inside an arb root. Run 'arb init' to set one up.");
 		process.exit(1);
 	}
 	return {
-		baseDir,
-		reposDir: `${baseDir}/.arb/repos`,
-		currentWorkspace: detectWorkspace(baseDir),
+		arbRootDir,
+		reposDir: `${arbRootDir}/.arb/repos`,
+		currentWorkspace: detectWorkspace(arbRootDir),
 	};
 }
 

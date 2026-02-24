@@ -6,10 +6,10 @@ Arborist has built-in support for fork-based development, where you push feature
 
 Arborist thinks in terms of two remote roles:
 
-- **upstream** — the source of base branches and the target for rebase/merge operations
+- **base** — the source of base branches and the target for rebase/merge operations
 - **share** — where feature branches are pushed and pulled
 
-For single-remote repos, both roles typically resolve to `origin`. For fork setups, the upstream role maps to the canonical repository (often a remote named `upstream`), and the share role maps to your fork (often `origin`).
+For single-remote repos, both roles typically resolve to `origin`. For fork setups, the base role maps to the canonical repository (often a remote named `upstream`), and the share role maps to your fork (often `origin`).
 
 ## Setting up a fork
 
@@ -26,7 +26,7 @@ This clones your fork as `origin`, adds the canonical repo as `upstream`, sets `
 Arborist reads `remote.pushDefault` and remote names from git config to determine roles automatically. No arborist-specific configuration is needed. Detection follows these rules:
 
 1. Single remote — used for both roles
-2. `remote.pushDefault` set — that remote is `share`, the other is `upstream`
+2. `remote.pushDefault` set — that remote is `share`, the other is `base`
 3. Remotes named `upstream` and `origin` — conventional fork layout
 4. Ambiguous — arb reports an error with guidance on how to configure `remote.pushDefault`
 
@@ -52,7 +52,7 @@ Arborist tracks two independent relationships per repo, each mapped to a remote 
 
 | Axis | Remote | Column | Commands | Flag | Auto-fetch |
 |------|--------|--------|----------|------|------------|
-| Integration | upstream | BASE | rebase, merge | behind base | yes |
+| Integration | base | BASE | rebase, merge | behind base | yes |
 | Sharing | share | SHARE | push, pull | behind share | yes |
 
 For single-remote repos both roles point to `origin` and the distinction is invisible — it only matters for fork setups where each role maps to a different remote.

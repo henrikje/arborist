@@ -150,7 +150,7 @@ export function formatPushPlan(assessments: PushAssessment[], remotesMap: Map<st
 	let out = "\n";
 	for (const a of assessments) {
 		const remotes = remotesMap.get(a.repo);
-		const forkSuffix = remotes && remotes.upstream !== remotes.share ? ` → ${a.shareRemote}` : "";
+		const forkSuffix = remotes && remotes.base !== remotes.share ? ` → ${a.shareRemote}` : "";
 		const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 		const behindBaseSuffix = a.behindBase > 0 ? ` ${yellow(`(${a.behindBase} behind base)`)}` : "";
 		if (a.outcome === "will-push") {

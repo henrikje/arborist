@@ -181,7 +181,7 @@ The parallel pre-fetch also serves a performance purpose: `parallelFetch()` fetc
 
 `status.ts` defines Arborist's view of reality for repository state. The `RepoStatus` type is a 5-section model (identity, local, base, share, operation) that captures everything git tells us about a repo. `RepoFlags` computes independent boolean flags from that model. Named flag sets (`AT_RISK_FLAGS`, `LOSE_WORK_FLAGS`, `STALE_FLAGS`) group flags by concern. Shared functions (`computeFlags`, `isAtRisk`, `wouldLoseWork`, `flagLabels`) derive decisions and display text from those flags and sets.
 
-**Terminology: remote roles vs status sections.** The two remote roles are `upstream` (integration) and `share` (sharing), defined in `RepoRemotes`. The corresponding status sections are `base` and `share` in `RepoStatus`. The user-facing column headers are `BASE` and `SHARE`. Flag labels are `behind base` and `behind share`. When writing code or documentation, use `upstream`/`share` for git remote names, `base`/`share` for status model sections.
+**Terminology: remote roles and status sections.** The two remote roles are `base` (integration) and `share` (sharing), defined in `RepoRemotes`. The corresponding status sections are `base` and `share` in `RepoStatus`. The user-facing column headers are `BASE` and `SHARE`. Flag labels are `behind base` and `behind share`. Note: the git remote *name* may still be `"upstream"` (a fork workflow convention), but the *role* in code is always `base`.
 
 **This model is the single source of truth.** Every command that needs to understand repo state — whether for display, filtering, safety checks, or operational decisions — must work from `RepoStatus` and `RepoFlags`. Do not invent local status representations, ad-hoc dirty checks, or one-off git queries that duplicate what the model already captures. If a command needs information that the model doesn't provide, extend the model in `status.ts` so every consumer benefits.
 
@@ -195,7 +195,7 @@ The parallel pre-fetch also serves a performance purpose: `parallelFetch()` fetc
 
 ### Repo classification and remote validation
 
-All repos in a workspace must have valid, resolvable git remotes. `resolveRemotesMap()` resolves remote roles (upstream/share) for each repo and propagates errors — repos without remotes or with ambiguous remote configurations cause an error with actionable fix instructions rather than silently degrading.
+All repos in a workspace must have valid, resolvable git remotes. `resolveRemotesMap()` resolves remote roles (base/share) for each repo and propagates errors — repos without remotes or with ambiguous remote configurations cause an error with actionable fix instructions rather than silently degrading.
 
 ### In-progress state for partially-completing commands
 
