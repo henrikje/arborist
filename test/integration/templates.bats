@@ -768,7 +768,7 @@ load test_helper/common-setup
 
 @test "arb create applies .arbtemplate with repo variables" {
     mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
-    printf '{{ worktree.name }}:{{ worktree.path }}' \
+    printf '{{ repo.name }}:{{ repo.path }}' \
         > "$TEST_DIR/project/.arb/templates/repos/repo-a/settings.json.arbtemplate"
 
     arb create tpl-sub-repo repo-a
@@ -885,11 +885,11 @@ load test_helper/common-setup
     [[ "$output" == *"(conflict)"* ]]
 }
 
-# ── worktree-aware templates (iteration) ─────────────────────────
+# ── repo-aware templates (iteration) ──────────────────────────────
 
-@test "arb create renders template with worktree list" {
+@test "arb create renders template with repo list" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+    printf '{%% for wt in workspace.repos %%}{{ wt.name }}\n{%% endfor %%}' \
         > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
 
     arb create tpl-iter repo-a repo-b
@@ -900,9 +900,9 @@ load test_helper/common-setup
     [[ "$content" == *"repo-b"* ]]
 }
 
-@test "arb attach regenerates worktree-aware workspace template" {
+@test "arb attach regenerates repo-aware workspace template" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+    printf '{%% for wt in workspace.repos %%}{{ wt.name }}\n{%% endfor %%}' \
         > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
 
     arb create tpl-attach-regen repo-a
@@ -923,9 +923,9 @@ load test_helper/common-setup
     [[ "$after" == *"repo-b"* ]]
 }
 
-@test "arb detach regenerates worktree-aware workspace template" {
+@test "arb detach regenerates repo-aware workspace template" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+    printf '{%% for wt in workspace.repos %%}{{ wt.name }}\n{%% endfor %%}' \
         > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
 
     arb create tpl-detach-regen repo-a repo-b
@@ -945,9 +945,9 @@ load test_helper/common-setup
     [[ "$after" != *"repo-b"* ]]
 }
 
-@test "arb attach skips overwrite when user has edited worktree-aware template" {
+@test "arb attach skips overwrite when user has edited repo-aware template" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+    printf '{%% for wt in workspace.repos %%}{{ wt.name }}\n{%% endfor %%}' \
         > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
 
     arb create tpl-user-edit repo-a
@@ -963,9 +963,9 @@ load test_helper/common-setup
     [[ "$content" == "my custom repos list" ]]
 }
 
-@test "arb template apply --force overwrites user-edited worktree-aware template" {
+@test "arb template apply --force overwrites user-edited repo-aware template" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+    printf '{%% for wt in workspace.repos %%}{{ wt.name }}\n{%% endfor %%}' \
         > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
 
     arb create tpl-force-regen repo-a repo-b
@@ -984,7 +984,7 @@ load test_helper/common-setup
 @test "forloop.last works for trailing comma in JSON template" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
     cat > "$TEST_DIR/project/.arb/templates/workspace/modules.json.arbtemplate" << 'TMPL'
-{%- for wt in workspace.worktrees %}
+{%- for wt in workspace.repos %}
 "{{ wt.name }}"{% unless forloop.last %},{% endunless %}
 {%- endfor %}
 TMPL
@@ -999,9 +999,9 @@ TMPL
     [[ "$content" != *'"repo-b",'* ]]
 }
 
-@test "workspace.worktrees available in repo-scoped template" {
+@test "workspace.repos available in repo-scoped template" {
     mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
-    printf 'siblings: {%% for wt in workspace.worktrees %%}{{ wt.name }} {%% endfor %%}' \
+    printf 'siblings: {%% for wt in workspace.repos %%}{{ wt.name }} {%% endfor %%}' \
         > "$TEST_DIR/project/.arb/templates/repos/repo-a/siblings.txt.arbtemplate"
 
     arb create tpl-siblings repo-a repo-b
@@ -1014,7 +1014,7 @@ TMPL
 
 @test "sequential attach/detach maintains correct template state" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+    printf '{%% for wt in workspace.repos %%}{{ wt.name }}\n{%% endfor %%}' \
         > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
 
     arb create tpl-seq repo-a
@@ -1035,9 +1035,9 @@ TMPL
     [[ "$after_detach" == *"repo-b"* ]]
 }
 
-@test "arb template diff detects drift with worktree-aware template" {
+@test "arb template diff detects drift with repo-aware template" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+    printf '{%% for wt in workspace.repos %%}{{ wt.name }}\n{%% endfor %%}' \
         > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
 
     arb create tpl-diff-iter repo-a repo-b
@@ -1053,9 +1053,9 @@ TMPL
     [ "$status" -eq 1 ]
 }
 
-@test "arb template list shows drift for worktree-aware template" {
+@test "arb template list shows drift for repo-aware template" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}\n{%% endfor %%}' \
+    printf '{%% for wt in workspace.repos %%}{{ wt.name }}\n{%% endfor %%}' \
         > "$TEST_DIR/project/.arb/templates/workspace/repos.txt.arbtemplate"
 
     arb create tpl-list-iter repo-a
@@ -1070,7 +1070,7 @@ TMPL
 
 @test "arb create renders template with baseRemote.url" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}={{ wt.baseRemote.url }}\n{%% endfor %%}' \
+    printf '{%% for wt in workspace.repos %%}{{ wt.name }}={{ wt.baseRemote.url }}\n{%% endfor %%}' \
         > "$TEST_DIR/project/.arb/templates/workspace/remotes.txt.arbtemplate"
 
     arb create tpl-remote repo-a
@@ -1084,7 +1084,7 @@ TMPL
 
 @test "arb create renders template with shareRemote.url" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '{%% for wt in workspace.worktrees %%}{{ wt.shareRemote.url }}\n{%% endfor %%}' \
+    printf '{%% for wt in workspace.repos %%}{{ wt.shareRemote.url }}\n{%% endfor %%}' \
         > "$TEST_DIR/project/.arb/templates/workspace/share.txt.arbtemplate"
 
     arb create tpl-share repo-a
@@ -1096,7 +1096,7 @@ TMPL
 
 @test "arb create renders template with baseRemote.name" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '{%% for wt in workspace.worktrees %%}{{ wt.baseRemote.name }}\n{%% endfor %%}' \
+    printf '{%% for wt in workspace.repos %%}{{ wt.baseRemote.name }}\n{%% endfor %%}' \
         > "$TEST_DIR/project/.arb/templates/workspace/remote-names.txt.arbtemplate"
 
     arb create tpl-rname repo-a
@@ -1107,9 +1107,9 @@ TMPL
     [[ "$content" == *"origin"* ]]
 }
 
-@test "repo-scoped template accesses worktree.baseRemote.url" {
+@test "repo-scoped template accesses repo.baseRemote.url" {
     mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
-    printf '{{ worktree.baseRemote.url }}' \
+    printf '{{ repo.baseRemote.url }}' \
         > "$TEST_DIR/project/.arb/templates/repos/repo-a/base-url.txt.arbtemplate"
 
     arb create tpl-repo-remote repo-a
@@ -1123,7 +1123,7 @@ TMPL
     setup_fork_repo repo-a
 
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '{%% for wt in workspace.worktrees %%}base={{ wt.baseRemote.name }} share={{ wt.shareRemote.name }}\n{%% endfor %%}' \
+    printf '{%% for wt in workspace.repos %%}base={{ wt.baseRemote.name }} share={{ wt.shareRemote.name }}\n{%% endfor %%}' \
         > "$TEST_DIR/project/.arb/templates/workspace/fork-remotes.txt.arbtemplate"
 
     arb create tpl-fork repo-a

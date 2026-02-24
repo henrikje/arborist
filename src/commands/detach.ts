@@ -17,7 +17,7 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 		.option("--delete-branch", "Delete the local branch from the canonical repo")
 		.summary("Detach repos from the workspace")
 		.description(
-			"Detach one or more repos from the current workspace without deleting the workspace itself. Regenerates worktree-aware templates (those using {% for wt in workspace.worktrees %}) to reflect the updated repo list. Skips repos with uncommitted changes unless --force is used. Use --all-repos to detach all repos. Use --delete-branch to also delete the local branch from the canonical repo.",
+			"Detach one or more repos from the current workspace without deleting the workspace itself. Regenerates templates that reference the repo list (those using {% for repo in workspace.repos %}) to reflect the updated repo list. Skips repos with uncommitted changes unless --force is used. Use --all-repos to detach all repos. Use --delete-branch to also delete the local branch from the canonical repo.",
 		)
 		.action(async (repoArgs: string[], options: { force?: boolean; allRepos?: boolean; deleteBranch?: boolean }) => {
 			const ctx = getCtx();
@@ -70,7 +70,7 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 					}
 				}
 
-				inlineStart(repo, "detaching worktree");
+				inlineStart(repo, "detaching");
 				const removeArgs = ["worktree", "remove"];
 				if (options.force) removeArgs.push("--force");
 				removeArgs.push(wtPath);

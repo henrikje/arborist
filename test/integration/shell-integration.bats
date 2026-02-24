@@ -20,7 +20,7 @@ SHELL_FILE="$BATS_TEST_DIRNAME/../../shell/arb.bash"
     [[ "$last_line" == "$TEST_DIR/project/my-feature" ]]
 }
 
-@test "bash wrapper: arb cd with subpath changes to worktree" {
+@test "bash wrapper: arb cd with subpath changes to repo" {
     arb create my-feature repo-a
     run bash -c "
         source '$SHELL_FILE'
@@ -257,7 +257,7 @@ SHELL_FILE="$BATS_TEST_DIRNAME/../../shell/arb.bash"
 
 # ── completion: scope-aware cd ───────────────────────────────────
 
-@test "bash completion: cd inside workspace completes worktree names" {
+@test "bash completion: cd inside workspace completes repo names" {
     arb create my-feature repo-a repo-b
     run bash -c "
         source '$SHELL_FILE'
@@ -288,7 +288,7 @@ SHELL_FILE="$BATS_TEST_DIRNAME/../../shell/arb.bash"
     [[ "$output" == *"ws-beta/"* ]]
 }
 
-@test "bash wrapper: arb cd with worktree name changes directory when inside workspace" {
+@test "bash wrapper: arb cd with repo name changes directory when inside workspace" {
     arb create my-feature repo-a repo-b
     run bash -c "
         source '$SHELL_FILE'

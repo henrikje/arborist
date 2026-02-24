@@ -22,7 +22,7 @@ export interface RemoteInfo {
 	url: string;
 }
 
-export interface WorktreeInfo {
+export interface RepoInfo {
 	name: string;
 	path: string;
 	baseRemote: RemoteInfo;
@@ -33,17 +33,17 @@ export interface TemplateContext {
 	rootPath: string;
 	workspaceName: string;
 	workspacePath: string;
-	worktreeName?: string;
-	worktreePath?: string;
-	repos?: WorktreeInfo[];
-	previousRepos?: WorktreeInfo[];
+	repoName?: string;
+	repoPath?: string;
+	repos?: RepoInfo[];
+	previousRepos?: RepoInfo[];
 }
 
 function toTemplateData(ctx: TemplateContext): Record<string, unknown> {
-	const currentWorktree = ctx.worktreeName
-		? (ctx.repos?.find((r) => r.name === ctx.worktreeName) ?? {
-				name: ctx.worktreeName,
-				path: ctx.worktreePath,
+	const currentRepo = ctx.repoName
+		? (ctx.repos?.find((r) => r.name === ctx.repoName) ?? {
+				name: ctx.repoName,
+				path: ctx.repoPath,
 				baseRemote: { name: "", url: "" },
 				shareRemote: { name: "", url: "" },
 			})
@@ -53,9 +53,9 @@ function toTemplateData(ctx: TemplateContext): Record<string, unknown> {
 		workspace: {
 			name: ctx.workspaceName,
 			path: ctx.workspacePath,
-			worktrees: ctx.repos ?? [],
+			repos: ctx.repos ?? [],
 		},
-		worktree: currentWorktree,
+		repo: currentRepo,
 	};
 }
 
@@ -212,8 +212,8 @@ export async function applyRepoTemplates(
 			rootPath: arbRootDir,
 			workspaceName: basename(wsDir),
 			workspacePath: wsDir,
-			worktreeName: repo,
-			worktreePath: repoDir,
+			repoName: repo,
+			repoPath: repoDir,
 			repos: allRepos,
 		};
 		if (changedRepos) {
@@ -246,8 +246,8 @@ async function resolveRepoRemoteInfo(repoDir: string): Promise<{ baseRemote: Rem
 	}
 }
 
-/** Build the worktree list for template context from a workspace directory. */
-export async function workspaceRepoList(wsDir: string, reposDir: string): Promise<WorktreeInfo[]> {
+/** Build the repo list for template context from a workspace directory. */
+export async function workspaceRepoList(wsDir: string, reposDir: string): Promise<RepoInfo[]> {
 	if (!existsSync(wsDir)) return [];
 	const dirs = readdirSync(wsDir)
 		.filter((entry) => entry !== ".arbws")
@@ -261,10 +261,10 @@ export async function workspaceRepoList(wsDir: string, reposDir: string): Promis
 		})
 		.sort();
 
-	const results: WorktreeInfo[] = [];
+	const results: RepoInfo[] = [];
 	for (const fullPath of dirs) {
 		const name = basename(fullPath);
-		// Resolve remotes from canonical repo (worktrees may not have independent remote config)
+		// Resolve remotes from canonical repo (workspace repos may not have independent remote config)
 		const canonicalDir = join(reposDir, name);
 		const remoteDir = existsSync(canonicalDir) ? canonicalDir : fullPath;
 		const { baseRemote, shareRemote } = await resolveRepoRemoteInfo(remoteDir);
@@ -273,12 +273,12 @@ export async function workspaceRepoList(wsDir: string, reposDir: string): Promis
 	return results;
 }
 
-/** Reconstruct previous worktree list by reversing the change. */
+/** Reconstruct previous repo list by reversing the change. */
 async function reconstructPreviousRepos(
-	currentRepos: WorktreeInfo[],
+	currentRepos: RepoInfo[],
 	changedRepos: { added?: string[]; removed?: string[] },
 	reposDir: string,
-): Promise<WorktreeInfo[]> {
+): Promise<RepoInfo[]> {
 	const addedSet = new Set(changedRepos.added ?? []);
 	const removedSet = new Set(changedRepos.removed ?? []);
 
@@ -372,8 +372,8 @@ export async function diffTemplates(arbRootDir: string, wsDir: string, repos: st
 			rootPath: arbRootDir,
 			workspaceName: basename(wsDir),
 			workspacePath: wsDir,
-			worktreeName: repo,
-			worktreePath: repoDir,
+			repoName: repo,
+			repoPath: repoDir,
 			repos: allRepos,
 		};
 		for (const relPath of diffDirectory(repoTemplateDir, repoDir, repoCtx)) {
@@ -480,7 +480,7 @@ export function detectTemplateScope(arbRootDir: string, cwd: string): TemplateSc
 
 	// Check if first segment is a workspace
 	if (existsSync(join(arbRootDir, firstSegment, ".arbws"))) {
-		// Inside a workspace — check if we're in a repo worktree
+		// Inside a workspace — check if we're in a repo directory
 		const secondSegment = segments[1];
 		if (secondSegment && existsSync(join(arbRootDir, firstSegment, secondSegment, ".git"))) {
 			return { scope: "repo", repo: secondSegment };
@@ -631,8 +631,8 @@ export async function forceApplyRepoTemplates(
 			rootPath: arbRootDir,
 			workspaceName: basename(wsDir),
 			workspacePath: wsDir,
-			worktreeName: repo,
-			worktreePath: repoDir,
+			repoName: repo,
+			repoPath: repoDir,
 			repos: allRepos,
 		};
 		const repoResult = forceOverlayDirectory(templateDir, repoDir, ctx);

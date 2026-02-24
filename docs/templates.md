@@ -44,7 +44,7 @@ Typical uses:
 
 ### Repo scope
 
-Repo templates live in `.arb/templates/repos/<name>/` and are overlaid into the corresponding worktree. Use them for files that belong inside individual repos.
+Repo templates live in `.arb/templates/repos/<name>/` and are overlaid into the corresponding repo. Use them for files that belong inside individual repos.
 
 Typical uses:
 - `.env` files with service-specific defaults
@@ -57,7 +57,7 @@ When you run `arb template add`, the scope is auto-detected from your working di
 
 | CWD is inside… | Detected scope |
 |---|---|
-| A repo worktree (has `.git`) | `repo` (for that repo) |
+| A repo directory (has `.git`) | `repo` (for that repo) |
 | A workspace (has `.arbws`) but not a repo | `workspace` |
 
 Override with `--repo <name>` or `--workspace` when the auto-detection isn't what you want.
@@ -80,7 +80,7 @@ Override with `--repo <name>` or `--workspace` when the auto-detection isn't wha
         .env
 ```
 
-The template tree mirrors the workspace structure. `workspace/` files land at the workspace root, `repos/<name>/` files land inside the corresponding worktree.
+The template tree mirrors the workspace structure. `workspace/` files land at the workspace root, `repos/<name>/` files land inside the corresponding repo.
 
 ## Template lifecycle
 
@@ -89,7 +89,7 @@ The template tree mirrors the workspace structure. `workspace/` files land at th
 When you create a workspace, all templates are rendered and copied into the new workspace:
 
 1. Workspace templates are overlaid onto the workspace root
-2. Repo templates are overlaid into each attached worktree
+2. Repo templates are overlaid into each attached repo
 
 Every file that doesn't already exist at the destination is **seeded** — written for the first time.
 
@@ -102,8 +102,8 @@ arb create my-feature --all-repos
 
 When repos are added to an existing workspace, templates are re-evaluated:
 
-1. Repo templates for the newly attached repos are seeded (the new worktrees didn't have them yet)
-2. All `.arbtemplate` files across both scopes are checked — if a template's output would change because the worktree list grew (e.g. a `{% for wt in workspace.worktrees %}` loop now has an extra entry), the file is regenerated
+1. Repo templates for the newly attached repos are seeded (the new repos didn't have them yet)
+2. All `.arbtemplate` files across both scopes are checked — if a template's output would change because the repo list grew (e.g. a `{% for repo in workspace.repos %}` loop now has an extra entry), the file is regenerated
 
 ```bash
 arb attach shared
@@ -112,7 +112,7 @@ arb attach shared
 
 ### Regeneration on `arb detach`
 
-When repos are removed, the same regeneration logic runs for the remaining repos. Templates that reference `workspace.worktrees` are re-rendered to reflect the smaller membership.
+When repos are removed, the same regeneration logic runs for the remaining repos. Templates that reference `workspace.repos` are re-rendered to reflect the smaller membership.
 
 ```bash
 arb detach shared
@@ -144,9 +144,9 @@ Template files are only copied when the target doesn't already exist. Once seede
 
 When a membership change triggers regeneration of `.arbtemplate` files, arborist uses a three-way comparison to decide whether overwriting is safe:
 
-1. **Render with new context** — render the template with the updated worktree list
+1. **Render with new context** — render the template with the updated repo list
 2. **Compare to existing file** — if the file already matches the new render, it's already correct → **skip**
-3. **Render with previous context** — reconstruct the worktree list from *before* the membership change and render the template with it
+3. **Render with previous context** — reconstruct the repo list from *before* the membership change and render the template with it
 4. **Compare existing to previous render:**
    - Matches previous render → user hasn't touched it → safe to overwrite → **regenerated**
    - Differs from previous render → user has edited → **skipped** (not overwritten)
@@ -180,17 +180,17 @@ Files ending with `.arbtemplate` are rendered with [LiquidJS](https://liquidjs.c
 | `{{ root.path }}` | Absolute path to the arb root | all |
 | `{{ workspace.name }}` | Workspace directory name | all |
 | `{{ workspace.path }}` | Absolute path to the workspace | all |
-| `{{ workspace.worktrees }}` | Array of worktree objects (each has `name`, `path`, `baseRemote`, `shareRemote`) | all |
-| `{{ worktree.name }}` | Repo/worktree directory name | repo only |
-| `{{ worktree.path }}` | Absolute path to the worktree | repo only |
-| `{{ worktree.baseRemote.name }}` | Git remote name for the base (integration target) | repo only |
-| `{{ worktree.baseRemote.url }}` | Git remote URL for the base | repo only |
-| `{{ worktree.shareRemote.name }}` | Git remote name for sharing (push/pull) | repo only |
-| `{{ worktree.shareRemote.url }}` | Git remote URL for sharing | repo only |
+| `{{ workspace.repos }}` | Array of repo objects (each has `name`, `path`, `baseRemote`, `shareRemote`) | all |
+| `{{ repo.name }}` | Repo directory name | repo only |
+| `{{ repo.path }}` | Absolute path to the repo | repo only |
+| `{{ repo.baseRemote.name }}` | Git remote name for the base (integration target) | repo only |
+| `{{ repo.baseRemote.url }}` | Git remote URL for the base | repo only |
+| `{{ repo.shareRemote.name }}` | Git remote name for sharing (push/pull) | repo only |
+| `{{ repo.shareRemote.url }}` | Git remote URL for sharing | repo only |
 
-The same `baseRemote` and `shareRemote` fields are available on each item in `workspace.worktrees` (e.g. `wt.baseRemote.url` in a `{% for %}` loop) in all scopes.
+The same `baseRemote` and `shareRemote` fields are available on each item in `workspace.repos` (e.g. `repo.baseRemote.url` in a `{% for %}` loop) in all scopes.
 
-`worktree.*` variables are only populated in repo-scoped templates. `workspace.worktrees` is available in all scopes — a repo template can reference sibling repos.
+`repo.*` variables are only populated in repo-scoped templates. `workspace.repos` is available in all scopes — a repo template can reference sibling repos.
 
 The base remote is the integration target (rebase/merge towards), while the share remote is where feature branches are pushed. In fork workflows these point to different remotes (`upstream` vs `origin`). If remotes can't be resolved for a repo, both fields default to empty strings.
 
@@ -199,16 +199,16 @@ The base remote is the integration target (rebase/merge towards), while the shar
 Use `{% for %}` loops to generate content for each repo in the workspace:
 
 ```liquid
-{% for wt in workspace.worktrees %}
-  {{ wt.name }}: {{ wt.path }}
+{% for repo in workspace.repos %}
+  {{ repo.name }}: {{ repo.path }}
 {% endfor %}
 ```
 
 Use `forloop.last` for trailing comma handling in JSON:
 
 ```liquid
-{%- for wt in workspace.worktrees %}
-"{{ wt.name }}"{% unless forloop.last %},{% endunless %}
+{%- for repo in workspace.repos %}
+"{{ repo.name }}"{% unless forloop.last %},{% endunless %}
 {%- endfor %}
 ```
 
@@ -222,7 +222,7 @@ If both `file.json` and `file.json.arbtemplate` exist in the same template direc
 
 ## Examples
 
-### Claude Code permissions per worktree
+### Claude Code permissions per repo
 
 Grant file access and tool permissions scoped to each repo in the workspace.
 
@@ -234,9 +234,9 @@ Grant file access and tool permissions scoped to each repo in the workspace.
     "allow": [
       "Bash(arb:*)",
       "Bash(git status)",
-{%- for wt in workspace.worktrees %}
-      "Bash(arb -C {{ wt.path }} :*)",
-      "Bash(git -C {{ wt.path }} status)",
+{%- for repo in workspace.repos %}
+      "Bash(arb -C {{ repo.path }} :*)",
+      "Bash(git -C {{ repo.path }} status)",
 {%- endfor %}
       "Read({{ workspace.path }}/**)",
       "Write({{ workspace.path }}/**)"
@@ -247,9 +247,9 @@ Grant file access and tool permissions scoped to each repo in the workspace.
 
 When you attach or detach repos, the permissions list is regenerated to include exactly the repos in the current workspace.
 
-### JetBrains workspace with all worktrees
+### JetBrains workspace with all repos
 
-Register each worktree as a separate project in a JetBrains IDE workspace.
+Register each repo as a separate project in a JetBrains IDE workspace.
 
 `.arb/templates/workspace/.idea/jb-workspace.xml.arbtemplate`:
 
@@ -257,9 +257,9 @@ Register each worktree as a separate project in a JetBrains IDE workspace.
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="WorkspaceSettings">
-{%- for wt in workspace.worktrees %}
-    <project name="{{ wt.name }}" path="$PROJECT_DIR$/{{ wt.name }}">
-      <vcs id="Git" remoteUrl="{{ wt.shareRemote.url }}" />
+{%- for repo in workspace.repos %}
+    <project name="{{ repo.name }}" path="$PROJECT_DIR$/{{ repo.name }}">
+      <vcs id="Git" remoteUrl="{{ repo.shareRemote.url }}" />
     </project>
 {%- endfor %}
     <option name="workspace" value="true" />

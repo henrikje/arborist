@@ -29,7 +29,7 @@ Here's what that looks like on disk:
     └── frontend/
 ```
 
-You work in the workspaces. Each workspace represents one feature or issue. It contains a separate worktree for each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete. The canonical clones under `.arb/` are managed by arb — you never touch them directly.
+You work in the workspaces. Each workspace represents one feature or issue. It contains a working copy of each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete. The canonical clones under `.arb/` are managed by arb — you never touch them directly.
 
 Keeping your work in sync involves two axes:
 
@@ -204,7 +204,7 @@ arb exec --dirty git stash
 arb open code
 ```
 
-`arb exec` runs any command in each worktree, using the worktree directory as working directory. `arb open` does the same but passes all worktree paths as arguments — useful for editors like VS Code or IntelliJ. Combine with `--dirty` or `--where` to narrow the scope.
+`arb exec` runs any command in each repo, using the repo directory as working directory. `arb open` does the same but passes all repo paths as arguments — useful for editors like VS Code or IntelliJ. Combine with `--dirty` or `--where` to narrow the scope.
 
 ### Seed files into new workspaces
 

@@ -112,7 +112,7 @@ SCRIPT
 
 # ── open ─────────────────────────────────────────────────────────
 
-@test "arb open opens all worktrees by default with single invocation" {
+@test "arb open opens all repos by default with single invocation" {
     arb create my-feature repo-a repo-b
     cd "$TEST_DIR/project/my-feature"
     local spy="$TEST_DIR/editor-spy"
@@ -146,7 +146,7 @@ SCRIPT
     [ "$count" -eq 1 ]
 }
 
-@test "arb open --dirty opens only dirty worktrees" {
+@test "arb open --dirty opens only dirty repos" {
     arb create my-feature repo-a repo-b
     echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
     cd "$TEST_DIR/project/my-feature"
@@ -164,7 +164,7 @@ SCRIPT
     [[ "$output" != *"repo-b"* ]]
 }
 
-@test "arb open -d opens only dirty worktrees" {
+@test "arb open -d opens only dirty repos" {
     arb create my-feature repo-a repo-b
     echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
     cd "$TEST_DIR/project/my-feature"
@@ -225,7 +225,7 @@ SCRIPT
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb open --dirty true
-    [[ "$output" == *"No worktrees match the filter"* ]]
+    [[ "$output" == *"No repos match the filter"* ]]
 }
 
 @test "arb open without command fails" {

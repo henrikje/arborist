@@ -17,19 +17,19 @@ load test_helper/common-setup
     [[ "$output" == *"branch = my-feature"* ]]
 }
 
-@test "arb create with repos creates worktrees" {
+@test "arb create with repos creates workspace repos" {
     arb create my-feature repo-a repo-b
     [ -d "$TEST_DIR/project/my-feature/repo-a" ]
     [ -d "$TEST_DIR/project/my-feature/repo-b" ]
 }
 
-@test "arb create --all-repos creates worktrees for all repos" {
+@test "arb create --all-repos creates workspace repos for all repos" {
     arb create all-ws --all-repos
     [ -d "$TEST_DIR/project/all-ws/repo-a" ]
     [ -d "$TEST_DIR/project/all-ws/repo-b" ]
 }
 
-@test "arb create -a creates worktrees for all repos" {
+@test "arb create -a creates workspace repos for all repos" {
     arb create all-ws -a
     [ -d "$TEST_DIR/project/all-ws/repo-a" ]
     [ -d "$TEST_DIR/project/all-ws/repo-b" ]
@@ -313,7 +313,7 @@ load test_helper/common-setup
 
 # ── delete ───────────────────────────────────────────────────────
 
-@test "arb delete --force removes worktrees, branches, workspace dir" {
+@test "arb delete --force removes repos, branches, workspace dir" {
     arb create my-feature repo-a repo-b
     arb delete my-feature --force
     [ ! -d "$TEST_DIR/project/my-feature" ]
@@ -322,7 +322,7 @@ load test_helper/common-setup
     [ "$status" -ne 0 ]
 }
 
-@test "arb delete -f removes worktrees, branches, workspace dir" {
+@test "arb delete -f removes repos, branches, workspace dir" {
     arb create my-feature repo-a repo-b
     arb delete my-feature -f
     [ ! -d "$TEST_DIR/project/my-feature" ]

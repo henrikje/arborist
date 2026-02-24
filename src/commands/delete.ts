@@ -91,7 +91,7 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 	const repos = repoPaths.map((d) => basename(d));
 
 	if (repos.length === 0) {
-		warn(`No worktrees found in ${wsDir} — cleaning up directory`);
+		warn(`No repos found in ${wsDir} — cleaning up directory`);
 		rmSync(wsDir, { recursive: true, force: true });
 		return null;
 	}
@@ -291,7 +291,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.summary("Delete one or more workspaces")
 		.description(
-			"Delete one or more workspaces and their worktrees. Shows the status of each worktree (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-delete all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Use --dirty / -d to target only dirty workspaces, or --where <filter> for other status flags. When used without workspace names, --where (or --dirty) selects all matching workspaces (e.g. arb delete --where gone deletes all gone workspaces). When combined with names, --where narrows the selection further (AND logic). Combine with --all-safe to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). --where accepts: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Positive/healthy terms: clean, pushed, synced-base, synced-share, synced, safe. Prefix any term with ^ to negate (e.g. --where ^dirty is equivalent to --where clean). Comma-separated values use OR logic; use + for AND (e.g. --where dirty+unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.",
+			"Delete one or more workspaces and their repos. Shows the status of each repo (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-delete all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Use --dirty / -d to target only dirty workspaces, or --where <filter> for other status flags. When used without workspace names, --where (or --dirty) selects all matching workspaces (e.g. arb delete --where gone deletes all gone workspaces). When combined with names, --where narrows the selection further (AND logic). Combine with --all-safe to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). --where accepts: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Positive/healthy terms: clean, pushed, synced-base, synced-share, synced, safe. Prefix any term with ^ to negate (e.g. --where ^dirty is equivalent to --where clean). Comma-separated values use OR logic; use + for AND (e.g. --where dirty+unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.",
 		)
 		.action(
 			async (
