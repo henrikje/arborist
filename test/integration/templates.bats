@@ -166,7 +166,8 @@ load test_helper/common-setup
 
     run arb delete ws-solo --force
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Deleted workspace ws-solo"* ]]
+    [[ "$output" == *"[ws-solo] deleted"* ]]
+    [[ "$output" == *"Deleted 1 workspace"* ]]
 }
 
 # ── remove: template drift detection ─────────────────────────────
@@ -265,7 +266,7 @@ load test_helper/common-setup
     cd "$TEST_DIR/project/doomed"
     run arb delete doomed --force
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Deleted workspace doomed"* ]]
+    [[ "$output" == *"Deleted 1 workspace"* ]]
     [ ! -d "$TEST_DIR/project/doomed" ]
 }
 
@@ -276,7 +277,7 @@ load test_helper/common-setup
     run arb delete ws-yes --yes
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-yes" ]
-    [[ "$output" == *"Deleted workspace ws-yes"* ]]
+    [[ "$output" == *"Deleted 1 workspace"* ]]
     [[ "$output" == *"Skipping confirmation"* ]]
 }
 

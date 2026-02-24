@@ -1,8 +1,8 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
-import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { branchExistsLocally, git, remoteBranchExists, validateWorkspaceName } from "../lib/git";
+import { confirmOrExit } from "../lib/mutation-flow";
 import {
 	dim,
 	dryRunNotice,
@@ -11,7 +11,6 @@ import {
 	inlineResult,
 	inlineStart,
 	plural,
-	skipConfirmNotice,
 	success,
 	warn,
 	yellow,
@@ -197,7 +196,7 @@ function displayDeleteTable(assessments: WorkspaceAssessment[]): void {
 	const multiWs = assessments.length > 1;
 	for (const a of assessments) {
 		const suffix = multiWs ? ` (${a.name})` : "";
-		displayTemplateDiffs(a.templateDiffs, (text) => process.stderr.write(text), warn, suffix);
+		displayTemplateDiffs(a.templateDiffs, (text) => process.stderr.write(text), suffix);
 	}
 
 	// At-risk warnings
@@ -261,10 +260,9 @@ async function executeDelete(
 	return failedRemoteDeletes;
 }
 
-function buildConfirmMessage(count: number, singleName: string | undefined, deleteRemote: boolean): string {
-	const subject = count === 1 && singleName ? `workspace ${singleName}` : plural(count, "workspace");
+function buildConfirmMessage(count: number, deleteRemote: boolean): string {
 	const remoteSuffix = deleteRemote ? " and delete remote branches" : "";
-	return `Delete ${subject}${remoteSuffix}?`;
+	return `Delete ${plural(count, "workspace")}${remoteSuffix}?`;
 }
 
 export function registerDeleteCommand(program: Command, getCtx: () => ArbContext): void {
@@ -363,26 +361,13 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 						return;
 					}
 
-					if (!skipPrompts) {
-						if (!isTTY() || !process.stdin.isTTY) {
-							error("Not a terminal. Use --yes to skip confirmation.");
-							process.exit(1);
-						}
-						const shouldDelete = await confirm(
-							{
-								message: buildConfirmMessage(safeEntries.length, undefined, deleteRemote),
-								default: false,
-							},
-							{ output: process.stderr },
-						);
-						if (!shouldDelete) {
-							process.stderr.write("Aborted.\n");
-							process.exit(130);
-						}
-					} else {
-						skipConfirmNotice(options.force ? "--force" : "--yes");
-					}
+					await confirmOrExit({
+						yes: skipPrompts,
+						message: buildConfirmMessage(safeEntries.length, deleteRemote),
+						skipFlag: options.force ? "--force" : "--yes",
+					});
 
+					process.stderr.write("\n");
 					for (const entry of safeEntries) {
 						inlineStart(entry.name, "deleting");
 						const failedRemoteDeletes = await executeDelete(entry, ctx, deleteRemote);
@@ -464,47 +449,24 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 				}
 
 				// Confirm
-				if (!skipPrompts) {
-					if (!isTTY() || !process.stdin.isTTY) {
-						error("Not a terminal. Use --yes to skip confirmation.");
-						process.exit(1);
-					}
-
-					const shouldDelete = await confirm(
-						{
-							message: buildConfirmMessage(assessments.length, assessments[0]?.name, deleteRemote),
-							default: false,
-						},
-						{ output: process.stderr },
-					);
-					if (!shouldDelete) {
-						process.stderr.write("Aborted.\n");
-						process.exit(130);
-					}
-				} else {
-					skipConfirmNotice(options.force ? "--force" : "--yes");
-				}
+				await confirmOrExit({
+					yes: skipPrompts,
+					message: buildConfirmMessage(assessments.length, deleteRemote),
+					skipFlag: options.force ? "--force" : "--yes",
+				});
 
 				// Execute
-				const isSingle = assessments.length === 1;
+				process.stderr.write("\n");
 				for (const assessment of assessments) {
-					if (!isSingle) inlineStart(assessment.name, "deleting");
+					inlineStart(assessment.name, "deleting");
 					const failedRemoteDeletes = await executeDelete(assessment, ctx, deleteRemote);
-					if (!isSingle) {
-						const suffix = failedRemoteDeletes.length > 0 ? " (failed to delete remote branch)" : "";
-						inlineResult(assessment.name, `deleted${suffix}`);
-					} else if (failedRemoteDeletes.length > 0) {
-						warn("deleted (failed to delete remote branch)");
-					}
+					const remoteSuffix = failedRemoteDeletes.length > 0 ? " (failed to delete remote branch)" : "";
+					inlineResult(assessment.name, `deleted${remoteSuffix}`);
 				}
 
 				// Summarize
-				if (isSingle) {
-					success(`Deleted workspace ${assessments[0]?.name}`);
-				} else {
-					process.stderr.write("\n");
-					success(`Deleted ${plural(assessments.length, "workspace")}`);
-				}
+				process.stderr.write("\n");
+				success(`Deleted ${plural(assessments.length, "workspace")}`);
 			},
 		);
 }

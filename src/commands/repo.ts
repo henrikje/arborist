@@ -1,9 +1,9 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
-import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import type { RepoListJsonEntry } from "../lib/json-types";
-import { dim, error, info, plural, skipConfirmNotice, success, yellow } from "../lib/output";
+import { confirmOrExit } from "../lib/mutation-flow";
+import { dim, error, info, inlineResult, inlineStart, plural, success, yellow } from "../lib/output";
 import { getRemoteUrl, resolveRemotes } from "../lib/remotes";
 import { findRepoUsage, listRepos, selectInteractive } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
@@ -194,6 +194,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 			}
 
 			// Display plan
+			process.stderr.write("\n");
 			for (const name of repos) {
 				const repoDir = `${ctx.reposDir}/${name}`;
 				const url = await getRemoteUrl(repoDir, "origin");
@@ -202,38 +203,22 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 			process.stderr.write("\n");
 
 			// Confirm
-			if (!options.yes) {
-				if (!process.stdin.isTTY) {
-					error("Not a terminal. Use --yes to skip confirmation.");
-					process.exit(1);
-				}
-				const subject = repos.length === 1 ? `repo ${repos[0]}` : plural(repos.length, "repo");
-				const shouldRemove = await confirm(
-					{ message: `Remove ${subject}?`, default: false },
-					{ output: process.stderr },
-				);
-				if (!shouldRemove) {
-					process.stderr.write("Aborted.\n");
-					process.exit(130);
-				}
-			} else {
-				skipConfirmNotice("--yes");
-			}
+			await confirmOrExit({ yes: options.yes, message: `Remove ${plural(repos.length, "repo")}?` });
 
 			// Execute
+			process.stderr.write("\n");
 			for (const name of repos) {
+				inlineStart(name, "removing");
 				rmSync(`${ctx.reposDir}/${name}`, { recursive: true, force: true });
 				const templateDir = join(ctx.baseDir, ".arb", "templates", "repos", name);
 				if (existsSync(templateDir)) {
 					rmSync(templateDir, { recursive: true, force: true });
 				}
+				inlineResult(name, "removed");
 			}
 
 			// Summarize
-			if (repos.length === 1) {
-				success(`Removed repo ${repos[0]}`);
-			} else {
-				success(`Removed ${plural(repos.length, "repo")}`);
-			}
+			process.stderr.write("\n");
+			success(`Removed ${plural(repos.length, "repo")}`);
 		});
 }
