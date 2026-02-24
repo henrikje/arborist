@@ -11,10 +11,23 @@ import {
 } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { Liquid } from "liquidjs";
+import { getRemoteUrl, resolveRemotes } from "./remotes";
 
 export const ARBTEMPLATE_EXT = ".arbtemplate";
 
 const liquid = new Liquid({ strictVariables: false });
+
+export interface RemoteInfo {
+	name: string;
+	url: string;
+}
+
+export interface WorktreeInfo {
+	name: string;
+	path: string;
+	baseRemote: RemoteInfo;
+	shareRemote: RemoteInfo;
+}
 
 export interface TemplateContext {
 	rootPath: string;
@@ -22,11 +35,19 @@ export interface TemplateContext {
 	workspacePath: string;
 	worktreeName?: string;
 	worktreePath?: string;
-	repos?: Array<{ name: string; path: string }>;
-	previousRepos?: Array<{ name: string; path: string }>;
+	repos?: WorktreeInfo[];
+	previousRepos?: WorktreeInfo[];
 }
 
 function toTemplateData(ctx: TemplateContext): Record<string, unknown> {
+	const currentWorktree = ctx.worktreeName
+		? (ctx.repos?.find((r) => r.name === ctx.worktreeName) ?? {
+				name: ctx.worktreeName,
+				path: ctx.worktreePath,
+				baseRemote: { name: "", url: "" },
+				shareRemote: { name: "", url: "" },
+			})
+		: undefined;
 	return {
 		root: { path: ctx.rootPath },
 		workspace: {
@@ -34,7 +55,7 @@ function toTemplateData(ctx: TemplateContext): Record<string, unknown> {
 			path: ctx.workspacePath,
 			worktrees: ctx.repos ?? [],
 		},
-		worktree: ctx.worktreeName ? { name: ctx.worktreeName, path: ctx.worktreePath } : undefined,
+		worktree: currentWorktree,
 	};
 }
 
@@ -149,13 +170,14 @@ export function overlayDirectory(srcDir: string, destDir: string, ctx?: Template
 	return result;
 }
 
-export function applyWorkspaceTemplates(
+export async function applyWorkspaceTemplates(
 	baseDir: string,
 	wsDir: string,
 	changedRepos?: { added?: string[]; removed?: string[] },
-): OverlayResult {
+): Promise<OverlayResult> {
 	const templateDir = join(baseDir, ".arb", "templates", "workspace");
-	const repos = workspaceRepoList(wsDir);
+	const reposDir = join(baseDir, ".arb", "repos");
+	const repos = await workspaceRepoList(wsDir, reposDir);
 	const ctx: TemplateContext = {
 		rootPath: baseDir,
 		workspaceName: basename(wsDir),
@@ -164,20 +186,21 @@ export function applyWorkspaceTemplates(
 	};
 
 	if (changedRepos) {
-		ctx.previousRepos = reconstructPreviousRepos(repos, changedRepos);
+		ctx.previousRepos = await reconstructPreviousRepos(repos, changedRepos, reposDir);
 	}
 
 	return overlayDirectory(templateDir, wsDir, ctx);
 }
 
-export function applyRepoTemplates(
+export async function applyRepoTemplates(
 	baseDir: string,
 	wsDir: string,
 	repos: string[],
 	changedRepos?: { added?: string[]; removed?: string[] },
-): OverlayResult {
+): Promise<OverlayResult> {
 	const result = emptyResult();
-	const allRepos = workspaceRepoList(wsDir);
+	const reposDir = join(baseDir, ".arb", "repos");
+	const allRepos = await workspaceRepoList(wsDir, reposDir);
 
 	for (const repo of repos) {
 		const templateDir = join(baseDir, ".arb", "templates", "repos", repo);
@@ -194,7 +217,7 @@ export function applyRepoTemplates(
 			repos: allRepos,
 		};
 		if (changedRepos) {
-			ctx.previousRepos = reconstructPreviousRepos(allRepos, changedRepos);
+			ctx.previousRepos = await reconstructPreviousRepos(allRepos, changedRepos, reposDir);
 		}
 		const repoResult = overlayDirectory(templateDir, repoDir, ctx);
 		result.seeded.push(...repoResult.seeded);
@@ -206,10 +229,27 @@ export function applyRepoTemplates(
 	return result;
 }
 
+const emptyRemote: RemoteInfo = { name: "", url: "" };
+
+/** Resolve remote info for a single repo, falling back to empty on error. */
+async function resolveRepoRemoteInfo(repoDir: string): Promise<{ baseRemote: RemoteInfo; shareRemote: RemoteInfo }> {
+	try {
+		const remotes = await resolveRemotes(repoDir);
+		const baseUrl = await getRemoteUrl(repoDir, remotes.upstream);
+		const shareUrl = remotes.share !== remotes.upstream ? await getRemoteUrl(repoDir, remotes.share) : baseUrl;
+		return {
+			baseRemote: { name: remotes.upstream, url: baseUrl ?? "" },
+			shareRemote: { name: remotes.share, url: shareUrl ?? "" },
+		};
+	} catch {
+		return { baseRemote: emptyRemote, shareRemote: emptyRemote };
+	}
+}
+
 /** Build the worktree list for template context from a workspace directory. */
-function workspaceRepoList(wsDir: string): Array<{ name: string; path: string }> {
+export async function workspaceRepoList(wsDir: string, reposDir: string): Promise<WorktreeInfo[]> {
 	if (!existsSync(wsDir)) return [];
-	return readdirSync(wsDir)
+	const dirs = readdirSync(wsDir)
 		.filter((entry) => entry !== ".arbws")
 		.map((entry) => join(wsDir, entry))
 		.filter((fullPath) => {
@@ -219,28 +259,40 @@ function workspaceRepoList(wsDir: string): Array<{ name: string; path: string }>
 				return false;
 			}
 		})
-		.sort()
-		.map((fullPath) => ({ name: basename(fullPath), path: fullPath }));
+		.sort();
+
+	const results: WorktreeInfo[] = [];
+	for (const fullPath of dirs) {
+		const name = basename(fullPath);
+		// Resolve remotes from canonical repo (worktrees may not have independent remote config)
+		const canonicalDir = join(reposDir, name);
+		const remoteDir = existsSync(canonicalDir) ? canonicalDir : fullPath;
+		const { baseRemote, shareRemote } = await resolveRepoRemoteInfo(remoteDir);
+		results.push({ name, path: fullPath, baseRemote, shareRemote });
+	}
+	return results;
 }
 
 /** Reconstruct previous worktree list by reversing the change. */
-function reconstructPreviousRepos(
-	currentRepos: Array<{ name: string; path: string }>,
+async function reconstructPreviousRepos(
+	currentRepos: WorktreeInfo[],
 	changedRepos: { added?: string[]; removed?: string[] },
-): Array<{ name: string; path: string }> {
+	reposDir: string,
+): Promise<WorktreeInfo[]> {
 	const addedSet = new Set(changedRepos.added ?? []);
 	const removedSet = new Set(changedRepos.removed ?? []);
 
 	// Previous = current minus added plus removed
 	const prev = currentRepos.filter((r) => !addedSet.has(r.name));
 
-	// Add back removed repos (we need to reconstruct their paths)
+	// Add back removed repos (resolve remotes from canonical repo)
 	for (const name of removedSet) {
 		if (!prev.some((r) => r.name === name)) {
-			// Reconstruct path from the workspace directory pattern
 			const wsDir = currentRepos.length > 0 ? dirname(currentRepos[0]?.path ?? "") : "";
 			if (wsDir) {
-				prev.push({ name, path: join(wsDir, name) });
+				const canonicalDir = join(reposDir, name);
+				const { baseRemote, shareRemote } = await resolveRepoRemoteInfo(canonicalDir);
+				prev.push({ name, path: join(wsDir, name), baseRemote, shareRemote });
 			}
 		}
 	}
@@ -295,9 +347,10 @@ function diffDirectory(srcDir: string, destDir: string, ctx?: TemplateContext): 
 	return diffs;
 }
 
-export function diffTemplates(baseDir: string, wsDir: string, repos: string[]): TemplateDiff[] {
+export async function diffTemplates(baseDir: string, wsDir: string, repos: string[]): Promise<TemplateDiff[]> {
 	const result: TemplateDiff[] = [];
-	const allRepos = workspaceRepoList(wsDir);
+	const reposDir = join(baseDir, ".arb", "repos");
+	const allRepos = await workspaceRepoList(wsDir, reposDir);
 
 	const wsTemplateDir = join(baseDir, ".arb", "templates", "workspace");
 	const wsCtx: TemplateContext = {
@@ -546,9 +599,10 @@ export function forceOverlayDirectory(srcDir: string, destDir: string, ctx?: Tem
 	return result;
 }
 
-export function forceApplyWorkspaceTemplates(baseDir: string, wsDir: string): ForceOverlayResult {
+export async function forceApplyWorkspaceTemplates(baseDir: string, wsDir: string): Promise<ForceOverlayResult> {
 	const templateDir = join(baseDir, ".arb", "templates", "workspace");
-	const repos = workspaceRepoList(wsDir);
+	const reposDir = join(baseDir, ".arb", "repos");
+	const repos = await workspaceRepoList(wsDir, reposDir);
 	const ctx: TemplateContext = {
 		rootPath: baseDir,
 		workspaceName: basename(wsDir),
@@ -558,9 +612,14 @@ export function forceApplyWorkspaceTemplates(baseDir: string, wsDir: string): Fo
 	return forceOverlayDirectory(templateDir, wsDir, ctx);
 }
 
-export function forceApplyRepoTemplates(baseDir: string, wsDir: string, repos: string[]): ForceOverlayResult {
+export async function forceApplyRepoTemplates(
+	baseDir: string,
+	wsDir: string,
+	repos: string[],
+): Promise<ForceOverlayResult> {
 	const result: ForceOverlayResult = { seeded: [], reset: [], unchanged: [], failed: [] };
-	const allRepos = workspaceRepoList(wsDir);
+	const reposDir = join(baseDir, ".arb", "repos");
+	const allRepos = await workspaceRepoList(wsDir, reposDir);
 
 	for (const repo of repos) {
 		const templateDir = join(baseDir, ".arb", "templates", "repos", repo);

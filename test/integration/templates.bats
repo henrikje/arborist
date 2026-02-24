@@ -1065,3 +1065,71 @@ TMPL
     [ "$status" -eq 0 ]
     [[ "$output" == *"(modified)"* ]]
 }
+
+# ── remote URL in templates ───────────────────────────────────────
+
+@test "arb create renders template with baseRemote.url" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{%% for wt in workspace.worktrees %%}{{ wt.name }}={{ wt.baseRemote.url }}\n{%% endfor %%}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/remotes.txt.arbtemplate"
+
+    arb create tpl-remote repo-a
+    [ -f "$TEST_DIR/project/tpl-remote/remotes.txt" ]
+    local content
+    content="$(cat "$TEST_DIR/project/tpl-remote/remotes.txt")"
+    # repo-a has origin remote pointing to the bare repo
+    [[ "$content" == *"repo-a="* ]]
+    [[ "$content" == *"repo-a.git"* ]]
+}
+
+@test "arb create renders template with shareRemote.url" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{%% for wt in workspace.worktrees %%}{{ wt.shareRemote.url }}\n{%% endfor %%}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/share.txt.arbtemplate"
+
+    arb create tpl-share repo-a
+    [ -f "$TEST_DIR/project/tpl-share/share.txt" ]
+    local content
+    content="$(cat "$TEST_DIR/project/tpl-share/share.txt")"
+    [[ "$content" == *"repo-a.git"* ]]
+}
+
+@test "arb create renders template with baseRemote.name" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{%% for wt in workspace.worktrees %%}{{ wt.baseRemote.name }}\n{%% endfor %%}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/remote-names.txt.arbtemplate"
+
+    arb create tpl-rname repo-a
+    [ -f "$TEST_DIR/project/tpl-rname/remote-names.txt" ]
+    local content
+    content="$(cat "$TEST_DIR/project/tpl-rname/remote-names.txt")"
+    # Single-remote repo: origin is used for both roles
+    [[ "$content" == *"origin"* ]]
+}
+
+@test "repo-scoped template accesses worktree.baseRemote.url" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    printf '{{ worktree.baseRemote.url }}' \
+        > "$TEST_DIR/project/.arb/templates/repos/repo-a/base-url.txt.arbtemplate"
+
+    arb create tpl-repo-remote repo-a
+    [ -f "$TEST_DIR/project/tpl-repo-remote/repo-a/base-url.txt" ]
+    local content
+    content="$(cat "$TEST_DIR/project/tpl-repo-remote/repo-a/base-url.txt")"
+    [[ "$content" == *"repo-a.git"* ]]
+}
+
+@test "fork repo template renders upstream and origin remotes" {
+    setup_fork_repo repo-a
+
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{%% for wt in workspace.worktrees %%}base={{ wt.baseRemote.name }} share={{ wt.shareRemote.name }}\n{%% endfor %%}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/fork-remotes.txt.arbtemplate"
+
+    arb create tpl-fork repo-a
+    [ -f "$TEST_DIR/project/tpl-fork/fork-remotes.txt" ]
+    local content
+    content="$(cat "$TEST_DIR/project/tpl-fork/fork-remotes.txt")"
+    [[ "$content" == *"base=upstream"* ]]
+    [[ "$content" == *"share=origin"* ]]
+}

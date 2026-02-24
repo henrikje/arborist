@@ -129,8 +129,8 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 					result = await addWorktrees(name, branch, repos, ctx.reposDir, ctx.baseDir, base, remotesMap);
 				}
 
-				const wsTemplates = applyWorkspaceTemplates(ctx.baseDir, wsDir);
-				const repoTemplates = applyRepoTemplates(ctx.baseDir, wsDir, result.created);
+				const wsTemplates = await applyWorkspaceTemplates(ctx.baseDir, wsDir);
+				const repoTemplates = await applyRepoTemplates(ctx.baseDir, wsDir, result.created);
 				const totalSeeded = wsTemplates.seeded.length + repoTemplates.seeded.length;
 				const totalRegenerated = wsTemplates.regenerated.length + repoTemplates.regenerated.length;
 				if (totalSeeded > 0) {

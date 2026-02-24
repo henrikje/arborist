@@ -103,8 +103,8 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 			if (detached.length > 0) {
 				const changed = { removed: detached };
 				const remainingRepos = workspaceRepoDirs(wsDir).map((d) => basename(d));
-				const wsTemplates = applyWorkspaceTemplates(ctx.baseDir, wsDir, changed);
-				const repoTemplates = applyRepoTemplates(ctx.baseDir, wsDir, remainingRepos, changed);
+				const wsTemplates = await applyWorkspaceTemplates(ctx.baseDir, wsDir, changed);
+				const repoTemplates = await applyRepoTemplates(ctx.baseDir, wsDir, remainingRepos, changed);
 				const totalRegenerated = wsTemplates.regenerated.length + repoTemplates.regenerated.length;
 				if (totalRegenerated > 0) {
 					info(`Regenerated ${plural(totalRegenerated, "template file")}`);

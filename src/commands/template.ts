@@ -31,6 +31,7 @@ import {
 	renderTemplate,
 	templateFilePath,
 	workspaceFilePath,
+	workspaceRepoList,
 } from "../lib/templates";
 import type { ArbContext } from "../lib/types";
 import { requireWorkspace } from "../lib/workspace-context";
@@ -212,7 +213,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 		.description(
 			"Show all template files in .arb/templates/. When run inside a workspace, annotates files that differ from their seeded copy with (modified).",
 		)
-		.action(() => {
+		.action(async () => {
 			const ctx = getCtx();
 			const templates = listTemplates(ctx.baseDir);
 
@@ -227,7 +228,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 				const wsDir = `${ctx.baseDir}/${ctx.currentWorkspace}`;
 				if (existsSync(join(wsDir, ".arbws"))) {
 					const repos = workspaceRepoDirs(wsDir).map((d) => basename(d));
-					diffs = diffTemplates(ctx.baseDir, wsDir, repos);
+					diffs = await diffTemplates(ctx.baseDir, wsDir, repos);
 				}
 			}
 
@@ -266,11 +267,11 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 		.description(
 			"Show content differences between templates and their workspace copies. Generates unified diff output for each drifted file. Exits with code 1 if any drift is found (useful for CI). Use --repo or --workspace to filter scope, and optionally specify a file path to diff only that template.",
 		)
-		.action((file: string | undefined, options: { repo?: string[]; workspace?: boolean }) => {
+		.action(async (file: string | undefined, options: { repo?: string[]; workspace?: boolean }) => {
 			const ctx = getCtx();
 			const { wsDir } = requireWorkspace(ctx);
 			const repos = workspaceRepoDirs(wsDir).map((d) => basename(d));
-			let diffs = diffTemplates(ctx.baseDir, wsDir, repos);
+			let diffs = await diffTemplates(ctx.baseDir, wsDir, repos);
 
 			// Filter by scope flags
 			const hasRepoFlag = options.repo && options.repo.length > 0;
@@ -298,6 +299,9 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 				return;
 			}
 
+			const reposDir = join(ctx.baseDir, ".arb", "repos");
+			const allRepos = await workspaceRepoList(wsDir, reposDir);
+
 			for (const diff of diffs) {
 				const tplPath = templateFilePath(ctx.baseDir, diff.scope, diff.relPath, diff.repo);
 				const wsPath = workspaceFilePath(wsDir, diff.scope, diff.relPath, diff.repo);
@@ -314,7 +318,6 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 				let tmpFile: string | null = null;
 				if (isArbtpl) {
 					const repoDir = diff.scope === "repo" && diff.repo ? join(wsDir, diff.repo) : undefined;
-					const allRepos = workspaceRepoDirs(wsDir).map((d) => ({ name: basename(d), path: d }));
 					const tplCtx: TemplateContext = {
 						rootPath: ctx.baseDir,
 						workspaceName: basename(wsDir),
@@ -361,7 +364,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 		.description(
 			"Re-seed template files into the current workspace. By default, only copies files that don't already exist (safe, non-destructive). Use --force to also reset drifted files to their template version. Files with .arbtemplate extension undergo placeholder substitution. Use --repo or --workspace to limit scope, and optionally specify a file path to apply only that template.",
 		)
-		.action((file: string | undefined, options: { repo?: string[]; workspace?: boolean; force?: boolean }) => {
+		.action(async (file: string | undefined, options: { repo?: string[]; workspace?: boolean; force?: boolean }) => {
 			const ctx = getCtx();
 			const { wsDir } = requireWorkspace(ctx);
 			const allRepos = workspaceRepoDirs(wsDir).map((d) => basename(d));
@@ -374,9 +377,9 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 			const reposToApply = hasRepoFlag && options.repo ? options.repo : !hasWsFlag ? allRepos : [];
 
 			if (options.force) {
-				applyForceMode(ctx, wsDir, applyWorkspace, reposToApply, file);
+				await applyForceMode(ctx, wsDir, applyWorkspace, reposToApply, file);
 			} else {
-				applyDefaultMode(ctx, wsDir, applyWorkspace, reposToApply, file);
+				await applyDefaultMode(ctx, wsDir, applyWorkspace, reposToApply, file);
 			}
 		});
 }
@@ -435,19 +438,20 @@ function applySingleFile(
 	return { status: "reset" };
 }
 
-function applyDefaultMode(
+async function applyDefaultMode(
 	ctx: ArbContext,
 	wsDir: string,
 	applyWorkspace: boolean,
 	repos: string[],
 	fileFilter?: string,
-): void {
+): Promise<void> {
 	let totalSeeded = 0;
 	let totalSkipped = 0;
 
 	if (fileFilter) {
 		const entries = resolveTemplatesToApply(ctx, applyWorkspace, repos, fileFilter);
-		const allRepos = workspaceRepoDirs(wsDir).map((d) => ({ name: basename(d), path: d }));
+		const reposDir = join(ctx.baseDir, ".arb", "repos");
+		const allRepos = await workspaceRepoList(wsDir, reposDir);
 		for (const entry of entries) {
 			const tplPath = templateFilePath(ctx.baseDir, entry.scope, entry.relPath, entry.repo);
 			const destPath = workspaceFilePath(wsDir, entry.scope, entry.relPath, entry.repo);
@@ -469,13 +473,13 @@ function applyDefaultMode(
 		}
 	} else {
 		if (applyWorkspace) {
-			const result = applyWorkspaceTemplates(ctx.baseDir, wsDir);
+			const result = await applyWorkspaceTemplates(ctx.baseDir, wsDir);
 			displayOverlayResults(result, "workspace");
 			totalSeeded += result.seeded.length;
 			totalSkipped += result.skipped.length;
 		}
 		for (const repo of repos) {
-			const result = applyRepoTemplates(ctx.baseDir, wsDir, [repo]);
+			const result = await applyRepoTemplates(ctx.baseDir, wsDir, [repo]);
 			displayOverlayResults(result, repo);
 			totalSeeded += result.seeded.length;
 			totalSkipped += result.skipped.length;
@@ -490,20 +494,21 @@ function applyDefaultMode(
 	success(parts.join(", "));
 }
 
-function applyForceMode(
+async function applyForceMode(
 	ctx: ArbContext,
 	wsDir: string,
 	applyWorkspace: boolean,
 	repos: string[],
 	fileFilter?: string,
-): void {
+): Promise<void> {
 	let totalSeeded = 0;
 	let totalReset = 0;
 	let totalUnchanged = 0;
 
 	if (fileFilter) {
 		const entries = resolveTemplatesToApply(ctx, applyWorkspace, repos, fileFilter);
-		const allRepos = workspaceRepoDirs(wsDir).map((d) => ({ name: basename(d), path: d }));
+		const reposDir = join(ctx.baseDir, ".arb", "repos");
+		const allRepos = await workspaceRepoList(wsDir, reposDir);
 		for (const entry of entries) {
 			const tplPath = templateFilePath(ctx.baseDir, entry.scope, entry.relPath, entry.repo);
 			const destPath = workspaceFilePath(wsDir, entry.scope, entry.relPath, entry.repo);
@@ -525,14 +530,14 @@ function applyForceMode(
 		}
 	} else {
 		if (applyWorkspace) {
-			const result = forceApplyWorkspaceTemplates(ctx.baseDir, wsDir);
+			const result = await forceApplyWorkspaceTemplates(ctx.baseDir, wsDir);
 			displayForceOverlayResults(result, "workspace");
 			totalSeeded += result.seeded.length;
 			totalReset += result.reset.length;
 			totalUnchanged += result.unchanged.length;
 		}
 		for (const repo of repos) {
-			const result = forceApplyRepoTemplates(ctx.baseDir, wsDir, [repo]);
+			const result = await forceApplyRepoTemplates(ctx.baseDir, wsDir, [repo]);
 			displayForceOverlayResults(result, repo);
 			totalSeeded += result.seeded.length;
 			totalReset += result.reset.length;
