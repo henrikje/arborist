@@ -31,7 +31,14 @@ Here's what that looks like on disk:
 
 You work in the workspaces. Each workspace represents one feature or issue. It contains a separate worktree for each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete. The canonical clones under `.arb/` are managed by arb — you never touch them directly.
 
-Keeping your work in sync involves two axes: integrating upstream changes from the base branch (using `rebase` or `merge`) and sharing your feature branch with collaborators (using `push` and `pull`). Arborist's synchronization commands handle both across all repos at once.
+Keeping your work in sync involves two axes:
+
+| Axis            | Commands          | Purpose                                                      |
+|-----------------|-------------------|--------------------------------------------------------------|
+| **Integration** | `rebase`, `merge` | Keep your feature branch up to date with the base branch     |
+| **Sharing**     | `push`, `pull`    | Share your feature branch with collaborators                 |
+
+Arborist's synchronization commands handle this across all repos at once.
 
 ## A quick tour
 
@@ -173,20 +180,9 @@ Before a rebase or merge runs, Arborist performs a trial three-way merge in memo
   frontend   rebase add-dark-mode onto origin/main — 1 behind, 1 ahead (conflict unlikely)
 ```
 
-You see which repos will conflict before you commit to the operation. The same check runs for `pull` and appears in `arb status` when a repo's integration would conflict. Dirty repos are normally skipped, but `--autostash` lets you operate on them without manual stashing.
+You see which repos will conflict before you commit to the operation. The same check runs for `pull` and appears in `arb status` when a repo's integration would conflict. Synchronization commands automatically fetch all repos in parallel before operating, so you always work against the latest remote state. Dirty repos are normally skipped, but `--autostash` lets you operate on them without manual stashing.
 
 If a rebase or merge does hit a conflict, Arborist continues with the remaining repos and reports everything at the end. One conflicting repo never blocks the others. You see per-repo conflict details and resolution instructions in a single pass.
-
-### Keeping in sync
-
-Each repo in a workspace tracks two independent relationships:
-
-| Axis            | Commands          | Purpose                                                      |
-|-----------------|-------------------|--------------------------------------------------------------|
-| **Integration** | `rebase`, `merge` | Keep your feature branch up to date with the base branch     |
-| **Sharing**     | `push`, `pull`    | Share your feature branch with collaborators                 |
-
-Synchronization commands automatically fetch all repos in parallel before operating, so you always work against the latest remote state. Every command shows a plan of what will happen to each repo and asks for confirmation before proceeding.
 
 ### Filter by status
 
@@ -203,18 +199,10 @@ Arborist tracks status flags across repos — dirty, unpushed, behind-base, dive
 ```bash
 arb exec npm install
 arb exec --dirty git stash
-```
-
-`arb exec` runs any command in each worktree, using the worktree directory as working directory. Combine with `--dirty` or `--where` to narrow the scope. Arb flags come before the command — everything after passes through verbatim.
-
-### Open worktrees in your editor
-
-```bash
 arb open code
-arb open --dirty idea
 ```
 
-`arb open` runs a command with all worktree paths as arguments — useful for editors like VS Code or IntelliJ that accept directories on the command line. Worktree directories change with every workspace, so remembering paths gets old fast. `arb open` always gives you the right ones.
+`arb exec` runs any command in each worktree, using the worktree directory as working directory. `arb open` does the same but passes all worktree paths as arguments — useful for editors like VS Code or IntelliJ. Combine with `--dirty` or `--where` to narrow the scope.
 
 ### Seed files into new workspaces
 
@@ -226,21 +214,18 @@ arb template add .env
 
 Templates let you capture files and have them seeded into every new workspace. Common uses include `.env` files, IDE settings, and AI agent config. Templates live in `.arb/templates/` and are version-controllable.
 
-### Clean up leftover directories
+### Know when you're done
 
-```bash
-arb clean
+After your PR is merged, Arborist detects it — even for squash merges — and shows it clearly in `arb list`:
+
+```
+  WORKSPACE         BRANCH            REPOS    LAST COMMIT    STATUS
+  add-dark-mode     add-dark-mode     2        3 hours        merged, gone
+  fix-login-crash   fix-login-crash   1        1 day          merged, gone
+  new-feature       new-feature       3        5 minutes      unpushed
 ```
 
-After deleting a workspace, tools like IntelliJ may recreate the directory by writing config files (e.g. `.idea/`) on close. These "shell" directories lack `.arbws/`, so they don't appear in `arb list` or `arb delete`. `arb clean` finds and removes them, along with stale worktree references and orphaned local branches in canonical repos. `arb delete` will hint when non-workspace directories are detected. Create a `.arbignore` file in the arb root to exclude directories from cleanup.
-
-### Rename a workspace branch
-
-```bash
-arb rebranch feat/JIRA-123
-```
-
-Created a workspace with the wrong branch name? `arb rebranch` renames it across all repos and updates the workspace config in one step. If the rename fails partway through, migration state is preserved so you can resume with `--continue` or roll back with `--abort` — the same recovery model as `git rebase`. Use `--delete-remote-old` to clean up the old branch on the remote after renaming.
+No guessing which branches have landed. You see "merged" and, if the remote branch was auto-deleted, "gone". Ready to `arb delete`.
 
 ### Branch from a feature branch
 
@@ -264,9 +249,10 @@ One command clones your fork and registers the canonical repository. Arborist au
 arb push --dry-run          # preview without executing
 arb rebase --yes            # skip confirmation
 arb status --json | jq ...  # machine-readable output
+arb list -q | xargs ...     # one workspace name per line
 ```
 
-All state-changing commands support `--dry-run` to preview the plan and `--yes` to skip confirmation prompts. `status` and `list` support `--json` for structured output. Exit codes are meaningful: 0 for success, 1 for issues, 130 for user abort. Human-facing output goes to stderr, machine-parseable data to stdout — so piping works naturally.
+All state-changing commands support `--dry-run` to preview the plan and `--yes` to skip confirmation prompts. `status`, `list`, and `repo list` support `--json` for structured output and `--quiet` for one name per line — useful for feeding into other commands. Exit codes are meaningful: 0 for success, 1 for issues, 130 for user abort. Human-facing output goes to stderr, machine-parseable data to stdout — so piping works naturally.
 
 ### Discover more with `--help`
 
