@@ -82,4 +82,4 @@ After each change, check whether the following need updating:
 - Indent with tabs (not spaces). Biome enforces: tabs, 120 char line width, double quotes, always semicolons
 - Conventional commits enforced via commitlint
 - Strict TypeScript with `noUncheckedIndexedAccess`
-- Uses Bun's `$` shell template literals for git process spawning
+- Uses the `git()` helper from `src/lib/git.ts` for git process spawning. Use `Bun.$` directly only for piped commands and `git clone` (which has no `-C` flag)

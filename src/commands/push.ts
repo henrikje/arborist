@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
-import { getShortHead } from "../lib/git";
+import { getShortHead, git } from "../lib/git";
 import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
 import { dim, dryRunNotice, info, inlineResult, inlineStart, plural, red, success, yellow } from "../lib/output";
 import type { RepoRemotes } from "../lib/remotes";
@@ -118,14 +118,14 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 						a.outcome === "will-force-push"
 							? ["push", "-u", "--force-with-lease", a.shareRemote, a.branch]
 							: ["push", "-u", a.shareRemote, a.branch];
-					const pushResult = await Bun.$`git -C ${a.repoDir} ${pushArgs}`.cwd(a.repoDir).quiet().nothrow();
+					const pushResult = await git(a.repoDir, ...pushArgs);
 					if (pushResult.exitCode === 0) {
 						inlineResult(a.repo, `pushed ${plural(a.ahead, "commit")}`);
 						pushOk++;
 					} else {
 						inlineResult(a.repo, red("failed"));
 						process.stderr.write("\n");
-						const errText = pushResult.stderr.toString().trim();
+						const errText = pushResult.stderr.trim();
 						if (errText) {
 							for (const line of errText.split("\n")) {
 								process.stderr.write(`  ${line}\n`);

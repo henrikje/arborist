@@ -140,12 +140,12 @@ export async function integrate(
 
 	// Phase 5: execute sequentially
 	let succeeded = 0;
-	const conflicted: { assessment: RepoAssessment; stdout: string }[] = [];
+	const conflicted: { assessment: RepoAssessment; stdout: string; stderr: string }[] = [];
 	const stashPopFailed: RepoAssessment[] = [];
 	for (const a of willOperate) {
 		const ref = `${a.baseRemote}/${a.baseBranch}`;
 
-		let result: { exitCode: number; stdout: string };
+		let result: { exitCode: number; stdout: string; stderr: string };
 		if (a.retargetFrom) {
 			const remoteRefExists = await remoteBranchExists(a.repoDir, a.retargetFrom, a.baseRemote);
 			const oldBaseRef = remoteRefExists ? `${a.baseRemote}/${a.retargetFrom}` : a.retargetFrom;
@@ -197,7 +197,7 @@ export async function integrate(
 			// For rebase mode, git rebase --autostash handles stash internally.
 			// For merge mode with stash, do NOT pop if merge conflicted.
 			inlineResult(a.repo, yellow("conflict"));
-			conflicted.push({ assessment: a, stdout: result.stdout });
+			conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
 		}
 	}
 
@@ -205,9 +205,10 @@ export async function integrate(
 	if (conflicted.length > 0) {
 		const subcommand = mode === "rebase" ? "rebase" : "merge";
 		process.stderr.write(`\n  ${conflicted.length} repo(s) have conflicts:\n`);
-		for (const { assessment: a, stdout: gitStdout } of conflicted) {
+		for (const { assessment: a, stdout: gitStdout, stderr: gitStderr } of conflicted) {
 			process.stderr.write(`\n    ${a.repo}\n`);
-			for (const line of gitStdout.split("\n").filter((l) => l.startsWith("CONFLICT"))) {
+			const combined = `${gitStdout}\n${gitStderr}`;
+			for (const line of combined.split("\n").filter((l) => l.startsWith("CONFLICT"))) {
 				process.stderr.write(`      ${dim(line)}\n`);
 			}
 			process.stderr.write(`      cd ${a.repo}\n`);

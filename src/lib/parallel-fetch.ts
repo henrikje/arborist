@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { git } from "./git";
 import { error, plural } from "./output";
 import type { RepoRemotes } from "./remotes";
 import { isTTY } from "./tty";
@@ -124,7 +125,7 @@ export async function parallelFetch(
 
 			// Auto-detect remote HEAD on the base remote (only when we know which remote is base)
 			if (baseRemote) {
-				await Bun.$`git -C ${repoDir} remote set-head ${baseRemote} --auto`.cwd(repoDir).quiet().nothrow();
+				await git(repoDir, "remote", "set-head", baseRemote, "--auto");
 			}
 		} catch {
 			results.set(repo, { repo, exitCode: 1, output: "fetch failed" });

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { configGet } from "./config";
+import { git } from "./git";
 import { warn } from "./output";
 import { workspaceRepoDirs } from "./repos";
 
@@ -23,9 +24,9 @@ export async function workspaceBranch(wsDir: string): Promise<WorkspaceBranchRes
 	const repoDirs = workspaceRepoDirs(wsDir);
 	const firstRepoDir = repoDirs[0];
 	if (firstRepoDir) {
-		const result = await Bun.$`git -C ${firstRepoDir} branch --show-current`.cwd(firstRepoDir).quiet().nothrow();
+		const result = await git(firstRepoDir, "branch", "--show-current");
 		if (result.exitCode === 0) {
-			const branch = result.text().trim();
+			const branch = result.stdout.trim();
 			if (branch) {
 				const wsName = basename(wsDir);
 				warn(`Config missing for ${wsName}, inferred branch '${branch}' from worktree`);
