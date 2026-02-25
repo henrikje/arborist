@@ -344,8 +344,10 @@ load test_helper/common-setup
     echo "REPO" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
     run arb template list
     [ "$status" -eq 0 ]
-    [[ "$output" == *"[workspace]"* ]]
-    [[ "$output" == *"[repo-a]"* ]]
+    [[ "$output" == *"SCOPE"* ]]
+    [[ "$output" == *"PATH"* ]]
+    [[ "$output" == *"workspace"* ]]
+    [[ "$output" == *"repo-a"* ]]
     [[ "$output" == *".env"* ]]
 }
 
@@ -547,9 +549,11 @@ load test_helper/common-setup
     cd "$TEST_DIR/project/my-feature"
     run arb template list
     [ "$status" -eq 0 ]
-    # Both should show (modified) and the output should contain padding
-    [[ "$output" == *".env"*"(modified)"* ]]
-    [[ "$output" == *"some-longer-filename.txt"*"(modified)"* ]]
+    # Both should show modified and the output should contain padding
+    [[ "$output" == *".env"*"modified"* ]]
+    [[ "$output" == *"some-longer-filename.txt"*"modified"* ]]
+    # STATUS header should appear when inside workspace
+    [[ "$output" == *"STATUS"* ]]
 }
 
 # ── .arbtemplate LiquidJS rendering ───────────────────────────────
@@ -622,15 +626,18 @@ load test_helper/common-setup
     [ "$status" -eq 1 ]
 }
 
-@test "arb template list shows (template) annotation for .arbtemplate" {
+@test "arb template list shows template annotation for .arbtemplate" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
     printf '{{ workspace.name }}' \
         > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
     echo "static" > "$TEST_DIR/project/.arb/templates/workspace/plain.txt"
+    # Outside workspace — no STATUS column
     run arb template list
     [ "$status" -eq 0 ]
-    [[ "$output" == *"config.json"*"(template)"* ]]
+    [[ "$output" == *"config.json"* ]]
     [[ "$output" == *"plain.txt"* ]]
+    # STATUS column not shown outside workspace
+    [[ "$output" != *"STATUS"* ]]
 }
 
 @test "mix of .arbtemplate and regular files in same template directory" {
@@ -668,10 +675,59 @@ load test_helper/common-setup
     printf '{{ workspace.name }}' \
         > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
 
+    # Inside a workspace so STATUS column appears
+    arb create my-feature repo-a >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
     run arb template list
     [ "$status" -eq 0 ]
     [[ "$output" == *"config.json"* ]]
-    [[ "$output" == *"(conflict)"* ]]
+    [[ "$output" == *"conflict"* ]]
+    # Conflict detail section
+    [[ "$output" == *"Conflicting templates"* ]]
+    [[ "$output" == *".arb/templates/workspace/config.json"* ]]
+}
+
+# ── deleted detection ──────────────────────────────────────────────
+
+@test "arb template list shows deleted annotation when workspace file removed" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "ORIGINAL" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    arb create my-feature repo-a >/dev/null 2>&1
+    # Delete the workspace copy of the seeded file
+    rm "$TEST_DIR/project/my-feature/.env"
+    cd "$TEST_DIR/project/my-feature"
+    run arb template list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"deleted"* ]]
+    [[ "$output" == *".env"* ]]
+    [[ "$output" == *"STATUS"* ]]
+}
+
+@test "arb template list shows template annotation inside workspace" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{{ workspace.name }}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
+    echo "static" > "$TEST_DIR/project/.arb/templates/workspace/plain.txt"
+    arb create my-feature repo-a >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb template list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"config.json"*"template"* ]]
+    [[ "$output" == *"plain.txt"* ]]
+    [[ "$output" == *"STATUS"* ]]
+}
+
+@test "arb delete shows template drift info for deleted workspace file" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "ORIGINAL" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+
+    arb create tpl-drift-del repo-a
+    rm "$TEST_DIR/project/tpl-drift-del/.env"
+
+    run arb delete tpl-drift-del --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Template files deleted"* ]]
+    [[ "$output" == *".env"* ]]
 }
 
 # ── repo-aware templates (iteration) ──────────────────────────────
@@ -852,7 +908,7 @@ TMPL
     echo "wrong" > "$TEST_DIR/project/tpl-list-iter/repos.txt"
     run arb template list
     [ "$status" -eq 0 ]
-    [[ "$output" == *"(modified)"* ]]
+    [[ "$output" == *"modified"* ]]
 }
 
 # ── remote URL in templates ───────────────────────────────────────

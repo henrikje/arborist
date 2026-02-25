@@ -129,12 +129,13 @@ export interface OverlayResult {
 	seeded: string[];
 	skipped: string[];
 	regenerated: string[];
+	conflicts: string[];
 	failed: FailedCopy[];
 	unknownVariables: UnknownVariable[];
 }
 
 function emptyResult(): OverlayResult {
-	return { seeded: [], skipped: [], regenerated: [], failed: [], unknownVariables: [] };
+	return { seeded: [], skipped: [], regenerated: [], conflicts: [], failed: [], unknownVariables: [] };
 }
 
 export function overlayDirectory(
@@ -163,10 +164,7 @@ export function overlayDirectory(
 				const relPath = isArbtpl ? stripTemplateExt(rawRelPath) : rawRelPath;
 
 				if (seen.has(relPath)) {
-					result.failed.push({
-						path: relPath,
-						error: `Conflict: both ${relPath} and ${relPath}${ARBTEMPLATE_EXT} exist — remove one`,
-					});
+					result.conflicts.push(relPath);
 					continue;
 				}
 				seen.add(relPath);
@@ -282,6 +280,7 @@ export async function applyRepoTemplates(
 		result.seeded.push(...repoResult.seeded);
 		result.skipped.push(...repoResult.skipped);
 		result.regenerated.push(...repoResult.regenerated);
+		result.conflicts.push(...repoResult.conflicts);
 		result.failed.push(...repoResult.failed);
 		result.unknownVariables.push(...repoResult.unknownVariables);
 	}
@@ -364,12 +363,19 @@ export interface TemplateDiff {
 	relPath: string;
 	scope: "workspace" | "repo";
 	repo?: string;
+	kind: "modified" | "deleted";
 }
 
-function diffDirectory(srcDir: string, destDir: string, ctx?: TemplateContext): string[] {
-	if (!existsSync(srcDir)) return [];
+interface DiffDirectoryResult {
+	modified: string[];
+	deleted: string[];
+}
 
-	const diffs: string[] = [];
+function diffDirectory(srcDir: string, destDir: string, ctx?: TemplateContext): DiffDirectoryResult {
+	if (!existsSync(srcDir)) return { modified: [], deleted: [] };
+
+	const modified: string[] = [];
+	const deleted: string[] = [];
 	const seen = new Set<string>();
 
 	function walk(dir: string): void {
@@ -391,20 +397,23 @@ function diffDirectory(srcDir: string, destDir: string, ctx?: TemplateContext): 
 
 				const destPath = join(destDir, relPath);
 
-				if (!existsSync(destPath)) continue;
+				if (!existsSync(destPath)) {
+					deleted.push(relPath);
+					continue;
+				}
 
 				const srcContent =
 					isArbtpl && ctx ? Buffer.from(renderTemplate(readFileSync(srcPath, "utf-8"), ctx)) : readFileSync(srcPath);
 				const destContent = readFileSync(destPath);
 				if (!srcContent.equals(destContent)) {
-					diffs.push(relPath);
+					modified.push(relPath);
 				}
 			}
 		}
 	}
 
 	walk(srcDir);
-	return diffs;
+	return { modified, deleted };
 }
 
 export async function diffTemplates(arbRootDir: string, wsDir: string, repos: string[]): Promise<TemplateDiff[]> {
@@ -419,8 +428,12 @@ export async function diffTemplates(arbRootDir: string, wsDir: string, repos: st
 		workspacePath: wsDir,
 		repos: allRepos,
 	};
-	for (const relPath of diffDirectory(wsTemplateDir, wsDir, wsCtx)) {
-		result.push({ relPath, scope: "workspace" });
+	const wsDiffs = diffDirectory(wsTemplateDir, wsDir, wsCtx);
+	for (const relPath of wsDiffs.modified) {
+		result.push({ relPath, scope: "workspace", kind: "modified" });
+	}
+	for (const relPath of wsDiffs.deleted) {
+		result.push({ relPath, scope: "workspace", kind: "deleted" });
 	}
 
 	for (const repo of repos) {
@@ -436,8 +449,12 @@ export async function diffTemplates(arbRootDir: string, wsDir: string, repos: st
 			repoPath: repoDir,
 			repos: allRepos,
 		};
-		for (const relPath of diffDirectory(repoTemplateDir, repoDir, repoCtx)) {
-			result.push({ relPath, scope: "repo", repo });
+		const repoDiffs = diffDirectory(repoTemplateDir, repoDir, repoCtx);
+		for (const relPath of repoDiffs.modified) {
+			result.push({ relPath, scope: "repo", repo, kind: "modified" });
+		}
+		for (const relPath of repoDiffs.deleted) {
+			result.push({ relPath, scope: "repo", repo, kind: "deleted" });
 		}
 	}
 
@@ -580,6 +597,7 @@ export interface ForceOverlayResult {
 	seeded: string[];
 	reset: string[];
 	unchanged: string[];
+	conflicts: string[];
 	failed: FailedCopy[];
 	unknownVariables: UnknownVariable[];
 }
@@ -590,9 +608,17 @@ export function forceOverlayDirectory(
 	ctx?: TemplateContext,
 	tplPathPrefix?: string,
 ): ForceOverlayResult {
-	if (!existsSync(srcDir)) return { seeded: [], reset: [], unchanged: [], failed: [], unknownVariables: [] };
+	if (!existsSync(srcDir))
+		return { seeded: [], reset: [], unchanged: [], conflicts: [], failed: [], unknownVariables: [] };
 
-	const result: ForceOverlayResult = { seeded: [], reset: [], unchanged: [], failed: [], unknownVariables: [] };
+	const result: ForceOverlayResult = {
+		seeded: [],
+		reset: [],
+		unchanged: [],
+		conflicts: [],
+		failed: [],
+		unknownVariables: [],
+	};
 	const seen = new Set<string>();
 
 	function walk(dir: string): void {
@@ -610,10 +636,7 @@ export function forceOverlayDirectory(
 				const relPath = isArbtpl ? stripTemplateExt(rawRelPath) : rawRelPath;
 
 				if (seen.has(relPath)) {
-					result.failed.push({
-						path: relPath,
-						error: `Conflict: both ${relPath} and ${relPath}${ARBTEMPLATE_EXT} exist — remove one`,
-					});
+					result.conflicts.push(relPath);
 					continue;
 				}
 				seen.add(relPath);
@@ -680,7 +703,14 @@ export async function forceApplyRepoTemplates(
 	wsDir: string,
 	repos: string[],
 ): Promise<ForceOverlayResult> {
-	const result: ForceOverlayResult = { seeded: [], reset: [], unchanged: [], failed: [], unknownVariables: [] };
+	const result: ForceOverlayResult = {
+		seeded: [],
+		reset: [],
+		unchanged: [],
+		conflicts: [],
+		failed: [],
+		unknownVariables: [],
+	};
 	const reposDir = join(arbRootDir, ".arb", "repos");
 	const allRepos = await workspaceRepoList(wsDir, reposDir);
 
@@ -702,6 +732,7 @@ export async function forceApplyRepoTemplates(
 		result.seeded.push(...repoResult.seeded);
 		result.reset.push(...repoResult.reset);
 		result.unchanged.push(...repoResult.unchanged);
+		result.conflicts.push(...repoResult.conflicts);
 		result.failed.push(...repoResult.failed);
 		result.unknownVariables.push(...repoResult.unknownVariables);
 	}
@@ -715,12 +746,43 @@ export function displayTemplateDiffs(
 	suffix?: string,
 ): void {
 	if (templateDiffs.length === 0) return;
-	write(`      ${yellow(`Template files modified${suffix ?? ""}`)}:\n`);
-	for (const diff of templateDiffs) {
-		const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
-		write(`          ${prefix}${diff.relPath}\n`);
+	const modified = templateDiffs.filter((d) => d.kind === "modified");
+	const deleted = templateDiffs.filter((d) => d.kind === "deleted");
+	if (modified.length > 0) {
+		write(`      ${yellow(`Template files modified${suffix ?? ""}`)}:\n`);
+		for (const diff of modified) {
+			const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
+			write(`          ${prefix}${diff.relPath}\n`);
+		}
+		write("\n");
 	}
-	write("\n");
+	if (deleted.length > 0) {
+		write(`      ${yellow(`Template files deleted${suffix ?? ""}`)}:\n`);
+		for (const diff of deleted) {
+			const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
+			write(`          ${prefix}${diff.relPath}\n`);
+		}
+		write("\n");
+	}
+}
+
+export interface ConflictInfo {
+	scope: "workspace" | "repo";
+	repo?: string;
+	relPath: string;
+}
+
+export function displayTemplateConflicts(
+	conflicts: ConflictInfo[],
+	write: (text: string) => void = (t) => process.stderr.write(t),
+): void {
+	if (conflicts.length === 0) return;
+	write(`\n      ${yellow("Conflicting templates (both plain and .arbtemplate versions exist)")}:\n`);
+	for (const c of conflicts) {
+		const tplDir = c.scope === "workspace" ? ".arb/templates/workspace" : `.arb/templates/repos/${c.repo}`;
+		const arbtplName = `${basename(c.relPath)}${ARBTEMPLATE_EXT}`;
+		write(`          remove either ${tplDir}/${c.relPath} or ${arbtplName}\n`);
+	}
 }
 
 export function templateFilePath(
