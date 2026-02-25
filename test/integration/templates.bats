@@ -736,6 +736,40 @@ load test_helper/common-setup
     [ "$(cat "$TEST_DIR/project/second-ws/.config/settings.json")" = "auto" ]
 }
 
+@test "arb template add infers workspace scope from path outside repo" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    echo "SECRET=abc" > "$TEST_DIR/project/my-feature/.env"
+    cd "$TEST_DIR/project/my-feature/repo-a"
+    run arb template add ../.env
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Added template"* ]]
+    [[ "$output" != *"repo:"* ]]
+    [ -f "$TEST_DIR/project/.arb/templates/workspace/.env" ]
+}
+
+@test "arb template add infers repo scope from path inside another repo" {
+    arb create my-feature repo-a repo-b >/dev/null 2>&1
+    echo "DB=localhost" > "$TEST_DIR/project/my-feature/repo-b/.env"
+    cd "$TEST_DIR/project/my-feature/repo-a"
+    run arb template add ../repo-b/.env
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Added template"* ]]
+    [[ "$output" == *"repo: repo-b"* ]]
+    [ -f "$TEST_DIR/project/.arb/templates/repos/repo-b/.env" ]
+}
+
+@test "arb template add errors when path is outside workspace" {
+    arb create my-feature repo-a >/dev/null 2>&1
+    local tmpfile
+    tmpfile="$(mktemp)"
+    echo "outside" > "$tmpfile"
+    cd "$TEST_DIR/project/my-feature/repo-a"
+    run arb template add "$tmpfile"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"outside the workspace"* ]]
+    rm -f "$tmpfile"
+}
+
 @test "arb template list aligns modified annotations" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
     echo "SHORT" > "$TEST_DIR/project/.arb/templates/workspace/.env"

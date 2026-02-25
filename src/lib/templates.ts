@@ -12,6 +12,7 @@ import {
 import { basename, dirname, join, relative } from "node:path";
 import { Liquid } from "liquidjs";
 import { getRemoteUrl, resolveRemotes } from "./remotes";
+import { workspaceRepoDirs } from "./repos";
 
 export const ARBTEMPLATE_EXT = ".arbtemplate";
 
@@ -489,6 +490,19 @@ export function detectTemplateScope(arbRootDir: string, cwd: string): TemplateSc
 	}
 
 	return null;
+}
+
+export function detectScopeFromPath(wsDir: string, srcPath: string): TemplateScope | null {
+	const wsPrefix = `${wsDir}/`;
+	if (!srcPath.startsWith(wsPrefix)) return null;
+
+	for (const repoDir of workspaceRepoDirs(wsDir)) {
+		if (srcPath.startsWith(`${repoDir}/`) || srcPath === repoDir) {
+			return { scope: "repo", repo: basename(repoDir) };
+		}
+	}
+
+	return { scope: "workspace" };
 }
 
 export function removeTemplate(arbRootDir: string, scope: "workspace" | "repo", relPath: string, repo?: string): void {
