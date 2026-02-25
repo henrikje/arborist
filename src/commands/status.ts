@@ -6,7 +6,7 @@ import type { StatusJsonOutput } from "../lib/json-types";
 import { bold, dim, error, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
-import { workspaceRepoDirs } from "../lib/repos";
+import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import {
 	type RepoStatus,
 	baseRef,
@@ -17,6 +17,7 @@ import {
 	validateWhere,
 } from "../lib/status";
 import { gatherVerboseDetail, printVerboseDetail, toJsonVerbose } from "../lib/status-verbose";
+import { readNamesFromStdin } from "../lib/stdin";
 import {
 	type RelativeTimeParts,
 	computeLastCommitWidths,
@@ -29,7 +30,7 @@ import { requireWorkspace } from "../lib/workspace-context";
 
 export function registerStatusCommand(program: Command, getCtx: () => ArbContext): void {
 	program
-		.command("status")
+		.command("status [repos...]")
 		.option("-d, --dirty", "Only show repos with local changes (shorthand for --where dirty)")
 		.option("-w, --where <filter>", "Filter repos by status flags (comma = OR, + = AND, ^ = negate)")
 		.option("-F, --fetch", "Fetch from all remotes before showing status")
@@ -39,20 +40,23 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("--json", "Output structured JSON (combine with --verbose for commit and file detail)")
 		.summary("Show workspace status")
 		.description(
-			"Show each repo's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nUse --dirty to only show repos with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Positive/healthy terms: clean, pushed, synced-base, synced-share, synced, safe. Prefix any term with ^ to negate (e.g. --where ^dirty is equivalent to --where clean). Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use + for AND (e.g. --where dirty+unpushed matches repos that are both dirty and unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. Use -F/--fetch to update remote tracking info first (skip with --no-fetch). Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.",
+			"Show each repo's position relative to the default branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line), enabling composition like: arb status -q --where dirty | arb diff.\n\nUse --dirty to only show repos with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Positive/healthy terms: clean, pushed, synced-base, synced-share, synced, safe. Prefix any term with ^ to negate (e.g. --where ^dirty is equivalent to --where clean). Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use + for AND (e.g. --where dirty+unpushed matches repos that are both dirty and unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. Use -F/--fetch to update remote tracking info first (skip with --no-fetch). Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.",
 		)
 		.action(
-			async (options: {
-				dirty?: boolean;
-				where?: string;
-				fetch?: boolean;
-				verbose?: boolean;
-				quiet?: boolean;
-				json?: boolean;
-			}) => {
+			async (
+				repoArgs: string[],
+				options: {
+					dirty?: boolean;
+					where?: string;
+					fetch?: boolean;
+					verbose?: boolean;
+					quiet?: boolean;
+					json?: boolean;
+				},
+			) => {
 				const ctx = getCtx();
 				requireWorkspace(ctx);
-				await runStatus(ctx, options);
+				await runStatus(ctx, repoArgs, options);
 			},
 		);
 }
@@ -71,7 +75,15 @@ export interface CellData {
 
 async function runStatus(
 	ctx: ArbContext,
-	options: { dirty?: boolean; where?: string; fetch?: boolean; verbose?: boolean; quiet?: boolean; json?: boolean },
+	repoArgs: string[],
+	options: {
+		dirty?: boolean;
+		where?: string;
+		fetch?: boolean;
+		verbose?: boolean;
+		quiet?: boolean;
+		json?: boolean;
+	},
 ): Promise<void> {
 	const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
 
@@ -101,6 +113,14 @@ async function runStatus(
 		throw new ArbError("Cannot combine --quiet with --verbose.");
 	}
 
+	// Resolve repo selection: positional args > stdin > all
+	let repoNames = repoArgs;
+	if (repoNames.length === 0) {
+		const stdinNames = await readNamesFromStdin();
+		if (stdinNames.length > 0) repoNames = stdinNames;
+	}
+	const selectedRepos = resolveRepoSelection(wsDir, repoNames);
+
 	// Fetch if requested
 	if (options.fetch) {
 		const fetchDirs = workspaceRepoDirs(wsDir);
@@ -123,13 +143,17 @@ async function runStatus(
 	});
 	if (showingProgress) process.stderr.write(`\r${" ".repeat(40)}\r`);
 
-	// Filter repos if --where is active
+	// Filter to selected repos first, then apply --where
+	const selectedSet = new Set(selectedRepos);
 	let filteredSummary = summary;
-	if (where) {
-		const repos = summary.repos.filter((r) => {
-			const flags = computeFlags(r, summary.branch);
-			return repoMatchesWhere(flags, where);
-		});
+	{
+		let repos = summary.repos.filter((r) => selectedSet.has(r.name));
+		if (where) {
+			repos = repos.filter((r) => {
+				const flags = computeFlags(r, summary.branch);
+				return repoMatchesWhere(flags, where);
+			});
+		}
 		const aggregates = computeSummaryAggregates(repos, summary.branch);
 		filteredSummary = { ...summary, repos, total: repos.length, ...aggregates };
 	}
@@ -149,7 +173,8 @@ async function runStatus(
 			const reposWithVerbose = await Promise.all(
 				filteredSummary.repos.map(async (repo) => {
 					const detail = await gatherVerboseDetail(repo, wsDir);
-					return { ...repo, verbose: detail ? toJsonVerbose(detail) : undefined };
+					if (!detail) return repo;
+					return { ...repo, verbose: toJsonVerbose(detail) };
 				}),
 			);
 			output = { ...filteredSummary, repos: reposWithVerbose };

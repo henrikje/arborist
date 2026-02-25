@@ -94,6 +94,7 @@ export interface DiffJsonRepo {
 	reason?: string;
 	stat: { files: number; insertions: number; deletions: number };
 	fileStat?: DiffJsonFileStat[];
+	untrackedCount?: number;
 }
 
 export interface DiffJsonOutput {
@@ -104,6 +105,7 @@ export interface DiffJsonOutput {
 	totalFiles: number;
 	totalInsertions: number;
 	totalDeletions: number;
+	totalUntracked?: number;
 }
 
 // ── Repo list JSON types ──
