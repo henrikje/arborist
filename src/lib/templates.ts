@@ -30,6 +30,11 @@ export interface TemplateContext {
 	previousRepos?: RepoInfo[];
 }
 
+export interface UnknownVariable {
+	varName: string;
+	filePath: string;
+}
+
 function toTemplateData(ctx: TemplateContext): Record<string, unknown> {
 	const currentRepo = ctx.repoName
 		? (ctx.repos?.find((r) => r.name === ctx.repoName) ?? {
@@ -54,6 +59,59 @@ export function renderTemplate(content: string, ctx: TemplateContext): string {
 	return liquid.parseAndRenderSync(content, toTemplateData(ctx));
 }
 
+function knownVariablePaths(ctx: TemplateContext): Set<string> {
+	const paths = new Set(["root.path", "workspace.name", "workspace.path", "workspace.repos"]);
+	if (ctx.repoName) {
+		paths.add("repo.name");
+		paths.add("repo.path");
+		paths.add("repo.baseRemote.name");
+		paths.add("repo.baseRemote.url");
+		paths.add("repo.shareRemote.name");
+		paths.add("repo.shareRemote.url");
+	}
+	return paths;
+}
+
+function isKnownPath(varPath: string, known: Set<string>): boolean {
+	if (known.has(varPath)) return true;
+	// Check if varPath is a valid prefix of any known path
+	const prefix = `${varPath}.`;
+	for (const k of known) {
+		if (k.startsWith(prefix)) return true;
+	}
+	return false;
+}
+
+export function checkUnknownVariables(content: string, ctx: TemplateContext): string[] {
+	const ast = liquid.parse(content);
+	const vars = liquid.globalFullVariablesSync(ast);
+	const known = knownVariablePaths(ctx);
+	const unknowns: string[] = [];
+	const seen = new Set<string>();
+	for (const v of vars) {
+		if (!seen.has(v) && !isKnownPath(v, known)) {
+			unknowns.push(v);
+			seen.add(v);
+		}
+	}
+	return unknowns;
+}
+
+export function displayUnknownVariables(
+	unknowns: UnknownVariable[],
+	write: (text: string) => void = (t) => process.stderr.write(t),
+): void {
+	if (unknowns.length === 0) return;
+	write(`\n      ${yellow("Unknown template variables")}:\n`);
+	for (const { varName, filePath } of unknowns) {
+		write(`          '${varName}' in ${filePath}\n`);
+	}
+}
+
+function collectUnknownVariables(content: string, ctx: TemplateContext, filePath: string): UnknownVariable[] {
+	return checkUnknownVariables(content, ctx).map((varName) => ({ varName, filePath }));
+}
+
 function isTemplateFile(relPath: string): boolean {
 	return relPath.endsWith(ARBTEMPLATE_EXT);
 }
@@ -72,13 +130,19 @@ export interface OverlayResult {
 	skipped: string[];
 	regenerated: string[];
 	failed: FailedCopy[];
+	unknownVariables: UnknownVariable[];
 }
 
 function emptyResult(): OverlayResult {
-	return { seeded: [], skipped: [], regenerated: [], failed: [] };
+	return { seeded: [], skipped: [], regenerated: [], failed: [], unknownVariables: [] };
 }
 
-export function overlayDirectory(srcDir: string, destDir: string, ctx?: TemplateContext): OverlayResult {
+export function overlayDirectory(
+	srcDir: string,
+	destDir: string,
+	ctx?: TemplateContext,
+	tplPathPrefix?: string,
+): OverlayResult {
 	if (!existsSync(srcDir)) return emptyResult();
 
 	const result = emptyResult();
@@ -108,13 +172,18 @@ export function overlayDirectory(srcDir: string, destDir: string, ctx?: Template
 				seen.add(relPath);
 
 				const destPath = join(destDir, relPath);
+				const tplContent = isArbtpl && ctx ? readFileSync(srcPath, "utf-8") : null;
+
+				if (tplContent !== null && ctx) {
+					const displayPath = tplPathPrefix ? `${tplPathPrefix}/${rawRelPath}` : rawRelPath;
+					result.unknownVariables.push(...collectUnknownVariables(tplContent, ctx, displayPath));
+				}
 
 				if (!existsSync(destPath)) {
 					try {
 						mkdirSync(join(destDir, relative(srcDir, dir)), { recursive: true });
-						if (isArbtpl && ctx) {
-							const content = readFileSync(srcPath, "utf-8");
-							writeFileSync(destPath, renderTemplate(content, ctx));
+						if (tplContent !== null && ctx) {
+							writeFileSync(destPath, renderTemplate(tplContent, ctx));
 						} else {
 							copyFileSync(srcPath, destPath);
 						}
@@ -123,11 +192,10 @@ export function overlayDirectory(srcDir: string, destDir: string, ctx?: Template
 						const msg = e instanceof Error ? e.message : String(e);
 						result.failed.push({ path: relPath, error: msg });
 					}
-				} else if (isArbtpl && ctx?.previousRepos) {
+				} else if (tplContent !== null && ctx?.previousRepos) {
 					// Membership change: check if file should be regenerated
 					try {
-						const templateContent = readFileSync(srcPath, "utf-8");
-						const newRender = renderTemplate(templateContent, ctx);
+						const newRender = renderTemplate(tplContent, ctx);
 						const existingContent = readFileSync(destPath, "utf-8");
 
 						if (existingContent === newRender) {
@@ -135,7 +203,7 @@ export function overlayDirectory(srcDir: string, destDir: string, ctx?: Template
 						} else {
 							// Render with previous context to check for user edits
 							const prevCtx: TemplateContext = { ...ctx, repos: ctx.previousRepos };
-							const prevRender = renderTemplate(templateContent, prevCtx);
+							const prevRender = renderTemplate(tplContent, prevCtx);
 
 							if (existingContent === prevRender) {
 								// User hasn't edited — safe to overwrite
@@ -180,7 +248,7 @@ export async function applyWorkspaceTemplates(
 		ctx.previousRepos = await reconstructPreviousRepos(repos, changedRepos, reposDir);
 	}
 
-	return overlayDirectory(templateDir, wsDir, ctx);
+	return overlayDirectory(templateDir, wsDir, ctx, ".arb/templates/workspace");
 }
 
 export async function applyRepoTemplates(
@@ -210,11 +278,12 @@ export async function applyRepoTemplates(
 		if (changedRepos) {
 			ctx.previousRepos = await reconstructPreviousRepos(allRepos, changedRepos, reposDir);
 		}
-		const repoResult = overlayDirectory(templateDir, repoDir, ctx);
+		const repoResult = overlayDirectory(templateDir, repoDir, ctx, `.arb/templates/repos/${repo}`);
 		result.seeded.push(...repoResult.seeded);
 		result.skipped.push(...repoResult.skipped);
 		result.regenerated.push(...repoResult.regenerated);
 		result.failed.push(...repoResult.failed);
+		result.unknownVariables.push(...repoResult.unknownVariables);
 	}
 
 	return result;
@@ -375,6 +444,58 @@ export async function diffTemplates(arbRootDir: string, wsDir: string, repos: st
 	return result;
 }
 
+export async function checkAllTemplateVariables(
+	arbRootDir: string,
+	wsDir: string,
+	repos: string[],
+): Promise<UnknownVariable[]> {
+	const unknowns: UnknownVariable[] = [];
+	const reposDir = join(arbRootDir, ".arb", "repos");
+	const allRepos = await workspaceRepoList(wsDir, reposDir);
+	const templatesDir = join(arbRootDir, ".arb", "templates");
+
+	const wsTemplateDir = join(templatesDir, "workspace");
+	const wsCtx: TemplateContext = {
+		rootPath: arbRootDir,
+		workspaceName: basename(wsDir),
+		workspacePath: wsDir,
+		repos: allRepos,
+	};
+	if (existsSync(wsTemplateDir)) {
+		for (const rawRelPath of walkFiles(wsTemplateDir)) {
+			if (isTemplateFile(rawRelPath)) {
+				const content = readFileSync(join(wsTemplateDir, rawRelPath), "utf-8");
+				const tplPath = `.arb/templates/workspace/${rawRelPath}`;
+				unknowns.push(...collectUnknownVariables(content, wsCtx, tplPath));
+			}
+		}
+	}
+
+	for (const repo of repos) {
+		const repoTemplateDir = join(templatesDir, "repos", repo);
+		const repoDir = join(wsDir, repo);
+		if (!existsSync(repoTemplateDir)) continue;
+
+		const repoCtx: TemplateContext = {
+			rootPath: arbRootDir,
+			workspaceName: basename(wsDir),
+			workspacePath: wsDir,
+			repoName: repo,
+			repoPath: existsSync(repoDir) ? repoDir : undefined,
+			repos: allRepos,
+		};
+		for (const rawRelPath of walkFiles(repoTemplateDir)) {
+			if (isTemplateFile(rawRelPath)) {
+				const content = readFileSync(join(repoTemplateDir, rawRelPath), "utf-8");
+				const tplPath = `.arb/templates/repos/${repo}/${rawRelPath}`;
+				unknowns.push(...collectUnknownVariables(content, repoCtx, tplPath));
+			}
+		}
+	}
+
+	return unknowns;
+}
+
 // ── Template management helpers ──────────────────────────────────────
 
 export interface TemplateEntry {
@@ -460,12 +581,18 @@ export interface ForceOverlayResult {
 	reset: string[];
 	unchanged: string[];
 	failed: FailedCopy[];
+	unknownVariables: UnknownVariable[];
 }
 
-export function forceOverlayDirectory(srcDir: string, destDir: string, ctx?: TemplateContext): ForceOverlayResult {
-	if (!existsSync(srcDir)) return { seeded: [], reset: [], unchanged: [], failed: [] };
+export function forceOverlayDirectory(
+	srcDir: string,
+	destDir: string,
+	ctx?: TemplateContext,
+	tplPathPrefix?: string,
+): ForceOverlayResult {
+	if (!existsSync(srcDir)) return { seeded: [], reset: [], unchanged: [], failed: [], unknownVariables: [] };
 
-	const result: ForceOverlayResult = { seeded: [], reset: [], unchanged: [], failed: [] };
+	const result: ForceOverlayResult = { seeded: [], reset: [], unchanged: [], failed: [], unknownVariables: [] };
 	const seen = new Set<string>();
 
 	function walk(dir: string): void {
@@ -492,27 +619,30 @@ export function forceOverlayDirectory(srcDir: string, destDir: string, ctx?: Tem
 				seen.add(relPath);
 
 				const destPath = join(destDir, relPath);
+				const tplContent = isArbtpl && ctx ? readFileSync(srcPath, "utf-8") : null;
+
+				if (tplContent !== null && ctx) {
+					const displayPath = tplPathPrefix ? `${tplPathPrefix}/${rawRelPath}` : rawRelPath;
+					result.unknownVariables.push(...collectUnknownVariables(tplContent, ctx, displayPath));
+				}
 
 				try {
 					if (!existsSync(destPath)) {
 						mkdirSync(join(destDir, relative(srcDir, dir)), { recursive: true });
-						if (isArbtpl && ctx) {
-							const content = readFileSync(srcPath, "utf-8");
-							writeFileSync(destPath, renderTemplate(content, ctx));
+						if (tplContent !== null && ctx) {
+							writeFileSync(destPath, renderTemplate(tplContent, ctx));
 						} else {
 							copyFileSync(srcPath, destPath);
 						}
 						result.seeded.push(relPath);
 					} else {
 						const srcContent =
-							isArbtpl && ctx
-								? Buffer.from(renderTemplate(readFileSync(srcPath, "utf-8"), ctx))
-								: readFileSync(srcPath);
+							tplContent !== null && ctx ? Buffer.from(renderTemplate(tplContent, ctx)) : readFileSync(srcPath);
 						const destContent = readFileSync(destPath);
 						if (srcContent.equals(destContent)) {
 							result.unchanged.push(relPath);
 						} else {
-							if (isArbtpl && ctx) {
+							if (tplContent !== null && ctx) {
 								writeFileSync(destPath, srcContent);
 							} else {
 								copyFileSync(srcPath, destPath);
@@ -542,7 +672,7 @@ export async function forceApplyWorkspaceTemplates(arbRootDir: string, wsDir: st
 		workspacePath: wsDir,
 		repos,
 	};
-	return forceOverlayDirectory(templateDir, wsDir, ctx);
+	return forceOverlayDirectory(templateDir, wsDir, ctx, ".arb/templates/workspace");
 }
 
 export async function forceApplyRepoTemplates(
@@ -550,7 +680,7 @@ export async function forceApplyRepoTemplates(
 	wsDir: string,
 	repos: string[],
 ): Promise<ForceOverlayResult> {
-	const result: ForceOverlayResult = { seeded: [], reset: [], unchanged: [], failed: [] };
+	const result: ForceOverlayResult = { seeded: [], reset: [], unchanged: [], failed: [], unknownVariables: [] };
 	const reposDir = join(arbRootDir, ".arb", "repos");
 	const allRepos = await workspaceRepoList(wsDir, reposDir);
 
@@ -568,11 +698,12 @@ export async function forceApplyRepoTemplates(
 			repoPath: repoDir,
 			repos: allRepos,
 		};
-		const repoResult = forceOverlayDirectory(templateDir, repoDir, ctx);
+		const repoResult = forceOverlayDirectory(templateDir, repoDir, ctx, `.arb/templates/repos/${repo}`);
 		result.seeded.push(...repoResult.seeded);
 		result.reset.push(...repoResult.reset);
 		result.unchanged.push(...repoResult.unchanged);
 		result.failed.push(...repoResult.failed);
+		result.unknownVariables.push(...repoResult.unknownVariables);
 	}
 
 	return result;

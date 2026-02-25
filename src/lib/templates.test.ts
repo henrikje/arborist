@@ -8,6 +8,7 @@ import {
 	type TemplateContext,
 	applyRepoTemplates,
 	applyWorkspaceTemplates,
+	checkUnknownVariables,
 	diffTemplates,
 	forceOverlayDirectory,
 	listTemplates,
@@ -1199,6 +1200,88 @@ describe("templates", () => {
 			const input = "base={{ repo.baseRemote.url }}|share={{ repo.shareRemote.url }}";
 			const result = renderTemplate(input, ctx);
 			expect(result).toBe("base=|share=");
+		});
+	});
+
+	describe("checkUnknownVariables", () => {
+		const wsCtx: TemplateContext = {
+			rootPath: "/root",
+			workspaceName: "ws",
+			workspacePath: "/root/ws",
+		};
+
+		const repoCtx: TemplateContext = {
+			rootPath: "/root",
+			workspaceName: "ws",
+			workspacePath: "/root/ws",
+			repoName: "api",
+			repoPath: "/root/ws/api",
+			repos: [wt("api", "/root/ws/api")],
+		};
+
+		test("valid workspace variables return empty result", () => {
+			const content =
+				"{{ workspace.name }} {{ workspace.path }} {{ root.path }} {% for r in workspace.repos %}{{ r.name }}{% endfor %}";
+			expect(checkUnknownVariables(content, wsCtx)).toEqual([]);
+		});
+
+		test("valid repo variables return empty result", () => {
+			const content =
+				"{{ repo.name }} {{ repo.path }} {{ repo.baseRemote.name }} {{ repo.baseRemote.url }} {{ repo.shareRemote.name }} {{ repo.shareRemote.url }}";
+			expect(checkUnknownVariables(content, repoCtx)).toEqual([]);
+		});
+
+		test("typo in known variable is detected", () => {
+			const content = "{{ workspace.nam }}";
+			expect(checkUnknownVariables(content, wsCtx)).toEqual(["workspace.nam"]);
+		});
+
+		test("completely unknown root is detected", () => {
+			const content = "{{ project.name }}";
+			expect(checkUnknownVariables(content, wsCtx)).toEqual(["project.name"]);
+		});
+
+		test("for-loop variables are not flagged", () => {
+			const content = "{% for r in workspace.repos %}{{ r.name }}{% endfor %}";
+			expect(checkUnknownVariables(content, wsCtx)).toEqual([]);
+		});
+
+		test("forloop.last inside for loop is not flagged", () => {
+			const content = "{% for r in workspace.repos %}{{ r.name }}{% unless forloop.last %},{% endunless %}{% endfor %}";
+			expect(checkUnknownVariables(content, wsCtx)).toEqual([]);
+		});
+
+		test("assign variables are not flagged", () => {
+			const content = "{% assign greeting = 'hello' %}{{ greeting }}";
+			expect(checkUnknownVariables(content, wsCtx)).toEqual([]);
+		});
+
+		test("repo.name in workspace-scoped context is flagged", () => {
+			const content = "{{ repo.name }}";
+			expect(checkUnknownVariables(content, wsCtx)).toEqual(["repo.name"]);
+		});
+
+		test("multiple unknowns are all detected", () => {
+			const content = "{{ workspace.nam }} {{ project.name }}";
+			const result = checkUnknownVariables(content, wsCtx);
+			expect(result).toContain("workspace.nam");
+			expect(result).toContain("project.name");
+			expect(result).toHaveLength(2);
+		});
+
+		test("duplicate unknowns are deduplicated", () => {
+			const content = "{{ workspace.nam }} {{ workspace.nam }}";
+			expect(checkUnknownVariables(content, wsCtx)).toEqual(["workspace.nam"]);
+		});
+
+		test("no variables in template returns empty result", () => {
+			const content = "just plain text";
+			expect(checkUnknownVariables(content, wsCtx)).toEqual([]);
+		});
+
+		test("nested property typo is detected", () => {
+			const content = "{{ repo.baseRemote.naem }}";
+			expect(checkUnknownVariables(content, repoCtx)).toEqual(["repo.baseRemote.naem"]);
 		});
 	});
 });

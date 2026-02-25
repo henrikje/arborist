@@ -109,6 +109,20 @@ In TTY mode: write `  [repo] verb...` as a progress indicator, then on completio
 
 Every multi-repo command ends with a single green line on stderr that aggregates counts, like "Pushed 3 repos, 1 up to date, 2 skipped". This gives instant confirmation of what happened without scrolling.
 
+### Detail sections
+
+Scope: supplementary information that follows the main per-repo output — verbose commit/file detail in `arb status --verbose`, template drift warnings in `arb delete`, unknown template variable warnings in `arb template apply` and `arb template list`.
+
+A detail section is a labeled, indented block of related items. It appears between the per-repo results and the summary line, set apart by blank lines. Format:
+
+- **Header**: 6-space indent + descriptive label (yellow for warnings, dim for neutral). Ends with `:\n`.
+- **Items**: 10-space indent + one line per item.
+- **Spacing**: blank line before the header (to separate from preceding output). No trailing blank line — the caller provides the final separator.
+
+Constants `SECTION_INDENT` (6 spaces) and `ITEM_INDENT` (10 spaces) are defined in `status-verbose.ts`; `displayTemplateDiffs` and `displayUnknownVariables` in `templates.ts` use the same literal values.
+
+When to use this pattern: any supplementary list (commits, files, variables, warnings) that appears below the main table or per-repo output. When not to use it: inline per-repo annotations (use the `[repo] result` line pattern instead) or top-level error messages (use `warn()` / `error()`).
+
 ### Helpful skip reasons
 
 When a repo is skipped during the plan phase, the reason is always stated. Examples: "diverged from origin (use --force)", "uncommitted changes", "not pushed yet", "on branch X, expected Y". The developer should never have to guess why a repo was excluded.

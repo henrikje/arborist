@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
 import { dim, info, plural, success, warn, yellow } from "../lib/output";
@@ -12,9 +12,13 @@ import {
 	type TemplateContext,
 	type TemplateDiff,
 	type TemplateEntry,
+	type UnknownVariable,
 	applyRepoTemplates,
 	applyWorkspaceTemplates,
+	checkAllTemplateVariables,
+	checkUnknownVariables,
 	diffTemplates,
+	displayUnknownVariables,
 	forceApplyRepoTemplates,
 	forceApplyWorkspaceTemplates,
 	listTemplates,
@@ -51,13 +55,15 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 				return;
 			}
 
-			// Check for drift annotations if inside a workspace
+			// Check for drift annotations and unknown variables if inside a workspace
 			let diffs: TemplateDiff[] = [];
+			let unknowns: UnknownVariable[] = [];
 			if (ctx.currentWorkspace) {
 				const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
 				if (existsSync(join(wsDir, ".arbws"))) {
 					const repos = workspaceRepoDirs(wsDir).map((d) => basename(d));
 					diffs = await diffTemplates(ctx.arbRootDir, wsDir, repos);
+					unknowns = await checkAllTemplateVariables(ctx.arbRootDir, wsDir, repos);
 				}
 			}
 
@@ -84,6 +90,8 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 				const annotation = annotations.length > 0 ? `  ${annotations.join(" ")}` : "";
 				process.stdout.write(`  [${scopeLabel}]${" ".repeat(maxScope - scopeLabel.length)} ${padded}${annotation}\n`);
 			}
+
+			displayUnknownVariables(unknowns);
 		});
 
 	// ── template diff ────────────────────────────────────────────────
@@ -238,34 +246,38 @@ function applySingleFile(
 	destPath: string,
 	force: boolean,
 	ctx?: TemplateContext,
-): { status: "seeded" | "skipped" | "reset" | "unchanged" } {
+	tplLabel?: string,
+): { status: "seeded" | "skipped" | "reset" | "unchanged"; unknownVariables: UnknownVariable[] } {
 	const isArbtpl = tplPath.endsWith(ARBTEMPLATE_EXT);
+	const tplContent = isArbtpl && ctx ? readFileSync(tplPath, "utf-8") : null;
+	const unknownVariables: UnknownVariable[] =
+		tplContent !== null && ctx
+			? checkUnknownVariables(tplContent, ctx).map((v) => ({ varName: v, filePath: tplLabel ?? tplPath }))
+			: [];
 
 	if (!existsSync(destPath)) {
 		mkdirSync(dirname(destPath), { recursive: true });
-		if (isArbtpl && ctx) {
-			const content = readFileSync(tplPath, "utf-8");
-			writeFileSync(destPath, renderTemplate(content, ctx));
+		if (tplContent !== null && ctx) {
+			writeFileSync(destPath, renderTemplate(tplContent, ctx));
 		} else {
 			copyFileSync(tplPath, destPath);
 		}
-		return { status: "seeded" };
+		return { status: "seeded", unknownVariables };
 	}
 	if (!force) {
-		return { status: "skipped" };
+		return { status: "skipped", unknownVariables };
 	}
-	const srcContent =
-		isArbtpl && ctx ? Buffer.from(renderTemplate(readFileSync(tplPath, "utf-8"), ctx)) : readFileSync(tplPath);
+	const srcContent = tplContent !== null && ctx ? Buffer.from(renderTemplate(tplContent, ctx)) : readFileSync(tplPath);
 	const destContent = readFileSync(destPath);
 	if (srcContent.equals(destContent)) {
-		return { status: "unchanged" };
+		return { status: "unchanged", unknownVariables };
 	}
-	if (isArbtpl && ctx) {
+	if (tplContent !== null && ctx) {
 		writeFileSync(destPath, srcContent);
 	} else {
 		copyFileSync(tplPath, destPath);
 	}
-	return { status: "reset" };
+	return { status: "reset", unknownVariables };
 }
 
 async function applyDefaultMode(
@@ -277,6 +289,9 @@ async function applyDefaultMode(
 ): Promise<void> {
 	let totalSeeded = 0;
 	let totalSkipped = 0;
+	const allUnknowns: UnknownVariable[] = [];
+	const scopes = [...(applyWorkspace ? ["workspace"] : []), ...repos];
+	const maxScope = Math.max(...scopes.map((s) => s.length));
 
 	if (fileFilter) {
 		const entries = resolveTemplatesToApply(ctx, applyWorkspace, repos, fileFilter);
@@ -286,6 +301,7 @@ async function applyDefaultMode(
 			const tplPath = templateFilePath(ctx.arbRootDir, entry.scope, entry.relPath, entry.repo);
 			const destPath = workspaceFilePath(wsDir, entry.scope, entry.relPath, entry.repo);
 			const scope = entry.scope === "workspace" ? "workspace" : (entry.repo ?? "");
+			const pad = " ".repeat(maxScope - scope.length);
 			const repoDir = entry.scope === "repo" && entry.repo ? join(wsDir, entry.repo) : undefined;
 			const tplCtx: TemplateContext = {
 				rootPath: ctx.arbRootDir,
@@ -295,26 +311,32 @@ async function applyDefaultMode(
 				repoPath: repoDir,
 				repos: allRepos,
 			};
-			const { status } = applySingleFile(tplPath, destPath, false, tplCtx);
+			const tplLabel = relative(ctx.arbRootDir, tplPath);
+			const { status, unknownVariables } = applySingleFile(tplPath, destPath, false, tplCtx, tplLabel);
+			allUnknowns.push(...unknownVariables);
 			const label = status === "skipped" ? yellow("skipped (exists)") : "seeded";
-			process.stderr.write(`  [${scope}] ${entry.relPath.padEnd(40)} ${label}\n`);
+			process.stderr.write(`  [${scope}]${pad} ${entry.relPath.padEnd(40)} ${label}\n`);
 			if (status === "seeded") totalSeeded++;
 			else totalSkipped++;
 		}
 	} else {
 		if (applyWorkspace) {
 			const result = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir);
-			displayOverlayResults(result, "workspace");
+			displayOverlayResults(result, "workspace", maxScope);
+			allUnknowns.push(...result.unknownVariables);
 			totalSeeded += result.seeded.length;
 			totalSkipped += result.skipped.length;
 		}
 		for (const repo of repos) {
 			const result = await applyRepoTemplates(ctx.arbRootDir, wsDir, [repo]);
-			displayOverlayResults(result, repo);
+			displayOverlayResults(result, repo, maxScope);
+			allUnknowns.push(...result.unknownVariables);
 			totalSeeded += result.seeded.length;
 			totalSkipped += result.skipped.length;
 		}
 	}
+
+	displayUnknownVariables(allUnknowns);
 
 	process.stderr.write("\n");
 	const parts: string[] = [];
@@ -334,6 +356,9 @@ async function applyForceMode(
 	let totalSeeded = 0;
 	let totalReset = 0;
 	let totalUnchanged = 0;
+	const allUnknowns: UnknownVariable[] = [];
+	const scopes = [...(applyWorkspace ? ["workspace"] : []), ...repos];
+	const maxScope = Math.max(...scopes.map((s) => s.length));
 
 	if (fileFilter) {
 		const entries = resolveTemplatesToApply(ctx, applyWorkspace, repos, fileFilter);
@@ -343,6 +368,7 @@ async function applyForceMode(
 			const tplPath = templateFilePath(ctx.arbRootDir, entry.scope, entry.relPath, entry.repo);
 			const destPath = workspaceFilePath(wsDir, entry.scope, entry.relPath, entry.repo);
 			const scope = entry.scope === "workspace" ? "workspace" : (entry.repo ?? "");
+			const pad = " ".repeat(maxScope - scope.length);
 			const repoDir = entry.scope === "repo" && entry.repo ? join(wsDir, entry.repo) : undefined;
 			const tplCtx: TemplateContext = {
 				rootPath: ctx.arbRootDir,
@@ -352,8 +378,10 @@ async function applyForceMode(
 				repoPath: repoDir,
 				repos: allRepos,
 			};
-			const { status } = applySingleFile(tplPath, destPath, true, tplCtx);
-			process.stderr.write(`  [${scope}] ${entry.relPath.padEnd(40)} ${status}\n`);
+			const tplLabel = relative(ctx.arbRootDir, tplPath);
+			const { status, unknownVariables } = applySingleFile(tplPath, destPath, true, tplCtx, tplLabel);
+			allUnknowns.push(...unknownVariables);
+			process.stderr.write(`  [${scope}]${pad} ${entry.relPath.padEnd(40)} ${status}\n`);
 			if (status === "seeded") totalSeeded++;
 			else if (status === "reset") totalReset++;
 			else totalUnchanged++;
@@ -361,53 +389,58 @@ async function applyForceMode(
 	} else {
 		if (applyWorkspace) {
 			const result = await forceApplyWorkspaceTemplates(ctx.arbRootDir, wsDir);
-			displayForceOverlayResults(result, "workspace");
+			displayForceOverlayResults(result, "workspace", maxScope);
+			allUnknowns.push(...result.unknownVariables);
 			totalSeeded += result.seeded.length;
 			totalReset += result.reset.length;
 			totalUnchanged += result.unchanged.length;
 		}
 		for (const repo of repos) {
 			const result = await forceApplyRepoTemplates(ctx.arbRootDir, wsDir, [repo]);
-			displayForceOverlayResults(result, repo);
+			displayForceOverlayResults(result, repo, maxScope);
+			allUnknowns.push(...result.unknownVariables);
 			totalSeeded += result.seeded.length;
 			totalReset += result.reset.length;
 			totalUnchanged += result.unchanged.length;
 		}
 	}
 
+	displayUnknownVariables(allUnknowns);
 	process.stderr.write("\n");
 	const parts: string[] = [];
 	if (totalSeeded > 0) parts.push(`Seeded ${plural(totalSeeded, "template file")}`);
-	if (totalReset > 0) parts.push(`reset ${totalReset}`);
+	if (totalReset > 0) parts.push(`${totalReset} reset`);
 	if (totalUnchanged > 0) parts.push(`${totalUnchanged} unchanged`);
 	if (parts.length === 0) parts.push("No templates to apply");
 	success(parts.join(", "));
 }
 
-function displayOverlayResults(result: OverlayResult, scope: string): void {
+function displayOverlayResults(result: OverlayResult, scope: string, maxScope: number): void {
+	const pad = " ".repeat(maxScope - scope.length);
 	for (const f of result.seeded) {
-		process.stderr.write(`  [${scope}] ${f.padEnd(40)} seeded\n`);
+		process.stderr.write(`  [${scope}]${pad} ${f.padEnd(40)} seeded\n`);
 	}
 	for (const f of result.regenerated) {
-		process.stderr.write(`  [${scope}] ${f.padEnd(40)} regenerated\n`);
+		process.stderr.write(`  [${scope}]${pad} ${f.padEnd(40)} regenerated\n`);
 	}
 	for (const f of result.skipped) {
-		process.stderr.write(`  [${scope}] ${f.padEnd(40)} ${yellow("skipped (exists)")}\n`);
+		process.stderr.write(`  [${scope}]${pad} ${f.padEnd(40)} ${yellow("skipped (exists)")}\n`);
 	}
 	for (const f of result.failed) {
 		warn(`Failed to copy template ${f.path}: ${f.error}`);
 	}
 }
 
-function displayForceOverlayResults(result: ForceOverlayResult, scope: string): void {
+function displayForceOverlayResults(result: ForceOverlayResult, scope: string, maxScope: number): void {
+	const pad = " ".repeat(maxScope - scope.length);
 	for (const f of result.seeded) {
-		process.stderr.write(`  [${scope}] ${f.padEnd(40)} seeded\n`);
+		process.stderr.write(`  [${scope}]${pad} ${f.padEnd(40)} seeded\n`);
 	}
 	for (const f of result.reset) {
-		process.stderr.write(`  [${scope}] ${f.padEnd(40)} reset\n`);
+		process.stderr.write(`  [${scope}]${pad} ${f.padEnd(40)} reset\n`);
 	}
 	for (const f of result.unchanged) {
-		process.stderr.write(`  [${scope}] ${f.padEnd(40)} unchanged\n`);
+		process.stderr.write(`  [${scope}]${pad} ${f.padEnd(40)} unchanged\n`);
 	}
 	for (const f of result.failed) {
 		warn(`Failed to copy template ${f.path}: ${f.error}`);
