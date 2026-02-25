@@ -1,6 +1,7 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Command } from "commander";
+import { git } from "../lib/git";
 import type { RepoListJsonEntry } from "../lib/json-types";
 import { confirmOrExit } from "../lib/mutation-flow";
 import { dim, error, info, inlineResult, inlineStart, plural, success, yellow } from "../lib/output";
@@ -46,29 +47,26 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 				process.exit(1);
 			}
 
-			await Bun.$`git -C ${target} checkout --detach`.cwd(target).quiet().nothrow();
+			await git(target, "checkout", "--detach");
 
 			if (options.upstream) {
 				// Add upstream remote
-				const addResult = await Bun.$`git -C ${target} remote add upstream ${options.upstream}`
-					.cwd(target)
-					.quiet()
-					.nothrow();
+				const addResult = await git(target, "remote", "add", "upstream", options.upstream);
 				if (addResult.exitCode !== 0) {
-					error(`Failed to add upstream remote: ${addResult.stderr.toString().trim()}`);
+					error(`Failed to add upstream remote: ${addResult.stderr.trim()}`);
 					process.exit(1);
 				}
 
 				// Set remote.pushDefault so resolveRemotes() detects the fork layout
-				await Bun.$`git -C ${target} config remote.pushDefault origin`.cwd(target).quiet().nothrow();
+				await git(target, "config", "remote.pushDefault", "origin");
 
 				// Fetch upstream and auto-detect HEAD
-				const fetchResult = await Bun.$`git -C ${target} fetch upstream`.cwd(target).quiet().nothrow();
+				const fetchResult = await git(target, "fetch", "upstream");
 				if (fetchResult.exitCode !== 0) {
-					error(`Failed to fetch upstream: ${fetchResult.stderr.toString().trim()}`);
+					error(`Failed to fetch upstream: ${fetchResult.stderr.trim()}`);
 					process.exit(1);
 				}
-				await Bun.$`git -C ${target} remote set-head upstream --auto`.cwd(target).quiet().nothrow();
+				await git(target, "remote", "set-head", "upstream", "--auto");
 
 				info(`  share: origin (${url})`);
 				info(`  base:  upstream (${options.upstream})`);

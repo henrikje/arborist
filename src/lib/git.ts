@@ -36,16 +36,19 @@ export function isLinkedWorktree(repoDir: string): boolean {
 	}
 }
 
-export async function git(repoDir: string, ...args: string[]): Promise<{ exitCode: number; stdout: string }> {
+export async function git(
+	repoDir: string,
+	...args: string[]
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
 	const proc = Bun.spawn(["git", "-C", repoDir, ...args], {
 		cwd: repoDir,
 		stdin: "ignore",
 		stdout: "pipe",
 		stderr: "pipe",
 	});
-	const stdout = await new Response(proc.stdout).text();
+	const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
 	await proc.exited;
-	return { exitCode: proc.exitCode ?? 1, stdout };
+	return { exitCode: proc.exitCode ?? 1, stdout, stderr };
 }
 
 export async function getShortHead(repoDir: string): Promise<string> {

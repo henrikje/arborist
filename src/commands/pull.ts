@@ -132,7 +132,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 
 				// Phase 4: execute
 				let pullOk = 0;
-				const conflicted: { assessment: PullAssessment; stdout: string }[] = [];
+				const conflicted: { assessment: PullAssessment; stdout: string; stderr: string }[] = [];
 				const stashPopFailed: PullAssessment[] = [];
 
 				for (const a of willPull) {
@@ -151,7 +151,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 							pullOk++;
 						} else {
 							inlineResult(a.repo, yellow("conflict"));
-							conflicted.push({ assessment: a, stdout: pullResult.stdout });
+							conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
 						}
 					} else {
 						// Merge mode: manual stash cycle when needed
@@ -177,7 +177,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 						} else {
 							// Do NOT pop stash if pull conflicted
 							inlineResult(a.repo, yellow("conflict"));
-							conflicted.push({ assessment: a, stdout: pullResult.stdout });
+							conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
 						}
 					}
 				}
@@ -185,10 +185,11 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				// Consolidated conflict report
 				if (conflicted.length > 0) {
 					process.stderr.write(`\n  ${conflicted.length} repo(s) have conflicts:\n`);
-					for (const { assessment: a, stdout: gitStdout } of conflicted) {
+					for (const { assessment: a, stdout: gitStdout, stderr: gitStderr } of conflicted) {
 						const subcommand = a.pullMode === "rebase" ? "rebase" : "merge";
 						process.stderr.write(`\n    ${a.repo}\n`);
-						for (const line of gitStdout.split("\n").filter((l) => l.startsWith("CONFLICT"))) {
+						const combined = `${gitStdout}\n${gitStderr}`;
+						for (const line of combined.split("\n").filter((l) => l.startsWith("CONFLICT"))) {
 							process.stderr.write(`      ${dim(line)}\n`);
 						}
 						process.stderr.write(`      cd ${a.repo}\n`);
@@ -376,16 +377,13 @@ async function predictPullConflicts(
 }
 
 async function detectPullMode(repoDir: string, branch: string): Promise<"rebase" | "merge"> {
-	const branchRebase = await Bun.$`git -C ${repoDir} config --get branch.${branch}.rebase`
-		.cwd(repoDir)
-		.quiet()
-		.nothrow();
+	const branchRebase = await git(repoDir, "config", "--get", `branch.${branch}.rebase`);
 	if (branchRebase.exitCode === 0) {
-		return branchRebase.text().trim() !== "false" ? "rebase" : "merge";
+		return branchRebase.stdout.trim() !== "false" ? "rebase" : "merge";
 	}
-	const pullRebase = await Bun.$`git -C ${repoDir} config --get pull.rebase`.cwd(repoDir).quiet().nothrow();
+	const pullRebase = await git(repoDir, "config", "--get", "pull.rebase");
 	if (pullRebase.exitCode === 0) {
-		return pullRebase.text().trim() !== "false" ? "rebase" : "merge";
+		return pullRebase.stdout.trim() !== "false" ? "rebase" : "merge";
 	}
 	return "merge";
 }

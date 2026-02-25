@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { branchExistsLocally, getDefaultBranch, isRepoDirty, remoteBranchExists } from "./git";
+import { branchExistsLocally, getDefaultBranch, git, isRepoDirty, remoteBranchExists } from "./git";
 import { error, inlineResult, inlineStart, warn } from "./output";
 import { type FetchResult, parallelFetch } from "./parallel-fetch";
 import type { RepoRemotes } from "./remotes";
@@ -119,17 +119,14 @@ export async function addWorktrees(
 		const branchExists = await branchExistsLocally(repoPath, branch);
 
 		// Prune stale worktrees
-		await Bun.$`git -C ${repoPath} worktree prune`.cwd(repoPath).quiet().nothrow();
+		await git(repoPath, "worktree", "prune");
 
 		if (branchExists) {
 			inlineStart(repo, `attaching branch ${branch}`);
-			const wt = await Bun.$`git -C ${repoPath} worktree add ${wsDir}/${repo} ${branch}`
-				.cwd(repoPath)
-				.quiet()
-				.nothrow();
+			const wt = await git(repoPath, "worktree", "add", `${wsDir}/${repo}`, branch);
 			if (wt.exitCode !== 0) {
 				inlineResult(repo, "failed");
-				const errText = wt.stderr.toString().trim();
+				const errText = wt.stderr.trim();
 				if (errText) error(`    ${errText}`);
 				result.failed.push(repo);
 				continue;
@@ -142,13 +139,10 @@ export async function addWorktrees(
 			// branching from a remote ref. We rely on tracking config being absent for fresh
 			// branches and present only after `arb push -u`, so we can detect "gone" branches
 			// (pushed, merged, remote branch deleted) vs never-pushed branches.
-			const wt = await Bun.$`git -C ${repoPath} worktree add --no-track -b ${branch} ${wsDir}/${repo} ${startPoint}`
-				.cwd(repoPath)
-				.quiet()
-				.nothrow();
+			const wt = await git(repoPath, "worktree", "add", "--no-track", "-b", branch, `${wsDir}/${repo}`, startPoint);
 			if (wt.exitCode !== 0) {
 				inlineResult(repo, "failed");
-				const errText = wt.stderr.toString().trim();
+				const errText = wt.stderr.trim();
 				if (errText) error(`    ${errText}`);
 				result.failed.push(repo);
 				continue;
