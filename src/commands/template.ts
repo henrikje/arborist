@@ -22,6 +22,7 @@ import {
 	type TemplateEntry,
 	applyRepoTemplates,
 	applyWorkspaceTemplates,
+	detectScopeFromPath,
 	detectTemplateScope,
 	diffTemplates,
 	forceApplyRepoTemplates,
@@ -86,16 +87,45 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 		.option("-f, --force", "Overwrite existing template")
 		.summary("Capture a file or directory as a template")
 		.description(
-			"Copy a file or directory from the current workspace into .arb/templates/. If a directory is given, all files within it are added recursively. The scope (workspace or repo) is auto-detected from your current directory. Use --repo or --workspace to override. The path must exist. If the template already exists with identical content, succeeds silently. If content differs, use --force to overwrite.",
+			"Copy a file or directory from the current workspace into .arb/templates/. If a directory is given, all files within it are added recursively. The scope (workspace or repo) is auto-detected from the source path's location: a file inside a repo directory becomes a repo template, a file elsewhere in the workspace becomes a workspace template. Use --repo or --workspace to override. The path must be inside the workspace unless an explicit scope flag is given. If the template already exists with identical content, succeeds silently. If content differs, use --force to overwrite.",
 		)
 		.action((path: string, options: { repo?: string[]; workspace?: boolean; force?: boolean }) => {
 			const ctx = getCtx();
-			const { scope, repos } = resolveScope(options, ctx);
 			const srcPath = resolve(path);
 
 			if (!existsSync(srcPath)) {
 				error(`Path not found: ${path}`);
 				process.exit(1);
+			}
+
+			const { wsDir } = requireWorkspace(ctx);
+
+			// Resolve scope: explicit flags take priority, otherwise infer from source path
+			let scope: "workspace" | "repo";
+			let repos: string[] | undefined;
+			const hasRepoFlag = options.repo && options.repo.length > 0;
+			const hasWsFlag = options.workspace === true;
+
+			if (hasRepoFlag && hasWsFlag) {
+				error("Cannot use both --repo and --workspace.");
+				process.exit(1);
+			}
+
+			if (hasRepoFlag) {
+				scope = "repo";
+				repos = options.repo;
+			} else if (hasWsFlag) {
+				scope = "workspace";
+			} else {
+				const detected = detectScopeFromPath(wsDir, srcPath);
+				if (!detected) {
+					error("Path is outside the workspace. Use --repo or --workspace to specify scope.");
+					process.exit(1);
+				}
+				scope = detected.scope;
+				if (detected.scope === "repo" && detected.repo) {
+					repos = [detected.repo];
+				}
 			}
 
 			// Collect files to add: { filePath, relSuffix }
@@ -126,7 +156,6 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 			}
 
 			// Determine the base relative path for the template
-			const { wsDir } = requireWorkspace(ctx);
 			let baseRelPath: string;
 			if (scope === "workspace") {
 				const prefix = `${wsDir}/`;
