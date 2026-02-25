@@ -317,12 +317,12 @@ load test_helper/common-setup
     [[ "$output" == *"SHARE"* ]]
     [[ "$output" == *"BASE"* ]]
     # repo-a is a fork — BASE column should show "upstream"
-    # repo-b is single-origin — BASE column should show dash (em dash)
+    # repo-b is single-origin — BASE column should show "origin"
     local repo_a_line repo_b_line
     repo_a_line="$(echo "$output" | grep "repo-a")"
     repo_b_line="$(echo "$output" | grep "repo-b")"
     [[ "$repo_a_line" == *"upstream"* ]]
-    [[ "$repo_b_line" == *"—"* ]]
+    [[ "$repo_b_line" == *"origin"* ]]
 }
 
 @test "fork: arb repo list --verbose shows both URLs for fork repos" {

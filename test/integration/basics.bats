@@ -51,7 +51,7 @@ load test_helper/common-setup
     [ "$status" -eq 0 ]
     [[ "$output" == *"SHARE"* ]]
     [[ "$output" == *"BASE"* ]]
-    # Single-remote repos show origin as share, dash as base
+    # Single-remote repos show origin in both base and share
     [[ "$output" == *"origin"* ]]
 }
 
