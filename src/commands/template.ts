@@ -7,6 +7,7 @@ import { dim, info, plural, success, warn, yellow } from "../lib/output";
 import { collectRepo, workspaceRepoDirs } from "../lib/repos";
 import {
 	ARBTEMPLATE_EXT,
+	type ConflictInfo,
 	type ForceOverlayResult,
 	type OverlayResult,
 	type TemplateContext,
@@ -18,6 +19,7 @@ import {
 	checkAllTemplateVariables,
 	checkUnknownVariables,
 	diffTemplates,
+	displayTemplateConflicts,
 	displayUnknownVariables,
 	forceApplyRepoTemplates,
 	forceApplyWorkspaceTemplates,
@@ -44,7 +46,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 		.command("list")
 		.summary("List all defined templates")
 		.description(
-			"Show all template files in .arb/templates/. When run inside a workspace, annotates files that differ from their seeded copy with (modified).",
+			"Show all template files in .arb/templates/ as a columnar table. When run inside a workspace, adds a STATUS column showing drift annotations: template (uses .arbtemplate rendering), conflict (both plain and .arbtemplate exist), modified (workspace copy differs), or deleted (workspace copy removed).",
 		)
 		.action(async () => {
 			const ctx = getCtx();
@@ -67,30 +69,51 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 				}
 			}
 
-			const diffSet = new Set(diffs.map((d) => `${d.scope}:${d.repo ?? ""}:${d.relPath}`));
-
-			// Compute column widths
-			let maxScope = 0;
-			let maxPath = 0;
-			for (const t of templates) {
-				const scopeLabel = t.scope === "workspace" ? "workspace" : (t.repo ?? "");
-				if (scopeLabel.length > maxScope) maxScope = scopeLabel.length;
-				if (t.relPath.length > maxPath) maxPath = t.relPath.length;
+			// Build diff map: key → kind
+			const diffMap = new Map<string, "modified" | "deleted">();
+			for (const d of diffs) {
+				diffMap.set(`${d.scope}:${d.repo ?? ""}:${d.relPath}`, d.kind);
 			}
 
+			const showStatus = ctx.currentWorkspace != null;
+
+			// Compute column widths
+			const scopeLabels = templates.map((t) => (t.scope === "workspace" ? "workspace" : (t.repo ?? "")));
+			const maxScope = Math.max("SCOPE".length, ...scopeLabels.map((s) => s.length));
+			const maxPath = Math.max("PATH".length, ...templates.map((t) => t.relPath.length));
+
+			// Header row
+			let header = `  ${dim("SCOPE")}${" ".repeat(maxScope - 5)}    ${dim("PATH")}`;
+			if (showStatus) {
+				header += `${" ".repeat(maxPath - 4)}    ${dim("STATUS")}`;
+			}
+			process.stdout.write(`${header}\n`);
+
+			// Data rows
+			const conflicts: TemplateEntry[] = [];
 			for (const t of templates) {
 				const scopeLabel = t.scope === "workspace" ? "workspace" : (t.repo ?? "");
 				const key = `${t.scope}:${t.repo ?? ""}:${t.relPath}`;
-				const modified = diffSet.has(key);
-				const padded = t.relPath.padEnd(maxPath);
-				const annotations: string[] = [];
-				if (t.isTemplate) annotations.push(dim("(template)"));
-				if (t.conflict) annotations.push(yellow("(conflict)"));
-				if (modified) annotations.push(yellow("(modified)"));
-				const annotation = annotations.length > 0 ? `  ${annotations.join(" ")}` : "";
-				process.stdout.write(`  [${scopeLabel}]${" ".repeat(maxScope - scopeLabel.length)} ${padded}${annotation}\n`);
+				const diffKind = diffMap.get(key);
+
+				let line = `  ${scopeLabel.padEnd(maxScope)}    ${t.relPath.padEnd(maxPath)}`;
+
+				if (showStatus) {
+					const parts: string[] = [];
+					if (t.isTemplate) parts.push("template");
+					if (t.conflict) parts.push(yellow("conflict"));
+					if (diffKind === "modified") parts.push(yellow("modified"));
+					if (diffKind === "deleted") parts.push(yellow("deleted"));
+					if (parts.length > 0) {
+						line += `    ${parts.join(" ")}`;
+					}
+				}
+
+				process.stdout.write(`${line}\n`);
+				if (t.conflict) conflicts.push(t);
 			}
 
+			displayTemplateConflicts(conflicts);
 			displayUnknownVariables(unknowns);
 		});
 
@@ -109,6 +132,9 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 			const { wsDir } = requireWorkspace(ctx);
 			const repos = workspaceRepoDirs(wsDir).map((d) => basename(d));
 			let diffs = await diffTemplates(ctx.arbRootDir, wsDir, repos);
+
+			// template diff only shows modified files (deleted files have no workspace copy to diff)
+			diffs = diffs.filter((d) => d.kind === "modified");
 
 			// Filter by scope flags
 			const hasRepoFlag = options.repo && options.repo.length > 0;
@@ -290,6 +316,7 @@ async function applyDefaultMode(
 	let totalSeeded = 0;
 	let totalSkipped = 0;
 	const allUnknowns: UnknownVariable[] = [];
+	const allConflicts: ConflictInfo[] = [];
 	const scopes = [...(applyWorkspace ? ["workspace"] : []), ...repos];
 	const maxScope = Math.max(...scopes.map((s) => s.length));
 
@@ -323,19 +350,22 @@ async function applyDefaultMode(
 		if (applyWorkspace) {
 			const result = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir);
 			displayOverlayResults(result, "workspace", maxScope);
+			collectConflicts(result.conflicts, "workspace", allConflicts);
 			allUnknowns.push(...result.unknownVariables);
 			totalSeeded += result.seeded.length;
-			totalSkipped += result.skipped.length;
+			totalSkipped += result.skipped.length + result.conflicts.length;
 		}
 		for (const repo of repos) {
 			const result = await applyRepoTemplates(ctx.arbRootDir, wsDir, [repo]);
 			displayOverlayResults(result, repo, maxScope);
+			collectConflicts(result.conflicts, repo, allConflicts);
 			allUnknowns.push(...result.unknownVariables);
 			totalSeeded += result.seeded.length;
-			totalSkipped += result.skipped.length;
+			totalSkipped += result.skipped.length + result.conflicts.length;
 		}
 	}
 
+	displayTemplateConflicts(allConflicts);
 	displayUnknownVariables(allUnknowns);
 
 	process.stderr.write("\n");
@@ -357,6 +387,7 @@ async function applyForceMode(
 	let totalReset = 0;
 	let totalUnchanged = 0;
 	const allUnknowns: UnknownVariable[] = [];
+	const allConflicts: ConflictInfo[] = [];
 	const scopes = [...(applyWorkspace ? ["workspace"] : []), ...repos];
 	const maxScope = Math.max(...scopes.map((s) => s.length));
 
@@ -390,21 +421,24 @@ async function applyForceMode(
 		if (applyWorkspace) {
 			const result = await forceApplyWorkspaceTemplates(ctx.arbRootDir, wsDir);
 			displayForceOverlayResults(result, "workspace", maxScope);
+			collectConflicts(result.conflicts, "workspace", allConflicts);
 			allUnknowns.push(...result.unknownVariables);
 			totalSeeded += result.seeded.length;
 			totalReset += result.reset.length;
-			totalUnchanged += result.unchanged.length;
+			totalUnchanged += result.unchanged.length + result.conflicts.length;
 		}
 		for (const repo of repos) {
 			const result = await forceApplyRepoTemplates(ctx.arbRootDir, wsDir, [repo]);
 			displayForceOverlayResults(result, repo, maxScope);
+			collectConflicts(result.conflicts, repo, allConflicts);
 			allUnknowns.push(...result.unknownVariables);
 			totalSeeded += result.seeded.length;
 			totalReset += result.reset.length;
-			totalUnchanged += result.unchanged.length;
+			totalUnchanged += result.unchanged.length + result.conflicts.length;
 		}
 	}
 
+	displayTemplateConflicts(allConflicts);
 	displayUnknownVariables(allUnknowns);
 	process.stderr.write("\n");
 	const parts: string[] = [];
@@ -413,6 +447,16 @@ async function applyForceMode(
 	if (totalUnchanged > 0) parts.push(`${totalUnchanged} unchanged`);
 	if (parts.length === 0) parts.push("No templates to apply");
 	success(parts.join(", "));
+}
+
+function collectConflicts(conflicts: string[], scope: string, target: ConflictInfo[]): void {
+	for (const relPath of conflicts) {
+		if (scope === "workspace") {
+			target.push({ scope: "workspace", relPath });
+		} else {
+			target.push({ scope: "repo", repo: scope, relPath });
+		}
+	}
 }
 
 function displayOverlayResults(result: OverlayResult, scope: string, maxScope: number): void {
@@ -425,6 +469,9 @@ function displayOverlayResults(result: OverlayResult, scope: string, maxScope: n
 	}
 	for (const f of result.skipped) {
 		process.stderr.write(`  [${scope}]${pad} ${f.padEnd(40)} ${yellow("skipped (exists)")}\n`);
+	}
+	for (const f of result.conflicts) {
+		process.stderr.write(`  [${scope}]${pad} ${f.padEnd(40)} ${yellow("skipped (conflict)")}\n`);
 	}
 	for (const f of result.failed) {
 		warn(`Failed to copy template ${f.path}: ${f.error}`);
@@ -441,6 +488,9 @@ function displayForceOverlayResults(result: ForceOverlayResult, scope: string, m
 	}
 	for (const f of result.unchanged) {
 		process.stderr.write(`  [${scope}]${pad} ${f.padEnd(40)} unchanged\n`);
+	}
+	for (const f of result.conflicts) {
+		process.stderr.write(`  [${scope}]${pad} ${f.padEnd(40)} ${yellow("skipped (conflict)")}\n`);
 	}
 	for (const f of result.failed) {
 		warn(`Failed to copy template ${f.path}: ${f.error}`);

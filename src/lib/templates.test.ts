@@ -259,7 +259,7 @@ describe("templates", () => {
 			writeFileSync(join(wsDir, ".env"), "KEY=custom");
 
 			const result = await diffTemplates(arbRootDir, wsDir, []);
-			expect(result).toEqual([{ relPath: ".env", scope: "workspace" }]);
+			expect(result).toEqual([{ relPath: ".env", scope: "workspace", kind: "modified" }]);
 		});
 
 		test("detects modified repo-scoped template files", async () => {
@@ -271,10 +271,10 @@ describe("templates", () => {
 			writeFileSync(join(wsDir, "api", ".env"), "DB=production");
 
 			const result = await diffTemplates(arbRootDir, wsDir, ["api"]);
-			expect(result).toEqual([{ relPath: ".env", scope: "repo", repo: "api" }]);
+			expect(result).toEqual([{ relPath: ".env", scope: "repo", repo: "api", kind: "modified" }]);
 		});
 
-		test("skips files deleted from workspace", async () => {
+		test("detects files deleted from workspace", async () => {
 			const arbRootDir = join(tmpDir, "project");
 			const wsDir = join(arbRootDir, "ws");
 			const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
@@ -284,7 +284,7 @@ describe("templates", () => {
 			// No .env in wsDir — user deleted it
 
 			const result = await diffTemplates(arbRootDir, wsDir, []);
-			expect(result).toEqual([]);
+			expect(result).toEqual([{ relPath: ".env", scope: "workspace", kind: "deleted" }]);
 		});
 
 		test("skips symlinks in template directory", async () => {
@@ -299,7 +299,7 @@ describe("templates", () => {
 			writeFileSync(join(wsDir, "link.txt"), "modified");
 
 			const result = await diffTemplates(arbRootDir, wsDir, []);
-			expect(result).toEqual([{ relPath: "real.txt", scope: "workspace" }]);
+			expect(result).toEqual([{ relPath: "real.txt", scope: "workspace", kind: "modified" }]);
 		});
 
 		test("handles nested template directory structures", async () => {
@@ -311,7 +311,9 @@ describe("templates", () => {
 			writeFileSync(join(wsDir, ".claude", "settings.local.json"), '{"modified": true}');
 
 			const result = await diffTemplates(arbRootDir, wsDir, []);
-			expect(result).toEqual([{ relPath: join(".claude", "settings.local.json"), scope: "workspace" }]);
+			expect(result).toEqual([
+				{ relPath: join(".claude", "settings.local.json"), scope: "workspace", kind: "modified" },
+			]);
 		});
 
 		test("handles both workspace and repo diffs together", async () => {
@@ -329,8 +331,8 @@ describe("templates", () => {
 
 			const result = await diffTemplates(arbRootDir, wsDir, ["api"]);
 			expect(result).toHaveLength(2);
-			expect(result).toContainEqual({ relPath: ".env", scope: "workspace" });
-			expect(result).toContainEqual({ relPath: ".env", scope: "repo", repo: "api" });
+			expect(result).toContainEqual({ relPath: ".env", scope: "workspace", kind: "modified" });
+			expect(result).toContainEqual({ relPath: ".env", scope: "repo", repo: "api", kind: "modified" });
 		});
 
 		test("skips repos without a directory in the workspace", async () => {
@@ -357,7 +359,7 @@ describe("templates", () => {
 			writeFileSync(join(wsDir, "data.bin"), wsBuf);
 
 			const result = await diffTemplates(arbRootDir, wsDir, []);
-			expect(result).toEqual([{ relPath: "data.bin", scope: "workspace" }]);
+			expect(result).toEqual([{ relPath: "data.bin", scope: "workspace", kind: "modified" }]);
 		});
 	});
 
@@ -726,7 +728,7 @@ describe("templates", () => {
 			writeFileSync(join(wsDir, "config.json"), "wrong-value");
 
 			const result = await diffTemplates(arbRootDir, wsDir, []);
-			expect(result).toEqual([{ relPath: "config.json", scope: "workspace" }]);
+			expect(result).toEqual([{ relPath: "config.json", scope: "workspace", kind: "modified" }]);
 		});
 
 		test("handles repo-scoped .arbtemplate with repo variables", async () => {
@@ -827,12 +829,10 @@ describe("templates", () => {
 				workspacePath: dest,
 			};
 			const result = overlayDirectory(src, dest, ctx);
-			// One should be seeded, the other should be in failed
+			// One should be seeded, the other should be in conflicts
 			expect(result.seeded).toHaveLength(1);
-			expect(result.failed).toHaveLength(1);
-			expect(result.failed[0]?.path).toBe("config.json");
-			expect(result.failed[0]?.error).toContain("Conflict");
-			expect(result.failed[0]?.error).toContain(ARBTEMPLATE_EXT);
+			expect(result.conflicts).toEqual(["config.json"]);
+			expect(result.failed).toEqual([]);
 		});
 
 		test("non-conflicting files are unaffected by conflict detection", () => {
@@ -869,11 +869,10 @@ describe("templates", () => {
 				workspacePath: dest,
 			};
 			const result = forceOverlayDirectory(src, dest, ctx);
-			// One should be seeded, the other should be in failed
+			// One should be seeded, the other should be in conflicts
 			expect(result.seeded).toHaveLength(1);
-			expect(result.failed).toHaveLength(1);
-			expect(result.failed[0]?.path).toBe("config.json");
-			expect(result.failed[0]?.error).toContain("Conflict");
+			expect(result.conflicts).toEqual(["config.json"]);
+			expect(result.failed).toEqual([]);
 		});
 
 		test("non-conflicting files are unaffected by conflict detection", () => {

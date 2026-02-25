@@ -140,6 +140,9 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				if (totalRegenerated > 0) {
 					info(`Regenerated ${plural(totalRegenerated, "template file")}`);
 				}
+				for (const f of [...wsTemplates.conflicts, ...repoTemplates.conflicts]) {
+					warn(`Conflicting templates for ${f} (both plain and .arbtemplate versions exist)`);
+				}
 				for (const f of [...wsTemplates.failed, ...repoTemplates.failed]) {
 					warn(`Failed to copy template ${f.path}: ${f.error}`);
 				}
