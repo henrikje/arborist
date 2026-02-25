@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
+import { ArbError } from "../lib/errors";
 import { error, info } from "../lib/output";
 import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
 import { computeFlags, gatherRepoStatus, repoMatchesWhere, validateWhere } from "../lib/status";
@@ -32,7 +33,7 @@ export function registerOpenCommand(program: Command, getCtx: () => ArbContext):
 			// Resolve --dirty as shorthand for --where dirty
 			if (options.dirty && options.where) {
 				error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-				process.exit(1);
+				throw new ArbError("Cannot combine --dirty with --where. Use --where dirty,... instead.");
 			}
 			const where = options.dirty ? "dirty" : options.where;
 
@@ -40,7 +41,7 @@ export function registerOpenCommand(program: Command, getCtx: () => ArbContext):
 				const err = validateWhere(where);
 				if (err) {
 					error(err);
-					process.exit(1);
+					throw new ArbError(err);
 				}
 			}
 
@@ -48,7 +49,7 @@ export function registerOpenCommand(program: Command, getCtx: () => ArbContext):
 			const which = Bun.spawnSync(["which", command], { cwd: wsDir });
 			if (which.exitCode !== 0) {
 				error(`'${command}' not found in PATH`);
-				process.exit(1);
+				throw new ArbError(`'${command}' not found in PATH`);
 			}
 
 			let repoDirs = workspaceRepoDirs(wsDir);

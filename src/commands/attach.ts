@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
+import { ArbError } from "../lib/errors";
 import { error, info, plural, success, warn } from "../lib/output";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
@@ -30,28 +31,28 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
 			if (options.allRepos) {
 				if (available.length === 0) {
 					error("All repos are already in this workspace.");
-					process.exit(1);
+					throw new ArbError("All repos are already in this workspace.");
 				}
 				repos = available;
 			} else if (repos.length > 0) {
 				const unknown = repos.filter((r) => !allRepos.includes(r));
 				if (unknown.length > 0) {
 					error(`Unknown repos: ${unknown.join(", ")}. Not found in .arb/repos/.`);
-					process.exit(1);
+					throw new ArbError(`Unknown repos: ${unknown.join(", ")}. Not found in .arb/repos/.`);
 				}
 			} else if (repos.length === 0) {
 				if (!process.stdin.isTTY) {
 					error("No repos specified. Pass repo names or use --all-repos.");
-					process.exit(1);
+					throw new ArbError("No repos specified. Pass repo names or use --all-repos.");
 				}
 				if (available.length === 0) {
 					error("All repos are already in this workspace.");
-					process.exit(1);
+					throw new ArbError("All repos are already in this workspace.");
 				}
 				repos = await selectInteractive(available, "Select repos to attach");
 				if (repos.length === 0) {
 					error("No repos selected.");
-					process.exit(1);
+					throw new ArbError("No repos selected.");
 				}
 			}
 			const base = configGet(`${wsDir}/.arbws/config`, "base") ?? undefined;

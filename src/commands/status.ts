@@ -1,5 +1,6 @@
 import { basename, resolve } from "node:path";
 import type { Command } from "commander";
+import { ArbError } from "../lib/errors";
 import { predictMergeConflict } from "../lib/git";
 import type { StatusJsonOutput } from "../lib/json-types";
 import { bold, dim, error, yellow } from "../lib/output";
@@ -77,7 +78,7 @@ async function runStatus(
 	// Resolve --dirty as shorthand for --where dirty
 	if (options.dirty && options.where) {
 		error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-		process.exit(1);
+		throw new ArbError("Cannot combine --dirty with --where. Use --where dirty,... instead.");
 	}
 	const where = options.dirty ? "dirty" : options.where;
 
@@ -86,18 +87,18 @@ async function runStatus(
 		const err = validateWhere(where);
 		if (err) {
 			error(err);
-			process.exit(1);
+			throw new ArbError(err);
 		}
 	}
 
 	// Conflict checks
 	if (options.quiet && options.json) {
 		error("Cannot combine --quiet with --json.");
-		process.exit(1);
+		throw new ArbError("Cannot combine --quiet with --json.");
 	}
 	if (options.quiet && options.verbose) {
 		error("Cannot combine --quiet with --verbose.");
-		process.exit(1);
+		throw new ArbError("Cannot combine --quiet with --verbose.");
 	}
 
 	// Fetch if requested
@@ -107,7 +108,10 @@ async function runStatus(
 		const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
 		const results = await parallelFetch(fetchDirs, undefined, remotesMap);
 		const failed = reportFetchFailures(repos, results);
-		if (failed.length > 0) process.exit(1);
+		if (failed.length > 0) {
+			error("Aborting due to fetch failures.");
+			throw new ArbError("Aborting due to fetch failures.");
+		}
 	}
 
 	const tty = isTTY();

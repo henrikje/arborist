@@ -1,5 +1,6 @@
 import confirm from "@inquirer/confirm";
-import { clearLines, countLines, dim, error, info, plural, skipConfirmNotice, stderr } from "./output";
+import { ArbAbort, ArbError } from "./errors";
+import { clearLines, countLines, dim, error, plural, skipConfirmNotice, stderr } from "./output";
 import { getFetchFailedRepos, parallelFetch, reportFetchFailures } from "./parallel-fetch";
 import type { RepoRemotes } from "./remotes";
 import { isTTY } from "./tty";
@@ -71,7 +72,7 @@ export async function confirmOrExit(options: {
 	if (!options.yes) {
 		if (!isTTY() || !process.stdin.isTTY) {
 			error("Not a terminal. Use --yes to skip confirmation.");
-			process.exit(1);
+			throw new ArbError("Not a terminal. Use --yes to skip confirmation.");
 		}
 		const ok = await confirm(
 			{
@@ -81,8 +82,7 @@ export async function confirmOrExit(options: {
 			{ output: process.stderr },
 		);
 		if (!ok) {
-			info("Aborted.");
-			process.exit(130);
+			throw new ArbAbort();
 		}
 		return;
 	}

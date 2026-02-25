@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
+import { ArbError } from "../lib/errors";
 import { getShortHead, git, predictMergeConflict, predictStashPopConflict } from "../lib/git";
 import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
 import {
@@ -57,7 +58,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 			) => {
 				if (options.rebase && options.merge) {
 					error("Cannot use both --rebase and --merge");
-					process.exit(1);
+					throw new ArbError("Cannot use both --rebase and --merge");
 				}
 
 				const flagMode: "rebase" | "merge" | undefined = options.rebase
@@ -219,10 +220,9 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
 				if (conflicted.length > 0 || stashPopFailed.length > 0) {
 					warn(parts.join(", "));
-					process.exit(1);
-				} else {
-					success(parts.join(", "));
+					throw new ArbError(parts.join(", "));
 				}
+				success(parts.join(", "));
 			},
 		);
 }

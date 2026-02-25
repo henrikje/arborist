@@ -1,6 +1,7 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Command } from "commander";
+import { ArbError } from "../lib/errors";
 import { git } from "../lib/git";
 import type { RepoListJsonEntry } from "../lib/json-types";
 import { confirmOrExit } from "../lib/mutation-flow";
@@ -32,19 +33,19 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 
 			if (!repoName) {
 				error("Could not derive repo name from URL. Specify one: arb repo clone <url> <name>");
-				process.exit(1);
+				throw new ArbError("Could not derive repo name from URL. Specify one: arb repo clone <url> <name>");
 			}
 
 			const target = `${ctx.reposDir}/${repoName}`;
 			if (existsSync(target)) {
 				error(`${repoName} is already cloned`);
-				process.exit(1);
+				throw new ArbError(`${repoName} is already cloned`);
 			}
 
 			const result = await Bun.$`git clone ${url} ${target}`.cwd(ctx.reposDir).quiet().nothrow();
 			if (result.exitCode !== 0) {
 				error(`Clone failed: ${result.stderr.toString().trim()}`);
-				process.exit(1);
+				throw new ArbError(`Clone failed: ${result.stderr.toString().trim()}`);
 			}
 
 			await git(target, "checkout", "--detach");
@@ -54,7 +55,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 				const addResult = await git(target, "remote", "add", "upstream", options.upstream);
 				if (addResult.exitCode !== 0) {
 					error(`Failed to add upstream remote: ${addResult.stderr.trim()}`);
-					process.exit(1);
+					throw new ArbError(`Failed to add upstream remote: ${addResult.stderr.trim()}`);
 				}
 
 				// Set remote.pushDefault so resolveRemotes() detects the fork layout
@@ -64,7 +65,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 				const fetchResult = await git(target, "fetch", "upstream");
 				if (fetchResult.exitCode !== 0) {
 					error(`Failed to fetch upstream: ${fetchResult.stderr.trim()}`);
-					process.exit(1);
+					throw new ArbError(`Failed to fetch upstream: ${fetchResult.stderr.trim()}`);
 				}
 				await git(target, "remote", "set-head", "upstream", "--auto");
 
@@ -92,15 +93,15 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 
 			if (options.quiet && options.json) {
 				error("Cannot combine --quiet with --json.");
-				process.exit(1);
+				throw new ArbError("Cannot combine --quiet with --json.");
 			}
 			if (options.quiet && options.verbose) {
 				error("Cannot combine --quiet with --verbose.");
-				process.exit(1);
+				throw new ArbError("Cannot combine --quiet with --verbose.");
 			}
 			if (options.verbose && options.json) {
 				error("Cannot combine --verbose with --json.");
-				process.exit(1);
+				throw new ArbError("Cannot combine --verbose with --json.");
 			}
 
 			const repos = listRepos(ctx.reposDir);
@@ -208,22 +209,22 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 			if (options.allRepos) {
 				if (allRepos.length === 0) {
 					error("No repos to remove.");
-					process.exit(1);
+					throw new ArbError("No repos to remove.");
 				}
 				repos = allRepos;
 			} else if (repos.length === 0) {
 				if (!process.stdin.isTTY) {
 					error("No repos specified. Pass repo names or use --all-repos.");
-					process.exit(1);
+					throw new ArbError("No repos specified. Pass repo names or use --all-repos.");
 				}
 				if (allRepos.length === 0) {
 					error("No repos to remove.");
-					process.exit(1);
+					throw new ArbError("No repos to remove.");
 				}
 				repos = await selectInteractive(allRepos, "Select repos to remove");
 				if (repos.length === 0) {
 					error("No repos selected.");
-					process.exit(1);
+					throw new ArbError("No repos selected.");
 				}
 			}
 
@@ -231,7 +232,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 			for (const name of repos) {
 				if (!allRepos.includes(name)) {
 					error(`Repo '${name}' is not cloned.`);
-					process.exit(1);
+					throw new ArbError(`Repo '${name}' is not cloned.`);
 				}
 			}
 
@@ -243,7 +244,9 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 						`Cannot remove ${name} — used by ${usedBy.length === 1 ? "workspace" : "workspaces"}: ${usedBy.join(", ")}`,
 					);
 					info(`  Run 'arb detach ${name}' in each workspace, or 'arb delete <workspace>' first.`);
-					process.exit(1);
+					throw new ArbError(
+						`Cannot remove ${name} — used by ${usedBy.length === 1 ? "workspace" : "workspaces"}: ${usedBy.join(", ")}`,
+					);
 				}
 			}
 

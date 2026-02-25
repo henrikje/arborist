@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
+import { ArbError } from "../lib/errors";
 import { boldLine, error, plural, success } from "../lib/output";
 import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
 import { computeFlags, gatherRepoStatus, repoMatchesWhere, validateWhere } from "../lib/status";
@@ -31,7 +32,7 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 			// Resolve --dirty as shorthand for --where dirty
 			if (options.dirty && options.where) {
 				error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-				process.exit(1);
+				throw new ArbError("Cannot combine --dirty with --where. Use --where dirty,... instead.");
 			}
 			const where = options.dirty ? "dirty" : options.where;
 
@@ -39,7 +40,7 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 				const err = validateWhere(where);
 				if (err) {
 					error(err);
-					process.exit(1);
+					throw new ArbError(err);
 				}
 			}
 
@@ -47,7 +48,7 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 			const which = Bun.spawnSync(["which", args[0] ?? ""], { cwd: wsDir });
 			if (which.exitCode !== 0) {
 				error(`'${args[0]}' not found in PATH`);
-				process.exit(1);
+				throw new ArbError(`'${args[0]}' not found in PATH`);
 			}
 
 			const execOk: string[] = [];
@@ -107,6 +108,6 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 			if (parts.length > 0) success(parts.join(", "));
 			if (execFailed.length > 0) error(`Failed: ${execFailed.join(" ")}`);
 
-			if (execFailed.length > 0) process.exit(1);
+			if (execFailed.length > 0) throw new ArbError("Command failed in some repos");
 		});
 }

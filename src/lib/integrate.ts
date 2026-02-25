@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import { configGet, writeConfig } from "./config";
+import { ArbError } from "./errors";
 import {
 	branchExistsLocally,
 	detectBranchMerged,
@@ -60,11 +61,11 @@ export async function integrate(
 	if (retargetExplicit) {
 		if (retargetExplicit === branch) {
 			error(`Cannot retarget to ${retargetExplicit} — that is the current feature branch.`);
-			process.exit(1);
+			throw new ArbError(`Cannot retarget to ${retargetExplicit} — that is the current feature branch.`);
 		}
 		if (retargetExplicit === configBase) {
 			error(`Cannot retarget to ${retargetExplicit} — that is already the configured base branch.`);
-			process.exit(1);
+			throw new ArbError(`Cannot retarget to ${retargetExplicit} — that is already the configured base branch.`);
 		}
 	}
 
@@ -111,7 +112,7 @@ export async function integrate(
 				for (const a of blockedRepos) {
 					process.stderr.write(`  ${a.repo} — ${a.skipReason}\n`);
 				}
-				process.exit(1);
+				throw new ArbError("Cannot retarget: some repos are blocked.");
 			}
 		}
 	}
@@ -268,10 +269,9 @@ export async function integrate(
 	if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
 	if (conflicted.length > 0 || stashPopFailed.length > 0) {
 		warn(parts.join(", "));
-		process.exit(1);
-	} else {
-		success(parts.join(", "));
+		throw new ArbError(parts.join(", "));
 	}
+	success(parts.join(", "));
 }
 
 export function formatIntegratePlan(assessments: RepoAssessment[], mode: IntegrateMode, branch: string): string {

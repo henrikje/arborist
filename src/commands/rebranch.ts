@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet, writeConfig } from "../lib/config";
+import { ArbError } from "../lib/errors";
 import { branchExistsLocally, detectOperation, git, remoteBranchExists, validateBranchName } from "../lib/git";
 import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
 import {
@@ -357,7 +358,7 @@ async function runRename(
 	if (failures.length > 0) {
 		error(`Failed to rename in ${plural(failures.length, "repo")}: ${failures.join(", ")}`);
 		warn("Use 'arb rebranch --continue' to retry or 'arb rebranch --abort' to roll back");
-		process.exit(1);
+		throw new ArbError(`Failed to rename in ${plural(failures.length, "repo")}: ${failures.join(", ")}`);
 	}
 
 	// All local renames succeeded — clear migration state
@@ -412,7 +413,7 @@ async function runAbort(
 ): Promise<void> {
 	if (!rebranchFrom) {
 		error("No rebranch in progress. Nothing to abort.");
-		process.exit(1);
+		throw new ArbError("No rebranch in progress. Nothing to abort.");
 	}
 
 	const oldBranch = rebranchFrom;
@@ -485,7 +486,7 @@ async function runAbort(
 		// Leave migration state intact so --abort can be retried
 		error(`Failed to revert ${plural(failures.length, "repo")}: ${failures.join(", ")}`);
 		warn("Migration state preserved — retry with 'arb rebranch --abort'");
-		process.exit(1);
+		throw new ArbError(`Failed to revert ${plural(failures.length, "repo")}: ${failures.join(", ")}`);
 	}
 
 	// All rollbacks succeeded — restore config
@@ -525,7 +526,7 @@ export function registerRebranchCommand(program: Command, getCtx: () => ArbConte
 
 			if (!currentConfigBranch) {
 				error(`No branch configured for workspace '${workspace}'. Cannot rebranch.`);
-				process.exit(1);
+				throw new ArbError(`No branch configured for workspace '${workspace}'. Cannot rebranch.`);
 			}
 
 			if (options.abort) {
@@ -538,19 +539,19 @@ export function registerRebranchCommand(program: Command, getCtx: () => ArbConte
 			if (options.continue) {
 				if (!rebranchFrom) {
 					error("No rebranch in progress. Nothing to continue.");
-					process.exit(1);
+					throw new ArbError("No rebranch in progress. Nothing to continue.");
 				}
 				oldBranch = rebranchFrom;
 				newBranch = currentConfigBranch;
 			} else {
 				if (!newBranchArg) {
 					error("New branch name required. Usage: arb rebranch <new-branch>");
-					process.exit(1);
+					throw new ArbError("New branch name required. Usage: arb rebranch <new-branch>");
 				}
 
 				if (!validateBranchName(newBranchArg)) {
 					error(`Invalid branch name: '${newBranchArg}'`);
-					process.exit(1);
+					throw new ArbError(`Invalid branch name: '${newBranchArg}'`);
 				}
 
 				if (rebranchFrom !== null) {
@@ -563,7 +564,9 @@ export function registerRebranchCommand(program: Command, getCtx: () => ArbConte
 						error(
 							`A rename to '${currentConfigBranch}' is already in progress — use 'arb rebranch --continue' or 'arb rebranch --abort'`,
 						);
-						process.exit(1);
+						throw new ArbError(
+							`A rename to '${currentConfigBranch}' is already in progress — use 'arb rebranch --continue' or 'arb rebranch --abort'`,
+						);
 					}
 				} else {
 					// Fresh run

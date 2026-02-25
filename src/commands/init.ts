@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Command } from "commander";
 import { detectArbRoot } from "../lib/arb-root";
+import { ArbError } from "../lib/errors";
 import { dim, error, info, success } from "../lib/output";
 
 export function registerInitCommand(program: Command): void {
@@ -21,13 +22,13 @@ export function registerInitCommand(program: Command): void {
 
 			if (existsSync(`${target}/.arb`)) {
 				error(`Already initialized: ${target}`);
-				process.exit(1);
+				throw new ArbError(`Already initialized: ${target}`);
 			}
 
 			const existingRoot = detectArbRoot(target);
 			if (existingRoot) {
 				error(`Cannot init inside existing arb root: ${existingRoot}`);
-				process.exit(1);
+				throw new ArbError(`Cannot init inside existing arb root: ${existingRoot}`);
 			}
 
 			mkdirSync(`${target}/.arb/repos`, { recursive: true });

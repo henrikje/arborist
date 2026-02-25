@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
+import { ArbError } from "../lib/errors";
 import type { ListJsonEntry } from "../lib/json-types";
 import { bold, dim, error, info, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
@@ -64,24 +65,24 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				// Conflict checks
 				if (options.quiet && options.json) {
 					error("Cannot combine --quiet with --json.");
-					process.exit(1);
+					throw new ArbError("Cannot combine --quiet with --json.");
 				}
 
 				// Resolve --dirty as shorthand for --where dirty
 				if (options.dirty && options.where) {
 					error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-					process.exit(1);
+					throw new ArbError("Cannot combine --dirty with --where. Use --where dirty,... instead.");
 				}
 				const whereFilter = options.dirty ? "dirty" : options.where;
 				if (whereFilter) {
 					const validationErr = validateWhere(whereFilter);
 					if (validationErr) {
 						error(validationErr);
-						process.exit(1);
+						throw new ArbError(validationErr);
 					}
 					if (options.status === false) {
 						error("Cannot combine --no-status with --where. --where requires status gathering.");
-						process.exit(1);
+						throw new ArbError("Cannot combine --no-status with --where. --where requires status gathering.");
 					}
 				}
 

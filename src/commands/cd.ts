@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import select from "@inquirer/select";
 import type { Command } from "commander";
+import { ArbError } from "../lib/errors";
 import { error, info } from "../lib/output";
 import { listWorkspaces, workspaceRepoDirs } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
@@ -19,7 +20,7 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 			if (!input) {
 				if (!process.stdin.isTTY || !process.stderr.isTTY) {
 					error("Usage: arb cd <workspace>");
-					process.exit(1);
+					throw new ArbError("Usage: arb cd <workspace>");
 				}
 
 				if (ctx.currentWorkspace) {
@@ -27,7 +28,7 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 					const worktreeNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
 					if (worktreeNames.length === 0) {
 						error(`No repos in workspace '${ctx.currentWorkspace}'.`);
-						process.exit(1);
+						throw new ArbError(`No repos in workspace '${ctx.currentWorkspace}'.`);
 					}
 
 					const selected = await select(
@@ -47,7 +48,7 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 				const workspaces = listWorkspaces(ctx.arbRootDir);
 				if (workspaces.length === 0) {
 					error("No workspaces found.");
-					process.exit(1);
+					throw new ArbError("No workspaces found.");
 				}
 
 				const selected = await select(
@@ -73,14 +74,14 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 				const wsDir = `${ctx.arbRootDir}/${wsName}`;
 				if (!existsSync(`${wsDir}/.arbws`)) {
 					error(`Workspace '${wsName}' does not exist`);
-					process.exit(1);
+					throw new ArbError(`Workspace '${wsName}' does not exist`);
 				}
 
 				if (subpath) {
 					const fullPath = `${wsDir}/${subpath}`;
 					if (!existsSync(fullPath)) {
 						error(`'${subpath}' not found in workspace '${wsName}'`);
-						process.exit(1);
+						throw new ArbError(`'${subpath}' not found in workspace '${wsName}'`);
 					}
 					process.stdout.write(`${fullPath}\n`);
 				} else {
@@ -106,12 +107,11 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 			// Fall back to workspace resolution
 			const wsDir = `${ctx.arbRootDir}/${input}`;
 			if (!existsSync(`${wsDir}/.arbws`)) {
-				if (ctx.currentWorkspace) {
-					error(`'${input}' is not a repo in workspace '${ctx.currentWorkspace}' or a workspace`);
-				} else {
-					error(`Workspace '${input}' does not exist`);
-				}
-				process.exit(1);
+				const msg = ctx.currentWorkspace
+					? `'${input}' is not a repo in workspace '${ctx.currentWorkspace}' or a workspace`
+					: `Workspace '${input}' does not exist`;
+				error(msg);
+				throw new ArbError(msg);
 			}
 
 			process.stdout.write(`${wsDir}\n`);

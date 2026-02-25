@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
+import { ArbError } from "../lib/errors";
 import { git, parseGitNumstat } from "../lib/git";
 import type { DiffJsonFileStat, DiffJsonOutput, DiffJsonRepo } from "../lib/json-types";
 import { bold, dim, error, plural, stdout, success, yellow } from "../lib/output";
@@ -122,7 +123,10 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
 					const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
 					const results = await parallelFetch(fetchDirs, undefined, remotesMap);
 					const failed = reportFetchFailures(repos, results);
-					if (failed.length > 0) process.exit(1);
+					if (failed.length > 0) {
+						error("Aborting due to fetch failures.");
+						throw new ArbError("Aborting due to fetch failures.");
+					}
 				}
 
 				let repoNames = repoArgs;
@@ -135,7 +139,7 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
 				// Resolve --dirty as shorthand for --where dirty
 				if (options.dirty && options.where) {
 					error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-					process.exit(1);
+					throw new ArbError("Cannot combine --dirty with --where. Use --where dirty,... instead.");
 				}
 				const where = options.dirty ? "dirty" : options.where;
 
@@ -143,7 +147,7 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
 					const err = validateWhere(where);
 					if (err) {
 						error(err);
-						process.exit(1);
+						throw new ArbError(err);
 					}
 				}
 

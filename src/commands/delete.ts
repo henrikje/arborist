@@ -2,6 +2,7 @@ import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { loadArbIgnore } from "../lib/arbignore";
+import { ArbError } from "../lib/errors";
 import { branchExistsLocally, git, remoteBranchExists, validateWorkspaceName } from "../lib/git";
 import { confirmOrExit } from "../lib/mutation-flow";
 import {
@@ -67,13 +68,13 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 	const validationError = validateWorkspaceName(name);
 	if (validationError) {
 		error(validationError);
-		process.exit(1);
+		throw new ArbError(validationError);
 	}
 
 	const wsDir = `${ctx.arbRootDir}/${name}`;
 	if (!existsSync(wsDir)) {
 		error(`No workspace found for ${name}`);
-		process.exit(1);
+		throw new ArbError(`No workspace found for ${name}`);
 	}
 
 	// Read branch from config
@@ -314,21 +315,21 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 				// Resolve --dirty as shorthand for --where dirty
 				if (options.dirty && options.where) {
 					error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-					process.exit(1);
+					throw new ArbError("Cannot combine --dirty with --where. Use --where dirty,... instead.");
 				}
 				const whereFilter = options.dirty ? "dirty" : options.where;
 				if (whereFilter) {
 					const err = validateWhere(whereFilter);
 					if (err) {
 						error(err);
-						process.exit(1);
+						throw new ArbError(err);
 					}
 				}
 
 				if (options.allSafe) {
 					if (nameArgs.length > 0) {
 						error("Cannot combine --all-safe with workspace names.");
-						process.exit(1);
+						throw new ArbError("Cannot combine --all-safe with workspace names.");
 					}
 
 					const allWorkspaces = listWorkspaces(ctx.arbRootDir);
@@ -403,17 +404,17 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 						names = stdinNames;
 					} else if (!isTTY() || !process.stdin.isTTY) {
 						error("No workspace specified.");
-						process.exit(1);
+						throw new ArbError("No workspace specified.");
 					} else {
 						const workspaces = listWorkspaces(ctx.arbRootDir);
 						if (workspaces.length === 0) {
 							error("No workspaces found.");
-							process.exit(1);
+							throw new ArbError("No workspaces found.");
 						}
 						names = await selectInteractive(workspaces, "Select workspaces to delete");
 						if (names.length === 0) {
 							error("No workspaces selected.");
-							process.exit(1);
+							throw new ArbError("No workspaces selected.");
 						}
 					}
 				}
@@ -445,10 +446,9 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 
 				if (atRiskWorkspaces.length > 0 && !forceAtRisk) {
 					const atRiskNames = atRiskWorkspaces.map((a) => a.name).join(", ");
-					error(
-						`Refusing to delete: ${atRiskNames} ${atRiskWorkspaces.length === 1 ? "has" : "have"} work that would be lost. Use --force to override.`,
-					);
-					process.exit(1);
+					const msg = `Refusing to delete: ${atRiskNames} ${atRiskWorkspaces.length === 1 ? "has" : "have"} work that would be lost. Use --force to override.`;
+					error(msg);
+					throw new ArbError(msg);
 				}
 
 				if (deleteRemote) {
