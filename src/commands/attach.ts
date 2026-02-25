@@ -5,7 +5,7 @@ import { ArbError } from "../lib/errors";
 import { error, info, plural, success, warn } from "../lib/output";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
-import { applyRepoTemplates, applyWorkspaceTemplates } from "../lib/templates";
+import { applyRepoTemplates, applyWorkspaceTemplates, displayUnknownVariables } from "../lib/templates";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 import { addWorktrees } from "../lib/worktrees";
@@ -75,6 +75,7 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
 			for (const f of [...repoTemplates.failed, ...wsTemplates.failed]) {
 				warn(`Failed to copy template ${f.path}: ${f.error}`);
 			}
+			displayUnknownVariables([...repoTemplates.unknownVariables, ...wsTemplates.unknownVariables]);
 
 			process.stderr.write("\n");
 			if (result.failed.length === 0 && result.skipped.length === 0) {

@@ -922,3 +922,73 @@ TMPL
     [[ "$content" == *"base=upstream"* ]]
     [[ "$content" == *"share=origin"* ]]
 }
+
+# ── unknown template variable warnings ────────────────────────────
+
+@test "arb create warns on unknown template variable with full path" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{{ workspace.nam }}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/typo.txt.arbtemplate"
+
+    run arb create tpl-unknown-warn repo-a
+    [ "$status" -eq 0 ]
+    # Grouped warning header should appear
+    [[ "$output" == *"Unknown template variables"* ]]
+    # Variable name and full template path should appear
+    [[ "$output" == *"'workspace.nam'"* ]]
+    [[ "$output" == *".arb/templates/workspace/typo.txt.arbtemplate"* ]]
+    # File should still be created (rendered as empty string)
+    [ -f "$TEST_DIR/project/tpl-unknown-warn/typo.txt" ]
+}
+
+@test "arb create does not warn on valid template variables" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{{ workspace.name }}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/valid.txt.arbtemplate"
+
+    run arb create tpl-valid-nowarn repo-a
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Unknown template variables"* ]]
+    [ -f "$TEST_DIR/project/tpl-valid-nowarn/valid.txt" ]
+}
+
+@test "arb template list warns on unknown template variables" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{{ workspace.nam }}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/typo.txt.arbtemplate"
+
+    arb create tpl-list-warn repo-a
+    cd "$TEST_DIR/project/tpl-list-warn"
+    run arb template list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Unknown template variables"* ]]
+    [[ "$output" == *"'workspace.nam'"* ]]
+    [[ "$output" == *".arb/templates/workspace/typo.txt.arbtemplate"* ]]
+}
+
+@test "arb template apply --force shows reset count with N reset format" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    printf '{{ workspace.name }}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/name.txt.arbtemplate"
+
+    arb create tpl-reset-fmt repo-a
+    echo "wrong" > "$TEST_DIR/project/tpl-reset-fmt/name.txt"
+    cd "$TEST_DIR/project/tpl-reset-fmt"
+    run arb template apply --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"1 reset"* ]]
+}
+
+@test "arb template apply aligns scope labels" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    echo "WS" > "$TEST_DIR/project/.arb/templates/workspace/.env"
+    echo "REPO" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+    arb create tpl-align repo-a >/dev/null 2>&1
+    cd "$TEST_DIR/project/tpl-align"
+    run arb template apply
+    [ "$status" -eq 0 ]
+    # Both lines should have consistent bracket formatting
+    [[ "$output" == *"[workspace]"* ]]
+    [[ "$output" == *"[repo-a]"* ]]
+}

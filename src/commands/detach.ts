@@ -6,7 +6,7 @@ import { branchExistsLocally, git, isRepoDirty, parseGitStatus } from "../lib/gi
 import { error, info, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
 import { selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import { isLocalDirty } from "../lib/status";
-import { applyRepoTemplates, applyWorkspaceTemplates } from "../lib/templates";
+import { applyRepoTemplates, applyWorkspaceTemplates, displayUnknownVariables } from "../lib/templates";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
@@ -113,6 +113,7 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 				for (const f of [...wsTemplates.failed, ...repoTemplates.failed]) {
 					warn(`Failed to copy template ${f.path}: ${f.error}`);
 				}
+				displayUnknownVariables([...wsTemplates.unknownVariables, ...repoTemplates.unknownVariables]);
 			}
 
 			process.stderr.write("\n");
