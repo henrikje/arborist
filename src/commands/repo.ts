@@ -156,43 +156,41 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 			const maxRepo = Math.max(4, ...entries.map((e) => e.name.length));
 
 			if (options.verbose) {
-				const sharePlain = entries.map((e) =>
-					e.share.name ? `${e.share.name} (${e.share.url})` : "(remotes not resolved)",
+				const basePlain = entries.map((e) =>
+					e.base.name ? `${e.base.name} (${e.base.url})` : "(remotes not resolved)",
 				);
-				const shareDisplay = sharePlain.map((v, i) => (entries[i]?.share.name ? v : yellow(v)));
-				const maxShare = Math.max(5, ...sharePlain.map((v) => v.length));
+				const baseDisplay = basePlain.map((v, i) => (entries[i]?.base.name ? v : yellow(v)));
+				const maxBase = Math.max(4, ...basePlain.map((v) => v.length));
 
 				process.stdout.write(
-					`  ${dim("REPO")}${" ".repeat(maxRepo - 4)}    ${dim("SHARE")}${" ".repeat(maxShare - 5)}    ${dim("BASE")}\n`,
+					`  ${dim("REPO")}${" ".repeat(maxRepo - 4)}    ${dim("BASE")}${" ".repeat(maxBase - 4)}    ${dim("SHARE")}\n`,
 				);
 				for (const [i, e] of entries.entries()) {
-					const share = shareDisplay[i] ?? yellow("(remotes not resolved)");
-					const sharePad = " ".repeat(Math.max(0, maxShare - (sharePlain[i]?.length ?? 0)));
-					const baseDisplay =
+					const base = baseDisplay[i] ?? yellow("(remotes not resolved)");
+					const basePad = " ".repeat(Math.max(0, maxBase - (basePlain[i]?.length ?? 0)));
+					const shareDisplay =
 						!e.share.name && !e.base.name
 							? yellow("(remotes not resolved)")
-							: e.base.name === e.share.name
-								? "\u2014"
-								: `${e.base.name} (${e.base.url})`;
-					process.stdout.write(`  ${e.name.padEnd(maxRepo)}    ${share}${sharePad}    ${baseDisplay}\n`);
+							: e.share.name === e.base.name
+								? e.share.name
+								: `${e.share.name} (${e.share.url})`;
+					process.stdout.write(`  ${e.name.padEnd(maxRepo)}    ${base}${basePad}    ${shareDisplay}\n`);
 				}
 			} else {
-				const maxShare = Math.max(5, ...entries.map((e) => (e.share.name || "(remotes not resolved)").length));
+				const maxBase = Math.max(4, ...entries.map((e) => (e.base.name || "(remotes not resolved)").length));
 
 				process.stdout.write(
-					`  ${dim("REPO")}${" ".repeat(maxRepo - 4)}    ${dim("SHARE")}${" ".repeat(maxShare - 5)}    ${dim("BASE")}\n`,
+					`  ${dim("REPO")}${" ".repeat(maxRepo - 4)}    ${dim("BASE")}${" ".repeat(maxBase - 4)}    ${dim("SHARE")}\n`,
 				);
 				for (const e of entries) {
-					const sharePlain = e.share.name || "(remotes not resolved)";
-					const shareCol = e.share.name ? sharePlain : yellow(sharePlain);
-					const sharePad = " ".repeat(Math.max(0, maxShare - sharePlain.length));
-					const baseDisplay =
+					const basePlain = e.base.name || "(remotes not resolved)";
+					const baseCol = e.base.name ? basePlain : yellow(basePlain);
+					const basePad = " ".repeat(Math.max(0, maxBase - basePlain.length));
+					const shareDisplay =
 						!e.share.name && !e.base.name
 							? yellow("(remotes not resolved)")
-							: e.base.name === e.share.name
-								? "\u2014"
-								: e.base.name;
-					process.stdout.write(`  ${e.name.padEnd(maxRepo)}    ${shareCol}${sharePad}    ${baseDisplay}\n`);
+							: e.share.name;
+					process.stdout.write(`  ${e.name.padEnd(maxRepo)}    ${baseCol}${basePad}    ${shareDisplay}\n`);
 				}
 			}
 		});
