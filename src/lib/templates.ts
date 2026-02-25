@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { Liquid } from "liquidjs";
+import { yellow } from "./output";
 import { getRemoteUrl, resolveRemotes } from "./remotes";
 import { workspaceRepoDirs } from "./repos";
 
@@ -665,7 +666,7 @@ export function displayTemplateDiffs(
 	suffix?: string,
 ): void {
 	if (templateDiffs.length === 0) return;
-	write(`      Template files modified${suffix ?? ""}:\n`);
+	write(`      ${yellow(`Template files modified${suffix ?? ""}`)}:\n`);
 	for (const diff of templateDiffs) {
 		const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
 		write(`          ${prefix}${diff.relPath}\n`);
