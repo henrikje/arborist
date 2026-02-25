@@ -186,10 +186,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 					const basePlain = e.base.name || "(remotes not resolved)";
 					const baseCol = e.base.name ? basePlain : yellow(basePlain);
 					const basePad = " ".repeat(Math.max(0, maxBase - basePlain.length));
-					const shareDisplay =
-						!e.share.name && !e.base.name
-							? yellow("(remotes not resolved)")
-							: e.share.name;
+					const shareDisplay = !e.share.name && !e.base.name ? yellow("(remotes not resolved)") : e.share.name;
 					process.stdout.write(`  ${e.name.padEnd(maxRepo)}    ${baseCol}${basePad}    ${shareDisplay}\n`);
 				}
 			}
