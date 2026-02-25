@@ -23,6 +23,7 @@ import { registerRepoCommand } from "./commands/repo";
 import { registerStatusCommand } from "./commands/status";
 import { registerTemplateCommand } from "./commands/template";
 import { detectArbRoot, detectWorkspace } from "./lib/arb-root";
+import { ArbAbort, ArbError } from "./lib/errors";
 import { bold, dim, error, info } from "./lib/output";
 import type { ArbContext } from "./lib/types";
 import { ARB_VERSION } from "./version";
@@ -133,7 +134,7 @@ function getCtx(): ArbContext {
 	const arbRootDir = detectArbRoot();
 	if (!arbRootDir) {
 		error("Not inside an arb root. Run 'arb init' to set one up.");
-		process.exit(1);
+		throw new ArbError("Not inside an arb root. Run 'arb init' to set one up.");
 	}
 	return {
 		arbRootDir,
@@ -164,7 +165,7 @@ program.hook("preAction", () => {
 		const resolved = resolve(cwdOpt);
 		if (!existsSync(resolved)) {
 			error(`Cannot change to '${cwdOpt}': no such directory`);
-			process.exit(1);
+			throw new ArbError(`Cannot change to '${cwdOpt}': no such directory`);
 		}
 		process.chdir(resolved);
 	}
@@ -201,6 +202,13 @@ process.on("SIGINT", () => {
 try {
 	await program.parseAsync();
 } catch (err) {
+	if (err instanceof ArbAbort) {
+		info(err.message);
+		process.exit(130);
+	}
+	if (err instanceof ArbError) {
+		process.exit(1);
+	}
 	if (err instanceof Error && err.name === "ExitPromptError") {
 		process.stderr.write("\n");
 		info("Aborted.");

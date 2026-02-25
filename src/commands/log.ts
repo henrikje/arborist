@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
+import { ArbError } from "../lib/errors";
 import { getCommitsBetweenFull, git } from "../lib/git";
 import type { LogJsonOutput, LogJsonRepo } from "../lib/json-types";
 import { bold, dim, error, plural, stdout, success, yellow } from "../lib/output";
@@ -52,7 +53,10 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 				const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
 				const results = await parallelFetch(fetchDirs, undefined, remotesMap);
 				const failed = reportFetchFailures(repos, results);
-				if (failed.length > 0) process.exit(1);
+				if (failed.length > 0) {
+					error("Aborting due to fetch failures.");
+					throw new ArbError("Aborting due to fetch failures.");
+				}
 			}
 
 			let repoNames = repoArgs;
@@ -65,7 +69,7 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 
 			if (maxCount !== undefined && (Number.isNaN(maxCount) || maxCount < 1)) {
 				error("--max-count must be a positive integer");
-				process.exit(1);
+				throw new ArbError("--max-count must be a positive integer");
 			}
 
 			const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir);

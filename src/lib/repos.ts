@@ -2,6 +2,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import checkbox from "@inquirer/checkbox";
 import confirm from "@inquirer/confirm";
+import { ArbError } from "./errors";
 import { error } from "./output";
 
 export function listWorkspaces(arbRootDir: string): string[] {
@@ -82,7 +83,7 @@ export function validateRepoNames(wsDir: string, repoNames: string[]): void {
 	for (const repo of repoNames) {
 		if (!allRepoNames.includes(repo)) {
 			error(`Repo '${repo}' is not in this workspace.`);
-			process.exit(1);
+			throw new ArbError(`Repo '${repo}' is not in this workspace.`);
 		}
 	}
 }
@@ -92,14 +93,14 @@ export function resolveRepoSelection(wsDir: string, repoArgs: string[]): string[
 
 	if (allRepoNames.length === 0) {
 		error("No repos in this workspace.");
-		process.exit(1);
+		throw new ArbError("No repos in this workspace.");
 	}
 
 	if (repoArgs.length > 0) {
 		for (const repo of repoArgs) {
 			if (!allRepoNames.includes(repo)) {
 				error(`Repo '${repo}' is not in this workspace.`);
-				process.exit(1);
+				throw new ArbError(`Repo '${repo}' is not in this workspace.`);
 			}
 		}
 		return repoArgs;

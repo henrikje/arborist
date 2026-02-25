@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import input from "@inquirer/input";
 import type { Command } from "commander";
 import { writeConfig } from "../lib/config";
+import { ArbError } from "../lib/errors";
 import { validateBranchName, validateWorkspaceName } from "../lib/git";
 import { dim, error, info, plural, success, warn } from "../lib/output";
 import { resolveRemotesMap } from "../lib/remotes";
@@ -30,14 +31,14 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 
 				if (listRepos(ctx.reposDir).length === 0) {
 					error("No repos found. Clone a repo first: arb repo clone <url>");
-					process.exit(1);
+					throw new ArbError("No repos found. Clone a repo first: arb repo clone <url>");
 				}
 
 				let name = nameArg;
 				if (!name) {
 					if (!process.stdin.isTTY) {
 						error("Usage: arb create <name> [repos...]");
-						process.exit(1);
+						throw new ArbError("Usage: arb create <name> [repos...]");
 					}
 					name = await input(
 						{
@@ -56,13 +57,13 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				const validationError = validateWorkspaceName(name);
 				if (validationError) {
 					error(validationError);
-					process.exit(1);
+					throw new ArbError(validationError);
 				}
 
 				const wsDir = `${ctx.arbRootDir}/${name}`;
 				if (existsSync(wsDir)) {
 					error(`Workspace '${name}' already exists`);
-					process.exit(1);
+					throw new ArbError(`Workspace '${name}' already exists`);
 				}
 
 				let branch = options.branch;
@@ -84,7 +85,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 
 				if (!validateBranchName(branch)) {
 					error(`Invalid branch name: ${branch}`);
-					process.exit(1);
+					throw new ArbError(`Invalid branch name: ${branch}`);
 				}
 
 				let base = options.base;
@@ -102,7 +103,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 
 				if (base && !validateBranchName(base)) {
 					error(`Invalid base branch name: ${base}`);
-					process.exit(1);
+					throw new ArbError(`Invalid base branch name: ${base}`);
 				}
 
 				let repos = repoArgs;
@@ -116,7 +117,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 						repos = await selectReposInteractive(ctx.reposDir);
 					} catch (e) {
 						error((e as Error).message);
-						process.exit(1);
+						throw new ArbError((e as Error).message);
 					}
 				}
 

@@ -1,6 +1,7 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
+import { ArbError } from "../lib/errors";
 import { branchExistsLocally, git, isRepoDirty, parseGitStatus } from "../lib/git";
 import { error, info, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
 import { selectInteractive, workspaceRepoDirs } from "../lib/repos";
@@ -30,22 +31,22 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 			if (options.allRepos) {
 				if (currentRepos.length === 0) {
 					error("No repos in this workspace.");
-					process.exit(1);
+					throw new ArbError("No repos in this workspace.");
 				}
 				repos = currentRepos;
 			} else if (repos.length === 0) {
 				if (!process.stdin.isTTY) {
 					error("No repos specified. Pass repo names or use --all-repos.");
-					process.exit(1);
+					throw new ArbError("No repos specified. Pass repo names or use --all-repos.");
 				}
 				if (currentRepos.length === 0) {
 					error("No repos in this workspace.");
-					process.exit(1);
+					throw new ArbError("No repos in this workspace.");
 				}
 				repos = await selectInteractive(currentRepos, "Select repos to detach");
 				if (repos.length === 0) {
 					error("No repos selected.");
-					process.exit(1);
+					throw new ArbError("No repos selected.");
 				}
 			}
 

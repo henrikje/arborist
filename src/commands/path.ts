@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
+import { ArbError } from "../lib/errors";
 import { error } from "../lib/output";
 import { workspaceRepoDirs } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
@@ -28,14 +29,14 @@ export function registerPathCommand(program: Command, getCtx: () => ArbContext):
 				const wsDir = `${ctx.arbRootDir}/${wsName}`;
 				if (!existsSync(wsDir)) {
 					error(`Workspace '${wsName}' does not exist`);
-					process.exit(1);
+					throw new ArbError(`Workspace '${wsName}' does not exist`);
 				}
 
 				if (subpath) {
 					const fullPath = `${wsDir}/${subpath}`;
 					if (!existsSync(fullPath)) {
 						error(`'${subpath}' not found in workspace '${wsName}'`);
-						process.exit(1);
+						throw new ArbError(`'${subpath}' not found in workspace '${wsName}'`);
 					}
 					process.stdout.write(`${fullPath}\n`);
 				} else {
@@ -58,12 +59,11 @@ export function registerPathCommand(program: Command, getCtx: () => ArbContext):
 			// Fall back to workspace resolution
 			const wsDir = `${ctx.arbRootDir}/${input}`;
 			if (!existsSync(wsDir)) {
-				if (ctx.currentWorkspace) {
-					error(`'${input}' is not a repo in workspace '${ctx.currentWorkspace}' or a workspace`);
-				} else {
-					error(`Workspace '${input}' does not exist`);
-				}
-				process.exit(1);
+				const msg = ctx.currentWorkspace
+					? `'${input}' is not a repo in workspace '${ctx.currentWorkspace}' or a workspace`
+					: `Workspace '${input}' does not exist`;
+				error(msg);
+				throw new ArbError(msg);
 			}
 
 			process.stdout.write(`${wsDir}\n`);

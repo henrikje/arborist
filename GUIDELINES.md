@@ -197,6 +197,18 @@ The parallel pre-fetch also serves a performance purpose: `parallelFetch()` fetc
 
 All repos in a workspace must have valid, resolvable git remotes. `resolveRemotesMap()` resolves remote roles (base/share) for each repo and propagates errors — repos without remotes or with ambiguous remote configurations cause an error with actionable fix instructions rather than silently degrading.
 
+### Exception-based exit handling
+
+Commands and library code never call `process.exit()` directly. Instead, they throw `ArbError` for error exits (code 1) or `ArbAbort` for user cancellations (code 130). A single try/catch in `index.ts` maps these to exit codes. This makes command code testable in-process and gives one place to audit or extend exit behavior.
+
+**Convention:** Always call `error()` (or `warn()`) for user-facing output *before* throwing. The top-level handler does not print the exception message — it only maps the type to an exit code. The user-facing message and the control-flow signal are separate concerns.
+
+**Exception types:**
+- `ArbError` — an error condition. The top-level handler calls `process.exit(1)`.
+- `ArbAbort` — a user cancellation (declined prompt, Ctrl-C during inquirer). The top-level handler prints `info(err.message)` (default: "Aborted.") and calls `process.exit(130)`.
+
+**The only `process.exit()` calls live in `index.ts`:** the top-level catch handler and the SIGINT signal handler. Signal handlers must call `process.exit()` directly because they cannot throw into an async context. See `decisions/0036-exception-based-exit-handling.md`.
+
 ### In-progress state for partially-completing commands
 
 Commands that execute sequentially across multiple repos and can fail partway through (leaving some repos done and others not) must carry explicit in-progress state in `.arbws/config`. This state enables `--continue` (resume from where it left off) and `--abort` (roll back completed steps), modeled after git's own rebase-in-progress / merge-in-progress pattern. Without this state, a partial failure leaves the workspace in an ambiguous split state that cannot be safely recovered by re-running the same command. See `decisions/0025-rebranch-migration-state.md` for the reasoning behind this pattern.

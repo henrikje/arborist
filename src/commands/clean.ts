@@ -4,6 +4,7 @@ import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { loadArbIgnore } from "../lib/arbignore";
 import { findOrphanedBranches, findStaleWorktrees, pruneWorktrees } from "../lib/clean";
+import { ArbAbort, ArbError } from "../lib/errors";
 import { git } from "../lib/git";
 import { dim, dryRunNotice, error, info, plural, skipConfirmNotice, success } from "../lib/output";
 import { listNonWorkspaces, listWorkspaces, selectInteractive } from "../lib/repos";
@@ -48,15 +49,17 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 				for (const name of nameArgs) {
 					if (existsSync(join(ctx.arbRootDir, name, ".arbws"))) {
 						error(`'${name}' is a workspace. Use 'arb delete ${name}' instead.`);
-						process.exit(1);
+						throw new ArbError(`'${name}' is a workspace. Use 'arb delete ${name}' instead.`);
 					}
 					if (!allNonWorkspacesUnfiltered.includes(name)) {
 						if (!existsSync(join(ctx.arbRootDir, name))) {
-							error(`Directory '${name}' does not exist.`);
-						} else {
-							error(`Directory '${name}' is not a non-workspace directory.`);
+							const msg = `Directory '${name}' does not exist.`;
+							error(msg);
+							throw new ArbError(msg);
 						}
-						process.exit(1);
+						const msg = `Directory '${name}' is not a non-workspace directory.`;
+						error(msg);
+						throw new ArbError(msg);
 					}
 				}
 				targetDirs = nameArgs;
@@ -140,7 +143,7 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 			if (hasDirs && nameArgs.length === 0 && !skipPrompts) {
 				if (!isTTY() || !process.stdin.isTTY) {
 					error("Not a terminal. Use --yes to skip confirmation.");
-					process.exit(1);
+					throw new ArbError("Not a terminal. Use --yes to skip confirmation.");
 				}
 				selectedDirs = await selectInteractive(targetDirs, "Select directories to remove");
 				if (selectedDirs.length === 0 && !hasStale && !hasOrphans) {
@@ -153,7 +156,7 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 			if (!skipPrompts) {
 				if (!isTTY() || !process.stdin.isTTY) {
 					error("Not a terminal. Use --yes to skip confirmation.");
-					process.exit(1);
+					throw new ArbError("Not a terminal. Use --yes to skip confirmation.");
 				}
 
 				const parts: string[] = [];
@@ -169,8 +172,7 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 					{ output: process.stderr },
 				);
 				if (!shouldProceed) {
-					info("Aborted.");
-					process.exit(130);
+					throw new ArbAbort();
 				}
 			} else {
 				skipConfirmNotice("--yes");

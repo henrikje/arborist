@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
+import { ArbError } from "../lib/errors";
 import { getShortHead, git } from "../lib/git";
 import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
 import { dim, dryRunNotice, info, inlineResult, inlineStart, plural, red, success, yellow } from "../lib/output";
@@ -132,7 +133,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 							}
 						}
 						process.stderr.write("\n  To resolve, check the error above, then re-run 'arb push' to continue.\n");
-						process.exit(1);
+						throw new ArbError(`Push failed for ${a.repo}`);
 					}
 				}
 

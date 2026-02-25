@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import type { Command } from "commander";
+import { ArbError } from "../lib/errors";
 import { dim, error, info, plural, success, warn, yellow } from "../lib/output";
 import { collectRepo, workspaceRepoDirs } from "../lib/repos";
 import {
@@ -46,7 +47,7 @@ function resolveScope(
 
 	if (hasRepoFlag && hasWsFlag) {
 		error("Cannot use both --repo and --workspace.");
-		process.exit(1);
+		throw new ArbError("Cannot use both --repo and --workspace.");
 	}
 
 	if (hasRepoFlag) {
@@ -61,7 +62,7 @@ function resolveScope(
 	const detected = detectTemplateScope(ctx.arbRootDir, process.cwd());
 	if (!detected) {
 		error("Cannot determine scope. Use --repo <name> or --workspace, or run from inside a workspace.");
-		process.exit(1);
+		throw new ArbError("Cannot determine scope. Use --repo <name> or --workspace, or run from inside a workspace.");
 	}
 
 	if (detected.scope === "repo" && detected.repo) {
@@ -95,7 +96,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 
 			if (!existsSync(srcPath)) {
 				error(`Path not found: ${path}`);
-				process.exit(1);
+				throw new ArbError(`Path not found: ${path}`);
 			}
 
 			const { wsDir } = requireWorkspace(ctx);
@@ -108,7 +109,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 
 			if (hasRepoFlag && hasWsFlag) {
 				error("Cannot use both --repo and --workspace.");
-				process.exit(1);
+				throw new ArbError("Cannot use both --repo and --workspace.");
 			}
 
 			if (hasRepoFlag) {
@@ -120,7 +121,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 				const detected = detectScopeFromPath(wsDir, srcPath);
 				if (!detected) {
 					error("Path is outside the workspace. Use --repo or --workspace to specify scope.");
-					process.exit(1);
+					throw new ArbError("Path is outside the workspace. Use --repo or --workspace to specify scope.");
 				}
 				scope = detected.scope;
 				if (detected.scope === "repo" && detected.repo) {
@@ -205,7 +206,10 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 					}
 				}
 			}
-			if (hasConflict) process.exit(1);
+			if (hasConflict) {
+				error("Some templates already exist. Use --force to overwrite.");
+				throw new ArbError("Some templates already exist. Use --force to overwrite.");
+			}
 		});
 
 	// ── template remove ──────────────────────────────────────────────
@@ -228,8 +232,9 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 					removeTemplate(ctx.arbRootDir, scope, file, repo);
 					info(`  Removed template: ${file}${repo ? ` (repo: ${repo})` : ""}`);
 				} catch (e) {
-					error(e instanceof Error ? e.message : String(e));
-					process.exit(1);
+					const msg = e instanceof Error ? e.message : String(e);
+					error(msg);
+					throw new ArbError(msg);
 				}
 			}
 		});
@@ -379,7 +384,8 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 				if (tmpFile) unlinkSync(tmpFile);
 			}
 
-			process.exit(1);
+			warn("Template drift detected.");
+			throw new ArbError("Template drift detected.");
 		});
 
 	// ── template apply ───────────────────────────────────────────────
