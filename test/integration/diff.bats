@@ -381,3 +381,57 @@ load test_helper/common-setup
     [ "$status" -eq 0 ]
     [[ "$output" == *"Fetched"* ]]
 }
+
+# ── untracked file hints ──────────────────────────────────────────
+
+@test "arb diff shows untracked hint when repo has untracked files" {
+    arb create my-feature repo-a
+    echo "committed" > "$TEST_DIR/project/my-feature/repo-a/committed.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add committed.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "Add file" >/dev/null 2>&1
+    # Create an untracked file
+    echo "untracked" > "$TEST_DIR/project/my-feature/repo-a/untracked.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb diff
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"1 untracked file not in diff"* ]]
+}
+
+@test "arb diff shows untracked hints for multiple repos" {
+    arb create my-feature repo-a repo-b
+    echo "committed" > "$TEST_DIR/project/my-feature/repo-a/committed.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add committed.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "Add file" >/dev/null 2>&1
+    echo "untracked-a" > "$TEST_DIR/project/my-feature/repo-a/untracked.txt"
+    echo "untracked-b" > "$TEST_DIR/project/my-feature/repo-b/untracked.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb diff
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a: 1 untracked file not in diff"* ]]
+    [[ "$output" == *"repo-b: 1 untracked file not in diff"* ]]
+}
+
+@test "arb diff --json includes untrackedCount for repos with untracked files" {
+    arb create my-feature repo-a
+    echo "committed" > "$TEST_DIR/project/my-feature/repo-a/committed.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add committed.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "Add file" >/dev/null 2>&1
+    echo "untracked" > "$TEST_DIR/project/my-feature/repo-a/untracked.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb diff --json
+    [ "$status" -eq 0 ]
+    local untracked_count
+    untracked_count="$(echo "$output" | jq '.repos[] | select(.name == "repo-a") | .untrackedCount')"
+    [ "$untracked_count" -eq 1 ]
+}
+
+@test "arb diff does not show untracked hint when no untracked files" {
+    arb create my-feature repo-a
+    echo "committed" > "$TEST_DIR/project/my-feature/repo-a/committed.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add committed.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "Add file" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb diff
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"untracked not in diff"* ]]
+}

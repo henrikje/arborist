@@ -718,3 +718,88 @@ load test_helper/common-setup
     [ "$status" -ne 0 ]
     [[ "$output" == *"Unknown filter term"* ]]
 }
+
+# ── repo positional args ──────────────────────────────────────────
+
+@test "arb status with positional args filters repos" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb status repo-a
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb status with multiple positional args filters repos" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb status repo-a repo-b
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"repo-b"* ]]
+}
+
+@test "arb status with invalid repo name errors" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb status nonexistent
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not in this workspace"* ]]
+}
+
+@test "arb status -v with positional args shows verbose for single repo" {
+    arb create my-feature repo-a repo-b
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    run arb status -v repo-a
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"Untracked files"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb status -q with positional args outputs filtered repo names" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb status -q repo-a
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb status --json with positional args filters repos" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb status --json repo-a
+    [ "$status" -eq 0 ]
+    local repo_count
+    repo_count="$(echo "$output" | jq '.repos | length')"
+    [ "$repo_count" -eq 1 ]
+    local repo_name
+    repo_name="$(echo "$output" | jq -r '.repos[0].name')"
+    [ "$repo_name" = "repo-a" ]
+}
+
+@test "arb status positional args compose with --where" {
+    arb create my-feature repo-a repo-b
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    cd "$TEST_DIR/project/my-feature"
+    # Filter to both repos, then --where dirty should narrow to repo-a
+    run arb status -q --where dirty repo-a repo-b
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb status reads repo names from stdin" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run bash -c 'echo "repo-a" | arb status --json'
+    [ "$status" -eq 0 ]
+    local repo_count
+    repo_count="$(echo "$output" | jq '.repos | length')"
+    [ "$repo_count" -eq 1 ]
+    local repo_name
+    repo_name="$(echo "$output" | jq -r '.repos[0].name')"
+    [ "$repo_name" = "repo-a" ]
+}

@@ -38,6 +38,7 @@ interface RepoDiffResult {
 	stat: RepoDiffStat;
 	fileStat: DiffJsonFileStat[];
 	diffRef?: string;
+	untrackedCount: number;
 }
 
 const NO_BASE_FALLBACK_LIMIT = 10;
@@ -106,7 +107,7 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
 		.option("-w, --where <filter>", "Only diff repos matching status filter (comma = OR, + = AND, ^ = negate)")
 		.summary("Show feature branch diff across repos")
 		.description(
-			"Show the cumulative diff of the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what has this feature branch changed?' by showing the total change set.\n\nDiffs from the merge-base to the working tree, so the output includes committed, staged, and unstaged changes to tracked files — the complete change set of the feature branch. Use -F/--fetch to fetch before showing diff (skip with --no-fetch). Use --stat for a summary of changed files. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Use --where to filter by status flags (comma = OR, + = AND; e.g. --where dirty+unpushed). Prefix any term with ^ to negate (e.g. --where ^dirty). Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
+			"Show the cumulative diff of the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what has this feature branch changed?' by showing the total change set.\n\nDiffs from the merge-base to the working tree, so the output includes committed, staged, and unstaged changes to tracked files — the complete change set of the feature branch. Untracked files (never git-added) are not included in the diff — this is inherent to git diff semantics. Use 'arb status -v' to see untracked files.\n\nUse -F/--fetch to fetch before showing diff (skip with --no-fetch). Use --stat for a summary of changed files. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Use --where to filter by status flags (comma = OR, + = AND; e.g. --where dirty+unpushed). Prefix any term with ^ to negate (e.g. --where ^dirty). Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
 		)
 		.action(
 			async (
@@ -189,6 +190,7 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
 	let totalFiles = 0;
 	let totalInsertions = 0;
 	let totalDeletions = 0;
+	let totalUntracked = 0;
 
 	for (let i = 0; i < repos.length; i++) {
 		const repo = repos[i];
@@ -223,6 +225,13 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
 			note = note ? `${note}, ${repo.operation} in progress` : `${repo.operation} in progress`;
 		}
 
+		// Track untracked files for hint
+		if (repo.local.untracked > 0) {
+			totalUntracked += repo.local.untracked;
+			const untrackedNote = `${repo.local.untracked} untracked not in diff`;
+			note = note ? `${note}, ${untrackedNote}` : untrackedNote;
+		}
+
 		// Gather stats for summary
 		const numstatResult = await git(repoDir, "diff", "-M", "--numstat", ...gitArgs);
 		if (numstatResult.exitCode === 0 && numstatResult.stdout.trim()) {
@@ -253,9 +262,12 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
 	}
 
 	process.stderr.write("\n");
-	success(
-		`Diffed ${plural(repos.length, "repo")} (${plural(totalFiles, "file")} changed, +${totalInsertions} -${totalDeletions})`,
-	);
+	let summaryText = `Diffed ${plural(repos.length, "repo")} (${plural(totalFiles, "file")} changed, +${totalInsertions} -${totalDeletions}`;
+	if (totalUntracked > 0) {
+		summaryText += `; ${plural(totalUntracked, "untracked file")} not in diff`;
+	}
+	summaryText += ")";
+	success(summaryText);
 }
 
 // ── Structured gathering for pipe / JSON modes ───────────────────
@@ -273,6 +285,7 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
 			annotation: "detached \u2014 skipping",
 			stat: emptyStat,
 			fileStat: [],
+			untrackedCount: 0,
 		};
 	}
 
@@ -285,6 +298,7 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
 			annotation: `on ${actual}, expected ${branch} \u2014 skipping`,
 			stat: emptyStat,
 			fileStat: [],
+			untrackedCount: 0,
 		};
 	}
 
@@ -298,6 +312,7 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
 			annotation: "no base branch, no commits",
 			stat: emptyStat,
 			fileStat: [],
+			untrackedCount: repo.local.untracked,
 		};
 	}
 
@@ -311,6 +326,7 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
 			annotation: target.note || "diff failed",
 			stat: emptyStat,
 			fileStat: [],
+			untrackedCount: repo.local.untracked,
 		};
 	}
 
@@ -333,6 +349,7 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
 			stat: emptyStat,
 			fileStat: [],
 			diffRef: target.ref,
+			untrackedCount: repo.local.untracked,
 		};
 	}
 
@@ -353,6 +370,7 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
 		stat,
 		fileStat,
 		diffRef: target.ref,
+		untrackedCount: repo.local.untracked,
 	};
 }
 
@@ -368,6 +386,13 @@ async function outputPipe(
 	for (const r of results) {
 		if (r.status === "detached" || r.status === "drifted") {
 			process.stderr.write(`${r.name}: skipped \u2014 ${r.reason}\n`);
+		}
+	}
+
+	// Emit untracked hints to stderr
+	for (const r of results) {
+		if (r.untrackedCount > 0) {
+			process.stderr.write(`${r.name}: ${plural(r.untrackedCount, "untracked file")} not in diff\n`);
 		}
 	}
 
@@ -400,11 +425,13 @@ function outputJson(
 	let totalFiles = 0;
 	let totalInsertions = 0;
 	let totalDeletions = 0;
+	let totalUntracked = 0;
 
 	const repos: DiffJsonRepo[] = results.map((r) => {
 		totalFiles += r.stat.files;
 		totalInsertions += r.stat.insertions;
 		totalDeletions += r.stat.deletions;
+		totalUntracked += r.untrackedCount;
 
 		const entry: DiffJsonRepo = {
 			name: r.name,
@@ -416,6 +443,9 @@ function outputJson(
 		}
 		if (stat && r.fileStat.length > 0) {
 			entry.fileStat = r.fileStat;
+		}
+		if (r.untrackedCount > 0) {
+			entry.untrackedCount = r.untrackedCount;
 		}
 		return entry;
 	});
@@ -429,5 +459,8 @@ function outputJson(
 		totalInsertions,
 		totalDeletions,
 	};
+	if (totalUntracked > 0) {
+		output.totalUntracked = totalUntracked;
+	}
 	stdout(`${JSON.stringify(output, null, 2)}\n`);
 }
