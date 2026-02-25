@@ -4,13 +4,12 @@ Arborist can automatically seed files into new workspaces — `.env` files, AI a
 
 ## Managing templates
 
-Use `arb template` to add, inspect, and maintain templates:
+The `.arb/templates/` directory is user-owned space — add and remove template files directly with your shell or editor. Workspace templates go in `.arb/templates/workspace/`, repo templates go in `.arb/templates/repos/<name>/`.
 
 ```bash
-# Capture a file from your workspace as a template
-cd my-feature/api
-arb template add .env                    # auto-detects repo scope from CWD
-arb template add .env --workspace        # override to workspace scope
+# Add a template by copying a file into .arb/templates/
+cp my-feature/api/.env .arb/templates/repos/api/.env
+cp my-feature/.editorconfig .arb/templates/workspace/.editorconfig
 
 # See what templates exist
 arb template list
@@ -23,10 +22,10 @@ arb template apply                       # seeds only missing files (safe)
 arb template apply --force               # also resets drifted files
 
 # Remove a template
-arb template remove .env --repo api
+rm .arb/templates/repos/api/.env
 ```
 
-All template commands support `--repo <name>` and `--workspace` flags for explicit scope control. See `arb template --help` for all options.
+The `arb template` subcommands (`list`, `diff`, `apply`) provide operations that require Arborist's template rendering engine. Adding and removing template files doesn't need Arborist — the filesystem is the interface.
 
 ## Template scopes
 
@@ -50,17 +49,6 @@ Typical uses:
 - `.env` files with service-specific defaults
 - Local config overrides (`.vscode/settings.json`)
 - Git hooks or tool config
-
-### Scope detection
-
-When you run `arb template add`, the scope is auto-detected from your working directory:
-
-| CWD is inside… | Detected scope |
-|---|---|
-| A repo directory (has `.git`) | `repo` (for that repo) |
-| A workspace (has `.arbws`) but not a repo | `workspace` |
-
-Override with `--repo <name>` or `--workspace` when the auto-detection isn't what you want.
 
 ### Directory structure
 
