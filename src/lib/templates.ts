@@ -1,19 +1,8 @@
-import {
-	copyFileSync,
-	existsSync,
-	lstatSync,
-	mkdirSync,
-	readFileSync,
-	readdirSync,
-	rmdirSync,
-	unlinkSync,
-	writeFileSync,
-} from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { Liquid } from "liquidjs";
 import { yellow } from "./output";
 import { getRemoteUrl, resolveRemotes } from "./remotes";
-import { workspaceRepoDirs } from "./repos";
 
 export const ARBTEMPLATE_EXT = ".arbtemplate";
 
@@ -464,77 +453,6 @@ function walkFiles(dir: string): string[] {
 
 	walk(dir);
 	return files;
-}
-
-export interface TemplateScope {
-	scope: "workspace" | "repo";
-	repo?: string;
-}
-
-export function detectTemplateScope(arbRootDir: string, cwd: string): TemplateScope | null {
-	const prefix = `${arbRootDir}/`;
-	if (!cwd.startsWith(prefix)) return null;
-
-	const rest = cwd.slice(prefix.length);
-	const segments = rest.split("/");
-	const firstSegment = segments[0];
-	if (!firstSegment) return null;
-
-	// Check if first segment is a workspace
-	if (existsSync(join(arbRootDir, firstSegment, ".arbws"))) {
-		// Inside a workspace — check if we're in a repo directory
-		const secondSegment = segments[1];
-		if (secondSegment && existsSync(join(arbRootDir, firstSegment, secondSegment, ".git"))) {
-			return { scope: "repo", repo: secondSegment };
-		}
-		return { scope: "workspace" };
-	}
-
-	return null;
-}
-
-export function detectScopeFromPath(wsDir: string, srcPath: string): TemplateScope | null {
-	const wsPrefix = `${wsDir}/`;
-	if (!srcPath.startsWith(wsPrefix)) return null;
-
-	for (const repoDir of workspaceRepoDirs(wsDir)) {
-		if (srcPath.startsWith(`${repoDir}/`) || srcPath === repoDir) {
-			return { scope: "repo", repo: basename(repoDir) };
-		}
-	}
-
-	return { scope: "workspace" };
-}
-
-export function removeTemplate(arbRootDir: string, scope: "workspace" | "repo", relPath: string, repo?: string): void {
-	const repoName = repo ?? "";
-	const plainPath =
-		scope === "workspace"
-			? join(arbRootDir, ".arb", "templates", "workspace", relPath)
-			: join(arbRootDir, ".arb", "templates", "repos", repoName, relPath);
-
-	const arbtplPath = `${plainPath}${ARBTEMPLATE_EXT}`;
-	const templatePath = existsSync(plainPath) ? plainPath : existsSync(arbtplPath) ? arbtplPath : null;
-
-	if (!templatePath) {
-		throw new Error(`Template does not exist: ${relPath}`);
-	}
-
-	unlinkSync(templatePath);
-
-	// Clean up empty parent directories up to the scope root
-	const scopeRoot =
-		scope === "workspace"
-			? join(arbRootDir, ".arb", "templates", "workspace")
-			: join(arbRootDir, ".arb", "templates", "repos", repoName);
-
-	let dir = dirname(templatePath);
-	while (dir !== scopeRoot && dir.startsWith(scopeRoot)) {
-		const entries = readdirSync(dir);
-		if (entries.length > 0) break;
-		rmdirSync(dir);
-		dir = dirname(dir);
-	}
 }
 
 export interface ForceOverlayResult {

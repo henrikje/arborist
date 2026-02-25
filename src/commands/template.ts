@@ -1,18 +1,9 @@
-import {
-	copyFileSync,
-	existsSync,
-	lstatSync,
-	mkdirSync,
-	readFileSync,
-	readdirSync,
-	unlinkSync,
-	writeFileSync,
-} from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
-import { dim, error, info, plural, success, warn, yellow } from "../lib/output";
+import { dim, info, plural, success, warn, yellow } from "../lib/output";
 import { collectRepo, workspaceRepoDirs } from "../lib/repos";
 import {
 	ARBTEMPLATE_EXT,
@@ -23,13 +14,10 @@ import {
 	type TemplateEntry,
 	applyRepoTemplates,
 	applyWorkspaceTemplates,
-	detectScopeFromPath,
-	detectTemplateScope,
 	diffTemplates,
 	forceApplyRepoTemplates,
 	forceApplyWorkspaceTemplates,
 	listTemplates,
-	removeTemplate,
 	renderTemplate,
 	templateFilePath,
 	workspaceFilePath,
@@ -38,206 +26,13 @@ import {
 import type { ArbContext } from "../lib/types";
 import { requireWorkspace } from "../lib/workspace-context";
 
-function resolveScope(
-	options: { repo?: string[]; workspace?: boolean },
-	ctx: ArbContext,
-): { scope: "workspace" | "repo"; repos?: string[] } {
-	const hasRepoFlag = options.repo && options.repo.length > 0;
-	const hasWsFlag = options.workspace === true;
-
-	if (hasRepoFlag && hasWsFlag) {
-		error("Cannot use both --repo and --workspace.");
-		throw new ArbError("Cannot use both --repo and --workspace.");
-	}
-
-	if (hasRepoFlag) {
-		return { scope: "repo", repos: options.repo };
-	}
-
-	if (hasWsFlag) {
-		return { scope: "workspace" };
-	}
-
-	// Auto-detect from CWD
-	const detected = detectTemplateScope(ctx.arbRootDir, process.cwd());
-	if (!detected) {
-		error("Cannot determine scope. Use --repo <name> or --workspace, or run from inside a workspace.");
-		throw new ArbError("Cannot determine scope. Use --repo <name> or --workspace, or run from inside a workspace.");
-	}
-
-	if (detected.scope === "repo" && detected.repo) {
-		return { scope: "repo", repos: [detected.repo] };
-	}
-	return { scope: "workspace" };
-}
-
 export function registerTemplateCommand(program: Command, getCtx: () => ArbContext): void {
 	const template = program
 		.command("template")
 		.summary("Manage workspace templates")
 		.description(
-			"Manage template files that are automatically seeded into new workspaces. Templates live in .arb/templates/ and are copied into workspaces during 'arb create' and 'arb attach'. Files ending with .arbtemplate are rendered with LiquidJS ({{ workspace.path }}, {% for repo in workspace.repos %}, etc.) and have the extension stripped at the destination. Templates referencing workspace.repos are automatically regenerated when repos are attached or detached. Use subcommands to add, remove, list, diff, and apply templates.",
+			"Manage template files that are automatically seeded into new workspaces. Templates live in .arb/templates/ and are copied into workspaces during 'arb create' and 'arb attach'. Files ending with .arbtemplate are rendered with LiquidJS ({{ workspace.path }}, {% for repo in workspace.repos %}, etc.) and have the extension stripped at the destination. Templates referencing workspace.repos are automatically regenerated when repos are attached or detached. The .arb/templates/ directory is user-owned space — add and remove template files directly with your shell or editor. Use subcommands to list, diff, and apply templates.",
 		);
-
-	// ── template add ─────────────────────────────────────────────────
-
-	template
-		.command("add <path>")
-		.option("--repo <name>", "Target repo scope (repeatable)", collectRepo, [])
-		.option("--workspace", "Target workspace scope")
-		.option("-f, --force", "Overwrite existing template")
-		.summary("Capture a file or directory as a template")
-		.description(
-			"Copy a file or directory from the current workspace into .arb/templates/. If a directory is given, all files within it are added recursively. The scope (workspace or repo) is auto-detected from the source path's location: a file inside a repo directory becomes a repo template, a file elsewhere in the workspace becomes a workspace template. Use --repo or --workspace to override. The path must be inside the workspace unless an explicit scope flag is given. If the template already exists with identical content, succeeds silently. If content differs, use --force to overwrite.",
-		)
-		.action((path: string, options: { repo?: string[]; workspace?: boolean; force?: boolean }) => {
-			const ctx = getCtx();
-			const srcPath = resolve(path);
-
-			if (!existsSync(srcPath)) {
-				error(`Path not found: ${path}`);
-				throw new ArbError(`Path not found: ${path}`);
-			}
-
-			const { wsDir } = requireWorkspace(ctx);
-
-			// Resolve scope: explicit flags take priority, otherwise infer from source path
-			let scope: "workspace" | "repo";
-			let repos: string[] | undefined;
-			const hasRepoFlag = options.repo && options.repo.length > 0;
-			const hasWsFlag = options.workspace === true;
-
-			if (hasRepoFlag && hasWsFlag) {
-				error("Cannot use both --repo and --workspace.");
-				throw new ArbError("Cannot use both --repo and --workspace.");
-			}
-
-			if (hasRepoFlag) {
-				scope = "repo";
-				repos = options.repo;
-			} else if (hasWsFlag) {
-				scope = "workspace";
-			} else {
-				const detected = detectScopeFromPath(wsDir, srcPath);
-				if (!detected) {
-					error("Path is outside the workspace. Use --repo or --workspace to specify scope.");
-					throw new ArbError("Path is outside the workspace. Use --repo or --workspace to specify scope.");
-				}
-				scope = detected.scope;
-				if (detected.scope === "repo" && detected.repo) {
-					repos = [detected.repo];
-				}
-			}
-
-			// Collect files to add: { filePath, relSuffix }
-			const stat = lstatSync(srcPath);
-			const files: { filePath: string; relSuffix: string }[] = [];
-
-			if (stat.isDirectory()) {
-				function walk(dir: string): void {
-					for (const entry of readdirSync(dir)) {
-						const entryPath = join(dir, entry);
-						const entryStat = lstatSync(entryPath);
-						if (entryStat.isSymbolicLink()) continue;
-						if (entryStat.isDirectory()) {
-							walk(entryPath);
-						} else if (entryStat.isFile()) {
-							files.push({ filePath: entryPath, relSuffix: relative(srcPath, entryPath) });
-						}
-					}
-				}
-				walk(srcPath);
-			} else {
-				files.push({ filePath: srcPath, relSuffix: "" });
-			}
-
-			if (files.length === 0) {
-				info("  No files found to add.");
-				return;
-			}
-
-			// Determine the base relative path for the template
-			let baseRelPath: string;
-			if (scope === "workspace") {
-				const prefix = `${wsDir}/`;
-				if (srcPath.startsWith(prefix)) {
-					baseRelPath = srcPath.slice(prefix.length);
-				} else {
-					baseRelPath = basename(srcPath);
-				}
-			} else {
-				const firstRepo = repos?.[0] ?? "";
-				const repoDir = join(wsDir, firstRepo);
-				const prefix = `${repoDir}/`;
-				if (srcPath.startsWith(prefix)) {
-					baseRelPath = srcPath.slice(prefix.length);
-				} else {
-					baseRelPath = basename(srcPath);
-				}
-			}
-
-			const targetRepos: (string | undefined)[] = scope === "repo" && repos ? repos : [undefined];
-			let hasConflict = false;
-			for (const { filePath, relSuffix } of files) {
-				const relPath = relSuffix ? join(baseRelPath, relSuffix) : baseRelPath;
-
-				for (const repo of targetRepos) {
-					const templatePath = templateFilePath(ctx.arbRootDir, scope, relPath, repo);
-
-					if (existsSync(templatePath)) {
-						const existingContent = readFileSync(templatePath);
-						const newContent = readFileSync(filePath);
-						if (existingContent.equals(newContent)) {
-							info(`  Template already up to date: ${relPath}${repo ? ` (repo: ${repo})` : ""}`);
-							continue;
-						}
-						if (!options.force) {
-							error(`Template already exists: ${relPath}${repo ? ` (repo: ${repo})` : ""}. Use --force to overwrite.`);
-							hasConflict = true;
-							continue;
-						}
-						mkdirSync(dirname(templatePath), { recursive: true });
-						copyFileSync(filePath, templatePath);
-						info(`  Updated template: ${relPath}${repo ? ` (repo: ${repo})` : ""}`);
-					} else {
-						mkdirSync(dirname(templatePath), { recursive: true });
-						copyFileSync(filePath, templatePath);
-						info(`  Added template: ${relPath}${repo ? ` (repo: ${repo})` : ""}`);
-					}
-				}
-			}
-			if (hasConflict) {
-				error("Some templates already exist. Use --force to overwrite.");
-				throw new ArbError("Some templates already exist. Use --force to overwrite.");
-			}
-		});
-
-	// ── template remove ──────────────────────────────────────────────
-
-	template
-		.command("remove <file>")
-		.option("--repo <name>", "Target repo scope (repeatable)", collectRepo, [])
-		.option("--workspace", "Target workspace scope")
-		.summary("Remove a template file")
-		.description(
-			"Delete a template file from .arb/templates/. Scope is auto-detected from your current directory. Use --repo or --workspace to override. Does not delete seeded copies in existing workspaces.",
-		)
-		.action((file: string, options: { repo?: string[]; workspace?: boolean }) => {
-			const ctx = getCtx();
-			const { scope, repos } = resolveScope(options, ctx);
-
-			const targetRepos: (string | undefined)[] = scope === "repo" && repos ? repos : [undefined];
-			for (const repo of targetRepos) {
-				try {
-					removeTemplate(ctx.arbRootDir, scope, file, repo);
-					info(`  Removed template: ${file}${repo ? ` (repo: ${repo})` : ""}`);
-				} catch (e) {
-					const msg = e instanceof Error ? e.message : String(e);
-					error(msg);
-					throw new ArbError(msg);
-				}
-			}
-		});
 
 	// ── template list ────────────────────────────────────────────────
 

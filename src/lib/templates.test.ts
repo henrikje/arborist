@@ -8,13 +8,10 @@ import {
 	type TemplateContext,
 	applyRepoTemplates,
 	applyWorkspaceTemplates,
-	detectScopeFromPath,
-	detectTemplateScope,
 	diffTemplates,
 	forceOverlayDirectory,
 	listTemplates,
 	overlayDirectory,
-	removeTemplate,
 	renderTemplate,
 	templateFilePath,
 } from "./templates";
@@ -415,159 +412,6 @@ describe("templates", () => {
 		});
 	});
 
-	describe("detectTemplateScope", () => {
-		test("returns workspace scope at workspace root", () => {
-			const arbRootDir = join(tmpDir, "project");
-			const wsDir = join(arbRootDir, "my-ws");
-			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
-
-			const result = detectTemplateScope(arbRootDir, wsDir);
-			expect(result).toEqual({ scope: "workspace" });
-		});
-
-		test("returns repo scope inside a repo directory", () => {
-			const arbRootDir = join(tmpDir, "project");
-			const wsDir = join(arbRootDir, "my-ws");
-			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
-			mkdirSync(join(wsDir, "api", ".git"), { recursive: true });
-
-			const result = detectTemplateScope(arbRootDir, join(wsDir, "api"));
-			expect(result).toEqual({ scope: "repo", repo: "api" });
-		});
-
-		test("returns null outside a workspace", () => {
-			const arbRootDir = join(tmpDir, "project");
-			mkdirSync(arbRootDir, { recursive: true });
-
-			const result = detectTemplateScope(arbRootDir, arbRootDir);
-			expect(result).toBeNull();
-		});
-
-		test("returns null when CWD is outside arbRootDir", () => {
-			const arbRootDir = join(tmpDir, "project");
-			mkdirSync(arbRootDir, { recursive: true });
-
-			const result = detectTemplateScope(arbRootDir, "/tmp/somewhere-else");
-			expect(result).toBeNull();
-		});
-
-		test("returns workspace scope when in workspace but not in a repo", () => {
-			const arbRootDir = join(tmpDir, "project");
-			const wsDir = join(arbRootDir, "my-ws");
-			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
-			mkdirSync(join(wsDir, "subdir"), { recursive: true });
-
-			const result = detectTemplateScope(arbRootDir, join(wsDir, "subdir"));
-			expect(result).toEqual({ scope: "workspace" });
-		});
-	});
-
-	describe("detectScopeFromPath", () => {
-		test("returns repo scope when path is inside a repo directory", () => {
-			const arbRootDir = join(tmpDir, "project");
-			const wsDir = join(arbRootDir, "my-ws");
-			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
-			mkdirSync(join(wsDir, "api", ".git"), { recursive: true });
-
-			const result = detectScopeFromPath(wsDir, join(wsDir, "api", ".env"));
-			expect(result).toEqual({ scope: "repo", repo: "api" });
-		});
-
-		test("returns workspace scope when path is in workspace but not in a repo", () => {
-			const arbRootDir = join(tmpDir, "project");
-			const wsDir = join(arbRootDir, "my-ws");
-			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
-			mkdirSync(join(wsDir, "api", ".git"), { recursive: true });
-
-			const result = detectScopeFromPath(wsDir, join(wsDir, ".env"));
-			expect(result).toEqual({ scope: "workspace" });
-		});
-
-		test("returns null when path is outside the workspace", () => {
-			const arbRootDir = join(tmpDir, "project");
-			const wsDir = join(arbRootDir, "my-ws");
-			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
-
-			const result = detectScopeFromPath(wsDir, "/tmp/somewhere-else");
-			expect(result).toBeNull();
-		});
-
-		test("detects correct repo when multiple repos exist", () => {
-			const arbRootDir = join(tmpDir, "project");
-			const wsDir = join(arbRootDir, "my-ws");
-			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
-			mkdirSync(join(wsDir, "api", ".git"), { recursive: true });
-			mkdirSync(join(wsDir, "web", ".git"), { recursive: true });
-
-			const result = detectScopeFromPath(wsDir, join(wsDir, "web", "src", "index.ts"));
-			expect(result).toEqual({ scope: "repo", repo: "web" });
-		});
-
-		test("returns workspace scope for file at workspace root level", () => {
-			const arbRootDir = join(tmpDir, "project");
-			const wsDir = join(arbRootDir, "my-ws");
-			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
-			mkdirSync(join(wsDir, "api", ".git"), { recursive: true });
-			writeFileSync(join(wsDir, "docker-compose.yml"), "version: '3'");
-
-			const result = detectScopeFromPath(wsDir, join(wsDir, "docker-compose.yml"));
-			expect(result).toEqual({ scope: "workspace" });
-		});
-	});
-
-	describe("removeTemplate", () => {
-		test("removes a workspace template file", () => {
-			const arbRootDir = join(tmpDir, "project");
-			const templatePath = join(arbRootDir, ".arb", "templates", "workspace", ".env");
-			mkdirSync(join(arbRootDir, ".arb", "templates", "workspace"), { recursive: true });
-			writeFileSync(templatePath, "KEY=value");
-
-			removeTemplate(arbRootDir, "workspace", ".env");
-			expect(existsSync(templatePath)).toBe(false);
-		});
-
-		test("removes a repo template file", () => {
-			const arbRootDir = join(tmpDir, "project");
-			const templatePath = join(arbRootDir, ".arb", "templates", "repos", "api", ".env");
-			mkdirSync(join(arbRootDir, ".arb", "templates", "repos", "api"), { recursive: true });
-			writeFileSync(templatePath, "DB=localhost");
-
-			removeTemplate(arbRootDir, "repo", ".env", "api");
-			expect(existsSync(templatePath)).toBe(false);
-		});
-
-		test("cleans up empty parent directories", () => {
-			const arbRootDir = join(tmpDir, "project");
-			const nestedDir = join(arbRootDir, ".arb", "templates", "workspace", "config", "deep");
-			mkdirSync(nestedDir, { recursive: true });
-			writeFileSync(join(nestedDir, "settings.json"), "{}");
-
-			removeTemplate(arbRootDir, "workspace", join("config", "deep", "settings.json"));
-			expect(existsSync(nestedDir)).toBe(false);
-			expect(existsSync(join(arbRootDir, ".arb", "templates", "workspace", "config"))).toBe(false);
-			expect(existsSync(join(arbRootDir, ".arb", "templates", "workspace"))).toBe(true);
-		});
-
-		test("does not remove non-empty parent directories", () => {
-			const arbRootDir = join(tmpDir, "project");
-			const configDir = join(arbRootDir, ".arb", "templates", "workspace", "config");
-			mkdirSync(configDir, { recursive: true });
-			writeFileSync(join(configDir, "a.json"), "a");
-			writeFileSync(join(configDir, "b.json"), "b");
-
-			removeTemplate(arbRootDir, "workspace", join("config", "a.json"));
-			expect(existsSync(join(configDir, "b.json"))).toBe(true);
-			expect(existsSync(configDir)).toBe(true);
-		});
-
-		test("throws when template does not exist", () => {
-			const arbRootDir = join(tmpDir, "project");
-			mkdirSync(join(arbRootDir, ".arb", "templates", "workspace"), { recursive: true });
-
-			expect(() => removeTemplate(arbRootDir, "workspace", "nonexistent.txt")).toThrow("Template does not exist");
-		});
-	});
-
 	describe("forceOverlayDirectory", () => {
 		test("returns empty result when source directory does not exist", () => {
 			const result = forceOverlayDirectory(join(tmpDir, "nonexistent"), join(tmpDir, "dest"));
@@ -932,31 +776,6 @@ describe("templates", () => {
 			expect(result).toHaveLength(2);
 			expect(result).toContainEqual({ scope: "workspace", relPath: "dynamic.json", isTemplate: true });
 			expect(result).toContainEqual({ scope: "workspace", relPath: "static.txt" });
-		});
-	});
-
-	describe("removeTemplate with .arbtemplate", () => {
-		test("removes .arbtemplate file when called with stripped name", () => {
-			const arbRootDir = join(tmpDir, "project");
-			const templatePath = join(arbRootDir, ".arb", "templates", "workspace", `config.json${ARBTEMPLATE_EXT}`);
-			mkdirSync(join(arbRootDir, ".arb", "templates", "workspace"), { recursive: true });
-			writeFileSync(templatePath, "{{ workspace.name }}");
-
-			removeTemplate(arbRootDir, "workspace", "config.json");
-			expect(existsSync(templatePath)).toBe(false);
-		});
-
-		test("prefers plain file over .arbtemplate when both exist", () => {
-			const arbRootDir = join(tmpDir, "project");
-			mkdirSync(join(arbRootDir, ".arb", "templates", "workspace"), { recursive: true });
-			const plainPath = join(arbRootDir, ".arb", "templates", "workspace", "config.json");
-			const arbtplPath = join(arbRootDir, ".arb", "templates", "workspace", `config.json${ARBTEMPLATE_EXT}`);
-			writeFileSync(plainPath, "plain");
-			writeFileSync(arbtplPath, "template");
-
-			removeTemplate(arbRootDir, "workspace", "config.json");
-			expect(existsSync(plainPath)).toBe(false);
-			expect(existsSync(arbtplPath)).toBe(true);
 		});
 	});
 
