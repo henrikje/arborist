@@ -87,7 +87,9 @@ export async function integrate(
 
 	// Phase 2: fetch
 	const shouldFetch = options.fetch !== false;
-	const fetchDirs = workspaceRepoDirs(wsDir);
+	const allFetchDirs = workspaceRepoDirs(wsDir);
+	const selectedSet = new Set(selectedRepos);
+	const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
 	const repos = fetchDirs.map((d) => basename(d));
 
 	const autostash = options.autostash === true;

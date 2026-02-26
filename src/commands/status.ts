@@ -147,7 +147,8 @@ async function runStatus(
 	};
 
 	// Two-phase rendering: show stale table immediately, refresh after fetch
-	const fetchDirs = options.fetch ? workspaceRepoDirs(wsDir) : [];
+	const allFetchDirs = options.fetch ? workspaceRepoDirs(wsDir) : [];
+	const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
 	const canTwoPhase = options.fetch && fetchDirs.length > 0 && !options.quiet && !options.json && isTTY();
 
 	if (canTwoPhase) {

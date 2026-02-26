@@ -25,6 +25,23 @@ load test_helper/common-setup
     [[ "$output" == *"repo-b"* ]]
 }
 
+@test "arb pull repo-a only fetches named repo" {
+    arb create my-feature repo-a repo-b
+
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
+
+    # Push a remote commit to repo-a
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone-a" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone-a" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull repo-a --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Fetched 1 repo"* ]]
+    [[ "$output" == *"Pulled 1 repo"* ]]
+}
+
 @test "arb pull continues through repos on conflict" {
     arb create my-feature repo-a repo-b
 
@@ -127,6 +144,18 @@ load test_helper/common-setup
     [ "$status" -eq 0 ]
     [[ "$output" == *"Fetched"* ]]
     [[ "$output" == *"Pushed"* ]]
+}
+
+@test "arb push repo-a only fetches named repo" {
+    arb create my-feature repo-a repo-b
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "change" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push repo-a --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Fetched 1 repo"* ]]
+    [[ "$output" == *"Pushed 1 repo"* ]]
 }
 
 @test "arb push --no-fetch skips fetching" {
