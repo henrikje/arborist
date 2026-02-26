@@ -88,7 +88,7 @@ export function toJsonVerbose(detail: VerboseDetail): StatusJsonRepo["verbose"] 
 	};
 }
 
-export async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promise<void> {
+export function formatVerboseDetail(repo: RepoStatus, verbose: VerboseDetail | undefined): string {
 	const sections: string[] = [];
 
 	// Merged into base
@@ -114,9 +114,6 @@ export async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promi
 		section += `${SECTION_INDENT}Run 'arb rebase --retarget' to rebase onto the default branch\n`;
 		sections.push(section);
 	}
-
-	// Gather structured verbose data
-	const verbose = await gatherVerboseDetail(repo, wsDir);
 
 	// Ahead of base
 	if (verbose?.aheadOfBase && repo.base) {
@@ -174,9 +171,7 @@ export async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promi
 		sections.push(section);
 	}
 
-	for (const section of sections) {
-		process.stdout.write(section);
-	}
+	return sections.join("");
 }
 
 export function formatVerboseCommits(

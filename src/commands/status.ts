@@ -3,12 +3,13 @@ import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
 import { predictMergeConflict } from "../lib/git";
 import type { StatusJsonOutput } from "../lib/json-types";
-import { bold, dim, error, yellow } from "../lib/output";
+import { bold, dim, error, stderr, yellow } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import {
 	type RepoStatus,
+	type WorkspaceSummary,
 	baseRef,
 	computeFlags,
 	computeSummaryAggregates,
@@ -16,7 +17,7 @@ import {
 	repoMatchesWhere,
 	validateWhere,
 } from "../lib/status";
-import { gatherVerboseDetail, printVerboseDetail, toJsonVerbose } from "../lib/status-verbose";
+import { formatVerboseDetail, gatherVerboseDetail, toJsonVerbose } from "../lib/status-verbose";
 import { readNamesFromStdin } from "../lib/stdin";
 import {
 	type RelativeTimeParts,
@@ -25,6 +26,7 @@ import {
 	formatRelativeTimeParts,
 } from "../lib/time";
 import { isTTY } from "../lib/tty";
+import { runTwoPhaseRender } from "../lib/two-phase-render";
 import type { ArbContext } from "../lib/types";
 import { requireWorkspace } from "../lib/workspace-context";
 
@@ -120,10 +122,52 @@ async function runStatus(
 		if (stdinNames.length > 0) repoNames = stdinNames;
 	}
 	const selectedRepos = resolveRepoSelection(wsDir, repoNames);
+	const selectedSet = new Set(selectedRepos);
 
-	// Fetch if requested
-	if (options.fetch) {
-		const fetchDirs = workspaceRepoDirs(wsDir);
+	// Shared gather helper: scan + filter
+	const gatherFiltered = async (): Promise<WorkspaceSummary> => {
+		const tty = isTTY();
+		let showingProgress = false;
+		const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, (scanned, total) => {
+			if (!tty) return;
+			showingProgress = true;
+			process.stderr.write(`\r  Scanning ${scanned}/${total}`);
+		});
+		if (showingProgress) process.stderr.write(`\r${" ".repeat(40)}\r`);
+
+		let repos = summary.repos.filter((r) => selectedSet.has(r.name));
+		if (where) {
+			repos = repos.filter((r) => {
+				const flags = computeFlags(r, summary.branch);
+				return repoMatchesWhere(flags, where);
+			});
+		}
+		const aggregates = computeSummaryAggregates(repos, summary.branch);
+		return { ...summary, repos, total: repos.length, ...aggregates };
+	};
+
+	// Two-phase rendering: show stale table immediately, refresh after fetch
+	const fetchDirs = options.fetch ? workspaceRepoDirs(wsDir) : [];
+	const canTwoPhase = options.fetch && fetchDirs.length > 0 && !options.quiet && !options.json && isTTY();
+
+	if (canTwoPhase) {
+		const repoNamesForFetch = fetchDirs.map((d) => basename(d));
+		const remotesMap = await resolveRemotesMap(repoNamesForFetch, ctx.reposDir);
+
+		await runTwoPhaseRender({
+			fetchDirs,
+			remotesMap,
+			reposForFetchReport: repoNamesForFetch,
+			gather: async () => gatherFiltered(),
+			format: async (data) => renderStatusTable(data, wsDir, { verbose: options.verbose }),
+			writeStale: stderr,
+			writeFresh: (output) => process.stdout.write(output),
+		});
+		return;
+	}
+
+	// Non-two-phase fetch (non-TTY / CI): abort on failure
+	if (options.fetch && fetchDirs.length > 0) {
 		const repos = fetchDirs.map((d) => basename(d));
 		const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
 		const results = await parallelFetch(fetchDirs, undefined, remotesMap);
@@ -134,29 +178,7 @@ async function runStatus(
 		}
 	}
 
-	const tty = isTTY();
-	let showingProgress = false;
-	const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, (scanned, total) => {
-		if (!tty) return;
-		showingProgress = true;
-		process.stderr.write(`\r  Scanning ${scanned}/${total}`);
-	});
-	if (showingProgress) process.stderr.write(`\r${" ".repeat(40)}\r`);
-
-	// Filter to selected repos first, then apply --where
-	const selectedSet = new Set(selectedRepos);
-	let filteredSummary = summary;
-	{
-		let repos = summary.repos.filter((r) => selectedSet.has(r.name));
-		if (where) {
-			repos = repos.filter((r) => {
-				const flags = computeFlags(r, summary.branch);
-				return repoMatchesWhere(flags, where);
-			});
-		}
-		const aggregates = computeSummaryAggregates(repos, summary.branch);
-		filteredSummary = { ...summary, repos, total: repos.length, ...aggregates };
-	}
+	const filteredSummary = await gatherFiltered();
 
 	// Quiet output — one repo name per line
 	if (options.quiet) {
@@ -183,17 +205,28 @@ async function runStatus(
 		return;
 	}
 
+	// Table output
+	const tableOutput = await renderStatusTable(filteredSummary, wsDir, { verbose: options.verbose });
+	process.stdout.write(tableOutput);
+}
+
+async function renderStatusTable(
+	filteredSummary: WorkspaceSummary,
+	wsDir: string,
+	options: { verbose?: boolean },
+): Promise<string> {
+	let output = "";
 	const repos = filteredSummary.repos;
 
-	// Branch header line (TTY only)
+	// Branch header line
 	const branchHeader = filteredSummary.base
-		? `On branch ${summary.branch}  ${dim(`(base: ${filteredSummary.base})`)}`
-		: `On branch ${summary.branch}`;
-	process.stdout.write(`${branchHeader}\n`);
+		? `On branch ${filteredSummary.branch}  ${dim(`(base: ${filteredSummary.base})`)}`
+		: `On branch ${filteredSummary.branch}`;
+	output += `${branchHeader}\n`;
 
 	if (repos.length === 0) {
-		process.stdout.write("\n  (no repos)\n");
-		return;
+		output += "\n  (no repos)\n";
+		return output;
 	}
 
 	// Predict conflicts for diverged repos (both ahead and behind base)
@@ -251,7 +284,7 @@ async function runStatus(
 	const showBranch = repos.some(
 		(r) =>
 			r.identity.headMode.kind === "detached" ||
-			(r.identity.headMode.kind === "attached" && r.identity.headMode.branch !== summary.branch),
+			(r.identity.headMode.kind === "attached" && r.identity.headMode.branch !== filteredSummary.branch),
 	);
 
 	// Ensure minimum widths for header labels
@@ -296,7 +329,7 @@ async function runStatus(
 	const finalRemoteGroupWidth = maxRemoteName + 2 + maxRemoteDiff;
 
 	// Table header line
-	process.stdout.write("\n");
+	output += "\n";
 	let header = `  ${dim("REPO")}${" ".repeat(maxRepo - 4)}`;
 	if (showBranch) {
 		header += `    ${dim("BRANCH")}${" ".repeat(maxBranch - 6)}`;
@@ -305,7 +338,7 @@ async function runStatus(
 	header += `    ${dim("BASE")}${" ".repeat(baseGroupWidth - 4)}`;
 	header += `    ${dim("SHARE")}${" ".repeat(finalRemoteGroupWidth - 5)}`;
 	header += `    ${dim("LOCAL")}`;
-	process.stdout.write(`${header}\n`);
+	output += `${header}\n`;
 
 	// Pass 2: render with colors and padding
 	for (let i = 0; i < repos.length; i++) {
@@ -314,7 +347,7 @@ async function runStatus(
 		if (!repo || !cell) continue;
 
 		const isActive = repo.name === currentRepo;
-		const flags = computeFlags(repo, summary.branch);
+		const flags = computeFlags(repo, filteredSummary.branch);
 
 		// Col 1: Repo name
 		const marker = isActive ? `${bold("*")} ` : "  ";
@@ -325,7 +358,7 @@ async function runStatus(
 		const isDetached = repo.identity.headMode.kind === "detached";
 		const actualBranch = repo.identity.headMode.kind === "attached" ? repo.identity.headMode.branch : "";
 		const branchText = isDetached ? "(detached)" : actualBranch;
-		const isDrifted = repo.identity.headMode.kind === "attached" && actualBranch !== summary.branch;
+		const isDrifted = repo.identity.headMode.kind === "attached" && actualBranch !== filteredSummary.branch;
 		const branchColored = isDrifted || isDetached ? yellow(branchText) : branchText;
 		const branchPad = maxBranch - cell.branch.length;
 
@@ -418,16 +451,19 @@ async function runStatus(
 		// Local changes
 		line += `    ${localColored}`;
 
-		process.stdout.write(`${line}\n`);
+		output += `${line}\n`;
 
 		// Verbose detail
 		if (options.verbose) {
-			await printVerboseDetail(repo, wsDir);
+			const verbose = await gatherVerboseDetail(repo, wsDir);
+			output += formatVerboseDetail(repo, verbose);
 			if (i < repos.length - 1) {
-				process.stdout.write("\n");
+				output += "\n";
 			}
 		}
 	}
+
+	return output;
 }
 
 // Plain-text cell computation (no ANSI codes) for width measurement

@@ -1,9 +1,10 @@
 import confirm from "@inquirer/confirm";
 import { ArbAbort, ArbError } from "./errors";
-import { clearLines, countLines, dim, error, plural, skipConfirmNotice, stderr } from "./output";
-import { getFetchFailedRepos, parallelFetch, reportFetchFailures } from "./parallel-fetch";
+import { error, skipConfirmNotice, stderr } from "./output";
+import { parallelFetch, reportFetchFailures } from "./parallel-fetch";
 import type { RepoRemotes } from "./remotes";
 import { isTTY } from "./tty";
+import { runTwoPhaseRender } from "./two-phase-render";
 
 export interface PlanFlowOptions<TAssessment> {
 	shouldFetch?: boolean;
@@ -31,24 +32,14 @@ export async function runPlanFlow<TAssessment>(options: PlanFlowOptions<TAssessm
 	const canTwoPhase = shouldFetch && options.fetchDirs.length > 0 && isTTY();
 
 	if (canTwoPhase) {
-		const fetchPromise = parallelFetch(options.fetchDirs, undefined, options.remotesMap, { silent: true });
-
-		let assessments = await assessWithPost(options, []);
-		const stalePlan = options.formatPlan(assessments);
-		const fetchingLine = `${dim(`Fetching ${plural(options.fetchDirs.length, "repo")}...`)}\n`;
-		const staleOutput = stalePlan + fetchingLine;
-		stderr(staleOutput);
-
-		const fetchResults = await fetchPromise;
-		const fetchFailed = getFetchFailedRepos(options.reposForFetchReport, fetchResults);
-
-		assessments = await assessWithPost(options, fetchFailed);
-		const freshPlan = options.formatPlan(assessments);
-		clearLines(countLines(staleOutput));
-		stderr(freshPlan);
-
-		reportFetchFailures(options.reposForFetchReport, fetchResults);
-		return assessments;
+		const { data } = await runTwoPhaseRender({
+			fetchDirs: options.fetchDirs,
+			remotesMap: options.remotesMap,
+			reposForFetchReport: options.reposForFetchReport,
+			gather: (fetchFailed) => assessWithPost(options, fetchFailed),
+			format: (assessments) => options.formatPlan(assessments),
+		});
+		return data;
 	}
 
 	if (shouldFetch && options.fetchDirs.length > 0) {
