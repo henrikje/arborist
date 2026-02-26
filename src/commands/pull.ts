@@ -49,7 +49,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 		.option("--autostash", "Stash uncommitted changes before pull, re-apply after")
 		.summary("Pull the feature branch from the share remote")
 		.description(
-			"Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos with uncommitted changes are skipped unless --autostash is used. Repos that haven't been pushed yet or where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end. Use --autostash to stash uncommitted changes before pulling and re-apply them after.",
+			"Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos with uncommitted changes are skipped unless --autostash is used. Repos that haven't been pushed yet or where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end. Use --autostash to stash uncommitted changes before pulling and re-apply them after.\n\nThe pull mode (rebase or merge) is determined per-repo from git config (branch.<name>.rebase, then pull.rebase), defaulting to merge if neither is set. Use --rebase or --merge to override for all repos.",
 		)
 		.action(
 			async (

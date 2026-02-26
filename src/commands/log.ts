@@ -35,12 +35,12 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 	program
 		.command("log [repos...]")
 		.option("-F, --fetch", "Fetch from all remotes before showing log")
-		.option("--no-fetch", "Skip fetching (default)", false)
+		.option("--no-fetch", "Skip fetching (default)")
 		.option("-n, --max-count <count>", "Limit commits shown per repo")
 		.option("--json", "Output structured JSON to stdout")
 		.summary("Show feature branch commits across repos")
 		.description(
-			"Show commits on the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what have I done in this workspace?' by showing only the commits that belong to the current feature.\n\nShows commits in the range base..HEAD for each repo. Use -F/--fetch to fetch before showing log (skip with --no-fetch). Use -n to limit how many commits are shown per repo. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
+			"Show commits on the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what have I done in this workspace?' by showing only the commits that belong to the current feature.\n\nShows commits in the range base..HEAD for each repo. Use -F/--fetch to fetch before showing log (skip with --no-fetch). Use -n to limit how many commits are shown per repo. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line). Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
 		)
 		.action(async (repoArgs: string[], options: { maxCount?: string; json?: boolean; fetch?: boolean }) => {
 			const ctx = getCtx();
