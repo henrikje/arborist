@@ -52,7 +52,7 @@ Arborist is in pre-release. The priority is getting the design right to form a c
 
 ### Color semantics
 
-- **Green**: success confirmation only — the final summary line ("Pushed 3 repos"), staged changes in status. Used very sparingly.
+- **Green**: success confirmation only — the final summary line ("Pushed 3 repos"). Used very sparingly.
 - **Yellow**: noteworthy or mildly risky — things that need attention or action. Unpushed commits, local changes, unexpected branches, skipped repos, unstaged/untracked files, operations with caveats.
 - **Red**: errors or immediate risks — failed operations, at-risk workspaces, fatal messages.
 - **Dim (gray)**: de-emphasized, supplementary information — column headings, commit hashes, section labels in expanded views.
