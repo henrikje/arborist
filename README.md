@@ -56,8 +56,6 @@ cd arborist
 ./install.sh
 ```
 
-The installer puts the `arb` binary in `~/.local/bin`, and adds shell integration (wrapper function + tab completion) for bash and zsh.
-
 ## A quick tour
 
 ### Setup
