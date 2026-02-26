@@ -248,6 +248,7 @@ SHELL_FILE="$BATS_TEST_DIRNAME/../../shell/arb.bash"
         echo \"\${COMPREPLY[*]}\"
     "
     [ "$status" -eq 0 ]
+    [[ "$output" == *"add"* ]]
     [[ "$output" == *"list"* ]]
     [[ "$output" == *"diff"* ]]
     [[ "$output" == *"apply"* ]]

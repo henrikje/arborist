@@ -408,6 +408,7 @@ _arb() {
                 template)
                     shift words; (( CURRENT-- ))
                     local -a template_subcmds=(
+                        'add:Capture a file or directory as a template'
                         'list:List all defined templates'
                         'diff:Show template drift'
                         'apply:Re-seed templates into the current workspace'
@@ -416,6 +417,14 @@ _arb() {
                         _describe 'template command' template_subcmds
                     else
                         case "${words[1]}" in
+                            add)
+                                shift words; (( CURRENT-- ))
+                                _arguments \
+                                    '*--repo[Target repo scope]:repo:($repo_names)' \
+                                    '--workspace[Target workspace scope]' \
+                                    '(-f --force)'{-f,--force}'[Overwrite existing template]' \
+                                    '1:file:_files'
+                                ;;
                             list) ;;
                             diff)
                                 shift words; (( CURRENT-- ))
