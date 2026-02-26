@@ -64,7 +64,9 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 
 				const shouldFetch = options.fetch !== false;
-				const fetchDirs = workspaceRepoDirs(wsDir);
+				const allFetchDirs = workspaceRepoDirs(wsDir);
+				const selectedSet = new Set(selectedRepos);
+				const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
 				const allRepos = fetchDirs.map((d) => basename(d));
 
 				const assess = async (_fetchFailed: string[]) => {

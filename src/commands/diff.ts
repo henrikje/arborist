@@ -116,8 +116,17 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
 				const { wsDir, workspace } = requireWorkspace(ctx);
 				const branch = await requireBranch(wsDir, workspace);
 
+				let repoNames = repoArgs;
+				if (repoNames.length === 0) {
+					const stdinNames = await readNamesFromStdin();
+					if (stdinNames.length > 0) repoNames = stdinNames;
+				}
+				const selectedRepos = resolveRepoSelection(wsDir, repoNames);
+
 				if (options.fetch) {
-					const fetchDirs = workspaceRepoDirs(wsDir);
+					const allFetchDirs = workspaceRepoDirs(wsDir);
+					const selectedSet = new Set(selectedRepos);
+					const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
 					const repos = fetchDirs.map((d) => basename(d));
 					const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
 					const results = await parallelFetch(fetchDirs, undefined, remotesMap);
@@ -127,13 +136,6 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
 						throw new ArbError("Aborting due to fetch failures.");
 					}
 				}
-
-				let repoNames = repoArgs;
-				if (repoNames.length === 0) {
-					const stdinNames = await readNamesFromStdin();
-					if (stdinNames.length > 0) repoNames = stdinNames;
-				}
-				const selectedRepos = resolveRepoSelection(wsDir, repoNames);
 
 				// Resolve --dirty as shorthand for --where dirty
 				if (options.dirty && options.where) {

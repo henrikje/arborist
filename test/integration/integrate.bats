@@ -176,6 +176,18 @@ load test_helper/common-setup
     [[ "$output" != *"repo-b"* ]]
 }
 
+@test "arb rebase repo-a only fetches named repo" {
+    arb create my-feature repo-a repo-b
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb rebase repo-a --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Fetched 1 repo"* ]]
+    [[ "$output" == *"Rebased 1 repo"* ]]
+}
+
 @test "arb rebase with custom base branch" {
     # Create a base branch with a commit
     git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
