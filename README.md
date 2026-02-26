@@ -40,11 +40,9 @@ Keeping your work in sync involves two axes:
 
 Arborist's synchronization commands handle this across all repos at once.
 
-## A quick tour
+## Install
 
-### Setup
-
-Arborist requires Git and works on macOS and Linux. It currently needs [Bun](https://bun.sh) to build from source, but pre-built binaries are coming. :-)
+Arborist requires Git and works on macOS and Linux.
 
 **Homebrew** (macOS and Linux):
 ```
@@ -59,6 +57,10 @@ cd arborist
 ```
 
 The installer puts the `arb` binary in `~/.local/bin`, and adds shell integration (wrapper function + tab completion) for bash and zsh.
+
+## A quick tour
+
+### Setup
 
 ```bash
 mkdir ~/my-project
