@@ -3,12 +3,33 @@ name: Publish
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.0.0)"
+        required: true
 
 permissions:
   contents: write
 
 jobs:
-  build-and-upload:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: bun-darwin-arm64
+            os: darwin
+            arch: arm64
+          - target: bun-darwin-x64
+            os: darwin
+            arch: x64
+          - target: bun-linux-x64
+            os: linux
+            arch: x64
+          - target: bun-linux-arm64
+            os: linux
+            arch: arm64
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,15 +40,73 @@ jobs:
 
       - run: bun install
 
-      - name: Build release binaries
-        run: bun run build:release
+      - name: Stamp version
+        run: bun run scripts/set-version.ts
+
+      - name: Build and package
+        run: |
+          VERSION=$(grep -oP 'ARB_VERSION = "\K[^"]+' src/version.ts)
+          NAME="arb-${VERSION}-${{ matrix.os }}-${{ matrix.arch }}"
+          mkdir -p "staging/${NAME}/shell"
+          bun build src/index.ts --compile --target=${{ matrix.target }} --outfile "staging/${NAME}/arb"
+          cp shell/arb.zsh shell/arb.bash "staging/${NAME}/shell/"
+          tar -czf "staging/${NAME}.tar.gz" -C staging "${NAME}"
+          cd staging
+          sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arb-${{ matrix.os }}-${{ matrix.arch }}
+          path: staging/*.tar.gz*
+
+  upload:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Collect checksums
+        run: |
+          cat release/*.sha256 | sort > release/checksums.txt
+          rm release/*.sha256
 
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload ${{ github.event.release.tag_name }} dist/*.tar.gz dist/checksums.txt
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+          gh release upload "$TAG" release/*.tar.gz release/checksums.txt
+
+  homebrew:
+    needs: upload
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Prepare checksums
+        run: |
+          mkdir -p dist
+          cat release/*.sha256 | sort > dist/checksums.txt
 
       - name: Update Homebrew formula
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: bun run scripts/update-homebrew.ts ${{ github.event.release.tag_name }}
+        run: |
+          TAG="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+          bun run scripts/update-homebrew.ts "$TAG"

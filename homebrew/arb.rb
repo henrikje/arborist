@@ -29,28 +29,18 @@ class Arb < Formula
   def install
     bin.install "arb"
     (share/"arb").install "shell/arb.zsh"
-    (share/"arb/skill").install "skill/SKILL.md"
-    (share/"arb/skill/references").install "skill/references/commands.md"
-  end
-
-  def post_install
-    claude_dir = Pathname.new(Dir.home)/".claude"
-    if claude_dir.directory?
-      skill_dir = claude_dir/"skills/arb/references"
-      skill_dir.mkpath
-      cp share/"arb/skill/SKILL.md", claude_dir/"skills/arb/SKILL.md"
-      cp share/"arb/skill/references/commands.md", skill_dir/"commands.md"
-    end
+    (share/"arb").install "shell/arb.bash"
   end
 
   def caveats
-    shell_line = "source \"#{share}/arb/arb.zsh\""
     <<~EOS
       To enable the shell function (required for arb cd), add to your shell profile:
 
-          #{shell_line}
+          For zsh (~/.zshrc):
+              source "#{share}/arb/arb.zsh"
 
-      For zsh, add it to ~/.zshrc. For bash, add it to ~/.bashrc.
+          For bash (~/.bashrc):
+              source "#{share}/arb/arb.bash"
     EOS
   end
 
