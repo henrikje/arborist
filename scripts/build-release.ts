@@ -9,6 +9,8 @@ const targets = [
 	{ bun: "bun-linux-arm64", os: "linux", arch: "arm64" },
 ] as const;
 
+const shellFiles = ["shell/arb.zsh", "shell/arb.bash"];
+
 // Stamp version into src/version.ts
 await $`bun run scripts/set-version.ts`;
 
@@ -36,16 +38,20 @@ for (const target of targets) {
 	console.log(`Compiling for ${target.bun}...`);
 	await $`bun build src/index.ts --compile --target=${target.bun} --outfile ${join(stagingDir, binaryName)}`;
 
-	// Copy shell extension and skill files (preserve directory structure for Homebrew formula)
+	// Copy shell integration files
 	await $`mkdir -p ${join(stagingDir, "shell")}`;
-	await $`cp shell/arb.zsh ${join(stagingDir, "shell")}/`;
-	await $`cp -r skill ${stagingDir}/skill`;
+	for (const file of shellFiles) {
+		await $`cp ${file} ${join(stagingDir, "shell")}/`;
+	}
 
 	console.log(`Packaging ${tarball}...`);
 	await $`tar -czf ${tarball} -C dist ${`arb-${version}-${target.os}-${target.arch}`}`;
 
-	// Compute checksum
-	const sha256 = (await $`sha256sum ${tarball}`.text()).trim().split(/\s+/)[0];
+	// Compute checksum using Bun's native crypto
+	const tarballBytes = await Bun.file(tarball).arrayBuffer();
+	const hasher = new Bun.CryptoHasher("sha256");
+	hasher.update(tarballBytes);
+	const sha256 = hasher.digest("hex");
 	checksums.push(`${sha256}  arb-${version}-${target.os}-${target.arch}.tar.gz`);
 
 	// Clean up staging directory

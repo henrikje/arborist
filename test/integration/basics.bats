@@ -7,7 +7,7 @@ load test_helper/common-setup
 @test "arb --version outputs version number" {
     run arb --version
     [ "$status" -eq 0 ]
-    [[ "$output" =~ ^Arborist\ [0-9]+\.[0-9]+\.[0-9]+ ]]
+    [[ "$output" =~ ^Arborist\ (dev\.[0-9a-f]+|[0-9]+\.[0-9]+\.[0-9]+) ]]
 }
 
 @test "arb version is treated as unknown command" {
@@ -18,7 +18,7 @@ load test_helper/common-setup
 @test "arb -v outputs version number" {
     run arb -v
     [ "$status" -eq 0 ]
-    [[ "$output" =~ ^Arborist\ [0-9]+\.[0-9]+\.[0-9]+ ]]
+    [[ "$output" =~ ^Arborist\ (dev\.[0-9a-f]+|[0-9]+\.[0-9]+\.[0-9]+) ]]
 }
 
 # ── bare arb (shows help) ────────────────────────────────────────
