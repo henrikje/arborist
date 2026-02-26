@@ -212,7 +212,6 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						}
 					} else {
 						for (const row of rows) {
-							if (row.special !== null) continue;
 							process.stdout.write(`${row.name}\n`);
 						}
 					}
