@@ -5,6 +5,7 @@ import { ArbError } from "../lib/errors";
 import { error, info, plural, success, warn } from "../lib/output";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
+import { readNamesFromStdin } from "../lib/stdin";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayUnknownVariables } from "../lib/templates";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -34,7 +35,11 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
 					throw new ArbError("All repos are already in this workspace.");
 				}
 				repos = available;
-			} else if (repos.length > 0) {
+			} else if (repos.length === 0) {
+				const stdinNames = await readNamesFromStdin();
+				if (stdinNames.length > 0) repos = stdinNames;
+			}
+			if (repos.length > 0 && !options.allRepos) {
 				const unknown = repos.filter((r) => !allRepos.includes(r));
 				if (unknown.length > 0) {
 					error(`Unknown repos: ${unknown.join(", ")}. Not found in .arb/repos/.`);

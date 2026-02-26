@@ -6,6 +6,7 @@ import { branchExistsLocally, git, isRepoDirty, parseGitStatus } from "../lib/gi
 import { error, info, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
 import { selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import { isLocalDirty } from "../lib/status";
+import { readNamesFromStdin } from "../lib/stdin";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayUnknownVariables } from "../lib/templates";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -35,6 +36,10 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 				}
 				repos = currentRepos;
 			} else if (repos.length === 0) {
+				const stdinNames = await readNamesFromStdin();
+				if (stdinNames.length > 0) repos = stdinNames;
+			}
+			if (repos.length === 0) {
 				if (!process.stdin.isTTY) {
 					error("No repos specified. Pass repo names or use --all-repos.");
 					throw new ArbError("No repos specified. Pass repo names or use --all-repos.");

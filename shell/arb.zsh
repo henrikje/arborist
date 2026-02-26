@@ -391,6 +391,8 @@ _arb() {
                         '(-F --fetch --no-fetch)--no-fetch[Skip fetching (default)]' \
                         '(-n --max-count)'{-n,--max-count}'[Limit commits shown per repo]:count:' \
                         '--json[Output structured JSON]' \
+                        '(-d --dirty -w --where)'{-d,--dirty}'[Only log dirty repos]' \
+                        '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($repo_names)'
                     ;;
                 diff)
