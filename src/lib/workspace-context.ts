@@ -20,8 +20,8 @@ export function requireWorkspace(ctx: ArbContext): { wsDir: string; workspace: s
 export async function requireBranch(wsDir: string, workspaceName: string): Promise<string> {
 	const wb = await workspaceBranch(wsDir);
 	if (!wb) {
-		error(`No branch configured for workspace ${workspaceName} and no worktrees to infer from`);
-		throw new ArbError(`No branch configured for workspace ${workspaceName} and no worktrees to infer from`);
+		error(`No branch configured for workspace ${workspaceName} and no repos to infer from`);
+		throw new ArbError(`No branch configured for workspace ${workspaceName} and no repos to infer from`);
 	}
 	return wb.branch;
 }
