@@ -371,8 +371,13 @@ __arb_complete_rebranch() {
 
 __arb_complete_log() {
     local base_dir="$1" cur="$2"
+    local prev="${COMP_WORDS[COMP_CWORD-1]}"
+    if [[ "$prev" == "-w" || "$prev" == "--where" ]]; then
+        __arb_complete_where_value "$cur"
+        return
+    fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-F --fetch --no-fetch -n --max-count --json" -- "$cur"))
+        COMPREPLY=($(compgen -W "-F --fetch --no-fetch -n --max-count --json -d --dirty -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))

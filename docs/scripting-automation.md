@@ -46,7 +46,7 @@ arb delete --all-safe --where gone          # batch-remove workspaces whose bran
 
 For workspace-level commands (`list`, `delete`), AND applies per-repo: a workspace matches `dirty+unpushed` only if a _single_ repo is both dirty and unpushed, not if one repo is dirty and a different repo is unpushed.
 
-`--where` is supported on `status`, `exec`, `open`, `diff`, `list`, and `delete`. On `exec` and `open`, the shorthand `--dirty` (`-d`) is equivalent to `--where dirty`.
+`--where` is supported on `status`, `exec`, `open`, `diff`, `log`, `list`, and `delete`. On `exec`, `open`, `diff`, and `log`, the shorthand `--dirty` (`-d`) is equivalent to `--where dirty`.
 
 The full list of filter terms:
 
@@ -96,7 +96,7 @@ arb list -q --where gone | arb delete -y          # delete gone workspaces
 arb status -q | grep -v legacy | arb rebase -y    # rebase all except "legacy"
 ```
 
-Stdin-accepting commands: `status`, `diff`, `log`, `push`, `pull`, `rebase`, `merge`, `delete`.
+Stdin-accepting commands: `create`, `attach`, `detach`, `status`, `diff`, `log`, `push`, `pull`, `rebase`, `merge`, `delete`.
 
 `exec` and `open` are excluded because they inherit stdin for child processes. Use xargs instead:
 

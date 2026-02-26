@@ -1,6 +1,5 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
 import { git, parseGitNumstat } from "../lib/git";
 import type { DiffJsonFileStat, DiffJsonOutput, DiffJsonRepo } from "../lib/json-types";
@@ -12,7 +11,6 @@ import {
 	type RepoStatus,
 	baseRef,
 	computeFlags,
-	gatherRepoStatus,
 	gatherWorkspaceSummary,
 	repoMatchesWhere,
 	validateWhere,
@@ -158,16 +156,10 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
 
 				// Apply --where filter
 				if (where) {
-					const configBase = configGet(`${wsDir}/.arbws/config`, "base");
-					const filterResults = await Promise.all(
-						repos.map(async (repo) => {
-							const repoDir = `${wsDir}/${repo.name}`;
-							const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase);
-							const flags = computeFlags(status, branch);
-							return { repo, matches: repoMatchesWhere(flags, where) };
-						}),
-					);
-					repos = filterResults.filter((r) => r.matches).map((r) => r.repo);
+					repos = repos.filter((repo) => {
+						const flags = computeFlags(repo, branch);
+						return repoMatchesWhere(flags, where);
+					});
 				}
 
 				if (!options.json && isTTY()) {

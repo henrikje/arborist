@@ -7,7 +7,14 @@ import { bold, dim, error, plural, stdout, success, yellow } from "../lib/output
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
-import { type RepoStatus, baseRef, computeFlags, gatherWorkspaceSummary } from "../lib/status";
+import {
+	type RepoStatus,
+	baseRef,
+	computeFlags,
+	gatherWorkspaceSummary,
+	repoMatchesWhere,
+	validateWhere,
+} from "../lib/status";
 import { readNamesFromStdin } from "../lib/stdin";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
@@ -37,56 +44,86 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 		.option("-F, --fetch", "Fetch from all remotes before showing log")
 		.option("--no-fetch", "Skip fetching (default)")
 		.option("-n, --max-count <count>", "Limit commits shown per repo")
+		.option("-d, --dirty", "Only log dirty repos (shorthand for --where dirty)")
+		.option("-w, --where <filter>", "Only log repos matching status filter (comma = OR, + = AND, ^ = negate)")
 		.option("--json", "Output structured JSON to stdout")
 		.summary("Show feature branch commits across repos")
 		.description(
-			"Show commits on the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what have I done in this workspace?' by showing only the commits that belong to the current feature.\n\nShows commits in the range base..HEAD for each repo. Use -F/--fetch to fetch before showing log (skip with --no-fetch). Use -n to limit how many commits are shown per repo. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line). Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
+			"Show commits on the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what have I done in this workspace?' by showing only the commits that belong to the current feature.\n\nShows commits in the range base..HEAD for each repo. Use -F/--fetch to fetch before showing log (skip with --no-fetch). Use -n to limit how many commits are shown per repo. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line). Use --where to filter by status flags (comma = OR, + = AND; e.g. --where dirty+unpushed). Prefix any term with ^ to negate (e.g. --where ^dirty). Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
 		)
-		.action(async (repoArgs: string[], options: { maxCount?: string; json?: boolean; fetch?: boolean }) => {
-			const ctx = getCtx();
-			const { wsDir, workspace } = requireWorkspace(ctx);
-			const branch = await requireBranch(wsDir, workspace);
+		.action(
+			async (
+				repoArgs: string[],
+				options: { maxCount?: string; json?: boolean; dirty?: boolean; where?: string; fetch?: boolean },
+			) => {
+				const ctx = getCtx();
+				const { wsDir, workspace } = requireWorkspace(ctx);
+				const branch = await requireBranch(wsDir, workspace);
 
-			if (options.fetch) {
-				const fetchDirs = workspaceRepoDirs(wsDir);
-				const repos = fetchDirs.map((d) => basename(d));
-				const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
-				const results = await parallelFetch(fetchDirs, undefined, remotesMap);
-				const failed = reportFetchFailures(repos, results);
-				if (failed.length > 0) {
-					error("Aborting due to fetch failures.");
-					throw new ArbError("Aborting due to fetch failures.");
+				if (options.fetch) {
+					const fetchDirs = workspaceRepoDirs(wsDir);
+					const repos = fetchDirs.map((d) => basename(d));
+					const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
+					const results = await parallelFetch(fetchDirs, undefined, remotesMap);
+					const failed = reportFetchFailures(repos, results);
+					if (failed.length > 0) {
+						error("Aborting due to fetch failures.");
+						throw new ArbError("Aborting due to fetch failures.");
+					}
 				}
-			}
 
-			let repoNames = repoArgs;
-			if (repoNames.length === 0) {
-				const stdinNames = await readNamesFromStdin();
-				if (stdinNames.length > 0) repoNames = stdinNames;
-			}
-			const selectedRepos = resolveRepoSelection(wsDir, repoNames);
-			const maxCount = options.maxCount ? Number.parseInt(options.maxCount, 10) : undefined;
+				let repoNames = repoArgs;
+				if (repoNames.length === 0) {
+					const stdinNames = await readNamesFromStdin();
+					if (stdinNames.length > 0) repoNames = stdinNames;
+				}
+				const selectedRepos = resolveRepoSelection(wsDir, repoNames);
+				const maxCount = options.maxCount ? Number.parseInt(options.maxCount, 10) : undefined;
 
-			if (maxCount !== undefined && (Number.isNaN(maxCount) || maxCount < 1)) {
-				error("--max-count must be a positive integer");
-				throw new ArbError("--max-count must be a positive integer");
-			}
+				if (maxCount !== undefined && (Number.isNaN(maxCount) || maxCount < 1)) {
+					error("--max-count must be a positive integer");
+					throw new ArbError("--max-count must be a positive integer");
+				}
 
-			const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir);
-			const selectedSet = new Set(selectedRepos);
-			const repos = summary.repos.filter((r) => selectedSet.has(r.name));
+				// Resolve --dirty as shorthand for --where dirty
+				if (options.dirty && options.where) {
+					error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
+					throw new ArbError("Cannot combine --dirty with --where. Use --where dirty,... instead.");
+				}
+				const where = options.dirty ? "dirty" : options.where;
 
-			if (!options.json && isTTY()) {
-				await outputTTY(repos, wsDir, branch, maxCount);
-			} else {
-				const results = await Promise.all(repos.map((repo) => gatherRepoLog(repo, wsDir, branch, maxCount)));
-				if (options.json) {
-					outputJson(summary.workspace, summary.branch, summary.base, results);
+				if (where) {
+					const err = validateWhere(where);
+					if (err) {
+						error(err);
+						throw new ArbError(err);
+					}
+				}
+
+				const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir);
+				const selectedSet = new Set(selectedRepos);
+				let repos = summary.repos.filter((r) => selectedSet.has(r.name));
+
+				// Apply --where filter
+				if (where) {
+					repos = repos.filter((repo) => {
+						const flags = computeFlags(repo, branch);
+						return repoMatchesWhere(flags, where);
+					});
+				}
+
+				if (!options.json && isTTY()) {
+					await outputTTY(repos, wsDir, branch, maxCount);
 				} else {
-					outputPipe(results);
+					const results = await Promise.all(repos.map((repo) => gatherRepoLog(repo, wsDir, branch, maxCount)));
+					if (options.json) {
+						outputJson(summary.workspace, summary.branch, summary.base, results);
+					} else {
+						outputPipe(results);
+					}
 				}
-			}
-		});
+			},
+		);
 }
 
 // ── TTY output: delegate to git for commit rendering ─────────────

@@ -7,6 +7,7 @@ import { validateBranchName, validateWorkspaceName } from "../lib/git";
 import { dim, error, info, plural, success, warn } from "../lib/output";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, selectReposInteractive } from "../lib/repos";
+import { readNamesFromStdin } from "../lib/stdin";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayUnknownVariables } from "../lib/templates";
 import type { ArbContext } from "../lib/types";
 import { addWorktrees } from "../lib/worktrees";
@@ -110,6 +111,11 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 
 				if (options.allRepos) {
 					repos = listRepos(ctx.reposDir);
+				}
+
+				if (repos.length === 0) {
+					const stdinNames = await readNamesFromStdin();
+					if (stdinNames.length > 0) repos = stdinNames;
 				}
 
 				if (repos.length === 0 && process.stdin.isTTY) {
