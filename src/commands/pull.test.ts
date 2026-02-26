@@ -408,4 +408,85 @@ describe("formatPullPlan", () => {
 		const plan = formatPullPlan([makeAssessment()], makeRemotesMap(["repo-a", { base: "origin", share: "origin" }]));
 		expect(plan).not.toContain("←");
 	});
+
+	test("shows verbose commits when verbose is true", () => {
+		const plan = formatPullPlan(
+			[
+				makeAssessment({
+					commits: [
+						{ shortHash: "ccc3333", subject: "feat: remote change" },
+						{ shortHash: "ddd4444", subject: "fix: remote fix" },
+					],
+					totalCommits: 2,
+				}),
+			],
+			makeRemotesMap(["repo-a", {}]),
+			true,
+		);
+		expect(plan).toContain("Incoming from origin:");
+		expect(plan).toContain("ccc3333");
+		expect(plan).toContain("feat: remote change");
+		expect(plan).toContain("ddd4444");
+		expect(plan).toContain("fix: remote fix");
+	});
+
+	test("does not show verbose commits when verbose is false", () => {
+		const plan = formatPullPlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "ccc3333", subject: "feat: remote change" }],
+					totalCommits: 1,
+				}),
+			],
+			makeRemotesMap(["repo-a", {}]),
+			false,
+		);
+		expect(plan).not.toContain("Incoming from");
+		expect(plan).not.toContain("ccc3333");
+	});
+
+	test("shows truncation hint for pull verbose", () => {
+		const plan = formatPullPlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "ccc3333", subject: "feat: something" }],
+					totalCommits: 30,
+				}),
+			],
+			makeRemotesMap(["repo-a", {}]),
+			true,
+		);
+		expect(plan).toContain("... and 29 more");
+	});
+
+	test("does not show verbose commits for up-to-date repos", () => {
+		const plan = formatPullPlan(
+			[
+				makeAssessment({
+					outcome: "up-to-date",
+					commits: [{ shortHash: "ccc3333", subject: "feat: something" }],
+					totalCommits: 1,
+				}),
+			],
+			makeRemotesMap(["repo-a", {}]),
+			true,
+		);
+		expect(plan).not.toContain("Incoming from");
+	});
+
+	test("does not show verbose commits for skipped repos", () => {
+		const plan = formatPullPlan(
+			[
+				makeAssessment({
+					outcome: "skip",
+					skipReason: "not pushed yet",
+					commits: [{ shortHash: "ccc3333", subject: "feat: something" }],
+					totalCommits: 1,
+				}),
+			],
+			makeRemotesMap(["repo-a", {}]),
+			true,
+		);
+		expect(plan).not.toContain("Incoming from");
+	});
 });

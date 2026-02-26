@@ -448,3 +448,44 @@ assert r['base']['mergedIntoBase'] == 'squash', f'expected squash, got {r[\"base
     [ "$status" -eq 0 ]
     [[ "$output" == *"merged"* ]]
 }
+
+# ── --verbose ────────────────────────────────────────────────────
+
+@test "arb push --verbose --dry-run shows outgoing commits" {
+    arb create my-feature repo-a
+    echo "feature work" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feat: push verbose test" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push --verbose --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Outgoing to origin:"* ]]
+    [[ "$output" == *"feat: push verbose test"* ]]
+}
+
+@test "arb pull --verbose --dry-run shows incoming commits" {
+    arb create my-feature repo-a
+    (cd "$TEST_DIR/project/my-feature/repo-a" && echo "initial" > file.txt && git add file.txt && git commit -m "initial" && git push -u origin my-feature) >/dev/null 2>&1
+
+    # Push a remote commit
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-pull-verbose" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-pull-verbose" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "feat: pull verbose test" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --verbose --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Incoming from origin:"* ]]
+    [[ "$output" == *"feat: pull verbose test"* ]]
+}
+
+@test "arb push --dry-run without --verbose does not show commits" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feat: should not appear" >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb push --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Outgoing to"* ]]
+    [[ "$output" != *"feat: should not appear"* ]]
+}

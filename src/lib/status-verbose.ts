@@ -3,8 +3,9 @@ import type { StatusJsonRepo } from "./json-types";
 import { dim } from "./output";
 import { type RepoStatus, baseRef } from "./status";
 
-const SECTION_INDENT = "      ";
-const ITEM_INDENT = "          ";
+export const SECTION_INDENT = "      ";
+export const ITEM_INDENT = "          ";
+export const VERBOSE_COMMIT_LIMIT = 25;
 
 // Internal verbose type — carries shortHash for text display alongside fullHash for JSON
 interface VerboseCommit {
@@ -176,6 +177,22 @@ export async function printVerboseDetail(repo: RepoStatus, wsDir: string): Promi
 	for (const section of sections) {
 		process.stdout.write(section);
 	}
+}
+
+export function formatVerboseCommits(
+	commits: { shortHash: string; subject: string }[],
+	totalCommits: number,
+	label: string,
+): string {
+	let out = `\n${SECTION_INDENT}${dim(label)}\n`;
+	for (const c of commits) {
+		out += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}\n`;
+	}
+	if (totalCommits > commits.length) {
+		out += `${ITEM_INDENT}${dim(`... and ${totalCommits - commits.length} more`)}\n`;
+	}
+	out += "\n";
+	return out;
 }
 
 function formatFileChange(fc: FileChange): string {

@@ -2,13 +2,14 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
-import { getShortHead, git } from "../lib/git";
+import { getCommitsBetweenFull, getShortHead, git } from "../lib/git";
 import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
 import { dim, dryRunNotice, info, inlineResult, inlineStart, plural, red, success, yellow } from "../lib/output";
 import type { RepoRemotes } from "../lib/remotes";
 import { resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import { type RepoStatus, gatherRepoStatus } from "../lib/status";
+import { VERBOSE_COMMIT_LIMIT, formatVerboseCommits } from "../lib/status-verbose";
 import { readNamesFromStdin } from "../lib/stdin";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -27,6 +28,8 @@ export interface PushAssessment {
 	headSha: string;
 	recreate: boolean;
 	behindBase: number;
+	commits?: { shortHash: string; subject: string }[];
+	totalCommits?: number;
 }
 
 export function registerPushCommand(program: Command, getCtx: () => ArbContext): void {
@@ -37,12 +40,16 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 		.option("--no-fetch", "Skip fetching before push")
 		.option("-y, --yes", "Skip confirmation prompt")
 		.option("-n, --dry-run", "Show what would happen without executing")
+		.option("-v, --verbose", "Show outgoing commits in the plan")
 		.summary("Push the feature branch to the share remote")
 		.description(
-			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos whose branches have been merged into the base branch. If a remote branch was deleted after merge, use --force to recreate it. Use --force after rebase or amend to force push with lease. Use -F/--fetch to fetch explicitly (default); use --no-fetch to skip fetching when refs are known to be fresh.",
+			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos whose branches have been merged into the base branch. If a remote branch was deleted after merge, use --force to recreate it. Use --force after rebase or amend to force push with lease. Use --verbose to show the outgoing commits for each repo in the plan. Use -F/--fetch to fetch explicitly (default); use --no-fetch to skip fetching when refs are known to be fresh.",
 		)
 		.action(
-			async (repoArgs: string[], options: { force?: boolean; fetch?: boolean; yes?: boolean; dryRun?: boolean }) => {
+			async (
+				repoArgs: string[],
+				options: { force?: boolean; fetch?: boolean; yes?: boolean; dryRun?: boolean; verbose?: boolean },
+			) => {
 				const ctx = getCtx();
 				const { wsDir, workspace } = requireWorkspace(ctx);
 				const branch = await requireBranch(wsDir, workspace);
@@ -79,13 +86,18 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 					return assessments;
 				};
 
+				const postAssess = options.verbose
+					? (nextAssessments: PushAssessment[]) => gatherPushVerboseCommits(nextAssessments, remotesMap, branch)
+					: undefined;
+
 				const assessments = await runPlanFlow({
 					shouldFetch,
 					fetchDirs,
 					reposForFetchReport: allRepos,
 					remotesMap,
 					assess,
-					formatPlan: (nextAssessments) => formatPushPlan(nextAssessments, remotesMap),
+					postAssess,
+					formatPlan: (nextAssessments) => formatPushPlan(nextAssessments, remotesMap, options.verbose),
 				});
 
 				const willPush = assessments.filter((a) => a.outcome === "will-push" || a.outcome === "will-force-push");
@@ -147,7 +159,11 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 		);
 }
 
-export function formatPushPlan(assessments: PushAssessment[], remotesMap: Map<string, RepoRemotes>): string {
+export function formatPushPlan(
+	assessments: PushAssessment[],
+	remotesMap: Map<string, RepoRemotes>,
+	verbose?: boolean,
+): string {
 	let out = "\n";
 	for (const a of assessments) {
 		const remotes = remotesMap.get(a.repo);
@@ -170,6 +186,15 @@ export function formatPushPlan(assessments: PushAssessment[], remotesMap: Map<st
 		} else {
 			out += `  ${yellow(`${a.repo}   skipped — ${a.skipReason}`)}\n`;
 		}
+		if (
+			verbose &&
+			(a.outcome === "will-push" || a.outcome === "will-force-push") &&
+			a.commits &&
+			a.commits.length > 0
+		) {
+			const label = `Outgoing to ${a.shareRemote}:`;
+			out += formatVerboseCommits(a.commits, a.totalCommits ?? a.commits.length, label);
+		}
 	}
 
 	const behindBaseCount = assessments.filter(
@@ -181,6 +206,33 @@ export function formatPushPlan(assessments: PushAssessment[], remotesMap: Map<st
 
 	out += "\n";
 	return out;
+}
+
+async function gatherPushVerboseCommits(
+	assessments: PushAssessment[],
+	remotesMap: Map<string, RepoRemotes>,
+	branch: string,
+): Promise<void> {
+	await Promise.all(
+		assessments
+			.filter((a) => a.outcome === "will-push" || a.outcome === "will-force-push")
+			.map(async (a) => {
+				const shareRemote = remotesMap.get(a.repo)?.share;
+				if (!shareRemote) return;
+				// For new branches or recreated branches, use the base remote's base branch
+				const ref =
+					a.newBranch || a.recreate
+						? `${remotesMap.get(a.repo)?.base ?? shareRemote}/HEAD`
+						: `${shareRemote}/${branch}`;
+				const commits = await getCommitsBetweenFull(a.repoDir, ref, "HEAD");
+				const total = commits.length;
+				a.commits = commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
+					shortHash: c.shortHash,
+					subject: c.subject,
+				}));
+				a.totalCommits = total;
+			}),
+	);
 }
 
 export function assessPushRepo(

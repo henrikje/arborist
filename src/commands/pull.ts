@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
-import { getShortHead, git, predictMergeConflict, predictStashPopConflict } from "../lib/git";
+import { getCommitsBetweenFull, getShortHead, git, predictMergeConflict, predictStashPopConflict } from "../lib/git";
 import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
 import {
 	dim,
@@ -20,6 +20,7 @@ import type { RepoRemotes } from "../lib/remotes";
 import { resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import { type RepoStatus, computeFlags, gatherRepoStatus } from "../lib/status";
+import { VERBOSE_COMMIT_LIMIT, formatVerboseCommits } from "../lib/status-verbose";
 import { readNamesFromStdin } from "../lib/stdin";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
@@ -37,6 +38,8 @@ export interface PullAssessment {
 	conflictPrediction?: "no-conflict" | "clean" | "conflict" | null;
 	needsStash?: boolean;
 	stashPopConflictFiles?: string[];
+	commits?: { shortHash: string; subject: string }[];
+	totalCommits?: number;
 }
 
 export function registerPullCommand(program: Command, getCtx: () => ArbContext): void {
@@ -47,14 +50,22 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 		.option("--rebase", "Pull with rebase")
 		.option("--merge", "Pull with merge")
 		.option("--autostash", "Stash uncommitted changes before pull, re-apply after")
+		.option("-v, --verbose", "Show incoming commits in the plan")
 		.summary("Pull the feature branch from the share remote")
 		.description(
-			"Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos with uncommitted changes are skipped unless --autostash is used. Repos that haven't been pushed yet or where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end. Use --autostash to stash uncommitted changes before pulling and re-apply them after.\n\nThe pull mode (rebase or merge) is determined per-repo from git config (branch.<name>.rebase, then pull.rebase), defaulting to merge if neither is set. Use --rebase or --merge to override for all repos.",
+			"Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos with uncommitted changes are skipped unless --autostash is used. Repos that haven't been pushed yet or where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end. Use --verbose to show the incoming commits for each repo in the plan. Use --autostash to stash uncommitted changes before pulling and re-apply them after.\n\nThe pull mode (rebase or merge) is determined per-repo from git config (branch.<name>.rebase, then pull.rebase), defaulting to merge if neither is set. Use --rebase or --merge to override for all repos.",
 		)
 		.action(
 			async (
 				repoArgs: string[],
-				options: { rebase?: boolean; merge?: boolean; yes?: boolean; dryRun?: boolean; autostash?: boolean },
+				options: {
+					rebase?: boolean;
+					merge?: boolean;
+					yes?: boolean;
+					dryRun?: boolean;
+					verbose?: boolean;
+					autostash?: boolean;
+				},
 			) => {
 				if (options.rebase && options.merge) {
 					error("Cannot use both --rebase and --merge");
@@ -100,13 +111,20 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					);
 				};
 
+				const postAssess = async (nextAssessments: PullAssessment[]) => {
+					await predictPullConflicts(nextAssessments, remotesMap, branch);
+					if (options.verbose) {
+						await gatherPullVerboseCommits(nextAssessments, remotesMap, branch);
+					}
+				};
+
 				const assessments = await runPlanFlow({
 					fetchDirs,
 					reposForFetchReport: repos,
 					remotesMap,
 					assess,
-					postAssess: (nextAssessments) => predictPullConflicts(nextAssessments, remotesMap, branch),
-					formatPlan: (nextAssessments) => formatPullPlan(nextAssessments, remotesMap),
+					postAssess,
+					formatPlan: (nextAssessments) => formatPullPlan(nextAssessments, remotesMap, options.verbose),
 				});
 
 				const willPull = assessments.filter((a) => a.outcome === "will-pull");
@@ -313,7 +331,11 @@ export function assessPullRepo(
 	return { ...base, outcome: "will-pull", behind: toPull, toPush, rebased };
 }
 
-export function formatPullPlan(assessments: PullAssessment[], remotesMap: Map<string, RepoRemotes>): string {
+export function formatPullPlan(
+	assessments: PullAssessment[],
+	remotesMap: Map<string, RepoRemotes>,
+	verbose?: boolean,
+): string {
 	let out = "\n";
 	for (const a of assessments) {
 		const remotes = remotesMap.get(a.repo);
@@ -340,6 +362,11 @@ export function formatPullPlan(assessments: PullAssessment[], remotesMap: Map<st
 				}
 			}
 			out += `  ${a.repo}   ${plural(a.behind, "commit")} to pull (${a.pullMode}${rebasedHint}${conflictHint})${stashHint}${forkSuffix}${headStr}\n`;
+			if (verbose && a.commits && a.commits.length > 0) {
+				const shareRemote = remotes?.share ?? "origin";
+				const label = `Incoming from ${shareRemote}:`;
+				out += formatVerboseCommits(a.commits, a.totalCommits ?? a.commits.length, label);
+			}
 		} else if (a.outcome === "up-to-date") {
 			out += `  ${a.repo}   up to date\n`;
 		} else {
@@ -372,6 +399,29 @@ async function predictPullConflicts(
 					const stashPrediction = await predictStashPopConflict(a.repoDir, ref);
 					a.stashPopConflictFiles = stashPrediction.overlapping;
 				}
+			}),
+	);
+}
+
+async function gatherPullVerboseCommits(
+	assessments: PullAssessment[],
+	remotesMap: Map<string, RepoRemotes>,
+	branch: string,
+): Promise<void> {
+	await Promise.all(
+		assessments
+			.filter((a) => a.outcome === "will-pull")
+			.map(async (a) => {
+				const shareRemote = remotesMap.get(a.repo)?.share;
+				if (!shareRemote) return;
+				const ref = `${shareRemote}/${branch}`;
+				const commits = await getCommitsBetweenFull(a.repoDir, "HEAD", ref);
+				const total = commits.length;
+				a.commits = commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
+					shortHash: c.shortHash,
+					subject: c.subject,
+				}));
+				a.totalCommits = total;
 			}),
 	);
 }

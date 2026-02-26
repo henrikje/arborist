@@ -431,4 +431,87 @@ describe("formatPushPlan", () => {
 		const plan = formatPushPlan([makeAssessment()], makeRemotesMap(["repo-a", { base: "origin", share: "origin" }]));
 		expect(plan).not.toContain("→");
 	});
+
+	test("shows verbose commits when verbose is true", () => {
+		const plan = formatPushPlan(
+			[
+				makeAssessment({
+					commits: [
+						{ shortHash: "aaa1111", subject: "feat: new feature" },
+						{ shortHash: "bbb2222", subject: "fix: a bug" },
+					],
+					totalCommits: 2,
+				}),
+			],
+			makeRemotesMap(["repo-a", {}]),
+			true,
+		);
+		expect(plan).toContain("Outgoing to origin:");
+		expect(plan).toContain("aaa1111");
+		expect(plan).toContain("feat: new feature");
+		expect(plan).toContain("bbb2222");
+		expect(plan).toContain("fix: a bug");
+	});
+
+	test("does not show verbose commits when verbose is false", () => {
+		const plan = formatPushPlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "aaa1111", subject: "feat: new feature" }],
+					totalCommits: 1,
+				}),
+			],
+			makeRemotesMap(["repo-a", {}]),
+			false,
+		);
+		expect(plan).not.toContain("Outgoing to");
+		expect(plan).not.toContain("aaa1111");
+	});
+
+	test("shows truncation hint for push verbose", () => {
+		const plan = formatPushPlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "aaa1111", subject: "feat: something" }],
+					totalCommits: 30,
+				}),
+			],
+			makeRemotesMap(["repo-a", {}]),
+			true,
+		);
+		expect(plan).toContain("... and 29 more");
+	});
+
+	test("shows verbose commits for will-force-push", () => {
+		const plan = formatPushPlan(
+			[
+				makeAssessment({
+					outcome: "will-force-push",
+					ahead: 3,
+					rebased: 2,
+					commits: [{ shortHash: "aaa1111", subject: "feat: rebased work" }],
+					totalCommits: 1,
+				}),
+			],
+			makeRemotesMap(["repo-a", {}]),
+			true,
+		);
+		expect(plan).toContain("Outgoing to origin:");
+		expect(plan).toContain("aaa1111");
+	});
+
+	test("does not show verbose commits for up-to-date repos", () => {
+		const plan = formatPushPlan(
+			[
+				makeAssessment({
+					outcome: "up-to-date",
+					commits: [{ shortHash: "aaa1111", subject: "feat: something" }],
+					totalCommits: 1,
+				}),
+			],
+			makeRemotesMap(["repo-a", {}]),
+			true,
+		);
+		expect(plan).not.toContain("Outgoing to");
+	});
 });

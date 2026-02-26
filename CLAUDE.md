@@ -75,6 +75,7 @@ After each change, check whether the following need updating:
 
 - **README.md** — If the change affects user-facing behavior, CLI usage, configuration, or workflows, update the relevant README sections.
 - **Command help text** — If the change modifies a command's options, arguments, or behavior, update the command's `.description()` and `.option()` help strings in `src/commands/`.
+- **Shell tab completion** — If the change adds, removes, or renames a command option or subcommand, update both `shell/arb.bash` and `shell/arb.zsh` to keep tab completion in sync.
 - **BATS integration tests** — Always add new tests to this suite when making changes that affect CLI behavior.
 
 ## Code Style

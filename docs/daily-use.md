@@ -108,7 +108,7 @@ arb push --force      # after rebasing (prompts for confirmation)
 
 Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
 
-All commands show a plan before proceeding. See `arb help <command>` for options.
+All commands show a plan before proceeding. Add `--verbose` (`-v`) to see the actual commits involved — useful when you want to know *what* you're rebasing onto, not just how many commits.
 
 ## Run commands across repos
 

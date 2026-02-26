@@ -4,6 +4,7 @@ import { ArbError } from "./errors";
 import {
 	branchExistsLocally,
 	detectBranchMerged,
+	getCommitsBetweenFull,
 	getDefaultBranch,
 	getShortHead,
 	git,
@@ -16,6 +17,7 @@ import { dim, dryRunNotice, error, info, inlineResult, inlineStart, plural, succ
 import { resolveRemotesMap } from "./remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "./repos";
 import { type RepoStatus, computeFlags, gatherRepoStatus } from "./status";
+import { VERBOSE_COMMIT_LIMIT, formatVerboseCommits } from "./status-verbose";
 import type { ArbContext } from "./types";
 import { workspaceBranch } from "./workspace-branch";
 import { requireBranch, requireWorkspace } from "./workspace-context";
@@ -40,12 +42,21 @@ export interface RepoAssessment {
 	retargetWarning?: string;
 	needsStash?: boolean;
 	stashPopConflictFiles?: string[];
+	commits?: { shortHash: string; subject: string }[];
+	totalCommits?: number;
 }
 
 export async function integrate(
 	ctx: ArbContext,
 	mode: IntegrateMode,
-	options: { fetch?: boolean; yes?: boolean; dryRun?: boolean; retarget?: string | boolean; autostash?: boolean },
+	options: {
+		fetch?: boolean;
+		yes?: boolean;
+		dryRun?: boolean;
+		retarget?: string | boolean;
+		autostash?: boolean;
+		verbose?: boolean;
+	},
 	repoArgs: string[],
 ): Promise<void> {
 	const verb = mode === "rebase" ? "Rebase" : "Merge";
@@ -90,14 +101,21 @@ export async function integrate(
 		);
 	};
 
+	const postAssess = async (nextAssessments: RepoAssessment[]) => {
+		await predictIntegrateConflicts(nextAssessments);
+		if (options.verbose) {
+			await gatherIntegrateVerboseCommits(nextAssessments);
+		}
+	};
+
 	const assessments = await runPlanFlow({
 		shouldFetch,
 		fetchDirs,
 		reposForFetchReport: repos,
 		remotesMap,
 		assess,
-		postAssess: predictIntegrateConflicts,
-		formatPlan: (nextAssessments) => formatIntegratePlan(nextAssessments, mode, branch),
+		postAssess,
+		formatPlan: (nextAssessments) => formatIntegratePlan(nextAssessments, mode, branch, options.verbose),
 	});
 
 	// All-or-nothing check: when retarget is active, any non-local skipped repo blocks the entire retarget
@@ -274,7 +292,12 @@ export async function integrate(
 	success(parts.join(", "));
 }
 
-export function formatIntegratePlan(assessments: RepoAssessment[], mode: IntegrateMode, branch: string): string {
+export function formatIntegratePlan(
+	assessments: RepoAssessment[],
+	mode: IntegrateMode,
+	branch: string,
+	verbose?: boolean,
+): string {
 	let out = "\n";
 	for (const a of assessments) {
 		if (a.outcome === "will-operate") {
@@ -326,6 +349,10 @@ export function formatIntegratePlan(assessments: RepoAssessment[], mode: Integra
 				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 				out += `  ${a.repo}   ${action}${diffStr}${conflictHint}${stashHint}${headStr}\n`;
 			}
+			if (verbose && a.commits && a.commits.length > 0) {
+				const label = `Incoming from ${a.baseRemote}/${a.baseBranch}:`;
+				out += formatVerboseCommits(a.commits, a.totalCommits ?? a.commits.length, label);
+			}
 		} else if (a.outcome === "up-to-date") {
 			out += `  ${a.repo}   up to date\n`;
 		} else {
@@ -362,6 +389,23 @@ async function predictIntegrateConflicts(assessments: RepoAssessment[]): Promise
 					const stashPrediction = await predictStashPopConflict(a.repoDir, ref);
 					a.stashPopConflictFiles = stashPrediction.overlapping;
 				}
+			}),
+	);
+}
+
+async function gatherIntegrateVerboseCommits(assessments: RepoAssessment[]): Promise<void> {
+	await Promise.all(
+		assessments
+			.filter((a) => a.outcome === "will-operate")
+			.map(async (a) => {
+				const ref = `${a.baseRemote}/${a.baseBranch}`;
+				const commits = await getCommitsBetweenFull(a.repoDir, "HEAD", ref);
+				const total = commits.length;
+				a.commits = commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
+					shortHash: c.shortHash,
+					subject: c.subject,
+				}));
+				a.totalCommits = total;
 			}),
 	);
 }
