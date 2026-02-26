@@ -83,6 +83,7 @@ export async function addWorktrees(
 		// Resolve remote names for this repo
 		const repoRemotes = remotesMap?.get(repo);
 		const baseRemote = repoRemotes?.base;
+		const shareRemote = repoRemotes?.share;
 
 		let effectiveBase: string | null;
 		if (baseBranch) {
@@ -132,6 +133,18 @@ export async function addWorktrees(
 				continue;
 			}
 			inlineResult(repo, `branch ${branch} attached`);
+		} else if (shareRemote && (await remoteBranchExists(repoPath, branch, shareRemote))) {
+			const startPoint = `${shareRemote}/${branch}`;
+			inlineStart(repo, `checking out branch ${branch} from ${startPoint}`);
+			const wt = await git(repoPath, "worktree", "add", "--track", "-b", branch, `${wsDir}/${repo}`, startPoint);
+			if (wt.exitCode !== 0) {
+				inlineResult(repo, "failed");
+				const errText = wt.stderr.trim();
+				if (errText) error(`    ${errText}`);
+				result.failed.push(repo);
+				continue;
+			}
+			inlineResult(repo, `branch ${branch} checked out from ${startPoint}`);
 		} else {
 			const startPoint = baseRemote ? `${baseRemote}/${effectiveBase}` : effectiveBase;
 			inlineStart(repo, `creating branch ${branch} from ${startPoint}`);
