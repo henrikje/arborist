@@ -1,10 +1,16 @@
 import confirm from "@inquirer/confirm";
 import { ArbAbort, ArbError } from "./errors";
 import { error, skipConfirmNotice, stderr } from "./output";
-import { parallelFetch, reportFetchFailures } from "./parallel-fetch";
+import {
+	type FetchResult,
+	fetchSuffix,
+	getFetchFailedRepos,
+	parallelFetch,
+	reportFetchFailures,
+} from "./parallel-fetch";
+import { runPhasedRender } from "./phased-render";
 import type { RepoRemotes } from "./remotes";
 import { isTTY } from "./tty";
-import { runTwoPhaseRender } from "./two-phase-render";
 
 export interface PlanFlowOptions<TAssessment> {
 	shouldFetch?: boolean;
@@ -29,17 +35,29 @@ async function assessWithPost<TAssessment>(
 
 export async function runPlanFlow<TAssessment>(options: PlanFlowOptions<TAssessment>): Promise<TAssessment[]> {
 	const shouldFetch = options.shouldFetch !== false;
-	const canTwoPhase = shouldFetch && options.fetchDirs.length > 0 && isTTY();
+	const canPhase = shouldFetch && options.fetchDirs.length > 0 && isTTY();
 
-	if (canTwoPhase) {
-		const { data } = await runTwoPhaseRender({
-			fetchDirs: options.fetchDirs,
-			remotesMap: options.remotesMap,
-			reposForFetchReport: options.reposForFetchReport,
-			gather: (fetchFailed) => assessWithPost(options, fetchFailed),
-			format: (assessments) => options.formatPlan(assessments),
-		});
-		return data;
+	if (canPhase) {
+		const fetchPromise = parallelFetch(options.fetchDirs, undefined, options.remotesMap, { silent: true });
+		const state: { assessments?: TAssessment[]; fetchResults?: Map<string, FetchResult> } = {};
+		await runPhasedRender([
+			{
+				render: async () => {
+					state.assessments = await assessWithPost(options, []);
+					return options.formatPlan(state.assessments) + fetchSuffix(options.fetchDirs.length);
+				},
+			},
+			{
+				render: async () => {
+					state.fetchResults = await fetchPromise;
+					const ff = getFetchFailedRepos(options.reposForFetchReport, state.fetchResults);
+					state.assessments = await assessWithPost(options, ff);
+					return options.formatPlan(state.assessments);
+				},
+			},
+		]);
+		reportFetchFailures(options.reposForFetchReport, state.fetchResults as Map<string, FetchResult>);
+		return state.assessments as TAssessment[];
 	}
 
 	if (shouldFetch && options.fetchDirs.length > 0) {

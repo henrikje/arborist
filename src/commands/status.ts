@@ -4,7 +4,8 @@ import { ArbError } from "../lib/errors";
 import { predictMergeConflict } from "../lib/git";
 import type { StatusJsonOutput } from "../lib/json-types";
 import { bold, dim, error, stderr, yellow } from "../lib/output";
-import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
+import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
+import { runPhasedRender } from "../lib/phased-render";
 import { resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import {
@@ -26,7 +27,6 @@ import {
 	formatRelativeTimeParts,
 } from "../lib/time";
 import { isTTY } from "../lib/tty";
-import { runTwoPhaseRender } from "../lib/two-phase-render";
 import type { ArbContext } from "../lib/types";
 import { requireWorkspace } from "../lib/workspace-context";
 
@@ -146,24 +146,35 @@ async function runStatus(
 		return { ...summary, repos, total: repos.length, ...aggregates };
 	};
 
-	// Two-phase rendering: show stale table immediately, refresh after fetch
+	// Phased rendering: show stale table immediately, refresh after fetch
 	const allFetchDirs = options.fetch ? workspaceRepoDirs(wsDir) : [];
 	const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
-	const canTwoPhase = options.fetch && fetchDirs.length > 0 && !options.quiet && !options.json && isTTY();
+	const canPhase = options.fetch && fetchDirs.length > 0 && !options.quiet && !options.json && isTTY();
 
-	if (canTwoPhase) {
+	if (canPhase) {
 		const repoNamesForFetch = fetchDirs.map((d) => basename(d));
 		const remotesMap = await resolveRemotesMap(repoNamesForFetch, ctx.reposDir);
+		const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, { silent: true });
+		const state: { fetchResults?: Map<string, FetchResult> } = {};
 
-		await runTwoPhaseRender({
-			fetchDirs,
-			remotesMap,
-			reposForFetchReport: repoNamesForFetch,
-			gather: async () => gatherFiltered(),
-			format: async (data) => renderStatusTable(data, wsDir, { verbose: options.verbose }),
-			writeStale: stderr,
-			writeFresh: (output) => process.stdout.write(output),
-		});
+		await runPhasedRender([
+			{
+				render: async () => {
+					const data = await gatherFiltered();
+					return (await renderStatusTable(data, wsDir, { verbose: options.verbose })) + fetchSuffix(fetchDirs.length);
+				},
+				write: stderr,
+			},
+			{
+				render: async () => {
+					state.fetchResults = await fetchPromise;
+					const data = await gatherFiltered();
+					return await renderStatusTable(data, wsDir, { verbose: options.verbose });
+				},
+				write: (output) => process.stdout.write(output),
+			},
+		]);
+		reportFetchFailures(repoNamesForFetch, state.fetchResults as Map<string, FetchResult>);
 		return;
 	}
 

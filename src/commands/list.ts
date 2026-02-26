@@ -4,7 +4,8 @@ import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
 import type { ListJsonEntry } from "../lib/json-types";
 import { bold, dim, error, info, yellow } from "../lib/output";
-import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
+import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
+import { runPhasedRender } from "../lib/phased-render";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, listWorkspaces, workspaceRepoDirs } from "../lib/repos";
 import {
@@ -35,6 +36,20 @@ interface ListRow {
 	statusColored: string;
 	lastCommit: string | null;
 	special: "config-missing" | "empty" | null;
+}
+
+interface ListColumnWidths {
+	maxName: number;
+	maxBranch: number;
+	maxBase: number;
+	maxRepos: number;
+	hasAnyBase: boolean;
+}
+
+interface ListMetadata {
+	rows: ListRow[];
+	toScan: { index: number; wsDir: string }[];
+	cols: ListColumnWidths;
 }
 
 export function registerListCommand(program: Command, getCtx: () => ArbContext): void {
@@ -86,94 +101,10 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					}
 				}
 
-				// Fetch all canonical repos (benefits all workspaces)
-				if (options.fetch) {
-					const allRepoNames = listRepos(ctx.reposDir);
-					const fetchDirs = allRepoNames.map((r) => `${ctx.reposDir}/${r}`);
-					const remotesMap = await resolveRemotesMap(allRepoNames, ctx.reposDir);
-					const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
-					reportFetchFailures(allRepoNames, fetchResults);
-				}
-
 				const workspaces = listWorkspaces(ctx.arbRootDir);
+				const metadata = await gatherListMetadata(ctx, workspaces);
 
-				// ── Phase 1: gather lightweight metadata (fast, sequential) ──
-				const rows: ListRow[] = [];
-				const toScan: { index: number; wsDir: string }[] = [];
-				let maxName = 0;
-				let maxBranch = 0;
-				let maxBase = 0;
-				let maxRepos = 0;
-				let hasAnyBase = false;
-
-				for (const name of workspaces) {
-					const wsDir = `${ctx.arbRootDir}/${name}`;
-					const marker = name === ctx.currentWorkspace;
-					if (name.length > maxName) maxName = name.length;
-
-					const configMissing = !existsSync(`${wsDir}/.arbws/config`);
-
-					if (configMissing) {
-						rows.push({
-							name,
-							marker,
-							branch: "",
-							base: "",
-							baseFellBack: false,
-							repos: "",
-							statusColored: yellow("(config missing)"),
-							lastCommit: null,
-							special: "config-missing",
-						});
-						continue;
-					}
-
-					const repoDirs = workspaceRepoDirs(wsDir);
-					const wb = await workspaceBranch(wsDir);
-					const branch = wb?.branch ?? name.toLowerCase();
-					const configBase = configGet(`${wsDir}/.arbws/config`, "base");
-					const base = configBase ?? "";
-
-					if (branch.length > maxBranch) maxBranch = branch.length;
-					if (base.length > maxBase) maxBase = base.length;
-					if (base) hasAnyBase = true;
-
-					if (repoDirs.length === 0) {
-						const reposText = "0";
-						if (reposText.length > maxRepos) maxRepos = reposText.length;
-						rows.push({
-							name,
-							marker,
-							branch,
-							base,
-							baseFellBack: false,
-							repos: reposText,
-							statusColored: yellow("(empty)"),
-							lastCommit: null,
-							special: "empty",
-						});
-						continue;
-					}
-
-					const reposText = `${repoDirs.length}`;
-					if (reposText.length > maxRepos) maxRepos = reposText.length;
-
-					// Placeholder — status and lastCommit will be filled in Phase 2
-					rows.push({
-						name,
-						marker,
-						branch,
-						base,
-						baseFellBack: false,
-						repos: reposText,
-						statusColored: dim("..."),
-						lastCommit: null,
-						special: null,
-					});
-					toScan.push({ index: rows.length - 1, wsDir });
-				}
-
-				if (rows.length === 0) {
+				if (metadata.rows.length === 0) {
 					if (options.json) {
 						process.stdout.write("[]\n");
 						return;
@@ -186,10 +117,10 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 				// ── Quiet output path ──
 				if (options.quiet) {
+					if (options.fetch) await blockingFetchAllRepos(ctx);
 					if (whereFilter) {
-						// Need status to filter — gather summaries
 						const results = await Promise.all(
-							toScan.map(async (entry) => {
+							metadata.toScan.map(async (entry) => {
 								try {
 									const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir);
 									return { index: entry.index, summary };
@@ -202,16 +133,16 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						for (const { index, summary } of results) {
 							if (summary) summaryMap.set(index, summary);
 						}
-						for (let i = 0; i < rows.length; i++) {
+						for (let i = 0; i < metadata.rows.length; i++) {
 							const summary = summaryMap.get(i);
 							if (!summary) continue;
-							const row = rows[i];
+							const row = metadata.rows[i];
 							if (row && workspaceMatchesWhere(summary.repos, summary.branch, whereFilter)) {
 								process.stdout.write(`${row.name}\n`);
 							}
 						}
 					} else {
-						for (const row of rows) {
+						for (const row of metadata.rows) {
 							process.stdout.write(`${row.name}\n`);
 						}
 					}
@@ -220,7 +151,9 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 				// ── JSON output path ──
 				if (options.json) {
-					const jsonEntries: ListJsonEntry[] = rows.map((row) => ({
+					if (options.fetch) await blockingFetchAllRepos(ctx);
+
+					const jsonEntries: ListJsonEntry[] = metadata.rows.map((row) => ({
 						workspace: row.name,
 						active: row.marker,
 						branch: row.special === "config-missing" ? null : row.branch || null,
@@ -234,9 +167,8 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						return;
 					}
 
-					// Gather all workspace summaries (no progress display in JSON mode)
 					const results = await Promise.all(
-						toScan.map(async (entry) => {
+						metadata.toScan.map(async (entry) => {
 							try {
 								const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir);
 								return { index: entry.index, summary };
@@ -263,7 +195,6 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						}
 					}
 
-					// Filter by --where
 					let filtered = jsonEntries;
 					if (whereFilter) {
 						filtered = jsonEntries.filter((_entry, i) => {
@@ -279,198 +210,287 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 				// ── Table output path ──
 
-				// Column widths
-				if (maxName < 9) maxName = 9;
-				if (maxBranch < 6) maxBranch = 6;
-				if (hasAnyBase && maxBase < 4) maxBase = 4;
-				if (maxRepos < 5) maxRepos = 5;
-
-				const tty = isTTY();
-
-				// LAST COMMIT column width — recomputed before each render
-				let lcWidths: LastCommitWidths = { maxNum: 0, maxUnit: 0, total: 11 };
-				const lastCommitParts = (row: ListRow): RelativeTimeParts => {
-					if (!row.lastCommit) return { num: "", unit: "" };
-					return formatRelativeTimeParts(row.lastCommit);
-				};
-				const recomputeLastCommitWidth = () => {
-					lcWidths = computeLastCommitWidths(displayRows.map(lastCommitParts));
-				};
-
-				// Render helpers
-				const renderHeader = (): string => {
-					let header = `  ${dim("WORKSPACE")}${" ".repeat(maxName - 9)}`;
-					header += `    ${dim("BRANCH")}${" ".repeat(maxBranch - 6)}`;
-					if (hasAnyBase) {
-						header += `    ${dim("BASE")}${" ".repeat(maxBase - 4)}`;
-					}
-					header += `    ${dim("REPOS")}${" ".repeat(maxRepos - 5)}`;
-					if (showStatus) {
-						header += `    ${dim("LAST COMMIT")}${" ".repeat(lcWidths.total - 11)}`;
-						header += `    ${dim("STATUS")}`;
-					}
-					return header;
-				};
-
-				const renderRow = (row: ListRow): string => {
-					const prefix = row.marker ? `${bold("*")} ` : "  ";
-					const paddedName = row.name.padEnd(maxName);
-
-					if (row.special === "config-missing") {
-						let line = `${prefix}${paddedName}`;
-						line += `    ${" ".repeat(maxBranch)}`;
-						if (hasAnyBase) line += `    ${" ".repeat(maxBase)}`;
-						line += `    ${" ".repeat(maxRepos)}`;
-						if (showStatus) {
-							line += `    ${" ".repeat(lcWidths.total)}`;
-							line += `    ${row.statusColored}`;
-						}
-						return line;
-					}
-
-					let line = `${prefix}${paddedName}`;
-					line += `    ${row.branch.padEnd(maxBranch)}`;
-					if (hasAnyBase) {
-						const baseText = row.baseFellBack ? yellow(row.base.padEnd(maxBase)) : row.base.padEnd(maxBase);
-						line += `    ${baseText}`;
-					}
-					line += `    ${row.repos.padEnd(maxRepos)}`;
-					if (showStatus) {
-						const parts = lastCommitParts(row);
-						let commitCell: string;
-						if (parts.num || parts.unit) {
-							commitCell = formatLastCommitCell(parts, lcWidths, true);
-						} else if (row.special === null) {
-							commitCell = "...".padEnd(lcWidths.total);
-						} else {
-							commitCell = " ".repeat(lcWidths.total);
-						}
-						line += `    ${commitCell}`;
-						line += `    ${row.statusColored}`;
-					}
-					return line;
-				};
-
-				// Track summaries for --where filtering
-				const summaryByIndex = new Map<number, WorkspaceSummary>();
-
-				// Rows to display (may be filtered by --where after Phase 2)
-				let displayRows = rows;
-
-				const renderTable = () => {
-					process.stdout.write(`${renderHeader()}\n`);
-					for (const row of displayRows) {
-						process.stdout.write(`${renderRow(row)}\n`);
-					}
-				};
-
-				// ── Quick mode: skip Phase 2, render immediately ──
 				if (!showStatus) {
-					renderTable();
+					if (options.fetch) await blockingFetchAllRepos(ctx);
+					process.stdout.write(formatListTable(metadata.rows, metadata.cols, false));
 					return;
 				}
 
-				// ── Phase 2: gather status in parallel ──
-				if (tty && toScan.length > 0) {
-					// Render initial table with placeholder status
-					const rowCount = 1 + rows.length; // header + data rows
-					renderTable();
+				const tty = isTTY();
+				const canPhase = tty && metadata.toScan.length > 0;
 
-					// Progress counter on stderr
-					let totalRepos = 0;
-					let scannedRepos = 0;
-					const updateProgress = () => {
-						process.stderr.write(`\r  Scanning ${scannedRepos}/${totalRepos}`);
-					};
+				if (canPhase && options.fetch) {
+					// 3-phase: placeholder → stale + fetching → fresh
+					const allRepoNames = listRepos(ctx.reposDir);
+					const fetchDirs = allRepoNames.map((r) => `${ctx.reposDir}/${r}`);
+					const remotesMap = await resolveRemotesMap(allRepoNames, ctx.reposDir);
+					const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, { silent: true });
+					const state: { fetchResults?: Map<string, FetchResult> } = {};
 
-					// Run all workspace scans in parallel
-					const results = await Promise.all(
-						toScan.map(async (entry) => {
-							try {
-								const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir, (scanned, total) => {
-									// On first callback from this workspace, add its total to the aggregate
-									if (scanned === 1) totalRepos += total;
-									scannedRepos++;
-									updateProgress();
-								});
-								return { index: entry.index, summary };
-							} catch {
-								return { index: entry.index, summary: null };
-							}
-						}),
-					);
-
-					// Clear progress line
-					process.stderr.write(`\r${" ".repeat(40)}\r`);
-
-					// Apply results to rows
-					for (const { index, summary } of results) {
-						if (!summary) {
-							const row = rows[index];
-							if (row) row.statusColored = yellow("(remotes not resolved)");
-							continue;
-						}
-						summaryByIndex.set(index, summary);
-						const row = rows[index];
-						if (row) applySummaryToRow(row, summary);
-					}
-
-					// Filter by --where
-					if (whereFilter) {
-						displayRows = rows.filter((_, i) => {
-							const summary = summaryByIndex.get(i);
-							if (!summary) return false;
-							return workspaceMatchesWhere(summary.repos, summary.branch, whereFilter);
-						});
-					}
-					recomputeLastCommitWidth();
-
-					// Re-render table in place: move cursor up, overwrite each line
-					process.stdout.write(`\x1b[${rowCount}A`);
-					for (let i = 0; i < rowCount; i++) {
-						process.stdout.write("\r\x1b[2K");
-						if (i < rowCount - 1) process.stdout.write("\x1b[1B");
-					}
-					process.stdout.write(`\x1b[${rowCount - 1}A`);
-					renderTable();
+					await runPhasedRender([
+						{ render: () => formatListTable(metadata.rows, metadata.cols, true) },
+						{
+							render: async () => {
+								const statusRows = await gatherListStatus(metadata, ctx, whereFilter);
+								return formatListTable(statusRows, metadata.cols, true) + fetchSuffix(fetchDirs.length);
+							},
+						},
+						{
+							render: async () => {
+								state.fetchResults = await fetchPromise;
+								const statusRows = await gatherListStatus(metadata, ctx, whereFilter);
+								return formatListTable(statusRows, metadata.cols, true);
+							},
+							write: (o) => process.stdout.write(o),
+						},
+					]);
+					reportFetchFailures(allRepoNames, state.fetchResults as Map<string, FetchResult>);
+				} else if (canPhase) {
+					// 2-phase: placeholder → status
+					await runPhasedRender([
+						{ render: () => formatListTable(metadata.rows, metadata.cols, true) },
+						{
+							render: async () => {
+								const statusRows = await gatherListStatus(metadata, ctx, whereFilter);
+								return formatListTable(statusRows, metadata.cols, true);
+							},
+							write: (o) => process.stdout.write(o),
+						},
+					]);
 				} else {
-					// Non-TTY or nothing to scan: gather all data, output once
-					const results = await Promise.all(
-						toScan.map(async (entry) => {
-							try {
-								const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir);
-								return { index: entry.index, summary };
-							} catch {
-								return { index: entry.index, summary: null };
-							}
-						}),
-					);
-
-					for (const { index, summary } of results) {
-						if (!summary) {
-							const row = rows[index];
-							if (row) row.statusColored = yellow("(remotes not resolved)");
-							continue;
-						}
-						summaryByIndex.set(index, summary);
-						const row = rows[index];
-						if (row) applySummaryToRow(row, summary);
-					}
-
-					// Filter by --where
-					if (whereFilter) {
-						displayRows = rows.filter((_, i) => {
-							const summary = summaryByIndex.get(i);
-							if (!summary) return false;
-							return workspaceMatchesWhere(summary.repos, summary.branch, whereFilter);
-						});
-					}
-					recomputeLastCommitWidth();
-
-					renderTable();
+					// Non-phased (non-TTY or nothing to scan)
+					if (options.fetch) await blockingFetchAllRepos(ctx);
+					const statusRows = await gatherListStatus(metadata, ctx, whereFilter);
+					process.stdout.write(formatListTable(statusRows, metadata.cols, true));
 				}
 			},
 		);
+}
+
+// ── Metadata gathering ──
+
+async function gatherListMetadata(ctx: ArbContext, workspaces: string[]): Promise<ListMetadata> {
+	const rows: ListRow[] = [];
+	const toScan: { index: number; wsDir: string }[] = [];
+	let maxName = 0;
+	let maxBranch = 0;
+	let maxBase = 0;
+	let maxRepos = 0;
+	let hasAnyBase = false;
+
+	for (const name of workspaces) {
+		const wsDir = `${ctx.arbRootDir}/${name}`;
+		const marker = name === ctx.currentWorkspace;
+		if (name.length > maxName) maxName = name.length;
+
+		const configMissing = !existsSync(`${wsDir}/.arbws/config`);
+
+		if (configMissing) {
+			rows.push({
+				name,
+				marker,
+				branch: "",
+				base: "",
+				baseFellBack: false,
+				repos: "",
+				statusColored: yellow("(config missing)"),
+				lastCommit: null,
+				special: "config-missing",
+			});
+			continue;
+		}
+
+		const repoDirs = workspaceRepoDirs(wsDir);
+		const wb = await workspaceBranch(wsDir);
+		const branch = wb?.branch ?? name.toLowerCase();
+		const configBase = configGet(`${wsDir}/.arbws/config`, "base");
+		const base = configBase ?? "";
+
+		if (branch.length > maxBranch) maxBranch = branch.length;
+		if (base.length > maxBase) maxBase = base.length;
+		if (base) hasAnyBase = true;
+
+		if (repoDirs.length === 0) {
+			const reposText = "0";
+			if (reposText.length > maxRepos) maxRepos = reposText.length;
+			rows.push({
+				name,
+				marker,
+				branch,
+				base,
+				baseFellBack: false,
+				repos: reposText,
+				statusColored: yellow("(empty)"),
+				lastCommit: null,
+				special: "empty",
+			});
+			continue;
+		}
+
+		const reposText = `${repoDirs.length}`;
+		if (reposText.length > maxRepos) maxRepos = reposText.length;
+
+		rows.push({
+			name,
+			marker,
+			branch,
+			base,
+			baseFellBack: false,
+			repos: reposText,
+			statusColored: dim("..."),
+			lastCommit: null,
+			special: null,
+		});
+		toScan.push({ index: rows.length - 1, wsDir });
+	}
+
+	if (maxName < 9) maxName = 9;
+	if (maxBranch < 6) maxBranch = 6;
+	if (hasAnyBase && maxBase < 4) maxBase = 4;
+	if (maxRepos < 5) maxRepos = 5;
+
+	return {
+		rows,
+		toScan,
+		cols: { maxName, maxBranch, maxBase, maxRepos, hasAnyBase },
+	};
+}
+
+// ── Status gathering ──
+
+async function gatherListStatus(
+	metadata: ListMetadata,
+	ctx: ArbContext,
+	whereFilter: string | undefined,
+): Promise<ListRow[]> {
+	const rows = metadata.rows.map((r) => ({ ...r }));
+	const summaryByIndex = new Map<number, WorkspaceSummary>();
+
+	const tty = isTTY();
+	let totalRepos = 0;
+	let scannedRepos = 0;
+	const updateProgress = () => {
+		if (tty) process.stderr.write(`\r  Scanning ${scannedRepos}/${totalRepos}`);
+	};
+
+	const results = await Promise.all(
+		metadata.toScan.map(async (entry) => {
+			try {
+				const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir, (scanned, total) => {
+					if (scanned === 1) totalRepos += total;
+					scannedRepos++;
+					updateProgress();
+				});
+				return { index: entry.index, summary };
+			} catch {
+				return { index: entry.index, summary: null };
+			}
+		}),
+	);
+
+	if (tty && scannedRepos > 0) {
+		process.stderr.write(`\r${" ".repeat(40)}\r`);
+	}
+
+	for (const { index, summary } of results) {
+		if (!summary) {
+			const row = rows[index];
+			if (row) row.statusColored = yellow("(remotes not resolved)");
+			continue;
+		}
+		summaryByIndex.set(index, summary);
+		const row = rows[index];
+		if (row) applySummaryToRow(row, summary);
+	}
+
+	if (whereFilter) {
+		return rows.filter((_, i) => {
+			const summary = summaryByIndex.get(i);
+			if (!summary) return false;
+			return workspaceMatchesWhere(summary.repos, summary.branch, whereFilter);
+		});
+	}
+
+	return rows;
+}
+
+// ── Rendering ──
+
+function lastCommitParts(row: ListRow): RelativeTimeParts {
+	if (!row.lastCommit) return { num: "", unit: "" };
+	return formatRelativeTimeParts(row.lastCommit);
+}
+
+function renderListHeader(cols: ListColumnWidths, showStatus: boolean, lcWidths: LastCommitWidths): string {
+	let header = `  ${dim("WORKSPACE")}${" ".repeat(cols.maxName - 9)}`;
+	header += `    ${dim("BRANCH")}${" ".repeat(cols.maxBranch - 6)}`;
+	if (cols.hasAnyBase) {
+		header += `    ${dim("BASE")}${" ".repeat(cols.maxBase - 4)}`;
+	}
+	header += `    ${dim("REPOS")}${" ".repeat(cols.maxRepos - 5)}`;
+	if (showStatus) {
+		header += `    ${dim("LAST COMMIT")}${" ".repeat(lcWidths.total - 11)}`;
+		header += `    ${dim("STATUS")}`;
+	}
+	return header;
+}
+
+function renderListRow(row: ListRow, cols: ListColumnWidths, showStatus: boolean, lcWidths: LastCommitWidths): string {
+	const prefix = row.marker ? `${bold("*")} ` : "  ";
+	const paddedName = row.name.padEnd(cols.maxName);
+
+	if (row.special === "config-missing") {
+		let line = `${prefix}${paddedName}`;
+		line += `    ${" ".repeat(cols.maxBranch)}`;
+		if (cols.hasAnyBase) line += `    ${" ".repeat(cols.maxBase)}`;
+		line += `    ${" ".repeat(cols.maxRepos)}`;
+		if (showStatus) {
+			line += `    ${" ".repeat(lcWidths.total)}`;
+			line += `    ${row.statusColored}`;
+		}
+		return line;
+	}
+
+	let line = `${prefix}${paddedName}`;
+	line += `    ${row.branch.padEnd(cols.maxBranch)}`;
+	if (cols.hasAnyBase) {
+		const baseText = row.baseFellBack ? yellow(row.base.padEnd(cols.maxBase)) : row.base.padEnd(cols.maxBase);
+		line += `    ${baseText}`;
+	}
+	line += `    ${row.repos.padEnd(cols.maxRepos)}`;
+	if (showStatus) {
+		const parts = lastCommitParts(row);
+		let commitCell: string;
+		if (parts.num || parts.unit) {
+			commitCell = formatLastCommitCell(parts, lcWidths, true);
+		} else if (row.special === null) {
+			commitCell = "...".padEnd(lcWidths.total);
+		} else {
+			commitCell = " ".repeat(lcWidths.total);
+		}
+		line += `    ${commitCell}`;
+		line += `    ${row.statusColored}`;
+	}
+	return line;
+}
+
+function formatListTable(displayRows: ListRow[], cols: ListColumnWidths, showStatus: boolean): string {
+	const lcWidths = computeLastCommitWidths(displayRows.map(lastCommitParts));
+	let output = `${renderListHeader(cols, showStatus, lcWidths)}\n`;
+	for (const row of displayRows) {
+		output += `${renderListRow(row, cols, showStatus, lcWidths)}\n`;
+	}
+	return output;
+}
+
+// ── Helpers ──
+
+async function blockingFetchAllRepos(ctx: ArbContext): Promise<void> {
+	const allRepoNames = listRepos(ctx.reposDir);
+	const fetchDirs = allRepoNames.map((r) => `${ctx.reposDir}/${r}`);
+	const remotesMap = await resolveRemotesMap(allRepoNames, ctx.reposDir);
+	const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
+	reportFetchFailures(allRepoNames, fetchResults);
 }
 
 function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {

@@ -227,9 +227,9 @@ Commands and library code never call `process.exit()` directly. Instead, they th
 
 **The only `process.exit()` calls live in `index.ts`:** the top-level catch handler and the SIGINT signal handler. Signal handlers must call `process.exit()` directly because they cannot throw into an async context. See `decisions/0036-exception-based-exit-handling.md`.
 
-### Two-phase rendering with background fetch
+### Phased rendering
 
-Commands that support `-F, --fetch` and display formatted output use two-phase rendering in TTY mode to provide immediate feedback while fetching. The shared helper `runTwoPhaseRender` in `two-phase-render.ts` orchestrates: start a silent background fetch, gather and render stale output, await fetch, clear stale output, gather and render fresh output. The `\x1B[J` erase-to-end-of-screen in `clearLines` handles output length changes between renders. Used by: mutation commands (via `runPlanFlow`) and `status`. See `decisions/0039-two-phase-status-render.md`.
+Commands that support `-F, --fetch` and display formatted output use phased rendering in TTY mode to provide immediate feedback. The shared helper `runPhasedRender` in `phased-render.ts` takes an array of `RenderPhase` objects and iterates them sequentially — for each phase after the first, it clears the previous phase's output (using `clearLines`/`countLines`), then writes the new output. The `\x1B[J` erase-to-end-of-screen in `clearLines` handles output length changes between renders. Callers compose their own phase sequences inline with full control over the fetch lifecycle (e.g., 2 phases for status/mutations, 3 phases for list). Fetch-related helpers (`fetchSuffix`, `getFetchFailedRepos`, `reportFetchFailures`) live in `parallel-fetch.ts`. `reportFetchFailures` must be called after `runPhasedRender` completes, not inside a render callback, to avoid its stderr output being erased by `clearLines`. Used by: mutation commands (via `runPlanFlow`), `status`, and `list`. See `decisions/0039-two-phase-status-render.md`.
 
 ### In-progress state for partially-completing commands
 
