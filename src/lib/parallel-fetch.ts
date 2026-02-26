@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import { git } from "./git";
-import { error, plural } from "./output";
+import { dim, error, plural } from "./output";
 import type { RepoRemotes } from "./remotes";
 import { isTTY } from "./tty";
 
@@ -170,6 +170,10 @@ export function reportFetchFailures(
 		}
 	}
 	return failed;
+}
+
+export function fetchSuffix(count: number): string {
+	return dim(`Fetching ${plural(count, "repo")}...`);
 }
 
 export function getFetchFailedRepos(

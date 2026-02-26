@@ -205,6 +205,42 @@ load test_helper/common-setup
     [[ "$output" == *"ws-one"* ]]
 }
 
+@test "arb list -F shows status after fetch" {
+    arb create ws-one repo-a
+    run arb list -F
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"no issues"* ]]
+}
+
+@test "arb list -F with dirty repo shows dirty status" {
+    arb create ws-one repo-a
+    echo "dirty" > "$TEST_DIR/project/ws-one/repo-a/dirty.txt"
+    run arb list -F
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"dirty"* ]]
+}
+
+@test "arb list -F --json outputs valid JSON with status" {
+    arb create ws-one repo-a
+    run bash -c 'arb list -F --json 2>/dev/null'
+    [ "$status" -eq 0 ]
+    echo "$output" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+ws = data[0]
+assert ws['workspace'] == 'ws-one'
+assert 'statusLabels' in ws
+"
+}
+
+@test "arb list -F --quiet outputs workspace names" {
+    arb create ws-one repo-a
+    run arb list -F --quiet
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-one"* ]]
+    [[ "$output" != *"WORKSPACE"* ]]
+}
+
 @test "arb list --json outputs valid JSON" {
     arb create my-feature repo-a
     run arb list --json
