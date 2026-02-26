@@ -71,6 +71,54 @@ load test_helper/common-setup
     [ "$branch" = "reuse-me" ]
 }
 
+@test "arb create checks out existing remote branch" {
+    # Create a branch with unique content, push it, then delete the local branch
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b remote-only >/dev/null 2>&1
+    echo "remote-content" > "$TEST_DIR/project/.arb/repos/repo-a/remote-marker.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add remote-marker.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "remote marker" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin remote-only >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach HEAD >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" branch -D remote-only >/dev/null 2>&1
+
+    # Create a workspace that should check out the remote branch
+    arb create remote-ws --branch remote-only repo-a
+
+    # The worktree should have the remote branch's content
+    [ -f "$TEST_DIR/project/remote-ws/repo-a/remote-marker.txt" ]
+
+    # Verify it's on the correct branch
+    local branch
+    branch="$(git -C "$TEST_DIR/project/remote-ws/repo-a" branch --show-current)"
+    [ "$branch" = "remote-only" ]
+
+    # Verify tracking is configured
+    local tracking_remote
+    tracking_remote="$(git -C "$TEST_DIR/project/remote-ws/repo-a" config branch.remote-only.remote)"
+    [ "$tracking_remote" = "origin" ]
+}
+
+@test "arb create remote branch sets tracking even with autoSetupMerge off" {
+    # Disable auto tracking setup
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" config branch.autoSetupMerge false
+
+    # Create a branch with unique content, push it, then delete the local branch
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b no-auto-track >/dev/null 2>&1
+    echo "no-auto-content" > "$TEST_DIR/project/.arb/repos/repo-a/no-auto.txt"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" add no-auto.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "no-auto marker" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin no-auto-track >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach HEAD >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" branch -D no-auto-track >/dev/null 2>&1
+
+    arb create no-auto-ws --branch no-auto-track repo-a
+
+    # Verify tracking is configured despite autoSetupMerge=false
+    local tracking_remote
+    tracking_remote="$(git -C "$TEST_DIR/project/no-auto-ws/repo-a" config branch.no-auto-track.remote)"
+    [ "$tracking_remote" = "origin" ]
+}
+
 @test "arb create outputs workspace path on stdout" {
     run bash -c 'arb create foo repo-a 2>/dev/null'
     [ "$output" = "$TEST_DIR/project/foo" ]
