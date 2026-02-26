@@ -38,6 +38,7 @@ _arb_where_filter() {
     local -a all_terms=(
         dirty unpushed behind-share behind-base diverged drifted detached
         operation gone shallow merged base-merged base-missing at-risk stale
+        clean pushed synced-base synced-share synced safe
     )
     # Parse already-entered terms (split on , and +) to offer remaining ones
     local input="${PREFIX}${SUFFIX}"
@@ -302,7 +303,8 @@ _arb() {
                     ;;
                 list)
                     _arguments \
-                        '(-F --fetch)'{-F,--fetch}'[Fetch all repos before listing]' \
+                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch all repos before listing]' \
+                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching (default)]' \
                         '--no-status[Skip per-repo status (faster for large setups)]' \
                         '(-q --quiet --json)'{-q,--quiet}'[Output one workspace name per line]' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only list dirty workspaces]' \
@@ -317,7 +319,8 @@ _arb() {
                         '(-F --fetch --no-fetch)--no-fetch[Skip fetching (default)]' \
                         '(-v --verbose -q --quiet)'{-v,--verbose}'[Show file-level detail]' \
                         '(-q --quiet --json -v --verbose)'{-q,--quiet}'[Output one repo name per line]' \
-                        '(--json -q --quiet)--json[Output structured JSON]'
+                        '(--json -q --quiet)--json[Output structured JSON]' \
+                        '*:repo:($repo_names)'
                     ;;
                 exec)
                     _arguments \
@@ -403,8 +406,6 @@ _arb() {
                 template)
                     shift words; (( CURRENT-- ))
                     local -a template_subcmds=(
-                        'add:Capture a file as a template'
-                        'remove:Remove a template file'
                         'list:List all defined templates'
                         'diff:Show template drift'
                         'apply:Re-seed templates into the current workspace'
@@ -413,21 +414,6 @@ _arb() {
                         _describe 'template command' template_subcmds
                     else
                         case "${words[1]}" in
-                            add)
-                                shift words; (( CURRENT-- ))
-                                _arguments \
-                                    '*--repo[Target repo scope]:repo:($repo_names)' \
-                                    '--workspace[Target workspace scope]' \
-                                    '(-f --force)'{-f,--force}'[Overwrite existing template]' \
-                                    '1:file:_files'
-                                ;;
-                            remove)
-                                shift words; (( CURRENT-- ))
-                                _arguments \
-                                    '*--repo[Target repo scope]:repo:($repo_names)' \
-                                    '--workspace[Target workspace scope]' \
-                                    '1:template:{ _arb_template_names "$base_dir" }'
-                                ;;
                             list) ;;
                             diff)
                                 shift words; (( CURRENT-- ))

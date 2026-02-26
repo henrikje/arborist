@@ -94,7 +94,7 @@ __arb_repo_names() {
 }
 
 __arb_where_filters() {
-    printf '%s\n' dirty unpushed behind-share behind-base diverged drifted detached operation gone shallow merged base-merged base-missing at-risk stale
+    printf '%s\n' dirty unpushed behind-share behind-base diverged drifted detached operation gone shallow merged base-merged base-missing at-risk stale clean pushed synced-base synced-share synced safe
 }
 
 __arb_template_names() {
@@ -348,13 +348,17 @@ __arb_complete_detach() {
 }
 
 __arb_complete_status() {
-    local cur="$1"
+    local base_dir="$1" cur="$2"
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
     if [[ "$prev" == "-w" || "$prev" == "--where" ]]; then
         __arb_complete_where_value "$cur"
         return
     fi
-    COMPREPLY=($(compgen -W "-d --dirty -w --where -F --fetch --no-fetch -v --verbose -q --quiet --json" -- "$cur"))
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "-d --dirty -w --where -F --fetch --no-fetch -v --verbose -q --quiet --json" -- "$cur"))
+        return
+    fi
+    COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
 }
 
 __arb_complete_rebranch() {
@@ -474,34 +478,12 @@ __arb_complete_template() {
     done
 
     if ((COMP_CWORD == sub_pos)); then
-        COMPREPLY=($(compgen -W "add remove list diff apply" -- "$cur"))
+        COMPREPLY=($(compgen -W "list diff apply" -- "$cur"))
         return
     fi
 
     local sub="${COMP_WORDS[sub_pos]}"
     case "$sub" in
-        add)
-            if [[ "$prev" == "--repo" ]]; then
-                COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
-                return
-            fi
-            if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--repo --workspace -f --force" -- "$cur"))
-                return
-            fi
-            COMPREPLY=($(compgen -f -- "$cur"))
-            ;;
-        remove)
-            if [[ "$prev" == "--repo" ]]; then
-                COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
-                return
-            fi
-            if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--repo --workspace" -- "$cur"))
-                return
-            fi
-            COMPREPLY=($(compgen -W "$(__arb_template_names "$base_dir")" -- "$cur"))
-            ;;
         list) ;;
         diff)
             if [[ "$prev" == "--repo" ]]; then
@@ -573,7 +555,7 @@ _arb() {
         cd)       __arb_complete_cd "$base_dir" "$cur" ;;
         attach)   __arb_complete_attach "$base_dir" "$cur" ;;
         detach)   __arb_complete_detach "$base_dir" "$cur" ;;
-        status)   __arb_complete_status "$cur" ;;
+        status)   __arb_complete_status "$base_dir" "$cur" ;;
         pull)     __arb_complete_pull "$base_dir" "$cur" ;;
         push)     __arb_complete_push "$base_dir" "$cur" ;;
         rebase)   __arb_complete_rebase "$base_dir" "$cur" ;;
