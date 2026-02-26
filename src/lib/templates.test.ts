@@ -9,6 +9,7 @@ import {
 	applyRepoTemplates,
 	applyWorkspaceTemplates,
 	checkUnknownVariables,
+	detectScopeFromPath,
 	diffTemplates,
 	forceOverlayDirectory,
 	listTemplates,
@@ -412,6 +413,59 @@ describe("templates", () => {
 
 			const result = listTemplates(arbRootDir);
 			expect(result).toEqual([{ scope: "workspace", relPath: join(".claude", "settings.local.json") }]);
+		});
+	});
+
+	describe("detectScopeFromPath", () => {
+		test("returns repo scope when path is inside a repo directory", () => {
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "my-ws");
+			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+			mkdirSync(join(wsDir, "api", ".git"), { recursive: true });
+
+			const result = detectScopeFromPath(wsDir, join(wsDir, "api", ".env"));
+			expect(result).toEqual({ scope: "repo", repo: "api" });
+		});
+
+		test("returns workspace scope when path is in workspace but not in a repo", () => {
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "my-ws");
+			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+			mkdirSync(join(wsDir, "api", ".git"), { recursive: true });
+
+			const result = detectScopeFromPath(wsDir, join(wsDir, ".env"));
+			expect(result).toEqual({ scope: "workspace" });
+		});
+
+		test("returns null when path is outside the workspace", () => {
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "my-ws");
+			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+
+			const result = detectScopeFromPath(wsDir, "/tmp/somewhere-else");
+			expect(result).toBeNull();
+		});
+
+		test("detects correct repo when multiple repos exist", () => {
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "my-ws");
+			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+			mkdirSync(join(wsDir, "api", ".git"), { recursive: true });
+			mkdirSync(join(wsDir, "web", ".git"), { recursive: true });
+
+			const result = detectScopeFromPath(wsDir, join(wsDir, "web", "src", "index.ts"));
+			expect(result).toEqual({ scope: "repo", repo: "web" });
+		});
+
+		test("returns workspace scope for file at workspace root level", () => {
+			const arbRootDir = join(tmpDir, "project");
+			const wsDir = join(arbRootDir, "my-ws");
+			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+			mkdirSync(join(wsDir, "api", ".git"), { recursive: true });
+			writeFileSync(join(wsDir, "docker-compose.yml"), "version: '3'");
+
+			const result = detectScopeFromPath(wsDir, join(wsDir, "docker-compose.yml"));
+			expect(result).toEqual({ scope: "workspace" });
 		});
 	});
 

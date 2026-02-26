@@ -3,6 +3,7 @@ import { basename, dirname, join, relative } from "node:path";
 import { Liquid } from "liquidjs";
 import { yellow } from "./output";
 import { getRemoteUrl, resolveRemotes } from "./remotes";
+import { workspaceRepoDirs } from "./repos";
 
 export const ARBTEMPLATE_EXT = ".arbtemplate";
 
@@ -591,6 +592,24 @@ function walkFiles(dir: string): string[] {
 
 	walk(dir);
 	return files;
+}
+
+export interface TemplateScope {
+	scope: "workspace" | "repo";
+	repo?: string;
+}
+
+export function detectScopeFromPath(wsDir: string, srcPath: string): TemplateScope | null {
+	const wsPrefix = `${wsDir}/`;
+	if (!srcPath.startsWith(wsPrefix)) return null;
+
+	for (const repoDir of workspaceRepoDirs(wsDir)) {
+		if (srcPath.startsWith(`${repoDir}/`) || srcPath === repoDir) {
+			return { scope: "repo", repo: basename(repoDir) };
+		}
+	}
+
+	return { scope: "workspace" };
 }
 
 export interface ForceOverlayResult {

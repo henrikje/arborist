@@ -40,7 +40,7 @@ When a feature or change involves weighing multiple meaningful options, the reas
 
 ### Minimal, semantic CLI
 
-Provide commands only for operations that require Arborist's understanding. A command earns its place when it encapsulates domain knowledge (multi-repo coordination, fork workflows), provides safety gates (refuses risky operations, detects at-risk state), or renders/transforms data that isn't directly comparable (template rendering, base branch resolution, status aggregation). A command that wraps `rm`, `ls`, or `cp` on a plain-text file in `.arb/` does not earn its place — the "filesystem as database" principle already provides that interface.
+Provide commands only for operations that require Arborist's understanding. A command earns its place when it encapsulates domain knowledge (multi-repo coordination, fork workflows), provides safety gates (refuses risky operations, detects at-risk state), or renders/transforms data that isn't directly comparable (template rendering, base branch resolution, status aggregation). A command that wraps `rm`, `ls`, or `cp` on a plain-text file in `.arb/` does not earn its place — the "filesystem as database" principle already provides that interface. An exception applies when the command provides onboarding UX through non-obvious path or scope inference — `template add` is an example.
 
 ### Prefer correctness over backwards compatibility
 

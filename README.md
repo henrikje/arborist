@@ -211,11 +211,12 @@ arb open code
 ### Seed files into new workspaces
 
 ```bash
-cp my-feature/api/.env .arb/templates/repos/api/.env
+cd my-feature/api
+arb template add .env
 # from now on, every new workspace gets api/.env automatically
 ```
 
-Templates let you seed files into every new workspace. Common uses include `.env` files, IDE settings, and AI agent config. For dynamic content, templates support placeholders that fill in workspace details — repo list, paths, remote URLs — at creation time. The `.arb/templates/` directory is user-owned space — add and remove files directly with your shell or editor. Use `arb template list`, `arb template diff`, and `arb template apply` to inspect and re-seed templates.
+Templates let you capture files and have them seeded into every new workspace. Common uses include `.env` files, IDE settings, and AI agent config. Templates live in `.arb/templates/` and are version-controllable.
 
 ### Know when you're done
 

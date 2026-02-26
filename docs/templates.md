@@ -4,12 +4,16 @@ Arborist can automatically seed files into new workspaces — `.env` files, AI a
 
 ## Managing templates
 
-The `.arb/templates/` directory is user-owned space — add and remove template files directly with your shell or editor. Workspace templates go in `.arb/templates/workspace/`, repo templates go in `.arb/templates/repos/<name>/`.
+Use `arb template add` to capture files from your workspace as templates, or manage the `.arb/templates/` directory directly:
 
 ```bash
-# Add a template by copying a file into .arb/templates/
+# Capture a file from your workspace as a template
+cd my-feature/api
+arb template add .env                    # auto-detects repo scope from source path
+arb template add .env --workspace        # override to workspace scope
+
+# Or manage the directory directly
 cp my-feature/api/.env .arb/templates/repos/api/.env
-cp my-feature/.editorconfig .arb/templates/workspace/.editorconfig
 
 # See what templates exist
 arb template list
@@ -25,7 +29,7 @@ arb template apply --force               # also resets drifted files
 rm .arb/templates/repos/api/.env
 ```
 
-The `arb template` subcommands (`list`, `diff`, `apply`) provide operations that require Arborist's template rendering engine. Adding and removing template files doesn't need Arborist — the filesystem is the interface.
+`arb template add` infers the correct scope automatically. The remaining `arb template` subcommands (`list`, `diff`, `apply`) provide operations that require Arborist's template rendering engine. Removing template files doesn't need Arborist — `rm` is sufficient.
 
 ## Template scopes
 
@@ -49,6 +53,17 @@ Typical uses:
 - `.env` files with service-specific defaults
 - Local config overrides (`.vscode/settings.json`)
 - Git hooks or tool config
+
+### Scope detection
+
+When you run `arb template add`, the scope is auto-detected from the source path's location:
+
+| Source path is inside… | Detected scope |
+|---|---|
+| A repo directory (has `.git`) | `repo` (for that repo) |
+| The workspace but not a repo | `workspace` |
+
+Override with `--repo <name>` or `--workspace` when the auto-detection isn't what you want.
 
 ### Directory structure
 
