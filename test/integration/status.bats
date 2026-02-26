@@ -803,3 +803,59 @@ load test_helper/common-setup
     repo_name="$(echo "$output" | jq -r '.repos[0].name')"
     [ "$repo_name" = "repo-a" ]
 }
+
+# ── two-phase fetch rendering ─────────────────────────────────────
+
+@test "arb status -F reflects fresh remote data" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "first" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Push a commit to origin from a separate clone
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    # Without -F, should NOT see the remote commit (stale refs)
+    run arb status
+    [[ "$output" == *"up to date"* ]]
+
+    # With -F, should see "1 to pull" after fetching fresh data
+    run arb status -F
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"1 to pull"* ]]
+}
+
+@test "arb status -F -v shows verbose detail after fetch" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature commit" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Advance main on origin
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream change" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb status -F -v
+    [ "$status" -eq 0 ]
+    # Should show verbose detail — the ahead-of-base commit
+    [[ "$output" == *"feature commit"* ]]
+    # Should show the behind-base commit from the fetch
+    [[ "$output" == *"upstream change"* ]]
+}
+
+@test "arb status -F --json produces clean JSON" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    # Redirect stderr so fetch progress doesn't pollute JSON on stdout
+    local json_output
+    json_output="$(arb status -F --json 2>/dev/null)"
+    # Output should be valid JSON
+    echo "$json_output" | jq . >/dev/null 2>&1
+    local repo_name
+    repo_name="$(echo "$json_output" | jq -r '.repos[0].name')"
+    [ "$repo_name" = "repo-a" ]
+}

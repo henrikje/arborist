@@ -227,6 +227,10 @@ Commands and library code never call `process.exit()` directly. Instead, they th
 
 **The only `process.exit()` calls live in `index.ts`:** the top-level catch handler and the SIGINT signal handler. Signal handlers must call `process.exit()` directly because they cannot throw into an async context. See `decisions/0036-exception-based-exit-handling.md`.
 
+### Two-phase rendering with background fetch
+
+Commands that support `-F, --fetch` and display formatted output use two-phase rendering in TTY mode to provide immediate feedback while fetching. The shared helper `runTwoPhaseRender` in `two-phase-render.ts` orchestrates: start a silent background fetch, gather and render stale output, await fetch, clear stale output, gather and render fresh output. The `\x1B[J` erase-to-end-of-screen in `clearLines` handles output length changes between renders. Used by: mutation commands (via `runPlanFlow`) and `status`. See `decisions/0039-two-phase-status-render.md`.
+
 ### In-progress state for partially-completing commands
 
 Commands that execute sequentially across multiple repos and can fail partway through (leaving some repos done and others not) must carry explicit in-progress state in `.arbws/config`. This state enables `--continue` (resume from where it left off) and `--abort` (roll back completed steps), modeled after git's own rebase-in-progress / merge-in-progress pattern. Without this state, a partial failure leaves the workspace in an ambiguous split state that cannot be safely recovered by re-running the same command. See `decisions/0025-rebranch-migration-state.md` for the reasoning behind this pattern.
