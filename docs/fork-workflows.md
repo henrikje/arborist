@@ -39,12 +39,12 @@ Different repos in a workspace can have different remote layouts. Some repos mig
 In fork setups, `arb status` shows the upstream remote prefix in the BASE column so you can see where each repo's base branch lives:
 
 ```
-  REPO      BRANCH        LAST COMMIT    BASE                          SHARE                          LOCAL
-  api       my-feature     2 hours       upstream/main  2 ahead        origin/my-feature  2 to push    clean
-  web       my-feature     1 day         main           equal          origin/my-feature  up to date   clean
+  REPO    LAST COMMIT    BASE                          SHARE                          LOCAL
+  api      2 hours       upstream/main  2 ahead        origin/my-feature  2 to push    clean
+  web      1 day         origin/main    equal          origin/my-feature  up to date   clean
 ```
 
-Here `api` is a fork (base is `upstream/main`) while `web` uses a single origin (base is just `main`).
+Here `api` is a fork (base is `upstream/main`) while `web` uses a single origin (base is `origin/main`).
 
 ## Two axes of synchronization
 

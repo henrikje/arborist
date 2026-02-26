@@ -93,4 +93,4 @@ To see which repositories have been cloned into the arb root:
 arb repo list
 ```
 
-This shows a table of repo names and their remote URLs. Useful when you've added repos over time and need a quick inventory of what's available for new workspaces.
+This shows a table of repo names, their remote URLs, and remote roles (base and share). Useful when you've added repos over time and need a quick inventory of what's available for new workspaces. Use `--verbose` (`-v`) to see both base and share remote details, or `--json` for structured output.

@@ -2,7 +2,7 @@
 
 ## Non-interactive mode
 
-Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, `merge`, and `delete`. For `delete`, `--force` (`-f`) implies `--yes`. Without these flags, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
+Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, `merge`, `rebranch`, `delete`, and `clean`. For `delete`, `--force` (`-f`) implies `--yes`. Without these flags, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
 
 ```bash
 arb rebase --yes && arb push --force --yes
@@ -17,7 +17,7 @@ arb push --dry-run        # see what would be pushed
 arb push --yes            # looks good — go ahead
 ```
 
-This is especially useful in scripted or AI-driven workflows where you want to inspect the plan before committing to it. The flag works on `push`, `pull`, `rebase`, `merge`, and `delete`.
+This is especially useful in scripted or AI-driven workflows where you want to inspect the plan before committing to it. The flag works on `push`, `pull`, `rebase`, `merge`, `rebranch`, `delete`, and `clean`.
 
 ## Filtering
 
@@ -52,13 +52,13 @@ The full list of filter terms:
 
 | Term | Matches repos where… |
 |------|----------------------|
-| `dirty` | there are uncommitted changes (staged, modified, or untracked files) |
+| `dirty` | there are uncommitted changes (staged, modified, untracked, or conflicting files) |
 | `unpushed` | local commits haven't been pushed to the share remote |
 | `behind-share` | the share remote has commits not yet pulled |
 | `behind-base` | the base branch has moved ahead (repo needs rebase/merge) |
 | `diverged` | the base branch and local branch have diverged (both ahead and behind) |
-| `drifted` | the worktree is on a different branch than the workspace expects |
-| `detached` | the worktree is in detached HEAD state |
+| `drifted` | the repo is on a different branch than the workspace expects |
+| `detached` | the repo is in detached HEAD state |
 | `operation` | a git operation is in progress (rebase, merge, cherry-pick, etc.) |
 | `gone` | the tracking branch has been deleted from the remote |
 | `shallow` | the clone is shallow |
@@ -96,7 +96,7 @@ arb list -q --where gone | arb delete -y          # delete gone workspaces
 arb status -q | grep -v legacy | arb rebase -y    # rebase all except "legacy"
 ```
 
-Stdin-accepting commands: `diff`, `log`, `push`, `pull`, `rebase`, `merge`, `delete`.
+Stdin-accepting commands: `status`, `diff`, `log`, `push`, `pull`, `rebase`, `merge`, `delete`.
 
 `exec` and `open` are excluded because they inherit stdin for child processes. Use xargs instead:
 
@@ -119,7 +119,7 @@ arb list --json --no-status | jq '.[].workspace'
 arb status --json | jq '[.repos[] | select(.base.behind > 0) | .name]'
 ```
 
-`arb repo list --json` writes a JSON array of `{name, url}` objects:
+`arb repo list --json` writes a JSON array with each entry containing `name`, `url`, and remote role detail (`share` and `base` with name and URL):
 
 ```bash
 arb repo list --json | jq '.[].name'
