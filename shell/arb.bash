@@ -483,12 +483,23 @@ __arb_complete_template() {
     done
 
     if ((COMP_CWORD == sub_pos)); then
-        COMPREPLY=($(compgen -W "list diff apply" -- "$cur"))
+        COMPREPLY=($(compgen -W "add list diff apply" -- "$cur"))
         return
     fi
 
     local sub="${COMP_WORDS[sub_pos]}"
     case "$sub" in
+        add)
+            if [[ "$prev" == "--repo" ]]; then
+                COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
+                return
+            fi
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "--repo --workspace -f --force" -- "$cur"))
+                return
+            fi
+            COMPREPLY=($(compgen -f -- "$cur"))
+            ;;
         list) ;;
         diff)
             if [[ "$prev" == "--repo" ]]; then
