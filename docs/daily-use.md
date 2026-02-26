@@ -53,11 +53,11 @@ arb status
 This shows the state of each repo in a compact table with labeled columns:
 
 ```
-  REPO         BRANCH        LAST COMMIT    BASE                     SHARE                          LOCAL
-  repo-a       my-feature     3 days        main  equal              origin/my-feature  up to date   clean
-  repo-b       my-feature     2 hours       main  2 ahead            origin/my-feature  2 to push    1 staged, 1 modified
-  repo-c       experiment     5 days        main  2 ahead, 1 behind  origin/experiment  1 to pull    clean
-  local-lib    my-feature     1 day         main  equal              local                           clean
+  REPO         BRANCH        LAST COMMIT    BASE                            SHARE                          LOCAL
+  repo-a       my-feature     3 days        origin/main  equal              origin/my-feature  up to date   clean
+  repo-b       my-feature     2 hours       origin/main  2 ahead            origin/my-feature  2 to push    1 staged, 1 modified
+  repo-c       experiment     5 days        origin/main  2 ahead, 1 behind  origin/experiment  1 to pull    clean
+  local-lib    my-feature     1 day         origin/main  equal              local                           clean
 ```
 
 This view is designed to give you the full picture in one glance — repo name, current branch, when work last happened, how far you've drifted from the base branch, whether the share remote is ahead or behind, and what's uncommitted locally. Yellow highlights things that need attention: unpushed commits, local changes, repos on an unexpected branch (like `repo-c` above).
@@ -107,8 +107,6 @@ arb push --force      # after rebasing (prompts for confirmation)
 ```
 
 Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
-
-State-changing commands (`rebase`, `merge`, `push`) automatically fetch before operating, ensuring they work with the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh. `pull` always fetches. Read-only commands (`status`, `list`) do not fetch by default — use `--fetch` to opt in. If fetching fails (e.g. offline), the command warns and continues with stale data.
 
 All commands show a plan before proceeding. See `arb help <command>` for options.
 
