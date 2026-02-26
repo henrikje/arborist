@@ -478,4 +478,90 @@ describe("formatIntegratePlan", () => {
 		const plan = formatIntegratePlan([makeAssessment({ shallow: false })], "rebase", "feature");
 		expect(plan).not.toContain("shallow clone");
 	});
+
+	test("shows verbose commits when verbose is true", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [
+						{ shortHash: "def5678", subject: "feat: add new auth flow" },
+						{ shortHash: "890abcd", subject: "fix: handle edge case" },
+					],
+					totalCommits: 2,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).toContain("Incoming from origin/main:");
+		expect(plan).toContain("def5678");
+		expect(plan).toContain("feat: add new auth flow");
+		expect(plan).toContain("890abcd");
+		expect(plan).toContain("fix: handle edge case");
+	});
+
+	test("does not show verbose commits when verbose is false", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "def5678", subject: "feat: add new auth flow" }],
+					totalCommits: 1,
+				}),
+			],
+			"rebase",
+			"feature",
+			false,
+		);
+		expect(plan).not.toContain("Incoming from");
+		expect(plan).not.toContain("def5678");
+	});
+
+	test("shows truncation hint when totalCommits exceeds commit list", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "def5678", subject: "feat: something" }],
+					totalCommits: 30,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).toContain("... and 29 more");
+	});
+
+	test("does not show verbose commits for up-to-date repos", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					outcome: "up-to-date",
+					commits: [{ shortHash: "def5678", subject: "feat: something" }],
+					totalCommits: 1,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).not.toContain("Incoming from");
+	});
+
+	test("does not show verbose commits for skipped repos", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					outcome: "skip",
+					skipReason: "HEAD is detached",
+					commits: [{ shortHash: "def5678", subject: "feat: something" }],
+					totalCommits: 1,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).not.toContain("Incoming from");
+	});
 });

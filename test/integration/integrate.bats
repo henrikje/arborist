@@ -1301,3 +1301,45 @@ load test_helper/common-setup
     [[ "$output" == *"manual stash application"* ]]
     [[ "$output" == *"git stash pop"* ]]
 }
+
+# ── --verbose ────────────────────────────────────────────────────
+
+@test "arb rebase --verbose --dry-run shows incoming commit subjects" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+
+    # Push upstream commits
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "change1" > v1.txt && git add v1.txt && git commit -m "feat: first upstream change" && git push) >/dev/null 2>&1
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "change2" > v2.txt && git add v2.txt && git commit -m "fix: second upstream change" && git push) >/dev/null 2>&1
+
+    run arb rebase --verbose --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Incoming from origin/main:"* ]]
+    [[ "$output" == *"feat: first upstream change"* ]]
+    [[ "$output" == *"fix: second upstream change"* ]]
+}
+
+@test "arb merge --verbose --dry-run shows incoming commit subjects" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+
+    # Push upstream commits
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "change1" > v1.txt && git add v1.txt && git commit -m "feat: merge verbose test" && git push) >/dev/null 2>&1
+
+    run arb merge --verbose --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Incoming from origin/main:"* ]]
+    [[ "$output" == *"feat: merge verbose test"* ]]
+}
+
+@test "arb rebase --dry-run without --verbose does not show commits" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "change1" > v1.txt && git add v1.txt && git commit -m "feat: should not appear" && git push) >/dev/null 2>&1
+
+    run arb rebase --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Incoming from"* ]]
+    [[ "$output" != *"feat: should not appear"* ]]
+}

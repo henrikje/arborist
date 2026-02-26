@@ -340,6 +340,7 @@ _arb() {
                     _arguments \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \
                         '(--merge)--rebase[Pull with rebase]' \
                         '(--rebase)--merge[Pull with merge]' \
                         '--autostash[Stash uncommitted changes before pull, re-apply after]' \
@@ -352,6 +353,7 @@ _arb() {
                         '(-F --fetch --no-fetch)--no-fetch[Skip fetching before push]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '(-v --verbose)'{-v,--verbose}'[Show outgoing commits in the plan]' \
                         '*:repo:($repo_names)'
                     ;;
                 rebase)
@@ -360,6 +362,7 @@ _arb() {
                         '(-F --fetch --no-fetch)--no-fetch[Skip fetching before rebase]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \
                         '--retarget=-[Retarget repos whose base has been merged; optionally specify branch]::branch:' \
                         '--autostash[Stash uncommitted changes before rebase, re-apply after]' \
                         '*:repo:($repo_names)'
@@ -370,6 +373,7 @@ _arb() {
                         '(-F --fetch --no-fetch)--no-fetch[Skip fetching before merge]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \
                         '--autostash[Stash uncommitted changes before merge, re-apply after]' \
                         '*:repo:($repo_names)'
                     ;;
