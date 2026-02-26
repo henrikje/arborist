@@ -628,6 +628,22 @@ assert data == []
     [[ "$output" != *"ws-clean"* ]]
 }
 
+@test "arb list -q includes config-missing workspaces" {
+    arb create ws-one repo-a
+    delete_workspace_config ws-one
+    run arb list -q
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-one"* ]]
+}
+
+@test "arb list -q includes empty workspaces" {
+    mkdir -p "$TEST_DIR/project/empty-ws/.arbws"
+    echo "branch = empty-ws" > "$TEST_DIR/project/empty-ws/.arbws/config"
+    run arb list -q
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"empty-ws"* ]]
+}
+
 @test "arb list --quiet --json conflicts" {
     arb create ws-one repo-a
     run arb list --quiet --json
