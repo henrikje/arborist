@@ -29,7 +29,7 @@ export async function workspaceBranch(wsDir: string): Promise<WorkspaceBranchRes
 			const branch = result.stdout.trim();
 			if (branch) {
 				const wsName = basename(wsDir);
-				warn(`Config missing for ${wsName}, inferred branch '${branch}' from worktree`);
+				warn(`Config missing for ${wsName}, inferred branch '${branch}' from repo`);
 				return { branch, inferred: true };
 			}
 		}

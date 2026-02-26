@@ -55,7 +55,7 @@ Add `--delete-remote` to also delete the remote branches if they haven't been cl
 
 ## Run the same command everywhere
 
-`arb exec` runs a command in every worktree. Combine with `--dirty` to scope it:
+`arb exec` runs a command in every repo. Combine with `--dirty` to scope it:
 
 ```bash
 arb exec npm install                  # install deps in every repo

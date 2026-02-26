@@ -63,7 +63,7 @@ arb repo clone https://github.com/example/backend.git
 arb repo clone https://github.com/example/shared.git
 ```
 
-`arb init` creates the top-level directory that holds all your workspaces. The three `repo clone` commands store canonical clones in `.arb/repos` — they are managed by arb, and you never touch them directly.
+`arb init` creates the top-level directory that holds all your workspaces. The three `repo clone` commands store canonical clones in `.arb/repos`.
 
 ### Start a feature
 

@@ -71,7 +71,7 @@ export async function addWorktrees(
 		}
 
 		if (existsSync(`${wsDir}/${repo}`)) {
-			warn(`  [${repo}] worktree already exists — skipping`);
+			warn(`  [${repo}] already exists — skipping`);
 			result.skipped.push(repo);
 			continue;
 		}
