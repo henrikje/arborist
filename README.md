@@ -140,6 +140,8 @@ Arb shows a plan, including a conflict prediction for each repo, and asks for co
 ? Rebase 1 repo? (y/N)
 ```
 
+Synchronization commands automatically fetch all repos in parallel before operating, so you can be sure that the plan is up to date.
+
 ### Wrap up
 
 Before pushing, review what you've done across both repos:
@@ -173,14 +175,14 @@ The tour covered the essentials. Here are more capabilities worth knowing about.
 
 ### Conflict prediction and recovery
 
-Before a rebase or merge runs, Arborist performs a trial three-way merge in memory (using the same algorithm Git uses) against each repo to identify actual file-level conflicts. It can identify when earlier commits have been merged, rebased, and even squash merged. The result appears in the plan:
+Before a rebase, merge, or pull runs, Arborist performs a trial three-way merge in memory (using the same algorithm Git uses) against each repo to identify actual file-level conflicts. It can identify when earlier commits have been merged, rebased, and even squash merged. The result appears in the plan:
 
 ```
   backend    up to date
   frontend   rebase add-dark-mode onto origin/main — 1 behind, 1 ahead (conflict unlikely)
 ```
 
-You see which repos will conflict before you commit to the operation. The same check runs for `pull` and appears in `arb status` when a repo's integration would conflict. Synchronization commands automatically fetch all repos in parallel before operating, so you always work against the latest remote state. Dirty repos are normally skipped, but `--autostash` lets you operate on them without manual stashing.
+You see which repos will conflict before you commit to the operation. Arborist also suggests options to handle possibly dangerous situations, such as `--autostash` to operate on a repo with uncommitted changes without manual stashing.
 
 If a rebase or merge does hit a conflict, Arborist continues with the remaining repos and reports everything at the end. One conflicting repo never blocks the others. You see per-repo conflict details and resolution instructions in a single pass.
 
