@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { debugGit, isDebug } from "./debug";
 import { git } from "./git";
 import { dim, error, plural } from "./output";
 import type { RepoRemotes } from "./remotes";
@@ -59,6 +60,7 @@ export async function parallelFetch(
 
 			if (remotesToFetch.size > 0) {
 				for (const remote of remotesToFetch) {
+					const fetchStart = isDebug() ? performance.now() : 0;
 					const proc = Bun.spawn(["git", "-C", repoDir, "fetch", "--prune", remote], {
 						cwd: repoDir,
 						stdout: "pipe",
@@ -75,10 +77,17 @@ export async function parallelFetch(
 					if (raceResult === "aborted") {
 						proc.kill();
 						await proc.exited;
+						if (isDebug()) {
+							debugGit(`git -C ${repoDir} fetch --prune ${remote}`, performance.now() - fetchStart, 124);
+						}
 						results.set(repo, { repo, exitCode: 124, output: `fetch timed out after ${fetchTimeout}s` });
 						completed++;
 						updateProgress();
 						return;
+					}
+
+					if (isDebug()) {
+						debugGit(`git -C ${repoDir} fetch --prune ${remote}`, performance.now() - fetchStart, raceResult);
 					}
 
 					const stderrText = await new Response(proc.stderr).text();
@@ -91,6 +100,7 @@ export async function parallelFetch(
 				}
 			} else {
 				// No resolved remotes — fetch all
+				const fetchAllStart = isDebug() ? performance.now() : 0;
 				const proc = Bun.spawn(["git", "-C", repoDir, "fetch", "--all", "--prune"], {
 					cwd: repoDir,
 					stdout: "pipe",
@@ -106,10 +116,17 @@ export async function parallelFetch(
 				if (raceResult === "aborted") {
 					proc.kill();
 					await proc.exited;
+					if (isDebug()) {
+						debugGit(`git -C ${repoDir} fetch --all --prune`, performance.now() - fetchAllStart, 124);
+					}
 					results.set(repo, { repo, exitCode: 124, output: `fetch timed out after ${fetchTimeout}s` });
 					completed++;
 					updateProgress();
 					return;
+				}
+
+				if (isDebug()) {
+					debugGit(`git -C ${repoDir} fetch --all --prune`, performance.now() - fetchAllStart, raceResult);
 				}
 
 				const stderrText = await new Response(proc.stderr).text();

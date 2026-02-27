@@ -535,12 +535,12 @@ _arb() {
     local base_dir
     base_dir="$(__arb_find_base_dir)"
 
-    # Find the subcommand position, skipping global flags (-C <dir>, -h, --help, -v, --version)
+    # Find the subcommand position, skipping global flags (-C <dir>, -h, --help, -v, --version, --debug)
     local cmd_pos=1
     while ((cmd_pos < COMP_CWORD)); do
         case "${COMP_WORDS[cmd_pos]}" in
             -C)  ((cmd_pos += 2)) ;;   # -C takes a directory argument
-            -h|--help|-v|--version) ((cmd_pos++)) ;;
+            -h|--help|-v|--version|--debug) ((cmd_pos++)) ;;
             -*) ((cmd_pos++)) ;;
             *)  break ;;
         esac
@@ -551,7 +551,7 @@ _arb() {
         local commands="init repo create delete clean list path cd attach detach status pull push rebase merge rebranch log diff exec open template help"
         # Also complete global flags
         if [[ "$cur" == -* ]]; then
-            COMPREPLY=($(compgen -W "-C -h --help -v --version" -- "$cur"))
+            COMPREPLY=($(compgen -W "-C -h --help -v --version --debug" -- "$cur"))
             return
         fi
         COMPREPLY=($(compgen -W "$commands" -- "$cur"))
