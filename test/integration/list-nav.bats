@@ -114,7 +114,7 @@ load test_helper/common-setup
 
 @test "arb list LAST COMMIT column appears between REPOS and STATUS" {
     arb create ws-one repo-a
-    run arb list
+    run arb list --no-fetch
     # LAST COMMIT should appear between REPOS and STATUS in the header
     header=$(echo "$output" | head -1)
     repos_pos=$(echo "$header" | grep -bo "REPOS" | head -1 | cut -d: -f1)
@@ -187,6 +187,23 @@ load test_helper/common-setup
     [[ "$result" != *$'\033['*'A'* ]]
 }
 
+@test "arb list fetches by default" {
+    arb create ws-one repo-a
+    cd "$TEST_DIR/project/ws-one"
+    run arb list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-one"* ]]
+}
+
+@test "arb list --no-fetch skips fetching" {
+    arb create ws-one repo-a
+    cd "$TEST_DIR/project/ws-one"
+    run arb list --no-fetch
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-one"* ]]
+    [[ "$output" != *"Fetched"* ]]
+}
+
 @test "arb list --fetch fetches before listing" {
     arb create ws-one repo-a
     cd "$TEST_DIR/project/ws-one"
@@ -203,6 +220,15 @@ load test_helper/common-setup
     [ "$status" -eq 0 ]
     [[ "$output" == *"Fetched"* ]]
     [[ "$output" == *"ws-one"* ]]
+}
+
+@test "arb list -q skips fetch by default" {
+    arb create ws-one repo-a
+    cd "$TEST_DIR/project/ws-one"
+    run arb list -q
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ws-one"* ]]
+    [[ "$output" != *"Fetched"* ]]
 }
 
 @test "arb list -F shows status after fetch" {
@@ -243,14 +269,14 @@ assert 'statusLabels' in ws
 
 @test "arb list --json outputs valid JSON" {
     arb create my-feature repo-a
-    run arb list --json
+    run arb list --no-fetch --json
     [ "$status" -eq 0 ]
     echo "$output" | python3 -c "import sys, json; json.load(sys.stdin)"
 }
 
 @test "arb list --json includes workspace fields" {
     arb create my-feature repo-a repo-b
-    run arb list --json
+    run arb list --no-fetch --json
     echo "$output" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
@@ -270,7 +296,7 @@ assert isinstance(ws['lastCommit'], str), 'lastCommit should be an ISO date stri
     arb create ws-one repo-a
     arb create ws-two repo-b
     cd "$TEST_DIR/project/ws-one"
-    run arb list --json
+    run arb list --no-fetch --json
     echo "$output" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
@@ -283,7 +309,7 @@ assert by_name['ws-two']['active'] is False
 @test "arb list --json handles config-missing workspace" {
     arb create my-feature repo-a
     delete_workspace_config my-feature
-    run arb list --json
+    run arb list --no-fetch --json
     echo "$output" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
@@ -298,7 +324,7 @@ assert ws['repoCount'] is None
 @test "arb list --json handles empty workspace" {
     mkdir -p "$TEST_DIR/project/empty-ws/.arbws"
     echo "branch = empty-ws" > "$TEST_DIR/project/empty-ws/.arbws/config"
-    run arb list --json
+    run arb list --no-fetch --json
     echo "$output" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
@@ -311,7 +337,7 @@ assert ws['branch'] == 'empty-ws'
 
 @test "arb list --json --no-status omits aggregate fields" {
     arb create my-feature repo-a
-    run arb list --json --no-status
+    run arb list --no-fetch --json --no-status
     echo "$output" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
@@ -326,7 +352,7 @@ assert 'statusLabels' not in ws
 
 @test "arb list --json --no-status includes basic metadata" {
     arb create my-feature repo-a
-    run arb list --json --no-status
+    run arb list --no-fetch --json --no-status
     echo "$output" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)

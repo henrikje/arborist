@@ -87,7 +87,7 @@ When multiple operations manage the same `.arb/` subsystem (repos, templates), g
 
 ### Overview commands
 
-Scope: `status`, `log`, `diff`. Read-only commands that provide workspace-level visibility. They do not fetch by default (stay fast, support `--fetch` opt-in). They scope to the feature branch by default using base branch resolution. They skip detached/drifted repos with explanation. They support `[repos...]` filtering, `--json` for structured output, and delegate to git for TTY rendering.
+Scope: `status`, `log`, `diff`. Read-only commands that provide workspace-level visibility. `status` fetches by default (with two-phase rendering for instant feedback); `log` and `diff` do not fetch by default (content commands where stale data is less confusing). All support `--fetch` / `--no-fetch` for explicit control. They scope to the feature branch by default using base branch resolution. They skip detached/drifted repos with explanation. They support `[repos...]` filtering, `--json` for structured output, and delegate to git for TTY rendering.
 
 ### Safety gates for destructive operations
 
@@ -187,9 +187,9 @@ Arborist maintains no state files beyond the `.arb/` marker directory, `.arbws/c
 
 All relevant commands expose both `-F, --fetch` and `--no-fetch`. The default is stated in each flag's help text, making behavior visible without reading docs. Short option assignments: `-F` → `--fetch` (arborist convention for fetch), `-f` → `--force` (universal, conventional), `--no-fetch` has no short (infrequent; short space is crowded).
 
-**Sync commands** (`push`, `rebase`, `merge`) fetch by default. `-F, --fetch` is labeled "(default)" in help; `--no-fetch` skips the pre-fetch when refs are known to be fresh.
+**Sync commands** (`push`, `rebase`, `merge`) and **dashboard commands** (`status`, `list`) fetch by default. `-F, --fetch` is labeled "(default)" in help; `--no-fetch` skips the pre-fetch when refs are known to be fresh. Dashboard commands use two-phase/three-phase rendering to show stale data instantly while the fetch runs in the background, so there is no perceived latency increase. Quiet mode (`-q`) on dashboard commands skips fetching by default for scripting speed — pass `-F` explicitly to override.
 
-**Overview commands** (`status`, `log`, `diff`) and **list** do not fetch by default to stay fast for frequent use. `-F, --fetch` opts in to a pre-fetch; `--no-fetch` makes the default explicit.
+**Content commands** (`log`, `diff`) do not fetch by default — they show commit and diff content that is less confusing when stale. `-F, --fetch` opts in to a pre-fetch; `--no-fetch` makes the default explicit.
 
 `pull` is excluded: `git pull` inherently fetches, so a skip flag would be misleading even if the pre-fetch were skipped.
 

@@ -305,8 +305,8 @@ _arb() {
                     ;;
                 list)
                     _arguments \
-                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch all repos before listing]' \
-                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching (default)]' \
+                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch all repos before listing (default)]' \
+                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching]' \
                         '--no-status[Skip per-repo status (faster for large setups)]' \
                         '(-q --quiet --json)'{-q,--quiet}'[Output one workspace name per line]' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only list dirty workspaces]' \
@@ -317,8 +317,8 @@ _arb() {
                     _arguments \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only show dirty repos]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before showing status]' \
-                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching (default)]' \
+                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before showing status (default)]' \
+                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching]' \
                         '(-v --verbose -q --quiet)'{-v,--verbose}'[Show file-level detail]' \
                         '(-q --quiet --json -v --verbose)'{-q,--quiet}'[Output one repo name per line]' \
                         '(--json -q --quiet)--json[Output structured JSON]' \

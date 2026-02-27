@@ -57,10 +57,10 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		.command("list")
 		.summary("List all workspaces")
 		.description(
-			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --dirty / -d to show only workspaces with dirty repos, or --where <filter> for other status flags (any workspace with at least one matching repo is shown): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Positive/healthy terms: clean, pushed, synced-base, synced-share, synced, safe. Prefix any term with ^ to negate (e.g. --where ^dirty is equivalent to --where clean). Comma-separated values use OR logic; use + for AND (e.g. --where dirty+unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. Use --no-status to skip per-repo status gathering for faster output. Use -F/--fetch to fetch all repos before listing for fresh remote data (skip with --no-fetch). Use --json for machine-readable output.",
+			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --dirty / -d to show only workspaces with dirty repos, or --where <filter> for other status flags (any workspace with at least one matching repo is shown): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Positive/healthy terms: clean, pushed, synced-base, synced-share, synced, safe. Prefix any term with ^ to negate (e.g. --where ^dirty is equivalent to --where clean). Comma-separated values use OR logic; use + for AND (e.g. --where dirty+unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. Use --no-status to skip per-repo status gathering for faster output. Fetches all repos by default for fresh remote data (skip with --no-fetch). Quiet mode (-q) skips fetching by default for scripting speed. Use --json for machine-readable output.",
 		)
-		.option("-F, --fetch", "Fetch all repos before listing")
-		.option("--no-fetch", "Skip fetching (default)")
+		.option("-F, --fetch", "Fetch all repos before listing (default)")
+		.option("--no-fetch", "Skip fetching")
 		.option("--no-status", "Skip per-repo status (faster for large setups)")
 		.option("-d, --dirty", "Only list dirty workspaces (shorthand for --where dirty)")
 		.option("-w, --where <filter>", "Filter workspaces by repo status flags (comma = OR, + = AND, ^ = negate)")
@@ -115,9 +115,11 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 				const showStatus = options.status !== false;
 
+				const shouldFetch = options.fetch !== false && !options.quiet;
+
 				// ── Quiet output path ──
 				if (options.quiet) {
-					if (options.fetch) await blockingFetchAllRepos(ctx);
+					if (options.fetch) await blockingFetchAllRepos(ctx); // only if explicitly requested
 					if (whereFilter) {
 						const results = await Promise.all(
 							metadata.toScan.map(async (entry) => {
@@ -151,7 +153,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 				// ── JSON output path ──
 				if (options.json) {
-					if (options.fetch) await blockingFetchAllRepos(ctx);
+					if (shouldFetch) await blockingFetchAllRepos(ctx);
 
 					const jsonEntries: ListJsonEntry[] = metadata.rows.map((row) => ({
 						workspace: row.name,
@@ -211,7 +213,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				// ── Table output path ──
 
 				if (!showStatus) {
-					if (options.fetch) await blockingFetchAllRepos(ctx);
+					if (shouldFetch) await blockingFetchAllRepos(ctx);
 					process.stdout.write(formatListTable(metadata.rows, metadata.cols, false));
 					return;
 				}
@@ -219,7 +221,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				const tty = isTTY();
 				const canPhase = tty && metadata.toScan.length > 0;
 
-				if (canPhase && options.fetch) {
+				if (canPhase && shouldFetch) {
 					// 3-phase: placeholder → stale + fetching → fresh
 					const allRepoNames = listRepos(ctx.reposDir);
 					const fetchDirs = allRepoNames.map((r) => `${ctx.reposDir}/${r}`);
@@ -259,7 +261,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					]);
 				} else {
 					// Non-phased (non-TTY or nothing to scan)
-					if (options.fetch) await blockingFetchAllRepos(ctx);
+					if (shouldFetch) await blockingFetchAllRepos(ctx);
 					const statusRows = await gatherListStatus(metadata, ctx, whereFilter);
 					process.stdout.write(formatListTable(statusRows, metadata.cols, true));
 				}

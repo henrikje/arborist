@@ -770,7 +770,7 @@ load test_helper/common-setup
 @test "arb status --json with positional args filters repos" {
     arb create my-feature repo-a repo-b
     cd "$TEST_DIR/project/my-feature"
-    run arb status --json repo-a
+    run arb status --no-fetch --json repo-a
     [ "$status" -eq 0 ]
     local repo_count
     repo_count="$(echo "$output" | jq '.repos | length')"
@@ -794,7 +794,7 @@ load test_helper/common-setup
 @test "arb status reads repo names from stdin" {
     arb create my-feature repo-a repo-b
     cd "$TEST_DIR/project/my-feature"
-    run bash -c 'echo "repo-a" | arb status --json'
+    run bash -c 'echo "repo-a" | arb status --no-fetch --json'
     [ "$status" -eq 0 ]
     local repo_count
     repo_count="$(echo "$output" | jq '.repos | length')"
@@ -806,7 +806,7 @@ load test_helper/common-setup
 
 # ── two-phase fetch rendering ─────────────────────────────────────
 
-@test "arb status -F reflects fresh remote data" {
+@test "arb status fetches by default and reflects fresh remote data" {
     arb create my-feature repo-a
     echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
@@ -818,14 +818,47 @@ load test_helper/common-setup
     (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    # Without -F, should NOT see the remote commit (stale refs)
+    # Default (fetch): should see "1 to pull" after fetching fresh data
     run arb status
-    [[ "$output" == *"up to date"* ]]
-
-    # With -F, should see "1 to pull" after fetching fresh data
-    run arb status -F
     [ "$status" -eq 0 ]
     [[ "$output" == *"1 to pull"* ]]
+}
+
+@test "arb status --no-fetch shows stale data" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "first" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Push a commit to origin from a separate clone
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    # With --no-fetch, should show stale data
+    run arb status --no-fetch
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"up to date"* ]]
+}
+
+@test "arb status -q skips fetch by default" {
+    arb create my-feature repo-a
+    echo "change" > "$TEST_DIR/project/my-feature/repo-a/f.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add f.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "first" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Push a commit to origin from a separate clone
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote commit" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    # Quiet mode skips fetch by default — should not see "Fetched"
+    run arb status -q
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"Fetched"* ]]
 }
 
 @test "arb status -F -v shows verbose detail after fetch" {

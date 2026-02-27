@@ -390,7 +390,7 @@ load test_helper/common-setup
 
     cd "$TEST_DIR/project/merged-json"
     fetch_all_repos
-    run arb status --json
+    run arb status --no-fetch --json
     echo "$output" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
