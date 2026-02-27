@@ -44,6 +44,11 @@ Arborist's synchronization commands handle this across all repos at once.
 
 Arborist requires Git and works on macOS and Linux.
 
+**Quick install:**
+```
+curl -fsSL https://raw.githubusercontent.com/henrikje/arborist/main/install.sh | bash
+```
+
 **Homebrew** (macOS and Linux):
 ```
 brew install henrikje/tap/arb
