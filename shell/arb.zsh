@@ -364,6 +364,7 @@ _arb() {
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \
+                        '(-g --graph)'{-g,--graph}'[Show branch divergence graph in the plan]' \
                         '--retarget=-[Retarget repos whose base has been merged; optionally specify branch]::branch:' \
                         '--autostash[Stash uncommitted changes before rebase, re-apply after]' \
                         '*:repo:($repo_names)'
@@ -375,6 +376,7 @@ _arb() {
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \
+                        '(-g --graph)'{-g,--graph}'[Show branch divergence graph in the plan]' \
                         '--autostash[Stash uncommitted changes before merge, re-apply after]' \
                         '*:repo:($repo_names)'
                     ;;

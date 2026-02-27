@@ -635,4 +635,76 @@ describe("formatIntegratePlan", () => {
 		);
 		expect(plan).toContain("(squash of aaa1111..bbb2222)");
 	});
+
+	// ── Graph tests ─────────────────────────────────────────────
+
+	test("shows graph for will-operate repos", () => {
+		const plan = formatIntegratePlan([makeAssessment({ mergeBaseSha: "ghi9012" })], "rebase", "feature", false, true);
+		expect(plan).toContain("merge-base");
+		expect(plan).toContain("ghi9012");
+		expect(plan).toContain("origin/main");
+	});
+
+	test("does not show graph for up-to-date repos", () => {
+		const plan = formatIntegratePlan(
+			[makeAssessment({ outcome: "up-to-date", mergeBaseSha: "ghi9012" })],
+			"rebase",
+			"feature",
+			false,
+			true,
+		);
+		expect(plan).not.toContain("merge-base");
+	});
+
+	test("does not show graph for skipped repos", () => {
+		const plan = formatIntegratePlan(
+			[makeAssessment({ outcome: "skip", skipReason: "HEAD is detached", mergeBaseSha: "ghi9012" })],
+			"rebase",
+			"feature",
+			false,
+			true,
+		);
+		expect(plan).not.toContain("merge-base");
+	});
+
+	test("graph suppresses separate verbose section when both flags are true", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					mergeBaseSha: "ghi9012",
+					commits: [{ shortHash: "def5678", subject: "feat: add new auth flow" }],
+					totalCommits: 1,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+			true,
+		);
+		// Graph should be present
+		expect(plan).toContain("merge-base");
+		// Separate "Incoming from..." section should NOT be present
+		expect(plan).not.toContain("Incoming from");
+	});
+
+	test("retarget repos get retarget-style graph", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					retargetFrom: "feat/old",
+					retargetTo: "main",
+					baseBranch: "main",
+					mergeBaseSha: "xyz7890",
+				}),
+			],
+			"rebase",
+			"feature",
+			false,
+			true,
+		);
+		expect(plan).toContain("--x--");
+		expect(plan).toContain("feat/old");
+		expect(plan).toContain("old base, merged");
+		expect(plan).toContain("new base");
+	});
 });

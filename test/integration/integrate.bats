@@ -1415,3 +1415,47 @@ load test_helper/common-setup
     [[ "$output" != *"(same as"* ]]
     [[ "$output" != *"(squash of"* ]]
 }
+
+# ── --graph flag ────────────────────────────────────────────────
+
+@test "arb rebase --graph --dry-run shows merge-base line" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+
+    # Push upstream commits to make repo behind
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "change1" > v1.txt && git add v1.txt && git commit -m "feat: graph test upstream" && git push) >/dev/null 2>&1
+
+    run arb rebase --graph --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merge-base"* ]]
+    [[ "$output" == *"origin/main"* ]]
+}
+
+@test "arb rebase --graph --verbose --dry-run shows commits in graph" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+
+    # Push upstream commits and make a local commit
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "change1" > v1.txt && git add v1.txt && git commit -m "feat: graph verbose incoming" && git push) >/dev/null 2>&1
+    (cd repo-a && echo "local" > local.txt && git add local.txt && git commit -m "feat: graph verbose outgoing") >/dev/null 2>&1
+
+    run arb rebase --graph --verbose --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merge-base"* ]]
+    [[ "$output" == *"feat: graph verbose incoming"* ]]
+    [[ "$output" == *"feat: graph verbose outgoing"* ]]
+    # Separate "Incoming from..." section should NOT appear when graph is active
+    [[ "$output" != *"Incoming from"* ]]
+}
+
+@test "arb merge --graph --dry-run shows graph" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "change1" > v1.txt && git add v1.txt && git commit -m "feat: merge graph test" && git push) >/dev/null 2>&1
+
+    run arb merge --graph --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merge-base"* ]]
+    [[ "$output" == *"origin/main"* ]]
+}
