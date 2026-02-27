@@ -153,6 +153,12 @@ Arb shows a plan, including a conflict prediction for each repo, and asks for co
 
 Synchronization commands automatically fetch all repos in parallel before operating, so you can be sure that the plan is up to date.
 
+Use `--graph` to visualize where your branch diverged from the base, including the merge-base point. Combine with `--verbose` to see commit subjects inline in the diagram:
+
+```bash
+arb rebase --graph --verbose --dry-run
+```
+
 ### Wrap up
 
 Before pushing, review what you've done across both repos:

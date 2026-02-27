@@ -418,7 +418,7 @@ __arb_complete_push() {
 __arb_complete_rebase() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-F --fetch --no-fetch -y --yes -n --dry-run -v --verbose --retarget --autostash" -- "$cur"))
+        COMPREPLY=($(compgen -W "-F --fetch --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --retarget --autostash" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -427,7 +427,7 @@ __arb_complete_rebase() {
 __arb_complete_merge() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-F --fetch --no-fetch -y --yes -n --dry-run -v --verbose --autostash" -- "$cur"))
+        COMPREPLY=($(compgen -W "-F --fetch --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --autostash" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))

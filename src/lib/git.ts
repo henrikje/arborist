@@ -56,6 +56,15 @@ export async function getShortHead(repoDir: string): Promise<string> {
 	return result.exitCode === 0 ? result.stdout.trim() : "";
 }
 
+export async function getMergeBase(repoDir: string, ref1: string, ref2: string): Promise<string | null> {
+	const result = await git(repoDir, "merge-base", ref1, ref2);
+	if (result.exitCode !== 0) return null;
+	const full = result.stdout.trim();
+	if (!full) return null;
+	const short = await git(repoDir, "rev-parse", "--short", full);
+	return short.exitCode === 0 ? short.stdout.trim() : full.slice(0, 7);
+}
+
 export async function getDefaultBranch(repoDir: string, remote: string): Promise<string | null> {
 	// Try remote HEAD first
 	const symRef = await git(repoDir, "symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`);

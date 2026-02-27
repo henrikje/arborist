@@ -6,6 +6,7 @@ import {
 	detectBranchMerged,
 	getCommitsBetweenFull,
 	getDefaultBranch,
+	getMergeBase,
 	getShortHead,
 	git,
 	matchDivergedCommits,
@@ -13,6 +14,7 @@ import {
 	predictStashPopConflict,
 	remoteBranchExists,
 } from "./git";
+import { formatBranchGraph } from "./integrate-graph";
 import { confirmOrExit, runPlanFlow } from "./mutation-flow";
 import { dim, dryRunNotice, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "./output";
 import { resolveRemotesMap } from "./remotes";
@@ -48,6 +50,9 @@ export interface RepoAssessment {
 	commits?: { shortHash: string; subject: string; rebaseOf?: string; squashOf?: string[] }[];
 	totalCommits?: number;
 	matchedCount?: number;
+	mergeBaseSha?: string;
+	outgoingCommits?: { shortHash: string; subject: string }[];
+	totalOutgoingCommits?: number;
 }
 
 export async function integrate(
@@ -60,6 +65,7 @@ export async function integrate(
 		retarget?: string | boolean;
 		autostash?: boolean;
 		verbose?: boolean;
+		graph?: boolean;
 	},
 	repoArgs: string[],
 ): Promise<void> {
@@ -112,6 +118,9 @@ export async function integrate(
 		if (options.verbose) {
 			await gatherIntegrateVerboseCommits(nextAssessments);
 		}
+		if (options.graph) {
+			await gatherIntegrateGraphData(nextAssessments, !!options.verbose);
+		}
 	};
 
 	const assessments = await runPlanFlow({
@@ -121,7 +130,7 @@ export async function integrate(
 		remotesMap,
 		assess,
 		postAssess,
-		formatPlan: (nextAssessments) => formatIntegratePlan(nextAssessments, mode, branch, options.verbose),
+		formatPlan: (nextAssessments) => formatIntegratePlan(nextAssessments, mode, branch, options.verbose, options.graph),
 	});
 
 	// All-or-nothing check: when retarget is active, any non-local skipped repo blocks the entire retarget
@@ -301,6 +310,7 @@ export function formatIntegratePlan(
 	mode: IntegrateMode,
 	branch: string,
 	verbose?: boolean,
+	graph?: boolean,
 ): string {
 	let out = "\n";
 	for (const a of assessments) {
@@ -355,7 +365,9 @@ export function formatIntegratePlan(
 				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 				out += `  ${a.repo}   ${action}${diffStr}${conflictHint}${stashHint}${headStr}\n`;
 			}
-			if (verbose && a.commits && a.commits.length > 0) {
+			if (graph) {
+				out += formatBranchGraph(a, branch, !!verbose);
+			} else if (verbose && a.commits && a.commits.length > 0) {
 				const label = `Incoming from ${a.baseRemote}/${a.baseBranch}:`;
 				out += formatVerboseCommits(a.commits, a.totalCommits ?? a.commits.length, label);
 			}
@@ -448,6 +460,36 @@ async function gatherIntegrateVerboseCommits(assessments: RepoAssessment[]): Pro
 				}
 				a.totalCommits = total;
 				if (matchedCount > 0) a.matchedCount = matchedCount;
+			}),
+	);
+}
+
+async function gatherIntegrateGraphData(assessments: RepoAssessment[], verbose: boolean): Promise<void> {
+	await Promise.all(
+		assessments
+			.filter((a) => a.outcome === "will-operate")
+			.map(async (a) => {
+				// Resolve the ref used for merge-base and outgoing commits
+				let mergeBaseRef: string;
+				if (a.retargetFrom) {
+					const oldBaseRemoteExists = await remoteBranchExists(a.repoDir, a.retargetFrom, a.baseRemote);
+					mergeBaseRef = oldBaseRemoteExists ? `${a.baseRemote}/${a.retargetFrom}` : a.retargetFrom;
+				} else {
+					mergeBaseRef = `${a.baseRemote}/${a.baseBranch}`;
+				}
+
+				a.mergeBaseSha = (await getMergeBase(a.repoDir, "HEAD", mergeBaseRef)) ?? undefined;
+
+				// Gather outgoing commits (feature branch side) when verbose + graph
+				if (verbose && a.ahead > 0) {
+					const commits = await getCommitsBetweenFull(a.repoDir, mergeBaseRef, "HEAD");
+					const total = commits.length;
+					a.outgoingCommits = commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
+						shortHash: c.shortHash,
+						subject: c.subject,
+					}));
+					a.totalOutgoingCommits = total;
+				}
 			}),
 	);
 }
