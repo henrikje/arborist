@@ -333,7 +333,7 @@ load test_helper/common-setup
     arb create gone-remove repo-a
     push_then_delete_remote gone-remove repo-a
 
-    run arb delete gone-remove --force
+    run arb delete gone-remove --yes --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/gone-remove" ]
 }

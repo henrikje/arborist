@@ -119,7 +119,7 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/ws-one/repo-a" push -u origin ws-one >/dev/null 2>&1
     git -C "$TEST_DIR/project/ws-two/repo-a" push -u origin ws-two >/dev/null 2>&1
 
-    run arb delete --all-safe --force
+    run arb delete --all-safe --yes --force
     [ "$status" -eq 0 ]
     # Should have columnar table with workspace names
     [[ "$output" == *"ws-one"* ]]
@@ -135,7 +135,7 @@ load test_helper/common-setup
     arb create ws-x repo-a
     arb create ws-y repo-b
 
-    run arb delete ws-x ws-y --force
+    run arb delete ws-x ws-y --yes --force
     [ "$status" -eq 0 ]
     # Unified plan: columnar table with workspace names
     [[ "$output" == *"ws-x"* ]]
@@ -149,7 +149,7 @@ load test_helper/common-setup
 @test "arb delete single name --force keeps detailed output" {
     arb create ws-solo repo-a
 
-    run arb delete ws-solo --force
+    run arb delete ws-solo --yes --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"[ws-solo] deleted"* ]]
     [[ "$output" == *"Deleted 1 workspace"* ]]
@@ -165,7 +165,7 @@ load test_helper/common-setup
     # Modify the template-seeded file
     echo "DB=production" > "$TEST_DIR/project/tpl-drift/repo-a/.env"
 
-    run arb delete tpl-drift --force
+    run arb delete tpl-drift --yes --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"Template files modified"* ]]
     [[ "$output" == *"[repo-a] .env"* ]]
@@ -178,7 +178,7 @@ load test_helper/common-setup
     arb create tpl-drift-ws repo-a
     echo "WS=modified" > "$TEST_DIR/project/tpl-drift-ws/.env"
 
-    run arb delete tpl-drift-ws --force
+    run arb delete tpl-drift-ws --yes --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"Template files modified"* ]]
     [[ "$output" == *".env"* ]]
@@ -191,7 +191,7 @@ load test_helper/common-setup
     arb create tpl-nodrift repo-a
     # Don't modify the file
 
-    run arb delete tpl-nodrift --force
+    run arb delete tpl-nodrift --yes --force
     [ "$status" -eq 0 ]
     [[ "$output" != *"Template files modified"* ]]
 }
@@ -204,7 +204,7 @@ load test_helper/common-setup
     arb create tpl-multi-b repo-a
     echo "DB=custom" > "$TEST_DIR/project/tpl-multi-a/repo-a/.env"
 
-    run arb delete tpl-multi-a tpl-multi-b --force
+    run arb delete tpl-multi-a tpl-multi-b --yes --force
     [ "$status" -eq 0 ]
     # Should show columnar table with workspace names
     [[ "$output" == *"tpl-multi-a"* ]]
@@ -239,7 +239,7 @@ load test_helper/common-setup
     # Modify workspace-level template file (outside git repos, doesn't affect dirty status)
     echo "WS=modified" > "$TEST_DIR/project/tpl-allok/.env"
 
-    run arb delete --all-safe --force
+    run arb delete --all-safe --yes --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"Template files modified"* ]]
     [ ! -d "$TEST_DIR/project/tpl-allok" ]
@@ -249,7 +249,7 @@ load test_helper/common-setup
     arb create doomed repo-a repo-b
 
     cd "$TEST_DIR/project/doomed"
-    run arb delete doomed --force
+    run arb delete doomed --yes --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"Deleted 1 workspace"* ]]
     [ ! -d "$TEST_DIR/project/doomed" ]
@@ -285,14 +285,14 @@ load test_helper/common-setup
     [ -d "$TEST_DIR/project/ws-atrisk" ]
 }
 
-@test "arb delete --force implies --yes" {
+@test "arb delete --force without --yes still requires confirmation" {
     arb create ws-fy repo-a
     echo "uncommitted" > "$TEST_DIR/project/ws-fy/repo-a/dirty.txt"
 
     run arb delete ws-fy --force
-    [ "$status" -eq 0 ]
-    [ ! -d "$TEST_DIR/project/ws-fy" ]
-    [[ "$output" == *"Skipping confirmation"* ]]
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Not a terminal"* ]]
+    [ -d "$TEST_DIR/project/ws-fy" ]
 }
 
 @test "arb delete -r shows remote deletion notice in plan" {
@@ -509,7 +509,7 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/ws-safe/repo-a" commit -m "commit" >/dev/null 2>&1
     git -C "$TEST_DIR/project/ws-safe/repo-a" push -u origin ws-safe >/dev/null 2>&1
     cd "$TEST_DIR/project"
-    run arb delete --all-safe --where gone --force
+    run arb delete --all-safe --where gone --yes --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-gone" ]
     [ -d "$TEST_DIR/project/ws-safe" ]
@@ -939,7 +939,7 @@ load test_helper/common-setup
     arb create tpl-drift-del repo-a
     rm "$TEST_DIR/project/tpl-drift-del/.env"
 
-    run arb delete tpl-drift-del --force
+    run arb delete tpl-drift-del --yes --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"Template files deleted"* ]]
     [[ "$output" == *".env"* ]]

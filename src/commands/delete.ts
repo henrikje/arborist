@@ -252,7 +252,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 	program
 		.command("delete [names...]")
 		.option("-y, --yes", "Skip confirmation prompt")
-		.option("-f, --force", "Force deletion of at-risk workspaces (implies --yes)")
+		.option("-f, --force", "Force deletion of at-risk workspaces")
 		.option("-r, --delete-remote", "Delete remote branches")
 		.option("-d, --dirty", "Only target dirty workspaces (shorthand for --where dirty)")
 		.option(
@@ -279,7 +279,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 				},
 			) => {
 				const ctx = getCtx();
-				const skipPrompts = options.yes || options.force;
+				const skipPrompts = options.yes ?? false;
 				const forceAtRisk = options.force ?? false;
 				const deleteRemote = options.deleteRemote ?? false;
 
@@ -347,7 +347,6 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 					await confirmOrExit({
 						yes: skipPrompts,
 						message: buildConfirmMessage(safeEntries.length, deleteRemote),
-						skipFlag: options.force ? "--force" : "--yes",
 					});
 
 					process.stderr.write("\n");
@@ -435,7 +434,6 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 				await confirmOrExit({
 					yes: skipPrompts,
 					message: buildConfirmMessage(assessments.length, deleteRemote),
-					skipFlag: options.force ? "--force" : "--yes",
 				});
 
 				// Execute

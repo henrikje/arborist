@@ -378,7 +378,7 @@ load test_helper/common-setup
 @test "arb delete --force works with missing config" {
     arb create my-feature repo-a repo-b
     delete_workspace_config my-feature
-    arb delete my-feature --force
+    arb delete my-feature --yes --force
     [ ! -d "$TEST_DIR/project/my-feature" ]
     # Branch should still be cleaned up
     run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/heads/my-feature"

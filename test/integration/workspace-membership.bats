@@ -370,7 +370,7 @@ load test_helper/common-setup
 
 @test "arb delete --force removes repos, branches, workspace dir" {
     arb create my-feature repo-a repo-b
-    arb delete my-feature --force
+    arb delete my-feature --yes --force
     [ ! -d "$TEST_DIR/project/my-feature" ]
     # Branch should be deleted from canonical repo
     run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/heads/my-feature"
@@ -379,7 +379,7 @@ load test_helper/common-setup
 
 @test "arb delete -f removes repos, branches, workspace dir" {
     arb create my-feature repo-a repo-b
-    arb delete my-feature -f
+    arb delete my-feature --yes -f
     [ ! -d "$TEST_DIR/project/my-feature" ]
     run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/heads/my-feature"
     [ "$status" -ne 0 ]
@@ -389,7 +389,7 @@ load test_helper/common-setup
     arb create my-feature repo-a
     # Push the branch to the remote first
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    arb delete my-feature --force --delete-remote
+    arb delete my-feature --yes --force --delete-remote
     # Remote branch should be gone
     run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/remotes/origin/my-feature"
     [ "$status" -ne 0 ]
@@ -398,7 +398,7 @@ load test_helper/common-setup
 @test "arb delete -f -r deletes remote branches" {
     arb create my-feature repo-a
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
-    arb delete my-feature -f -r
+    arb delete my-feature --yes -f -r
     run git -C "$TEST_DIR/project/.arb/repos/repo-a" show-ref --verify "refs/remotes/origin/my-feature"
     [ "$status" -ne 0 ]
 }
@@ -411,7 +411,7 @@ load test_helper/common-setup
     # Make repo-b's remote unreachable so the push --delete fails
     mv "$TEST_DIR/origin/repo-b.git" "$TEST_DIR/origin/repo-b.git.bak"
 
-    run arb delete my-feature --force --delete-remote
+    run arb delete my-feature --yes --force --delete-remote
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/my-feature" ]
     [[ "$output" == *"failed to delete remote branch"* ]]
@@ -429,7 +429,7 @@ load test_helper/common-setup
 }
 
 @test "arb delete nonexistent workspace fails" {
-    run arb delete ghost --force
+    run arb delete ghost --yes --force
     [ "$status" -ne 0 ]
     [[ "$output" == *"No workspace found"* ]]
 }
@@ -443,7 +443,7 @@ load test_helper/common-setup
 @test "arb delete multiple workspaces with --force" {
     arb create ws-a repo-a
     arb create ws-b repo-b
-    arb delete ws-a ws-b --force
+    arb delete ws-a ws-b --yes --force
     [ ! -d "$TEST_DIR/project/ws-a" ]
     [ ! -d "$TEST_DIR/project/ws-b" ]
 }
@@ -451,7 +451,7 @@ load test_helper/common-setup
 @test "arb delete multiple workspaces removes all" {
     arb create ws-one repo-a
     arb create ws-two repo-b
-    run arb delete ws-one ws-two --force
+    run arb delete ws-one ws-two --yes --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-one" ]
     [ ! -d "$TEST_DIR/project/ws-two" ]
@@ -492,7 +492,7 @@ load test_helper/common-setup
     [ -d "$TEST_DIR/project/my-feature" ]
 
     # Force remove should succeed
-    arb delete my-feature --force
+    arb delete my-feature --yes --force
     [ ! -d "$TEST_DIR/project/my-feature" ]
 }
 
@@ -510,7 +510,7 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/ws-dirty/repo-a" push -u origin ws-dirty >/dev/null 2>&1
     echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
 
-    run arb delete --all-safe --force
+    run arb delete --all-safe --yes --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-clean" ]
     [ -d "$TEST_DIR/project/ws-dirty" ]
@@ -521,7 +521,7 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/ws-inside/repo-a" push -u origin ws-inside >/dev/null 2>&1
 
     cd "$TEST_DIR/project/ws-inside"
-    run arb delete --all-safe --force
+    run arb delete --all-safe --yes --force
     [ "$status" -eq 0 ]
     [ -d "$TEST_DIR/project/ws-inside" ]
 }
@@ -531,7 +531,7 @@ load test_helper/common-setup
     git -C "$TEST_DIR/project/ws-dirty/repo-a" push -u origin ws-dirty >/dev/null 2>&1
     echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
 
-    run arb delete --all-safe --force
+    run arb delete --all-safe --yes --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"No workspaces with safe status"* ]]
     [ -d "$TEST_DIR/project/ws-dirty" ]
@@ -543,11 +543,11 @@ load test_helper/common-setup
     [[ "$output" == *"Cannot combine --all-safe with workspace names."* ]]
 }
 
-@test "arb delete --all-safe --force skips confirmation" {
+@test "arb delete --all-safe --yes --force skips confirmation" {
     arb create ws-ok repo-a
     git -C "$TEST_DIR/project/ws-ok/repo-a" push -u origin ws-ok >/dev/null 2>&1
 
-    run arb delete --all-safe --force
+    run arb delete --all-safe --yes --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-ok" ]
 }
@@ -558,7 +558,7 @@ load test_helper/common-setup
     # Remove config to simulate config-missing state
     rm "$TEST_DIR/project/ws-broken/.arbws/config"
 
-    run arb delete --all-safe --force
+    run arb delete --all-safe --yes --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"No workspaces with safe status"* ]]
     [ -d "$TEST_DIR/project/ws-broken" ]
@@ -568,7 +568,7 @@ load test_helper/common-setup
     arb create ws-rd repo-a
     git -C "$TEST_DIR/project/ws-rd/repo-a" push -u origin ws-rd >/dev/null 2>&1
 
-    run arb delete --all-safe --force --delete-remote
+    run arb delete --all-safe --yes --force --delete-remote
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-rd" ]
     # Remote branch should be gone
@@ -586,7 +586,7 @@ load test_helper/common-setup
     # Fetch so the workspace sees the new remote state
     git -C "$TEST_DIR/project/ws-behind/repo-a" fetch origin >/dev/null 2>&1
 
-    run arb delete --all-safe --force
+    run arb delete --all-safe --yes --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-behind" ]
 }
@@ -595,7 +595,7 @@ load test_helper/common-setup
     arb create ws-clean repo-a
     arb create ws-dirty repo-a
     echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
-    run arb delete ws-clean ws-dirty --dirty --force
+    run arb delete ws-clean ws-dirty --dirty --yes --force
     [ "$status" -eq 0 ]
     [ -d "$TEST_DIR/project/ws-clean" ]
     [ ! -d "$TEST_DIR/project/ws-dirty" ]
@@ -614,7 +614,7 @@ load test_helper/common-setup
     cd "$TEST_DIR/project"
     push_then_delete_remote ws-gone repo-a
     git -C "$TEST_DIR/project/ws-clean/repo-a" push -u origin ws-clean >/dev/null 2>&1
-    run arb delete --where gone --force
+    run arb delete --where gone --yes --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-gone" ]
     [ -d "$TEST_DIR/project/ws-clean" ]
@@ -625,7 +625,7 @@ load test_helper/common-setup
     arb create ws-clean repo-a
     cd "$TEST_DIR/project"
     echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
-    run arb delete ws-dirty ws-clean --where dirty --force
+    run arb delete ws-dirty ws-clean --where dirty --yes --force
     [ "$status" -eq 0 ]
     [ ! -d "$TEST_DIR/project/ws-dirty" ]
     [ -d "$TEST_DIR/project/ws-clean" ]
@@ -656,7 +656,7 @@ load test_helper/common-setup
     arb create ws-clean repo-a
     cd "$TEST_DIR/project"
     git -C "$TEST_DIR/project/ws-clean/repo-a" push -u origin ws-clean >/dev/null 2>&1
-    run arb delete --where gone --force
+    run arb delete --where gone --yes --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"No workspaces match the filter"* ]]
 }
