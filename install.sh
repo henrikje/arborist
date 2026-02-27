@@ -143,7 +143,6 @@ install_from_release() {
 
     log "Installing arb v${version} for ${platform}..."
 
-    local tmp_dir
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' EXIT
 
