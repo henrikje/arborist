@@ -41,12 +41,14 @@ describe("classifyRepo", () => {
 		const a = classifyRepo(makeRepo(), DIR, "feature", ["test-repo"], false, SHA);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toBe("fetch failed");
+		expect(a.skipFlag).toBe("fetch-failed");
 	});
 
 	test("skips when operation in progress", () => {
 		const a = classifyRepo(makeRepo({ operation: "rebase" }), DIR, "feature", [], false, SHA);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toBe("rebase in progress");
+		expect(a.skipFlag).toBe("operation-in-progress");
 	});
 
 	test("skips detached HEAD", () => {
@@ -60,6 +62,7 @@ describe("classifyRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toBe("HEAD is detached");
+		expect(a.skipFlag).toBe("detached-head");
 	});
 
 	test("skips drifted branch", () => {
@@ -75,6 +78,7 @@ describe("classifyRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("on branch other, expected feature");
+		expect(a.skipFlag).toBe("drifted");
 	});
 
 	test("skips dirty without autostash", () => {
@@ -89,6 +93,7 @@ describe("classifyRepo", () => {
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("uncommitted changes");
 		expect(a.skipReason).toContain("--autostash");
+		expect(a.skipFlag).toBe("dirty");
 	});
 
 	test("sets needsStash when dirty with autostash and staged files", () => {
@@ -167,6 +172,7 @@ describe("classifyRepo", () => {
 		const a = classifyRepo(makeRepo({ base: null }), DIR, "feature", [], false, SHA);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toBe("no base branch");
+		expect(a.skipFlag).toBe("no-base-branch");
 	});
 
 	test("skips when no base remote", () => {
@@ -190,6 +196,7 @@ describe("classifyRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toBe("no base remote");
+		expect(a.skipFlag).toBe("no-base-remote");
 	});
 
 	test("skips when base branch merged into default", () => {
@@ -214,6 +221,7 @@ describe("classifyRepo", () => {
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("base branch feat/auth was merged into default");
 		expect(a.skipReason).toContain("--retarget");
+		expect(a.skipFlag).toBe("base-merged-into-default");
 	});
 
 	test("baseMergedIntoDefault falls back to ref when configuredRef is null", () => {
@@ -237,6 +245,7 @@ describe("classifyRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("base branch develop was merged into default");
+		expect(a.skipFlag).toBe("base-merged-into-default");
 	});
 
 	test("shallow passes through", () => {

@@ -16,6 +16,7 @@ import { confirmOrExit, runPlanFlow } from "./mutation-flow";
 import { dim, dryRunNotice, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "./output";
 import { resolveRemotesMap } from "./remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "./repos";
+import { BENIGN_SKIPS, type SkipFlag } from "./skip-flags";
 import { type RepoStatus, computeFlags, gatherRepoStatus } from "./status";
 import { VERBOSE_COMMIT_LIMIT, formatVerboseCommits } from "./status-verbose";
 import type { ArbContext } from "./types";
@@ -29,6 +30,7 @@ export interface RepoAssessment {
 	repoDir: string;
 	outcome: "will-operate" | "up-to-date" | "skip";
 	skipReason?: string;
+	skipFlag?: SkipFlag;
 	baseBranch?: string;
 	baseRemote: string;
 	behind: number;
@@ -124,9 +126,7 @@ export async function integrate(
 	if (retarget) {
 		const hasRetargetWork = assessments.some((a) => a.retargetTo || a.retargetBlocked);
 		if (hasRetargetWork) {
-			const blockedRepos = assessments.filter(
-				(a) => a.outcome === "skip" && !a.skipReason?.startsWith("no base branch"),
-			);
+			const blockedRepos = assessments.filter((a) => a.outcome === "skip" && a.skipFlag !== "no-base-branch");
 			if (blockedRepos.length > 0) {
 				error("Cannot retarget: some repos are blocked. Fix these issues and retry:");
 				for (const a of blockedRepos) {
@@ -358,7 +358,8 @@ export function formatIntegratePlan(
 		} else if (a.outcome === "up-to-date") {
 			out += `  ${a.repo}   up to date\n`;
 		} else {
-			out += `  ${yellow(`${a.repo}   skipped \u2014 ${a.skipReason}`)}\n`;
+			const style = a.skipFlag && BENIGN_SKIPS.has(a.skipFlag) ? dim : yellow;
+			out += `  ${style(`${a.repo}   skipped \u2014 ${a.skipReason}`)}\n`;
 		}
 	}
 
@@ -433,27 +434,31 @@ export function classifyRepo(
 
 	// Fetch failed for this repo
 	if (fetchFailed.includes(status.name)) {
-		return { ...base, skipReason: "fetch failed" };
+		return { ...base, skipReason: "fetch failed", skipFlag: "fetch-failed" };
 	}
 
 	// Operation in progress
 	if (status.operation !== null) {
-		return { ...base, skipReason: `${status.operation} in progress` };
+		return { ...base, skipReason: `${status.operation} in progress`, skipFlag: "operation-in-progress" };
 	}
 
 	// Branch check — detached or drifted
 	if (status.identity.headMode.kind === "detached") {
-		return { ...base, skipReason: "HEAD is detached" };
+		return { ...base, skipReason: "HEAD is detached", skipFlag: "detached-head" };
 	}
 	if (status.identity.headMode.branch !== branch) {
-		return { ...base, skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}` };
+		return {
+			...base,
+			skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}`,
+			skipFlag: "drifted",
+		};
 	}
 
 	// Dirty check
 	const flags = computeFlags(status, branch);
 	if (flags.isDirty) {
 		if (!autostash) {
-			return { ...base, skipReason: "uncommitted changes (use --autostash)" };
+			return { ...base, skipReason: "uncommitted changes (use --autostash)", skipFlag: "dirty" };
 		}
 		// Only stash if there are staged or modified files (not untracked-only)
 		if (status.local.staged > 0 || status.local.modified > 0) {
@@ -463,13 +468,13 @@ export function classifyRepo(
 
 	// No base branch resolved
 	if (status.base === null) {
-		return { ...base, skipReason: "no base branch" };
+		return { ...base, skipReason: "no base branch", skipFlag: "no-base-branch" };
 	}
 
 	// After this point, status.base is guaranteed non-null.
 	// Remote repos must have a resolved base remote to proceed.
 	if (!status.base.remote) {
-		return { ...base, skipReason: "no base remote" };
+		return { ...base, skipReason: "no base remote", skipFlag: "no-base-remote" };
 	}
 	base.baseRemote = status.base.remote;
 
@@ -478,6 +483,7 @@ export function classifyRepo(
 		return {
 			...base,
 			skipReason: `base branch ${status.base.configuredRef ?? status.base.ref} was merged into default (use --retarget)`,
+			skipFlag: "base-merged-into-default",
 		};
 	}
 
@@ -509,7 +515,7 @@ async function assessRepo(
 
 	// Hard skips from basic checks (steps 1–7) — retarget can't help.
 	// Only the baseMergedIntoDefault skip should pass through to retarget logic.
-	if (classified.outcome === "skip" && !classified.skipReason?.includes("was merged into default")) {
+	if (classified.outcome === "skip" && classified.skipFlag !== "base-merged-into-default") {
 		return classified;
 	}
 
@@ -530,6 +536,7 @@ async function assessRepo(
 				...classified,
 				outcome: "skip",
 				skipReason: `target branch ${retargetExplicit} not found on ${baseRemote}`,
+				skipFlag: "retarget-target-not-found",
 				retargetBlocked: true,
 			};
 		}
@@ -543,6 +550,7 @@ async function assessRepo(
 				...classified,
 				outcome: "skip",
 				skipReason: `base branch ${oldBaseName} not found — cannot determine rebase boundary`,
+				skipFlag: "retarget-base-not-found",
 				retargetBlocked: true,
 			};
 		}
@@ -582,7 +590,12 @@ async function assessRepo(
 		// Resolve the true default branch for retarget
 		const trueDefault = await getDefaultBranch(repoDir, baseRemote);
 		if (!trueDefault) {
-			return { ...classified, outcome: "skip", skipReason: "cannot resolve default branch for retarget" };
+			return {
+				...classified,
+				outcome: "skip",
+				skipReason: "cannot resolve default branch for retarget",
+				skipFlag: "retarget-no-default",
+			};
 		}
 
 		// For squash-merged repos, check if already retargeted
