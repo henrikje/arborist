@@ -1,4 +1,5 @@
 import { existsSync, statSync } from "node:fs";
+import { debugGit, isDebug } from "./debug";
 
 export type GitOperation = "rebase" | "merge" | "cherry-pick" | "revert" | "bisect" | "am" | null;
 
@@ -40,6 +41,7 @@ export async function git(
 	repoDir: string,
 	...args: string[]
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+	const start = isDebug() ? performance.now() : 0;
 	const proc = Bun.spawn(["git", "-C", repoDir, ...args], {
 		cwd: repoDir,
 		stdin: "ignore",
@@ -48,7 +50,11 @@ export async function git(
 	});
 	const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
 	await proc.exited;
-	return { exitCode: proc.exitCode ?? 1, stdout, stderr };
+	const exitCode = proc.exitCode ?? 1;
+	if (isDebug()) {
+		debugGit(`git -C ${repoDir} ${args.join(" ")}`, performance.now() - start, exitCode);
+	}
+	return { exitCode, stdout, stderr };
 }
 
 export async function getShortHead(repoDir: string): Promise<string> {
@@ -80,7 +86,11 @@ export async function getDefaultBranch(repoDir: string, remote: string): Promise
 }
 
 export function validateBranchName(name: string): boolean {
+	const start = isDebug() ? performance.now() : 0;
 	const result = Bun.spawnSync(["git", "check-ref-format", "--branch", name]);
+	if (isDebug()) {
+		debugGit(`git check-ref-format --branch ${name}`, performance.now() - start, result.exitCode);
+	}
 	return result.exitCode === 0;
 }
 
@@ -305,9 +315,17 @@ export async function detectBranchMerged(
 	if (!mergeBase) return null;
 
 	// Cumulative patch-id for the entire branch range
+	const cumulativeStart = isDebug() ? performance.now() : 0;
 	const cumulativeResult = await Bun.$`git -C ${repoDir} diff ${mergeBase}..${branchRef} | git patch-id --stable`
 		.quiet()
 		.nothrow();
+	if (isDebug()) {
+		debugGit(
+			`git -C ${repoDir} diff ${mergeBase}..${branchRef} | git patch-id --stable`,
+			performance.now() - cumulativeStart,
+			cumulativeResult.exitCode,
+		);
+	}
 	if (cumulativeResult.exitCode !== 0) return null;
 	const cumulativeLine = cumulativeResult.text().trim();
 	if (!cumulativeLine) return null;
@@ -315,10 +333,18 @@ export async function detectBranchMerged(
 	if (!cumulativePatchId) return null;
 
 	// Per-commit patch-ids for recent base commits
+	const perCommitStart = isDebug() ? performance.now() : 0;
 	const perCommitResult =
 		await Bun.$`git -C ${repoDir} log -p --max-count=${commitLimit} ${mergeBase}..${baseBranchRef} | git patch-id --stable`
 			.quiet()
 			.nothrow();
+	if (isDebug()) {
+		debugGit(
+			`git -C ${repoDir} log -p --max-count=${commitLimit} ${mergeBase}..${baseBranchRef} | git patch-id --stable`,
+			performance.now() - perCommitStart,
+			perCommitResult.exitCode,
+		);
+	}
 	if (perCommitResult.exitCode !== 0) return null;
 
 	for (const line of perCommitResult.text().split("\n")) {
@@ -361,10 +387,16 @@ export async function matchDivergedCommits(repoDir: string, baseRef: string): Pr
 	const result: CommitMatchResult = { rebaseMatches: new Map(), squashMatch: null };
 
 	// Phase 1: 1:1 rebase matching (same algorithm as detectRebasedCommits)
+	const matchStart = isDebug() ? performance.now() : 0;
 	const [localResult, incomingResult] = await Promise.all([
 		Bun.$`git -C ${repoDir} log -p ${baseRef}..HEAD | git patch-id --stable`.quiet().nothrow(),
 		Bun.$`git -C ${repoDir} log -p HEAD..${baseRef} | git patch-id --stable`.quiet().nothrow(),
 	]);
+	if (isDebug()) {
+		const elapsed = performance.now() - matchStart;
+		debugGit(`git -C ${repoDir} log -p ${baseRef}..HEAD | git patch-id --stable`, elapsed, localResult.exitCode);
+		debugGit(`git -C ${repoDir} log -p HEAD..${baseRef} | git patch-id --stable`, elapsed, incomingResult.exitCode);
+	}
 
 	if (localResult.exitCode !== 0 || incomingResult.exitCode !== 0) return result;
 
@@ -397,9 +429,17 @@ export async function matchDivergedCommits(repoDir: string, baseRef: string): Pr
 		if (mergeBaseResult.exitCode === 0) {
 			const mergeBase = mergeBaseResult.stdout.trim();
 			if (mergeBase) {
+				const squashStart = isDebug() ? performance.now() : 0;
 				const cumulativeResult = await Bun.$`git -C ${repoDir} diff ${mergeBase}..HEAD | git patch-id --stable`
 					.quiet()
 					.nothrow();
+				if (isDebug()) {
+					debugGit(
+						`git -C ${repoDir} diff ${mergeBase}..HEAD | git patch-id --stable`,
+						performance.now() - squashStart,
+						cumulativeResult.exitCode,
+					);
+				}
 				if (cumulativeResult.exitCode === 0) {
 					const cumulativeLine = cumulativeResult.text().trim();
 					const cumulativePatchId = cumulativeLine.split(" ")[0];
@@ -424,10 +464,16 @@ export async function detectRebasedCommits(
 	repoDir: string,
 	trackingRef: string,
 ): Promise<{ count: number; rebasedLocalHashes: Set<string> } | null> {
+	const rebaseStart = isDebug() ? performance.now() : 0;
 	const [localResult, remoteResult] = await Promise.all([
 		Bun.$`git -C ${repoDir} log -p ${trackingRef}..HEAD | git patch-id --stable`.quiet().nothrow(),
 		Bun.$`git -C ${repoDir} log -p HEAD..${trackingRef} | git patch-id --stable`.quiet().nothrow(),
 	]);
+	if (isDebug()) {
+		const elapsed = performance.now() - rebaseStart;
+		debugGit(`git -C ${repoDir} log -p ${trackingRef}..HEAD | git patch-id --stable`, elapsed, localResult.exitCode);
+		debugGit(`git -C ${repoDir} log -p HEAD..${trackingRef} | git patch-id --stable`, elapsed, remoteResult.exitCode);
+	}
 
 	if (localResult.exitCode !== 0 || remoteResult.exitCode !== 0) return null;
 

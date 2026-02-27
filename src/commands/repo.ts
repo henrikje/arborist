@@ -1,6 +1,7 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Command } from "commander";
+import { debugGit, isDebug } from "../lib/debug";
 import { ArbError } from "../lib/errors";
 import { git } from "../lib/git";
 import type { RepoListJsonEntry } from "../lib/json-types";
@@ -42,7 +43,11 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 				throw new ArbError(`${repoName} is already cloned`);
 			}
 
+			const cloneStart = isDebug() ? performance.now() : 0;
 			const result = await Bun.$`git clone ${url} ${target}`.cwd(ctx.reposDir).quiet().nothrow();
+			if (isDebug()) {
+				debugGit(`git clone ${url} ${target}`, performance.now() - cloneStart, result.exitCode);
+			}
 			if (result.exitCode !== 0) {
 				error(`Clone failed: ${result.stderr.toString().trim()}`);
 				throw new ArbError(`Clone failed: ${result.stderr.toString().trim()}`);

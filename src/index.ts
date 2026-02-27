@@ -23,6 +23,7 @@ import { registerRepoCommand } from "./commands/repo";
 import { registerStatusCommand } from "./commands/status";
 import { registerTemplateCommand } from "./commands/template";
 import { detectArbRoot, detectWorkspace } from "./lib/arb-root";
+import { debugLog, enableDebug, getGitCallCount, isDebug } from "./lib/debug";
 import { ArbAbort, ArbError } from "./lib/errors";
 import { bold, dim, error, info } from "./lib/output";
 import type { ArbContext } from "./lib/types";
@@ -150,6 +151,7 @@ program
 	.description("Arborist is a workspace manager that makes multi-repo development safe and simple.")
 	.version(`Arborist ${ARB_VERSION}`, "-v, --version")
 	.option("-C <directory>", "Run as if arb was started in <directory>")
+	.option("--debug", "Enable debug output")
 	.usage("[options] [command]")
 	.configureHelp({ formatHelp: arbFormatHelp, styleTitle: (str) => bold(str) })
 	.configureOutput({
@@ -160,7 +162,13 @@ program
 	.showSuggestionAfterError();
 
 program.hook("preAction", () => {
-	const cwdOpt = program.opts().C;
+	const opts = program.opts();
+
+	if (opts.debug || process.env.ARB_DEBUG === "1") {
+		enableDebug();
+	}
+
+	const cwdOpt = opts.C;
 	if (cwdOpt) {
 		const resolved = resolve(cwdOpt);
 		if (!existsSync(resolved)) {
@@ -168,6 +176,15 @@ program.hook("preAction", () => {
 			throw new ArbError(`Cannot change to '${cwdOpt}': no such directory`);
 		}
 		process.chdir(resolved);
+	}
+
+	if (isDebug()) {
+		const arbRoot = detectArbRoot();
+		debugLog(`arb root: ${arbRoot ?? "(not found)"}`);
+		if (arbRoot) {
+			const ws = detectWorkspace(arbRoot);
+			debugLog(`workspace: ${ws ?? "(none)"}`);
+		}
 	}
 });
 
@@ -199,9 +216,20 @@ process.on("SIGINT", () => {
 	process.exit(130);
 });
 
+const commandStart = performance.now();
+
+function printDebugSummary(): void {
+	if (!isDebug()) return;
+	const elapsed = ((performance.now() - commandStart) / 1000).toFixed(1);
+	const count = getGitCallCount();
+	debugLog(`${count} git ${count === 1 ? "call" : "calls"} in ${elapsed}s`);
+}
+
 try {
 	await program.parseAsync();
+	printDebugSummary();
 } catch (err) {
+	printDebugSummary();
 	if (err instanceof ArbAbort) {
 		info(err.message);
 		process.exit(130);

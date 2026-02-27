@@ -126,6 +126,7 @@ _arb() {
         '-C[Run as if arb was started in <directory>]:directory:_directories' \
         '(-h --help)'{-h,--help}'[Show help]' \
         '(-v --version)'{-v,--version}'[Show version]' \
+        '--debug[Enable debug output]' \
         '1:command:->command' \
         '*::arg:->args'
 
