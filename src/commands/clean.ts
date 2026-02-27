@@ -6,7 +6,7 @@ import { loadArbIgnore } from "../lib/arbignore";
 import { findOrphanedBranches, findStaleWorktrees, pruneWorktrees } from "../lib/clean";
 import { ArbAbort, ArbError } from "../lib/errors";
 import { git } from "../lib/git";
-import { dim, dryRunNotice, error, info, plural, skipConfirmNotice, success } from "../lib/output";
+import { dim, dryRunNotice, error, info, plural, skipConfirmNotice, success, yellow } from "../lib/output";
 import { listNonWorkspaces, listWorkspaces, selectInteractive } from "../lib/repos";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
@@ -29,13 +29,15 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 		.command("clean [names...]")
 		.option("-y, --yes", "Skip confirmation prompt")
 		.option("-n, --dry-run", "Show what would happen without executing")
+		.option("-f, --force", "Delete unmerged orphaned branches (by default only merged branches are deleted)")
 		.summary("Clean up non-workspace directories and stale git state")
 		.description(
 			"Remove non-workspace directories, prune stale worktree references, and delete orphaned local branches from canonical repos.\n\nNon-workspace directories are top-level directories that lack .arbws/ — typically shell directories left behind by editors that recreate a directory after deletion (e.g. IntelliJ writing .idea/ on close). Use positional arguments to target specific directories, or run without arguments to scan and select interactively.\n\nStale worktree references and orphaned branches accumulate when workspace directories are manually removed or when arb delete partially fails. arb clean detects and removes both.\n\nCreate a .arbignore file in the arb root to exclude directories from cleanup. List one directory name per line; lines starting with # are comments.",
 		)
-		.action(async (nameArgs: string[], options: { yes?: boolean; dryRun?: boolean }) => {
+		.action(async (nameArgs: string[], options: { yes?: boolean; dryRun?: boolean; force?: boolean }) => {
 			const ctx = getCtx();
 			const skipPrompts = options.yes ?? false;
+			const forceOrphans = options.force ?? false;
 
 			// ── Section 1: Non-workspace directories ─────────────────
 			const ignored = loadArbIgnore(ctx.arbRootDir);
@@ -121,14 +123,18 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 
 			if (hasOrphans) {
 				info("  Orphaned branches:");
-				const byRepo = new Map<string, string[]>();
-				for (const { repo, branch } of orphanedBranches) {
-					const list = byRepo.get(repo) ?? [];
-					list.push(branch);
-					byRepo.set(repo, list);
+				const byRepo = new Map<string, { branch: string; mergeStatus: "merged" | "unmerged"; aheadCount: number }[]>();
+				for (const ob of orphanedBranches) {
+					const list = byRepo.get(ob.repo) ?? [];
+					list.push(ob);
+					byRepo.set(ob.repo, list);
 				}
-				for (const [repo, branches] of byRepo) {
-					info(`    ${repo}: ${branches.join(", ")}`);
+				for (const [repo, entries] of byRepo) {
+					const labels = entries.map((e) => {
+						if (e.mergeStatus === "merged") return `${e.branch} (merged)`;
+						return `${e.branch} ${yellow(`(${e.aheadCount} ahead)`)}`;
+					});
+					info(`    ${repo}: ${labels.join(", ")}`);
 				}
 				process.stderr.write("\n");
 			}
@@ -152,6 +158,12 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 				}
 			}
 
+			// ── Split orphaned branches by merge status ─────────────
+			const mergedOrphans = orphanedBranches.filter((ob) => ob.mergeStatus === "merged");
+			const unmergedOrphans = orphanedBranches.filter((ob) => ob.mergeStatus === "unmerged");
+			const orphansToDelete = forceOrphans ? orphanedBranches : mergedOrphans;
+			const hasOrphansToDelete = orphansToDelete.length > 0;
+
 			// ── Confirm ──────────────────────────────────────────────
 			if (!skipPrompts) {
 				if (!isTTY() || !process.stdin.isTTY) {
@@ -162,7 +174,18 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 				const parts: string[] = [];
 				if (selectedDirs.length > 0) parts.push(`remove ${plural(selectedDirs.length, "directory", "directories")}`);
 				if (hasStale) parts.push(`prune ${plural(staleWorktreeRepos.length, "stale worktree ref")}`);
-				if (hasOrphans) parts.push(`delete ${plural(orphanedBranches.length, "orphaned branch", "orphaned branches")}`);
+				if (hasOrphansToDelete)
+					parts.push(`delete ${plural(orphansToDelete.length, "orphaned branch", "orphaned branches")}`);
+
+				if (parts.length === 0) {
+					if (unmergedOrphans.length > 0 && !forceOrphans) {
+						info(
+							`${plural(unmergedOrphans.length, "unmerged orphaned branch", "unmerged orphaned branches")} skipped (use --force to delete)`,
+						);
+					}
+					info("Nothing to do.");
+					return;
+				}
 
 				const shouldProceed = await confirm(
 					{
@@ -187,8 +210,10 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 				await pruneWorktrees(ctx.reposDir);
 			}
 
-			for (const { repo, branch } of orphanedBranches) {
-				await git(join(ctx.reposDir, repo), "branch", "-D", branch);
+			for (const ob of orphansToDelete) {
+				// Use -D for all: our detectBranchMerged is smarter than git's -d
+				// (it detects squash merges via patch-id, which git -d would reject)
+				await git(join(ctx.reposDir, ob.repo), "branch", "-D", ob.branch);
 			}
 
 			// ── Summary ──────────────────────────────────────────────
@@ -196,8 +221,15 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 			if (selectedDirs.length > 0)
 				summaryParts.push(`Removed ${plural(selectedDirs.length, "directory", "directories")}`);
 			if (hasStale) summaryParts.push(`pruned ${plural(staleWorktreeRepos.length, "repo")}`);
-			if (orphanedBranches.length > 0)
-				summaryParts.push(`deleted ${plural(orphanedBranches.length, "orphaned branch", "orphaned branches")}`);
+			if (orphansToDelete.length > 0)
+				summaryParts.push(`deleted ${plural(orphansToDelete.length, "orphaned branch", "orphaned branches")}`);
 			success(summaryParts.join(", "));
+
+			// Hint about skipped unmerged branches
+			if (unmergedOrphans.length > 0 && !forceOrphans) {
+				info(
+					`${plural(unmergedOrphans.length, "unmerged orphaned branch", "unmerged orphaned branches")} skipped (use --force to delete)`,
+				);
+			}
 		});
 }

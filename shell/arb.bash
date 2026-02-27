@@ -230,7 +230,7 @@ __arb_complete_delete() {
 __arb_complete_clean() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-y --yes -n --dry-run" -- "$cur"))
+        COMPREPLY=($(compgen -W "-y --yes -n --dry-run -f --force" -- "$cur"))
         return
     fi
     # Complete non-workspace directory names (top-level dirs without .arbws/)

@@ -503,7 +503,7 @@ assert r['base']['mergedIntoBase'] == 'squash', f'expected squash, got {r[\"base
     cd "$TEST_DIR/project/my-feature"
     run arb pull --verbose --dry-run
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Incoming from origin:"* ]]
+    [[ "$output" == *"Incoming from origin"* ]]
     [[ "$output" == *"feat: pull verbose test"* ]]
 }
 

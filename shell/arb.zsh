@@ -185,7 +185,8 @@ _arb() {
                     _arguments \
                         '*:directory:($non_ws_names)' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
-                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]'
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '(-f --force)'{-f,--force}'[Delete unmerged orphaned branches]'
                     ;;
                 path)
                     # Detect if we're inside a workspace
