@@ -9,12 +9,11 @@ export async function runPhasedRender(phases: RenderPhase[]): Promise<void> {
 	let prevOutput: string | undefined;
 
 	for (const phase of phases) {
+		const output = await phase.render();
 		if (prevOutput !== undefined) {
 			process.stderr.write("\r");
 			clearLines(countLines(prevOutput));
 		}
-
-		const output = await phase.render();
 		const write = phase.write ?? stderr;
 		write(output);
 		prevOutput = output;
