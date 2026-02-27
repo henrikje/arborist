@@ -882,10 +882,10 @@ describe("templates", () => {
 				workspaceName: "ws",
 				workspacePath: dest,
 			};
-			const result = overlayDirectory(src, dest, ctx);
+			const result = overlayDirectory(src, dest, ctx, undefined, "workspace");
 			// One should be seeded, the other should be in conflicts
 			expect(result.seeded).toHaveLength(1);
-			expect(result.conflicts).toEqual(["config.json"]);
+			expect(result.conflicts).toEqual([{ scope: "workspace", repo: undefined, relPath: "config.json" }]);
 			expect(result.failed).toEqual([]);
 		});
 
@@ -922,10 +922,10 @@ describe("templates", () => {
 				workspaceName: "ws",
 				workspacePath: dest,
 			};
-			const result = forceOverlayDirectory(src, dest, ctx);
+			const result = forceOverlayDirectory(src, dest, ctx, undefined, "workspace");
 			// One should be seeded, the other should be in conflicts
 			expect(result.seeded).toHaveLength(1);
-			expect(result.conflicts).toEqual(["config.json"]);
+			expect(result.conflicts).toEqual([{ scope: "workspace", repo: undefined, relPath: "config.json" }]);
 			expect(result.failed).toEqual([]);
 		});
 

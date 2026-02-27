@@ -1,9 +1,9 @@
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { Liquid } from "liquidjs";
-import { yellow } from "./output";
+import { info, plural, warn, yellow } from "./output";
 import { getRemoteUrl, resolveRemotes } from "./remotes";
-import { workspaceRepoDirs } from "./repos";
+import { listRepos, workspaceRepoDirs } from "./repos";
 
 export const ARBTEMPLATE_EXT = ".arbtemplate";
 
@@ -126,17 +126,32 @@ export interface FailedCopy {
 	error: string;
 }
 
+export interface ConflictInfo {
+	scope: "workspace" | "repo";
+	repo?: string;
+	relPath: string;
+}
+
 export interface OverlayResult {
 	seeded: string[];
 	skipped: string[];
 	regenerated: string[];
-	conflicts: string[];
+	conflicts: ConflictInfo[];
 	failed: FailedCopy[];
 	unknownVariables: UnknownVariable[];
+	repoDirectoryWarnings: string[];
 }
 
 function emptyResult(): OverlayResult {
-	return { seeded: [], skipped: [], regenerated: [], conflicts: [], failed: [], unknownVariables: [] };
+	return {
+		seeded: [],
+		skipped: [],
+		regenerated: [],
+		conflicts: [],
+		failed: [],
+		unknownVariables: [],
+		repoDirectoryWarnings: [],
+	};
 }
 
 export function overlayDirectory(
@@ -144,6 +159,8 @@ export function overlayDirectory(
 	destDir: string,
 	ctx?: TemplateContext,
 	tplPathPrefix?: string,
+	conflictScope?: "workspace" | "repo",
+	conflictRepo?: string,
 ): OverlayResult {
 	if (!existsSync(srcDir)) return emptyResult();
 
@@ -165,7 +182,7 @@ export function overlayDirectory(
 				const relPath = isArbtpl ? stripTemplateExt(rawRelPath) : rawRelPath;
 
 				if (seen.has(relPath)) {
-					result.conflicts.push(relPath);
+					result.conflicts.push({ scope: conflictScope ?? "workspace", repo: conflictRepo, relPath });
 					continue;
 				}
 				seen.add(relPath);
@@ -247,7 +264,9 @@ export async function applyWorkspaceTemplates(
 		ctx.previousRepos = await reconstructPreviousRepos(repos, changedRepos, reposDir);
 	}
 
-	return overlayDirectory(templateDir, wsDir, ctx, ".arb/templates/workspace");
+	const result = overlayDirectory(templateDir, wsDir, ctx, ".arb/templates/workspace", "workspace");
+	result.repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(arbRootDir);
+	return result;
 }
 
 export async function applyRepoTemplates(
@@ -277,7 +296,7 @@ export async function applyRepoTemplates(
 		if (changedRepos) {
 			ctx.previousRepos = await reconstructPreviousRepos(allRepos, changedRepos, reposDir);
 		}
-		const repoResult = overlayDirectory(templateDir, repoDir, ctx, `.arb/templates/repos/${repo}`);
+		const repoResult = overlayDirectory(templateDir, repoDir, ctx, `.arb/templates/repos/${repo}`, "repo", repo);
 		result.seeded.push(...repoResult.seeded);
 		result.skipped.push(...repoResult.skipped);
 		result.regenerated.push(...repoResult.regenerated);
@@ -616,9 +635,10 @@ export interface ForceOverlayResult {
 	seeded: string[];
 	reset: string[];
 	unchanged: string[];
-	conflicts: string[];
+	conflicts: ConflictInfo[];
 	failed: FailedCopy[];
 	unknownVariables: UnknownVariable[];
+	repoDirectoryWarnings: string[];
 }
 
 export function forceOverlayDirectory(
@@ -626,9 +646,19 @@ export function forceOverlayDirectory(
 	destDir: string,
 	ctx?: TemplateContext,
 	tplPathPrefix?: string,
+	conflictScope?: "workspace" | "repo",
+	conflictRepo?: string,
 ): ForceOverlayResult {
 	if (!existsSync(srcDir))
-		return { seeded: [], reset: [], unchanged: [], conflicts: [], failed: [], unknownVariables: [] };
+		return {
+			seeded: [],
+			reset: [],
+			unchanged: [],
+			conflicts: [],
+			failed: [],
+			unknownVariables: [],
+			repoDirectoryWarnings: [],
+		};
 
 	const result: ForceOverlayResult = {
 		seeded: [],
@@ -637,6 +667,7 @@ export function forceOverlayDirectory(
 		conflicts: [],
 		failed: [],
 		unknownVariables: [],
+		repoDirectoryWarnings: [],
 	};
 	const seen = new Set<string>();
 
@@ -655,7 +686,7 @@ export function forceOverlayDirectory(
 				const relPath = isArbtpl ? stripTemplateExt(rawRelPath) : rawRelPath;
 
 				if (seen.has(relPath)) {
-					result.conflicts.push(relPath);
+					result.conflicts.push({ scope: conflictScope ?? "workspace", repo: conflictRepo, relPath });
 					continue;
 				}
 				seen.add(relPath);
@@ -714,7 +745,9 @@ export async function forceApplyWorkspaceTemplates(arbRootDir: string, wsDir: st
 		workspacePath: wsDir,
 		repos,
 	};
-	return forceOverlayDirectory(templateDir, wsDir, ctx, ".arb/templates/workspace");
+	const result = forceOverlayDirectory(templateDir, wsDir, ctx, ".arb/templates/workspace", "workspace");
+	result.repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(arbRootDir);
+	return result;
 }
 
 export async function forceApplyRepoTemplates(
@@ -729,6 +762,7 @@ export async function forceApplyRepoTemplates(
 		conflicts: [],
 		failed: [],
 		unknownVariables: [],
+		repoDirectoryWarnings: [],
 	};
 	const reposDir = join(arbRootDir, ".arb", "repos");
 	const allRepos = await workspaceRepoList(wsDir, reposDir);
@@ -747,7 +781,7 @@ export async function forceApplyRepoTemplates(
 			repoPath: repoDir,
 			repos: allRepos,
 		};
-		const repoResult = forceOverlayDirectory(templateDir, repoDir, ctx, `.arb/templates/repos/${repo}`);
+		const repoResult = forceOverlayDirectory(templateDir, repoDir, ctx, `.arb/templates/repos/${repo}`, "repo", repo);
 		result.seeded.push(...repoResult.seeded);
 		result.reset.push(...repoResult.reset);
 		result.unchanged.push(...repoResult.unchanged);
@@ -785,12 +819,6 @@ export function displayTemplateDiffs(
 	}
 }
 
-export interface ConflictInfo {
-	scope: "workspace" | "repo";
-	repo?: string;
-	relPath: string;
-}
-
 export function displayTemplateConflicts(
 	conflicts: ConflictInfo[],
 	write: (text: string) => void = (t) => process.stderr.write(t),
@@ -825,4 +853,52 @@ export function templateFilePath(
 
 export function workspaceFilePath(wsDir: string, scope: "workspace" | "repo", relPath: string, repo?: string): string {
 	return scope === "workspace" ? join(wsDir, relPath) : join(wsDir, repo ?? "", relPath);
+}
+
+/** Check workspace template entries for paths whose top-level directory matches a known repo name. */
+export function checkWorkspaceTemplateRepoWarnings(arbRootDir: string): string[] {
+	const reposDir = join(arbRootDir, ".arb", "repos");
+	const repoNames = new Set(listRepos(reposDir));
+	if (repoNames.size === 0) return [];
+
+	const wsTemplateDir = join(arbRootDir, ".arb", "templates", "workspace");
+	if (!existsSync(wsTemplateDir)) return [];
+
+	const warnings: string[] = [];
+	const warnedDirs = new Set<string>();
+
+	for (const rawRelPath of walkFiles(wsTemplateDir)) {
+		const relPath = isTemplateFile(rawRelPath) ? stripTemplateExt(rawRelPath) : rawRelPath;
+		const topDir = relPath.split("/")[0];
+		if (topDir && repoNames.has(topDir) && !warnedDirs.has(topDir)) {
+			warnedDirs.add(topDir);
+			warnings.push(topDir);
+		}
+	}
+
+	return warnings;
+}
+
+export function displayRepoDirectoryWarnings(
+	warnings: string[],
+	write: (text: string) => void = (t) => process.stderr.write(t),
+): void {
+	if (warnings.length === 0) return;
+	write(`\n      ${yellow("Workspace templates target repo directories")}:\n`);
+	for (const dir of warnings) {
+		write(`          '${dir}/' — use .arb/templates/repos/${dir}/ for repo-scoped templates\n`);
+	}
+}
+
+export function displayOverlaySummary(wsResult: OverlayResult, repoResult: OverlayResult): void {
+	const totalSeeded = wsResult.seeded.length + repoResult.seeded.length;
+	const totalRegenerated = wsResult.regenerated.length + repoResult.regenerated.length;
+	if (totalSeeded > 0) info(`Seeded ${plural(totalSeeded, "template file")}`);
+	if (totalRegenerated > 0) info(`Regenerated ${plural(totalRegenerated, "template file")}`);
+	displayTemplateConflicts([...wsResult.conflicts, ...repoResult.conflicts]);
+	for (const f of [...wsResult.failed, ...repoResult.failed]) {
+		warn(`Failed to copy template ${f.path}: ${f.error}`);
+	}
+	displayUnknownVariables([...wsResult.unknownVariables, ...repoResult.unknownVariables]);
+	displayRepoDirectoryWarnings(wsResult.repoDirectoryWarnings);
 }

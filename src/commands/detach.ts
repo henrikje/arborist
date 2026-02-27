@@ -3,11 +3,11 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
 import { branchExistsLocally, git, isRepoDirty, parseGitStatus } from "../lib/git";
-import { error, info, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
+import { error, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
 import { selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import { isLocalDirty } from "../lib/status";
 import { readNamesFromStdin } from "../lib/stdin";
-import { applyRepoTemplates, applyWorkspaceTemplates, displayUnknownVariables } from "../lib/templates";
+import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
@@ -111,14 +111,7 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 				const remainingRepos = workspaceRepoDirs(wsDir).map((d) => basename(d));
 				const wsTemplates = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir, changed);
 				const repoTemplates = await applyRepoTemplates(ctx.arbRootDir, wsDir, remainingRepos, changed);
-				const totalRegenerated = wsTemplates.regenerated.length + repoTemplates.regenerated.length;
-				if (totalRegenerated > 0) {
-					info(`Regenerated ${plural(totalRegenerated, "template file")}`);
-				}
-				for (const f of [...wsTemplates.failed, ...repoTemplates.failed]) {
-					warn(`Failed to copy template ${f.path}: ${f.error}`);
-				}
-				displayUnknownVariables([...wsTemplates.unknownVariables, ...repoTemplates.unknownVariables]);
+				displayOverlaySummary(wsTemplates, repoTemplates);
 			}
 
 			process.stderr.write("\n");
