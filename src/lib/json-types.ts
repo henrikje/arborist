@@ -34,7 +34,7 @@ export interface StatusJsonRepo {
 	lastCommit: string | null;
 	verbose?: {
 		aheadOfBase?: { hash: string; subject: string }[];
-		behindBase?: { hash: string; subject: string }[];
+		behindBase?: { hash: string; subject: string; rebaseOf?: string; squashOf?: string[] }[];
 		unpushed?: { hash: string; subject: string; rebased: boolean }[];
 		staged?: { file: string; type: "new file" | "modified" | "deleted" | "renamed" | "copied" }[];
 		unstaged?: { file: string; type: "modified" | "deleted" }[];

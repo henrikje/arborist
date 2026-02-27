@@ -10,6 +10,7 @@ import {
 	getCommitsBetweenFull,
 	getDefaultBranch,
 	isRepoDirty,
+	matchDivergedCommits,
 	parseGitStatus,
 	predictMergeConflict,
 	validateBranchName,
@@ -530,6 +531,90 @@ describe("git repo functions", () => {
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
 			const result = await detectBranchMerged(repoDir, defaultBranch, 200, "feat/auth");
 			expect(result).toBeNull();
+		});
+	});
+
+	describe("matchDivergedCommits", () => {
+		test("detects 1:1 rebase match when commit is cherry-picked onto base", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+			// Create feature branch with a commit
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "feature.txt"), "feature content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "feature.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "feature commit"]);
+			const featureSha = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+
+			// Diverge main first with a different commit, then cherry-pick
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			writeFileSync(join(repoDir, "main-work.txt"), "main work");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "main-work.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "main work"]);
+			Bun.spawnSync(["git", "-C", repoDir, "cherry-pick", featureSha]);
+			const cherryPickSha = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+
+			// Back on feature — diverged: 1 ahead, 2 behind (main-work + cherry-pick)
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+			const result = await matchDivergedCommits(repoDir, defaultBranch);
+			expect(result.rebaseMatches.size).toBe(1);
+			expect(result.rebaseMatches.get(cherryPickSha)).toBe(featureSha);
+			expect(result.squashMatch).toBeNull();
+		});
+
+		test("detects full squash match when branch is squash-merged onto base", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+			// Create feature branch with multiple commits
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content a");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add a"]);
+			writeFileSync(join(repoDir, "b.txt"), "content b");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "b.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add b"]);
+
+			// Squash merge onto main
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			Bun.spawnSync(["git", "-C", repoDir, "merge", "--squash", "feature"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "squash: add a and b"]);
+			const squashSha = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+
+			// Back on feature — diverged: 2 ahead, 1 behind (the squash commit)
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+			const result = await matchDivergedCommits(repoDir, defaultBranch);
+			expect(result.rebaseMatches.size).toBe(0);
+			expect(result.squashMatch).not.toBeNull();
+			if (!result.squashMatch) throw new Error("expected squashMatch");
+			expect(result.squashMatch.incomingHash).toBe(squashSha);
+			expect(result.squashMatch.localHashes.length).toBe(2);
+		});
+
+		test("returns empty result for genuinely different commits", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+			// Create feature branch with a commit
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "feature.txt"), "feature content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "feature.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "feature commit"]);
+
+			// Add a different commit on main
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			writeFileSync(join(repoDir, "main.txt"), "main content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "main.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "main commit"]);
+
+			// Back on feature
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+			const result = await matchDivergedCommits(repoDir, defaultBranch);
+			expect(result.rebaseMatches.size).toBe(0);
+			expect(result.squashMatch).toBeNull();
+		});
+
+		test("returns empty result for equal refs", async () => {
+			const result = await matchDivergedCommits(repoDir, "HEAD");
+			expect(result.rebaseMatches.size).toBe(0);
+			expect(result.squashMatch).toBeNull();
 		});
 	});
 });

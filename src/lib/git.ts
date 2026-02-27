@@ -343,6 +343,74 @@ export async function predictStashPopConflict(repoDir: string, ref: string): Pro
 	return { overlapping };
 }
 
+export interface CommitMatchResult {
+	rebaseMatches: Map<string, string>; // incomingHash → localHash
+	squashMatch: { incomingHash: string; localHashes: string[] } | null;
+}
+
+export async function matchDivergedCommits(repoDir: string, baseRef: string): Promise<CommitMatchResult> {
+	const result: CommitMatchResult = { rebaseMatches: new Map(), squashMatch: null };
+
+	// Phase 1: 1:1 rebase matching (same algorithm as detectRebasedCommits)
+	const [localResult, incomingResult] = await Promise.all([
+		Bun.$`git -C ${repoDir} log -p ${baseRef}..HEAD | git patch-id --stable`.quiet().nothrow(),
+		Bun.$`git -C ${repoDir} log -p HEAD..${baseRef} | git patch-id --stable`.quiet().nothrow(),
+	]);
+
+	if (localResult.exitCode !== 0 || incomingResult.exitCode !== 0) return result;
+
+	const parse = (text: string) => {
+		const map = new Map<string, string>(); // patchId → commitHash
+		for (const line of text.split("\n")) {
+			const [patchId, hash] = line.split(" ");
+			if (patchId && hash) map.set(patchId, hash);
+		}
+		return map;
+	};
+
+	const localMap = parse(localResult.text()); // patchId → localHash
+	const incomingMap = parse(incomingResult.text()); // patchId → incomingHash
+
+	const localPatchIds = new Set(localMap.keys());
+	for (const [patchId, incomingHash] of incomingMap) {
+		if (localPatchIds.has(patchId)) {
+			const localHash = localMap.get(patchId);
+			if (localHash) result.rebaseMatches.set(incomingHash, localHash);
+		}
+	}
+
+	// Phase 2: Full-range squash detection (only when local has > 1 commit and unmatched incoming exist)
+	const localCommitCount = localMap.size;
+	const unmatchedIncoming = [...incomingMap.entries()].filter(([, hash]) => !result.rebaseMatches.has(hash));
+
+	if (localCommitCount > 1 && unmatchedIncoming.length > 0) {
+		const mergeBaseResult = await git(repoDir, "merge-base", "HEAD", baseRef);
+		if (mergeBaseResult.exitCode === 0) {
+			const mergeBase = mergeBaseResult.stdout.trim();
+			if (mergeBase) {
+				const cumulativeResult = await Bun.$`git -C ${repoDir} diff ${mergeBase}..HEAD | git patch-id --stable`
+					.quiet()
+					.nothrow();
+				if (cumulativeResult.exitCode === 0) {
+					const cumulativeLine = cumulativeResult.text().trim();
+					const cumulativePatchId = cumulativeLine.split(" ")[0];
+					if (cumulativePatchId) {
+						for (const [patchId, incomingHash] of unmatchedIncoming) {
+							if (patchId === cumulativePatchId) {
+								const allLocalHashes = [...localMap.values()];
+								result.squashMatch = { incomingHash, localHashes: allLocalHashes };
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return result;
+}
+
 export async function detectRebasedCommits(
 	repoDir: string,
 	trackingRef: string,

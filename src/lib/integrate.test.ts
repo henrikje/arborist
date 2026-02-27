@@ -573,4 +573,66 @@ describe("formatIntegratePlan", () => {
 		);
 		expect(plan).not.toContain("Incoming from");
 	});
+
+	test("shows matched count breakdown in behind string", () => {
+		const plan = formatIntegratePlan(
+			[makeAssessment({ behind: 5, ahead: 3, matchedCount: 3 })],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).toContain("5 behind (3 same, 2 new)");
+	});
+
+	test("preserves existing behind format when matchedCount is 0", () => {
+		const plan = formatIntegratePlan([makeAssessment({ behind: 5, ahead: 3, matchedCount: 0 })], "rebase", "feature");
+		expect(plan).toContain("5 behind");
+		expect(plan).not.toContain("same");
+		expect(plan).not.toContain("new)");
+	});
+
+	test("preserves existing behind format when matchedCount is undefined", () => {
+		const plan = formatIntegratePlan([makeAssessment({ behind: 5, ahead: 3 })], "rebase", "feature");
+		expect(plan).toContain("5 behind");
+		expect(plan).not.toContain("same");
+		expect(plan).not.toContain("new)");
+	});
+
+	test("shows rebaseOf annotation on verbose commits", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [
+						{ shortHash: "abc1234", subject: "feat: add auth flow", rebaseOf: "def5678" },
+						{ shortHash: "890abcd", subject: "fix: typo in readme" },
+					],
+					totalCommits: 2,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).toContain("(same as def5678)");
+		// The unannotated commit should appear without a tag
+		expect(plan).toContain("890abcd");
+		expect(plan).toContain("fix: typo in readme");
+		expect(plan).not.toContain("890abcd fix: typo in readme (same as");
+		expect(plan).not.toContain("890abcd fix: typo in readme (squash of");
+	});
+
+	test("shows squashOf annotation on verbose commits", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "fed4321", subject: "squash: combine changes", squashOf: ["aaa1111", "bbb2222"] }],
+					totalCommits: 1,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).toContain("(squash of aaa1111..bbb2222)");
+	});
 });

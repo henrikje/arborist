@@ -8,6 +8,7 @@ import {
 	getDefaultBranch,
 	getShortHead,
 	git,
+	matchDivergedCommits,
 	predictMergeConflict,
 	predictStashPopConflict,
 	remoteBranchExists,
@@ -44,8 +45,9 @@ export interface RepoAssessment {
 	retargetWarning?: string;
 	needsStash?: boolean;
 	stashPopConflictFiles?: string[];
-	commits?: { shortHash: string; subject: string }[];
+	commits?: { shortHash: string; subject: string; rebaseOf?: string; squashOf?: string[] }[];
 	totalCommits?: number;
+	matchedCount?: number;
 }
 
 export async function integrate(
@@ -323,9 +325,11 @@ export function formatIntegratePlan(
 				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 				out += `${headStr}\n`;
 			} else {
-				const diffParts = [a.behind > 0 && `${a.behind} behind`, a.ahead > 0 && `${a.ahead} ahead`]
-					.filter(Boolean)
-					.join(", ");
+				const behindStr =
+					a.matchedCount && a.matchedCount > 0
+						? `${a.behind} behind (${a.matchedCount} same, ${a.behind - a.matchedCount} new)`
+						: `${a.behind} behind`;
+				const diffParts = [a.behind > 0 && behindStr, a.ahead > 0 && `${a.ahead} ahead`].filter(Boolean).join(", ");
 				const diffStr = diffParts ? ` \u2014 ${diffParts}` : "";
 				const mergeType = mode === "merge" ? (a.ahead === 0 ? " (fast-forward)" : " (three-way)") : "";
 				const action =
@@ -402,13 +406,48 @@ async function gatherIntegrateVerboseCommits(assessments: RepoAssessment[]): Pro
 			.filter((a) => a.outcome === "will-operate")
 			.map(async (a) => {
 				const ref = `${a.baseRemote}/${a.baseBranch}`;
-				const commits = await getCommitsBetweenFull(a.repoDir, "HEAD", ref);
-				const total = commits.length;
-				a.commits = commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
-					shortHash: c.shortHash,
-					subject: c.subject,
-				}));
+				const incomingCommits = await getCommitsBetweenFull(a.repoDir, "HEAD", ref);
+				const total = incomingCommits.length;
+
+				// When diverged, match incoming commits against local commits
+				let rebaseMap: Map<string, string> | undefined;
+				let squashMatch: { incomingHash: string; localHashes: string[] } | undefined;
+				let localHashToShort: Map<string, string> | undefined;
+
+				if (a.ahead > 0 && a.behind > 0) {
+					const matchResult = await matchDivergedCommits(a.repoDir, ref);
+					if (matchResult.rebaseMatches.size > 0) rebaseMap = matchResult.rebaseMatches;
+					if (matchResult.squashMatch) squashMatch = matchResult.squashMatch;
+
+					if (rebaseMap || squashMatch) {
+						const localCommits = await getCommitsBetweenFull(a.repoDir, ref, "HEAD");
+						localHashToShort = new Map(localCommits.map((c) => [c.fullHash, c.shortHash]));
+					}
+				}
+
+				let matchedCount = 0;
+				a.commits = incomingCommits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => {
+					const entry: NonNullable<RepoAssessment["commits"]>[number] = {
+						shortHash: c.shortHash,
+						subject: c.subject,
+					};
+					if (rebaseMap?.has(c.fullHash)) {
+						const localHash = rebaseMap.get(c.fullHash) ?? c.fullHash;
+						entry.rebaseOf = localHashToShort?.get(localHash) ?? localHash.slice(0, 7);
+						matchedCount++;
+					} else if (squashMatch && c.fullHash === squashMatch.incomingHash) {
+						entry.squashOf = squashMatch.localHashes.map((h) => localHashToShort?.get(h) ?? h.slice(0, 7));
+						matchedCount++;
+					}
+					return entry;
+				});
+				// Count matches in commits beyond the display limit too
+				for (const c of incomingCommits.slice(VERBOSE_COMMIT_LIMIT)) {
+					if (rebaseMap?.has(c.fullHash)) matchedCount++;
+					else if (squashMatch && c.fullHash === squashMatch.incomingHash) matchedCount++;
+				}
 				a.totalCommits = total;
+				if (matchedCount > 0) a.matchedCount = matchedCount;
 			}),
 	);
 }
