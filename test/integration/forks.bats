@@ -106,7 +106,7 @@ load test_helper/common-setup
     run git -C "$TEST_DIR/fork/repo-a.git" branch
     [[ "$output" == *"fork-remove"* ]]
 
-    run arb delete fork-remove --force --delete-remote
+    run arb delete fork-remove --yes --force --delete-remote
     [ "$status" -eq 0 ]
 
     # Branch should be deleted from fork
