@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import { configGet, writeConfig } from "./config";
 import { ArbError } from "./errors";
 import {
+	analyzeRetargetReplay,
 	branchExistsLocally,
 	detectBranchMerged,
 	getCommitsBetweenFull,
@@ -57,6 +58,8 @@ export interface RepoAssessment {
 	totalOutgoingCommits?: number;
 	diffStats?: { files: number; insertions: number; deletions: number };
 	conflictCommits?: { shortHash: string; files: string[] }[];
+	retargetReplayCount?: number;
+	retargetAlreadyOnTarget?: number;
 }
 
 export async function integrate(
@@ -324,6 +327,13 @@ export function formatIntegratePlan(
 			if (a.retargetFrom) {
 				// Retarget display
 				out += `  ${a.repo}   rebase onto ${baseRef} from ${a.retargetFrom} (retarget)`;
+				// Replay breakdown
+				if (a.retargetAlreadyOnTarget != null && a.retargetAlreadyOnTarget > 0) {
+					const total = (a.retargetReplayCount ?? 0) + a.retargetAlreadyOnTarget;
+					out += ` — ${total} local, ${a.retargetAlreadyOnTarget} already on target, ${a.retargetReplayCount ?? 0} to replay`;
+				} else if (a.retargetReplayCount != null && a.retargetReplayCount > 0) {
+					out += ` — ${a.retargetReplayCount} to replay`;
+				}
 				if (a.retargetWarning) {
 					out += ` ${yellow(`(${a.retargetWarning})`)}`;
 				}
@@ -665,6 +675,9 @@ async function assessRepo(
 			return { ...classified, outcome: "up-to-date", baseBranch: retargetExplicit };
 		}
 
+		// Retarget replay analysis
+		const replayAnalysis = await analyzeRetargetReplay(repoDir, oldBaseRef, targetRef);
+
 		return {
 			...classified,
 			outcome: "will-operate",
@@ -674,6 +687,10 @@ async function assessRepo(
 			retargetWarning,
 			behind: base?.behind ?? 0,
 			ahead: base?.ahead ?? 0,
+			...(replayAnalysis && {
+				retargetReplayCount: replayAnalysis.toReplay,
+				retargetAlreadyOnTarget: replayAnalysis.alreadyOnTarget,
+			}),
 		};
 	}
 
@@ -703,6 +720,13 @@ async function assessRepo(
 			}
 		}
 
+		// Retarget replay analysis
+		const oldBaseNameForReplay = base.configuredRef ?? base.ref;
+		const oldBaseRemoteRefExists = await remoteBranchExists(repoDir, oldBaseNameForReplay, baseRemote);
+		const oldBaseRefForReplay = oldBaseRemoteRefExists ? `${baseRemote}/${oldBaseNameForReplay}` : oldBaseNameForReplay;
+		const newBaseRefForReplay = `${baseRemote}/${trueDefault}`;
+		const replayAnalysis = await analyzeRetargetReplay(repoDir, oldBaseRefForReplay, newBaseRefForReplay);
+
 		return {
 			...classified,
 			outcome: "will-operate",
@@ -711,6 +735,10 @@ async function assessRepo(
 			retargetTo: trueDefault,
 			behind: base.behind,
 			ahead: base.ahead,
+			...(replayAnalysis && {
+				retargetReplayCount: replayAnalysis.toReplay,
+				retargetAlreadyOnTarget: replayAnalysis.alreadyOnTarget,
+			}),
 		};
 	}
 

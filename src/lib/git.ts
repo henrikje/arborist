@@ -548,6 +548,38 @@ export async function predictRebaseConflictCommits(
 	return conflicting;
 }
 
+export async function analyzeRetargetReplay(
+	repoDir: string,
+	oldBaseRef: string,
+	newBaseRef: string,
+): Promise<{ totalLocal: number; alreadyOnTarget: number; toReplay: number } | null> {
+	const [localResult, newBaseResult] = await Promise.all([
+		Bun.$`git -C ${repoDir} log -p ${oldBaseRef}..HEAD | git patch-id --stable`.quiet().nothrow(),
+		Bun.$`git -C ${repoDir} log -p ${oldBaseRef}..${newBaseRef} | git patch-id --stable`.quiet().nothrow(),
+	]);
+
+	if (localResult.exitCode !== 0 || newBaseResult.exitCode !== 0) return null;
+
+	const parse = (text: string) => {
+		const map = new Map<string, string>();
+		for (const line of text.split("\n")) {
+			const [patchId, hash] = line.split(" ");
+			if (patchId && hash) map.set(patchId, hash);
+		}
+		return map;
+	};
+
+	const localMap = parse(localResult.text());
+	const newBaseIds = new Set(parse(newBaseResult.text()).keys());
+
+	let alreadyOnTarget = 0;
+	for (const patchId of localMap.keys()) {
+		if (newBaseIds.has(patchId)) alreadyOnTarget++;
+	}
+	const totalLocal = localMap.size;
+	return { totalLocal, alreadyOnTarget, toReplay: totalLocal - alreadyOnTarget };
+}
+
 export function parseDiffShortstat(output: string): { files: number; insertions: number; deletions: number } | null {
 	const trimmed = output.trim();
 	if (!trimmed) return null;

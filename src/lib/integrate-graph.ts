@@ -81,7 +81,17 @@ function formatRetargetGraph(a: RepoAssessment, branch: string, baseRef: string,
 	const P = SECTION_INDENT;
 
 	// Feature branch on top
-	const replayLabel = a.ahead > 0 ? `${a.ahead} commits to replay` : "at cut point";
+	let replayLabel: string;
+	if (a.retargetAlreadyOnTarget != null && a.retargetAlreadyOnTarget > 0) {
+		const total = (a.retargetReplayCount ?? 0) + a.retargetAlreadyOnTarget;
+		replayLabel = `${total} local, ${a.retargetAlreadyOnTarget} already on target, ${a.retargetReplayCount ?? 0} to replay`;
+	} else if (a.retargetReplayCount != null && a.retargetReplayCount > 0) {
+		replayLabel = `${a.retargetReplayCount} to replay`;
+	} else if (a.ahead > 0) {
+		replayLabel = `${a.ahead} commits to replay`;
+	} else {
+		replayLabel = "at cut point";
+	}
 	out += `${P}${dim("*")} ${branch}  HEAD  ${dim(`(${replayLabel})`)}\n`;
 
 	// Outgoing commits (verbose + graph)
