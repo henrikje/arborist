@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { getDefaultBranch, git } from "./git";
+import { detectBranchMerged, getDefaultBranch, git } from "./git";
 import { listRepos } from "./repos";
 
 export async function findStaleWorktrees(reposDir: string): Promise<string[]> {
@@ -36,9 +36,9 @@ export async function pruneWorktrees(reposDir: string): Promise<void> {
 export async function findOrphanedBranches(
 	reposDir: string,
 	workspaceBranches: Set<string>,
-): Promise<{ repo: string; branch: string }[]> {
+): Promise<{ repo: string; branch: string; mergeStatus: "merged" | "unmerged"; aheadCount: number }[]> {
 	const repos = listRepos(reposDir);
-	const orphaned: { repo: string; branch: string }[] = [];
+	const orphaned: { repo: string; branch: string; mergeStatus: "merged" | "unmerged"; aheadCount: number }[] = [];
 	for (const repo of repos) {
 		const repoDir = join(reposDir, repo);
 		const result = await git(repoDir, "for-each-ref", "refs/heads/", "--format=%(refname:short)");
@@ -47,7 +47,15 @@ export async function findOrphanedBranches(
 		for (const branch of result.stdout.split("\n").filter(Boolean)) {
 			if (branch === defaultBranch) continue;
 			if (!workspaceBranches.has(branch)) {
-				orphaned.push({ repo, branch });
+				const defaultRef = defaultBranch ? `origin/${defaultBranch}` : "HEAD";
+				const mergeResult = await detectBranchMerged(repoDir, defaultRef, 200, branch);
+				if (mergeResult) {
+					orphaned.push({ repo, branch, mergeStatus: "merged", aheadCount: 0 });
+				} else {
+					const countResult = await git(repoDir, "rev-list", "--count", `${defaultRef}..${branch}`);
+					const aheadCount = countResult.exitCode === 0 ? Number.parseInt(countResult.stdout.trim(), 10) : 0;
+					orphaned.push({ repo, branch, mergeStatus: "unmerged", aheadCount });
+				}
 			}
 		}
 	}

@@ -154,6 +154,75 @@ load test_helper/common-setup
     [[ -z "$output" || "$output" != *"orphan-test"* ]]
 }
 
+@test "arb clean --yes skips unmerged orphaned branches without --force" {
+    # Create a workspace and add a commit so the branch has unmerged work
+    run arb create unmerged-test -a
+    [ "$status" -eq 0 ]
+    echo "unmerged content" > "$TEST_DIR/project/unmerged-test/repo-a/unmerged.txt"
+    git -C "$TEST_DIR/project/unmerged-test/repo-a" add unmerged.txt
+    git -C "$TEST_DIR/project/unmerged-test/repo-a" commit -m "unmerged work"
+
+    # Remove workspace directory and prune worktrees to leave orphaned branches
+    rm -rf "$TEST_DIR/project/unmerged-test"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" worktree prune
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" worktree prune
+
+    run arb clean --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"skipped"* ]]
+    [[ "$output" == *"--force"* ]]
+
+    # Unmerged branch in repo-a should still exist
+    run git -C "$TEST_DIR/project/.arb/repos/repo-a" branch --list "unmerged-test"
+    [[ "$output" == *"unmerged-test"* ]]
+}
+
+@test "arb clean --yes --force deletes unmerged orphaned branches" {
+    # Create a workspace and add a commit
+    run arb create force-test -a
+    [ "$status" -eq 0 ]
+    echo "force content" > "$TEST_DIR/project/force-test/repo-a/force.txt"
+    git -C "$TEST_DIR/project/force-test/repo-a" add force.txt
+    git -C "$TEST_DIR/project/force-test/repo-a" commit -m "force work"
+
+    # Remove workspace and prune
+    rm -rf "$TEST_DIR/project/force-test"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" worktree prune
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" worktree prune
+
+    run arb clean --yes --force
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"orphaned branch"* ]]
+
+    # Branch should be gone
+    run git -C "$TEST_DIR/project/.arb/repos/repo-a" branch --list "force-test"
+    [[ -z "$output" || "$output" != *"force-test"* ]]
+}
+
+@test "arb clean --dry-run shows merge status annotations" {
+    # Create a merged orphan (no extra commits)
+    run arb create merged-orphan -a
+    [ "$status" -eq 0 ]
+    rm -rf "$TEST_DIR/project/merged-orphan"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" worktree prune
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" worktree prune
+
+    # Create an unmerged orphan (with a commit)
+    run arb create unmerged-orphan -a
+    [ "$status" -eq 0 ]
+    echo "orphan work" > "$TEST_DIR/project/unmerged-orphan/repo-a/orphan.txt"
+    git -C "$TEST_DIR/project/unmerged-orphan/repo-a" add orphan.txt
+    git -C "$TEST_DIR/project/unmerged-orphan/repo-a" commit -m "orphan work"
+    rm -rf "$TEST_DIR/project/unmerged-orphan"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" worktree prune
+    git -C "$TEST_DIR/project/.arb/repos/repo-b" worktree prune
+
+    run arb clean --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"(merged)"* ]]
+    [[ "$output" == *"ahead)"* ]]
+}
+
 @test "arb clean does not remove branches belonging to existing workspaces" {
     run arb create active-ws -a
     [ "$status" -eq 0 ]

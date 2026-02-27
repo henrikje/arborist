@@ -121,7 +121,7 @@ export async function integrate(
 	};
 
 	const postAssess = async (nextAssessments: RepoAssessment[]) => {
-		await predictIntegrateConflicts(nextAssessments);
+		await predictIntegrateConflicts(nextAssessments, mode);
 		if (options.verbose) {
 			await gatherIntegrateVerboseCommits(nextAssessments);
 		}
@@ -409,7 +409,7 @@ export function formatIntegratePlan(
 	return out;
 }
 
-async function predictIntegrateConflicts(assessments: RepoAssessment[]): Promise<void> {
+async function predictIntegrateConflicts(assessments: RepoAssessment[], mode: IntegrateMode): Promise<void> {
 	await Promise.all(
 		assessments
 			.filter((a) => a.outcome === "will-operate")
@@ -419,7 +419,7 @@ async function predictIntegrateConflicts(assessments: RepoAssessment[]): Promise
 					const prediction = await predictMergeConflict(a.repoDir, ref);
 					a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
 					// Per-commit conflict detail for rebase mode
-					if (prediction?.hasConflict) {
+					if (prediction?.hasConflict && mode === "rebase") {
 						const conflictCommits = await predictRebaseConflictCommits(a.repoDir, ref);
 						if (conflictCommits.length > 0) a.conflictCommits = conflictCommits;
 					}

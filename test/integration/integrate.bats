@@ -1326,7 +1326,7 @@ load test_helper/common-setup
 
     run arb rebase --verbose --dry-run
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Incoming from origin/main:"* ]]
+    [[ "$output" == *"Incoming from origin/main"* ]]
     [[ "$output" == *"feat: first upstream change"* ]]
     [[ "$output" == *"fix: second upstream change"* ]]
 }
@@ -1340,7 +1340,7 @@ load test_helper/common-setup
 
     run arb merge --verbose --dry-run
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Incoming from origin/main:"* ]]
+    [[ "$output" == *"Incoming from origin/main"* ]]
     [[ "$output" == *"feat: merge verbose test"* ]]
 }
 
