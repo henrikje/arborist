@@ -9,6 +9,7 @@ import { confirmOrExit } from "../lib/mutation-flow";
 import { dim, dryRunNotice, error, info, inlineResult, inlineStart, plural, success, yellow } from "../lib/output";
 import { getRemoteUrl, resolveRemotes } from "../lib/remotes";
 import { findRepoUsage, listRepos, selectInteractive } from "../lib/repos";
+import { type Column, renderTable } from "../lib/table";
 import type { ArbContext } from "../lib/types";
 
 export function registerRepoCommand(program: Command, getCtx: () => ArbContext): void {
@@ -157,42 +158,62 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 				return;
 			}
 
-			const maxRepo = Math.max(4, ...entries.map((e) => e.name.length));
-
 			if (options.verbose) {
 				const basePlain = entries.map((e) =>
 					e.base.name ? `${e.base.name} (${e.base.url})` : "(remotes not resolved)",
 				);
-				const baseDisplay = basePlain.map((v, i) => (entries[i]?.base.name ? v : yellow(v)));
-				const maxBase = Math.max(4, ...basePlain.map((v) => v.length));
-
-				process.stdout.write(
-					`  ${dim("REPO")}${" ".repeat(maxRepo - 4)}    ${dim("BASE")}${" ".repeat(maxBase - 4)}    ${dim("SHARE")}\n`,
+				const baseColored = basePlain.map((v, i) => (entries[i]?.base.name ? v : yellow(v)));
+				const sharePlain = entries.map((e) =>
+					!e.share.name && !e.base.name
+						? "(remotes not resolved)"
+						: e.share.name === e.base.name
+							? e.share.name
+							: `${e.share.name} (${e.share.url})`,
 				);
-				for (const [i, e] of entries.entries()) {
-					const base = baseDisplay[i] ?? yellow("(remotes not resolved)");
-					const basePad = " ".repeat(Math.max(0, maxBase - (basePlain[i]?.length ?? 0)));
-					const shareDisplay =
-						!e.share.name && !e.base.name
-							? yellow("(remotes not resolved)")
-							: e.share.name === e.base.name
-								? e.share.name
-								: `${e.share.name} (${e.share.url})`;
-					process.stdout.write(`  ${e.name.padEnd(maxRepo)}    ${base}${basePad}    ${shareDisplay}\n`);
-				}
+				const shareColored = entries.map((e, i) =>
+					!e.share.name && !e.base.name ? yellow(sharePlain[i] ?? "") : (sharePlain[i] ?? ""),
+				);
+
+				const columns: Column<RepoListJsonEntry>[] = [
+					{ header: "REPO", value: (e) => e.name },
+					{
+						header: "BASE",
+						value: (_e, i) => basePlain[i] ?? "",
+						render: (_e, i) => baseColored[i] ?? "",
+					},
+					{
+						header: "SHARE",
+						value: (_e, i) => sharePlain[i] ?? "",
+						render: (_e, i) => shareColored[i] ?? "",
+					},
+				];
+				process.stdout.write(renderTable(columns, entries));
 			} else {
-				const maxBase = Math.max(4, ...entries.map((e) => (e.base.name || "(remotes not resolved)").length));
-
-				process.stdout.write(
-					`  ${dim("REPO")}${" ".repeat(maxRepo - 4)}    ${dim("BASE")}${" ".repeat(maxBase - 4)}    ${dim("SHARE")}\n`,
+				const basePlainArr = entries.map((e) => e.base.name || "(remotes not resolved)");
+				const baseColoredArr = entries.map((e, i) =>
+					e.base.name ? (basePlainArr[i] ?? "") : yellow(basePlainArr[i] ?? ""),
 				);
-				for (const e of entries) {
-					const basePlain = e.base.name || "(remotes not resolved)";
-					const baseCol = e.base.name ? basePlain : yellow(basePlain);
-					const basePad = " ".repeat(Math.max(0, maxBase - basePlain.length));
-					const shareDisplay = !e.share.name && !e.base.name ? yellow("(remotes not resolved)") : e.share.name;
-					process.stdout.write(`  ${e.name.padEnd(maxRepo)}    ${baseCol}${basePad}    ${shareDisplay}\n`);
-				}
+				const sharePlainArr = entries.map((e) =>
+					!e.share.name && !e.base.name ? "(remotes not resolved)" : e.share.name,
+				);
+				const shareColoredArr = entries.map((e, i) =>
+					!e.share.name && !e.base.name ? yellow(sharePlainArr[i] ?? "") : (sharePlainArr[i] ?? ""),
+				);
+
+				const columns: Column<RepoListJsonEntry>[] = [
+					{ header: "REPO", value: (e) => e.name },
+					{
+						header: "BASE",
+						value: (_e, i) => basePlainArr[i] ?? "",
+						render: (_e, i) => baseColoredArr[i] ?? "",
+					},
+					{
+						header: "SHARE",
+						value: (_e, i) => sharePlainArr[i] ?? "",
+						render: (_e, i) => shareColoredArr[i] ?? "",
+					},
+				];
+				process.stdout.write(renderTable(columns, entries));
 			}
 		});
 

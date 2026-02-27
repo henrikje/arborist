@@ -1,3 +1,4 @@
+import { ArbError } from "./errors";
 import { isTTY } from "./tty";
 
 const RED = "\x1b[0;31m";
@@ -89,6 +90,32 @@ export function dryRunNotice(): void {
 
 export function skipConfirmNotice(flag: string): void {
 	info(`Skipping confirmation (${flag})`);
+}
+
+// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escape codes requires matching ESC
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
+
+export function stripAnsi(s: string): string {
+	return s.replace(ANSI_RE, "");
+}
+
+export function finishSummary(parts: string[], hasErrors: boolean): void {
+	const msg = parts.join(", ");
+	if (hasErrors) {
+		warn(msg);
+		throw new ArbError(msg);
+	}
+	success(msg);
+}
+
+export function scanProgress(scanned: number, total: number): void {
+	if (!isTTY()) return;
+	process.stderr.write(`\r  Scanning ${scanned}/${total}`);
+}
+
+export function clearScanProgress(): void {
+	if (!isTTY()) return;
+	process.stderr.write(`\r${" ".repeat(40)}\r`);
 }
 
 export function stderr(text: string): void {

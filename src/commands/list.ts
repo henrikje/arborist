@@ -3,7 +3,7 @@ import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
 import type { ListJsonEntry } from "../lib/json-types";
-import { bold, dim, error, info, yellow } from "../lib/output";
+import { clearScanProgress, dim, error, info, scanProgress, stripAnsi, yellow } from "../lib/output";
 import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { runPhasedRender } from "../lib/phased-render";
 import { resolveRemotesMap } from "../lib/remotes";
@@ -15,8 +15,8 @@ import {
 	validateWhere,
 	workspaceMatchesWhere,
 } from "../lib/status";
+import { type Column, renderTable } from "../lib/table";
 import {
-	type LastCommitWidths,
 	type RelativeTimeParts,
 	computeLastCommitWidths,
 	formatLastCommitCell,
@@ -368,12 +368,8 @@ async function gatherListStatus(
 	const rows = metadata.rows.map((r) => ({ ...r }));
 	const summaryByIndex = new Map<number, WorkspaceSummary>();
 
-	const tty = isTTY();
 	let totalRepos = 0;
 	let scannedRepos = 0;
-	const updateProgress = () => {
-		if (tty) process.stderr.write(`\r  Scanning ${scannedRepos}/${totalRepos}`);
-	};
 
 	const results = await Promise.all(
 		metadata.toScan.map(async (entry) => {
@@ -381,7 +377,7 @@ async function gatherListStatus(
 				const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir, (scanned, total) => {
 					if (scanned === 1) totalRepos += total;
 					scannedRepos++;
-					updateProgress();
+					scanProgress(scannedRepos, totalRepos);
 				});
 				return { index: entry.index, summary };
 			} catch {
@@ -390,9 +386,7 @@ async function gatherListStatus(
 		}),
 	);
 
-	if (tty && scannedRepos > 0) {
-		process.stderr.write(`\r${" ".repeat(40)}\r`);
-	}
+	if (scannedRepos > 0) clearScanProgress();
 
 	for (const { index, summary } of results) {
 		if (!summary) {
@@ -423,66 +417,56 @@ function lastCommitParts(row: ListRow): RelativeTimeParts {
 	return formatRelativeTimeParts(row.lastCommit);
 }
 
-function renderListHeader(cols: ListColumnWidths, showStatus: boolean, lcWidths: LastCommitWidths): string {
-	let header = `  ${dim("WORKSPACE")}${" ".repeat(cols.maxName - 9)}`;
-	header += `    ${dim("BRANCH")}${" ".repeat(cols.maxBranch - 6)}`;
-	if (cols.hasAnyBase) {
-		header += `    ${dim("BASE")}${" ".repeat(cols.maxBase - 4)}`;
-	}
-	header += `    ${dim("REPOS")}${" ".repeat(cols.maxRepos - 5)}`;
-	if (showStatus) {
-		header += `    ${dim("LAST COMMIT")}${" ".repeat(lcWidths.total - 11)}`;
-		header += `    ${dim("STATUS")}`;
-	}
-	return header;
-}
-
-function renderListRow(row: ListRow, cols: ListColumnWidths, showStatus: boolean, lcWidths: LastCommitWidths): string {
-	const prefix = row.marker ? `${bold("*")} ` : "  ";
-	const paddedName = row.name.padEnd(cols.maxName);
-
-	if (row.special === "config-missing") {
-		let line = `${prefix}${paddedName}`;
-		line += `    ${" ".repeat(cols.maxBranch)}`;
-		if (cols.hasAnyBase) line += `    ${" ".repeat(cols.maxBase)}`;
-		line += `    ${" ".repeat(cols.maxRepos)}`;
-		if (showStatus) {
-			line += `    ${" ".repeat(lcWidths.total)}`;
-			line += `    ${row.statusColored}`;
-		}
-		return line;
-	}
-
-	let line = `${prefix}${paddedName}`;
-	line += `    ${row.branch.padEnd(cols.maxBranch)}`;
-	if (cols.hasAnyBase) {
-		const baseText = row.baseFellBack ? yellow(row.base.padEnd(cols.maxBase)) : row.base.padEnd(cols.maxBase);
-		line += `    ${baseText}`;
-	}
-	line += `    ${row.repos.padEnd(cols.maxRepos)}`;
-	if (showStatus) {
-		const parts = lastCommitParts(row);
-		let commitCell: string;
-		if (parts.num || parts.unit) {
-			commitCell = formatLastCommitCell(parts, lcWidths, true);
-		} else if (row.special === null) {
-			commitCell = "...".padEnd(lcWidths.total);
-		} else {
-			commitCell = " ".repeat(lcWidths.total);
-		}
-		line += `    ${commitCell}`;
-		line += `    ${row.statusColored}`;
-	}
-	return line;
-}
-
 function formatListTable(displayRows: ListRow[], cols: ListColumnWidths, showStatus: boolean): string {
 	const lcWidths = computeLastCommitWidths(displayRows.map(lastCommitParts));
-	let output = `${renderListHeader(cols, showStatus, lcWidths)}\n`;
-	for (const row of displayRows) {
-		output += `${renderListRow(row, cols, showStatus, lcWidths)}\n`;
+
+	const statusPlain: string[] = displayRows.map((row) => stripAnsi(row.statusColored));
+
+	const columns: Column<ListRow>[] = [
+		{
+			header: "WORKSPACE",
+			value: (row) => row.name,
+		},
+		{
+			header: "BRANCH",
+			value: (row) => (row.special === "config-missing" ? " ".repeat(cols.maxBranch) : row.branch),
+		},
+	];
+
+	if (cols.hasAnyBase) {
+		columns.push({
+			header: "BASE",
+			value: (row) => (row.special === "config-missing" ? " ".repeat(cols.maxBase) : row.base),
+			render: (row) => {
+				if (row.special === "config-missing") return " ".repeat(cols.maxBase);
+				return row.baseFellBack ? yellow(row.base) : row.base;
+			},
+		});
 	}
-	return output;
+
+	columns.push({
+		header: "REPOS",
+		value: (row) => (row.special === "config-missing" ? " ".repeat(cols.maxRepos) : row.repos),
+	});
+
+	if (showStatus) {
+		columns.push({
+			header: "LAST COMMIT",
+			value: (row) => {
+				const parts = lastCommitParts(row);
+				if (parts.num || parts.unit) return formatLastCommitCell(parts, lcWidths, true);
+				if (row.special === null) return "...".padEnd(lcWidths.total);
+				return " ".repeat(lcWidths.total);
+			},
+		});
+		columns.push({
+			header: "STATUS",
+			value: (_row, i) => statusPlain[i] ?? "",
+			render: (row) => row.statusColored,
+		});
+	}
+
+	return renderTable(columns, displayRows, { marker: (row) => row.marker });
 }
 
 // ── Helpers ──

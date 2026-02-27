@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import { configGet, writeConfig } from "./config";
+import { reportConflicts, reportStashPopFailures } from "./conflict-report";
 import { ArbError } from "./errors";
 import {
 	analyzeRetargetReplay,
@@ -19,10 +20,11 @@ import {
 } from "./git";
 import { formatBranchGraph } from "./integrate-graph";
 import { confirmOrExit, runPlanFlow } from "./mutation-flow";
-import { dim, dryRunNotice, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "./output";
+import { dim, dryRunNotice, error, finishSummary, info, inlineResult, inlineStart, plural, yellow } from "./output";
+import { formatSkipLine, formatStashHint, formatUpToDateLine } from "./plan-format";
 import { resolveRemotesMap } from "./remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "./repos";
-import { BENIGN_SKIPS, type SkipFlag } from "./skip-flags";
+import type { SkipFlag } from "./skip-flags";
 import { type RepoStatus, computeFlags, gatherRepoStatus } from "./status";
 import { VERBOSE_COMMIT_LIMIT, formatVerboseCommits } from "./status-verbose";
 import type { ArbContext } from "./types";
@@ -241,33 +243,18 @@ export async function integrate(
 	}
 
 	// Consolidated conflict report
-	if (conflicted.length > 0) {
-		const subcommand = mode === "rebase" ? "rebase" : "merge";
-		process.stderr.write(`\n  ${conflicted.length} repo(s) have conflicts:\n`);
-		for (const { assessment: a, stdout: gitStdout, stderr: gitStderr } of conflicted) {
-			process.stderr.write(`\n    ${a.repo}\n`);
-			const combined = `${gitStdout}\n${gitStderr}`;
-			for (const line of combined.split("\n").filter((l) => l.startsWith("CONFLICT"))) {
-				process.stderr.write(`      ${dim(line)}\n`);
-			}
-			process.stderr.write(`      cd ${a.repo}\n`);
-			process.stderr.write(`      # fix conflicts, then: git ${subcommand} --continue\n`);
-			process.stderr.write(`      # or to undo: git ${subcommand} --abort\n`);
-		}
-	}
+	const subcommand = mode === "rebase" ? ("rebase" as const) : ("merge" as const);
+	reportConflicts(
+		conflicted.map((c) => ({
+			repo: c.assessment.repo,
+			stdout: c.stdout,
+			stderr: c.stderr,
+			subcommand,
+		})),
+	);
 
 	// Stash pop failure report
-	if (stashPopFailed.length > 0) {
-		const subcommand = mode === "rebase" ? "Rebase" : "Merge";
-		process.stderr.write(`\n  ${stashPopFailed.length} repo(s) need manual stash application:\n`);
-		for (const a of stashPopFailed) {
-			process.stderr.write(`\n    ${a.repo}\n`);
-			process.stderr.write(`      ${subcommand} succeeded, but stash pop conflicted.\n`);
-			process.stderr.write(`      cd ${a.repo}\n`);
-			process.stderr.write("      git stash pop    # re-apply and resolve conflicts\n");
-			process.stderr.write("      # or: git stash show  # inspect stashed changes\n");
-		}
-	}
+	reportStashPopFailures(stashPopFailed, mode === "rebase" ? "Rebase" : "Merge");
 
 	// Update config after successful retarget
 	const retargetAssessments = willOperate.filter((a) => a.retargetTo);
@@ -305,11 +292,7 @@ export async function integrate(
 	if (stashPopFailed.length > 0) parts.push(`${stashPopFailed.length} stash pop failed`);
 	if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
 	if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
-	if (conflicted.length > 0 || stashPopFailed.length > 0) {
-		warn(parts.join(", "));
-		throw new ArbError(parts.join(", "));
-	}
-	success(parts.join(", "));
+	finishSummary(parts, conflicted.length > 0 || stashPopFailed.length > 0);
 }
 
 export function formatIntegratePlan(
@@ -337,15 +320,7 @@ export function formatIntegratePlan(
 				if (a.retargetWarning) {
 					out += ` ${yellow(`(${a.retargetWarning})`)}`;
 				}
-				if (a.needsStash) {
-					if (a.stashPopConflictFiles && a.stashPopConflictFiles.length > 0) {
-						out += ` ${yellow("(autostash, stash pop conflict likely)")}`;
-					} else if (a.stashPopConflictFiles) {
-						out += " (autostash, stash pop conflict unlikely)";
-					} else {
-						out += " (autostash)";
-					}
-				}
+				out += formatStashHint(a);
 				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
 				out += `${headStr}\n`;
 			} else {
@@ -366,18 +341,8 @@ export function formatIntegratePlan(
 				} else if (a.conflictPrediction === "clean") {
 					conflictHint = mode === "merge" ? " (no conflict)" : " (conflict unlikely)";
 				}
-				let stashHint = "";
-				if (a.needsStash) {
-					if (a.stashPopConflictFiles && a.stashPopConflictFiles.length > 0) {
-						stashHint = ` ${yellow("(autostash, stash pop conflict likely)")}`;
-					} else if (a.stashPopConflictFiles) {
-						stashHint = " (autostash, stash pop conflict unlikely)";
-					} else {
-						stashHint = " (autostash)";
-					}
-				}
 				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
-				out += `  ${a.repo}   ${action}${diffStr}${conflictHint}${stashHint}${headStr}\n`;
+				out += `  ${a.repo}   ${action}${diffStr}${conflictHint}${formatStashHint(a)}${headStr}\n`;
 			}
 			if (graph) {
 				out += formatBranchGraph(a, branch, !!verbose);
@@ -389,10 +354,9 @@ export function formatIntegratePlan(
 				});
 			}
 		} else if (a.outcome === "up-to-date") {
-			out += `  ${a.repo}   up to date\n`;
+			out += formatUpToDateLine(a.repo);
 		} else {
-			const style = a.skipFlag && BENIGN_SKIPS.has(a.skipFlag) ? dim : yellow;
-			out += `  ${style(`${a.repo}   skipped \u2014 ${a.skipReason}`)}\n`;
+			out += formatSkipLine(a.repo, a.skipReason ?? "", a.skipFlag);
 		}
 	}
 

@@ -3,9 +3,10 @@ import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
 import { getCommitsBetweenFull, git } from "../lib/git";
 import type { LogJsonOutput, LogJsonRepo } from "../lib/json-types";
-import { bold, dim, error, plural, stdout, success, yellow } from "../lib/output";
+import { error, plural, stdout, success } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { resolveRemotesMap } from "../lib/remotes";
+import { writeRepoHeader, writeRepoSkipHeader } from "../lib/repo-header";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import {
 	type RepoStatus,
@@ -140,22 +141,7 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, max
 		const repoDir = `${wsDir}/${repo.name}`;
 		const flags = computeFlags(repo, branch);
 
-		// Detached HEAD — skip
-		if (flags.isDetached) {
-			process.stderr.write(`${bold(`==> ${repo.name} <==`)} ${yellow("detached \u2014 skipping")}\n`);
-			if (i < repos.length - 1) process.stderr.write("\n");
-			continue;
-		}
-
-		// Drifted branch — skip
-		if (flags.isDrifted && repo.identity.headMode.kind === "attached") {
-			const actual = repo.identity.headMode.branch;
-			process.stderr.write(
-				`${bold(`==> ${repo.name} <==`)} ${yellow(`on ${actual}, expected ${branch} \u2014 skipping`)}\n`,
-			);
-			if (i < repos.length - 1) process.stderr.write("\n");
-			continue;
-		}
+		if (writeRepoSkipHeader(repo, branch, flags, i >= repos.length - 1)) continue;
 
 		// Build git log args
 		const gitArgs: string[] = [];
@@ -181,8 +167,7 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, max
 		}
 
 		// Header
-		const header = bold(`==> ${repo.name} <==`);
-		process.stderr.write(note ? `${header} ${dim(note)}\n` : `${header}\n`);
+		writeRepoHeader(repo.name, note || undefined);
 
 		// Let git render the commits
 		const result = await git(repoDir, "log", "--oneline", "--no-decorate", "--color=always", ...gitArgs);

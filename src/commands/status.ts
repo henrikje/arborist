@@ -3,7 +3,7 @@ import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
 import { predictMergeConflict } from "../lib/git";
 import type { StatusJsonOutput } from "../lib/json-types";
-import { bold, dim, error, stderr, yellow } from "../lib/output";
+import { bold, clearScanProgress, dim, error, scanProgress, stderr, yellow } from "../lib/output";
 import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { runPhasedRender } from "../lib/phased-render";
 import { resolveRemotesMap } from "../lib/remotes";
@@ -126,14 +126,10 @@ async function runStatus(
 
 	// Shared gather helper: scan + filter
 	const gatherFiltered = async (): Promise<WorkspaceSummary> => {
-		const tty = isTTY();
-		let showingProgress = false;
 		const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, (scanned, total) => {
-			if (!tty) return;
-			showingProgress = true;
-			process.stderr.write(`\r  Scanning ${scanned}/${total}`);
+			scanProgress(scanned, total);
 		});
-		if (showingProgress) process.stderr.write(`\r${" ".repeat(40)}\r`);
+		clearScanProgress();
 
 		let repos = summary.repos.filter((r) => selectedSet.has(r.name));
 		if (where) {

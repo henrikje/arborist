@@ -6,8 +6,9 @@ import { loadArbIgnore } from "../lib/arbignore";
 import { findOrphanedBranches, findStaleWorktrees, pruneWorktrees } from "../lib/clean";
 import { ArbAbort, ArbError } from "../lib/errors";
 import { git } from "../lib/git";
-import { dim, dryRunNotice, error, info, plural, skipConfirmNotice, success, yellow } from "../lib/output";
+import { dryRunNotice, error, info, plural, skipConfirmNotice, success, yellow } from "../lib/output";
 import { listNonWorkspaces, listWorkspaces, selectInteractive } from "../lib/repos";
+import { renderTable } from "../lib/table";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
@@ -94,17 +95,18 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 			// ── Display findings ─────────────────────────────────────
 			if (hasDirs) {
 				// Build table
-				let maxName = "DIRECTORY".length;
-				const descriptions: string[] = [];
-				for (const name of targetDirs) {
-					if (name.length > maxName) maxName = name.length;
-					descriptions.push(describeContents(join(ctx.arbRootDir, name)));
-				}
+				const descriptions: string[] = targetDirs.map((name) => describeContents(join(ctx.arbRootDir, name)));
 
-				process.stderr.write(`  ${dim("DIRECTORY")}${" ".repeat(maxName - 9)}    ${dim("CONTENTS")}\n`);
-				for (let i = 0; i < targetDirs.length; i++) {
-					process.stderr.write(`  ${targetDirs[i]?.padEnd(maxName)}    ${descriptions[i]}\n`);
-				}
+				const tableRows = targetDirs.map((name, i) => ({ name, contents: descriptions[i] ?? "" }));
+				process.stderr.write(
+					renderTable(
+						[
+							{ header: "DIRECTORY", value: (r) => r.name },
+							{ header: "CONTENTS", value: (r) => r.contents },
+						],
+						tableRows,
+					),
+				);
 				process.stderr.write("\n");
 
 				if (ignoredCount > 0 && nameArgs.length === 0) {
