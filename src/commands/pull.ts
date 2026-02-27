@@ -8,6 +8,7 @@ import {
 	getShortHead,
 	git,
 	predictMergeConflict,
+	predictRebaseConflictCommits,
 	predictStashPopConflict,
 } from "../lib/git";
 import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
@@ -50,6 +51,7 @@ export interface PullAssessment {
 	commits?: { shortHash: string; subject: string }[];
 	totalCommits?: number;
 	diffStats?: { files: number; insertions: number; deletions: number };
+	conflictCommits?: { shortHash: string; files: string[] }[];
 }
 
 export function registerPullCommand(program: Command, getCtx: () => ArbContext): void {
@@ -383,6 +385,7 @@ export function formatPullPlan(
 				const label = `Incoming from ${shareRemote}:`;
 				out += formatVerboseCommits(a.commits, a.totalCommits ?? a.commits.length, label, {
 					diffStats: a.diffStats,
+					conflictCommits: a.conflictCommits,
 				});
 			}
 		} else if (a.outcome === "up-to-date") {
@@ -411,6 +414,11 @@ async function predictPullConflicts(
 				if (a.behind > 0 && a.toPush > 0) {
 					const prediction = await predictMergeConflict(a.repoDir, ref);
 					a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
+					// Per-commit conflict detail for rebase-mode pulls
+					if (prediction?.hasConflict && a.pullMode === "rebase") {
+						const conflictCommits = await predictRebaseConflictCommits(a.repoDir, ref);
+						if (conflictCommits.length > 0) a.conflictCommits = conflictCommits;
+					}
 				} else {
 					a.conflictPrediction = "no-conflict";
 				}

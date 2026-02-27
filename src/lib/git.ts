@@ -506,6 +506,48 @@ export async function getDiffShortstat(
 	return parseDiffShortstat(result.stdout);
 }
 
+export async function predictRebaseConflictCommits(
+	repoDir: string,
+	targetRef: string,
+): Promise<{ shortHash: string; files: string[] }[]> {
+	// List incoming commits (commits on targetRef not on HEAD), in chronological order
+	const logResult = await git(repoDir, "log", "--format=%H %h", "--reverse", `HEAD..${targetRef}`);
+	if (logResult.exitCode !== 0) return [];
+	const commits = logResult.stdout
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => {
+			const spaceIdx = line.indexOf(" ");
+			return { hash: line.slice(0, spaceIdx), shortHash: line.slice(spaceIdx + 1) };
+		});
+	if (commits.length === 0) return [];
+
+	const conflicting: { shortHash: string; files: string[] }[] = [];
+	for (const commit of commits) {
+		// Simulate cherry-picking this commit onto HEAD by using merge-tree
+		// merge-base is commit's parent, ours is HEAD, theirs is the commit
+		const result = await git(
+			repoDir,
+			"merge-tree",
+			"--write-tree",
+			"--name-only",
+			`--merge-base=${commit.hash}~1`,
+			"HEAD",
+			commit.hash,
+		);
+		if (result.exitCode === 1 && result.stdout.trim()) {
+			// Conflict detected — parse file list (skip tree hash + info lines)
+			const files = result.stdout
+				.split("\n")
+				.slice(1)
+				.filter((line) => line && !line.startsWith("Auto-merging") && !line.startsWith("CONFLICT"));
+			conflicting.push({ shortHash: commit.shortHash, files });
+		}
+		// exit 0 = clean, exit >1 = error (e.g. first commit has no parent) — skip
+	}
+	return conflicting;
+}
+
 export function parseDiffShortstat(output: string): { files: number; insertions: number; deletions: number } | null {
 	const trimmed = output.trim();
 	if (!trimmed) return null;
