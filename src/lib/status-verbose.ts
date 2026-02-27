@@ -1,4 +1,10 @@
-import { type FileChange, detectRebasedCommits, getCommitsBetweenFull, parseGitStatusFiles } from "./git";
+import {
+	type FileChange,
+	detectRebasedCommits,
+	getCommitsBetweenFull,
+	matchDivergedCommits,
+	parseGitStatusFiles,
+} from "./git";
 import type { StatusJsonRepo } from "./json-types";
 import { dim } from "./output";
 import { type RepoStatus, baseRef } from "./status";
@@ -15,7 +21,10 @@ interface VerboseCommit {
 }
 interface VerboseDetail {
 	aheadOfBase?: VerboseCommit[];
-	behindBase?: VerboseCommit[];
+	behindBase?: (VerboseCommit & {
+		rebaseOf?: { hash: string; shortHash: string };
+		squashOf?: { hashes: string[]; shortHashes: string[] };
+	})[];
 	unpushed?: (VerboseCommit & { rebased: boolean })[];
 	staged?: NonNullable<StatusJsonRepo["verbose"]>["staged"];
 	unstaged?: NonNullable<StatusJsonRepo["verbose"]>["unstaged"];
@@ -40,7 +49,38 @@ export async function gatherVerboseDetail(repo: RepoStatus, wsDir: string): Prom
 		const ref = baseRef(repo.base);
 		const commits = await getCommitsBetweenFull(repoDir, "HEAD", ref);
 		if (commits.length > 0) {
-			verbose.behindBase = commits.map((c) => ({ hash: c.fullHash, shortHash: c.shortHash, subject: c.subject }));
+			// When diverged, match incoming commits against local commits
+			let rebaseMap: Map<string, string> | undefined;
+			let squashMatch: { incomingHash: string; localHashes: string[] } | undefined;
+			if (repo.base.ahead > 0) {
+				const matchResult = await matchDivergedCommits(repoDir, ref);
+				if (matchResult.rebaseMatches.size > 0) rebaseMap = matchResult.rebaseMatches;
+				if (matchResult.squashMatch) squashMatch = matchResult.squashMatch;
+			}
+
+			// Build a local hash → shortHash lookup from aheadOfBase (already gathered)
+			const localHashToShort = new Map<string, string>();
+			if (verbose.aheadOfBase) {
+				for (const c of verbose.aheadOfBase) localHashToShort.set(c.hash, c.shortHash);
+			}
+
+			verbose.behindBase = commits.map((c) => {
+				const entry: NonNullable<VerboseDetail["behindBase"]>[number] = {
+					hash: c.fullHash,
+					shortHash: c.shortHash,
+					subject: c.subject,
+				};
+				if (rebaseMap?.has(c.fullHash)) {
+					const localHash = rebaseMap.get(c.fullHash) ?? c.fullHash;
+					entry.rebaseOf = { hash: localHash, shortHash: localHashToShort.get(localHash) ?? localHash.slice(0, 7) };
+				} else if (squashMatch && c.fullHash === squashMatch.incomingHash) {
+					entry.squashOf = {
+						hashes: squashMatch.localHashes,
+						shortHashes: squashMatch.localHashes.map((h) => localHashToShort.get(h) ?? h.slice(0, 7)),
+					};
+				}
+				return entry;
+			});
 		}
 	}
 
@@ -83,7 +123,14 @@ export function toJsonVerbose(detail: VerboseDetail): StatusJsonRepo["verbose"] 
 	return {
 		...rest,
 		...(aheadOfBase && { aheadOfBase: aheadOfBase.map(stripShort) }),
-		...(behindBase && { behindBase: behindBase.map(stripShort) }),
+		...(behindBase && {
+			behindBase: behindBase.map((c) => ({
+				hash: c.hash,
+				subject: c.subject,
+				...(c.rebaseOf && { rebaseOf: c.rebaseOf.hash }),
+				...(c.squashOf && { squashOf: c.squashOf.hashes }),
+			})),
+		}),
 		...(unpushed && { unpushed: unpushed.map(({ hash, subject, rebased }) => ({ hash, subject, rebased })) }),
 	};
 }
@@ -130,7 +177,15 @@ export function formatVerboseDetail(repo: RepoStatus, verbose: VerboseDetail | u
 		const ref = baseRef(repo.base);
 		let section = `\n${SECTION_INDENT}Behind ${ref}:\n`;
 		for (const c of verbose.behindBase) {
-			section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}\n`;
+			let tag = "";
+			if (c.rebaseOf) {
+				tag = dim(` (same as ${c.rebaseOf.shortHash})`);
+			} else if (c.squashOf && c.squashOf.shortHashes.length > 1) {
+				const first = c.squashOf.shortHashes[0] ?? "";
+				const last = c.squashOf.shortHashes[c.squashOf.shortHashes.length - 1] ?? "";
+				tag = dim(` (squash of ${first}..${last})`);
+			}
+			section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
 		}
 		sections.push(section);
 	}
@@ -175,13 +230,21 @@ export function formatVerboseDetail(repo: RepoStatus, verbose: VerboseDetail | u
 }
 
 export function formatVerboseCommits(
-	commits: { shortHash: string; subject: string }[],
+	commits: { shortHash: string; subject: string; rebaseOf?: string; squashOf?: string[] }[],
 	totalCommits: number,
 	label: string,
 ): string {
 	let out = `\n${SECTION_INDENT}${dim(label)}\n`;
 	for (const c of commits) {
-		out += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}\n`;
+		let tag = "";
+		if (c.rebaseOf) {
+			tag = dim(` (same as ${c.rebaseOf})`);
+		} else if (c.squashOf && c.squashOf.length > 1) {
+			const first = c.squashOf[0] ?? "";
+			const last = c.squashOf[c.squashOf.length - 1] ?? "";
+			tag = dim(` (squash of ${first}..${last})`);
+		}
+		out += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
 	}
 	if (totalCommits > commits.length) {
 		out += `${ITEM_INDENT}${dim(`... and ${totalCommits - commits.length} more`)}\n`;

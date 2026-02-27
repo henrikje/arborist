@@ -859,3 +859,25 @@ load test_helper/common-setup
     repo_name="$(echo "$json_output" | jq -r '.repos[0].name')"
     [ "$repo_name" = "repo-a" ]
 }
+
+# ── diverged commit matching ──────────────────────────────────────
+
+@test "arb status -v shows (same as ...) when feature commit is cherry-picked onto base" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature work" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Cherry-pick the feature commit onto main (with a diverging commit first)
+    local feature_sha
+    feature_sha="$(git -C "$TEST_DIR/project/my-feature/repo-a" rev-parse HEAD)"
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream work" && git cherry-pick "$feature_sha" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    fetch_all_repos
+    run arb status -v
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"(same as"* ]]
+    [[ "$output" == *"feature work"* ]]
+}

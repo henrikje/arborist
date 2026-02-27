@@ -1355,3 +1355,63 @@ load test_helper/common-setup
     [[ "$output" != *"Incoming from"* ]]
     [[ "$output" != *"feat: should not appear"* ]]
 }
+
+# ── diverged commit matching in plan ─────────────────────────────
+
+@test "arb rebase --verbose --dry-run shows same/new breakdown when cherry-picked" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature work" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Cherry-pick the feature commit onto main (with a diverging commit first)
+    local feature_sha
+    feature_sha="$(git -C "$TEST_DIR/project/my-feature/repo-a" rev-parse HEAD)"
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream work" && git cherry-pick "$feature_sha" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    fetch_all_repos
+    run arb rebase --verbose --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"same"* ]]
+    [[ "$output" == *"(same as"* ]]
+}
+
+@test "arb rebase --verbose --dry-run shows squash annotation when branch is squash-merged onto base" {
+    arb create my-feature repo-a
+    echo "first" > "$TEST_DIR/project/my-feature/repo-a/first.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add first.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "first feature" >/dev/null 2>&1
+    echo "second" > "$TEST_DIR/project/my-feature/repo-a/second.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add second.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "second feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Squash merge the feature commits onto main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && git merge --squash origin/my-feature && git commit -m "squash: first and second" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    fetch_all_repos
+    run arb rebase --verbose --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"(squash of"* ]]
+}
+
+@test "arb rebase --verbose --dry-run shows no match annotations for genuinely different commits" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature work" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Different commit on main (not a cherry-pick)
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream work" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    fetch_all_repos
+    run arb rebase --verbose --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"(same as"* ]]
+    [[ "$output" != *"(squash of"* ]]
+}
