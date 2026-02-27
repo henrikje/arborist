@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
+import { reportConflicts, reportStashPopFailures } from "../lib/conflict-report";
 import { ArbError } from "../lib/errors";
 import {
 	getCommitsBetweenFull,
@@ -16,18 +17,18 @@ import {
 	dim,
 	dryRunNotice,
 	error,
+	finishSummary,
 	info,
 	inlineResult,
 	inlineStart,
 	plural,
-	success,
-	warn,
 	yellow,
 } from "../lib/output";
+import { formatSkipLine, formatStashHint, formatUpToDateLine } from "../lib/plan-format";
 import type { RepoRemotes } from "../lib/remotes";
 import { resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
-import { BENIGN_SKIPS, type SkipFlag } from "../lib/skip-flags";
+import type { SkipFlag } from "../lib/skip-flags";
 import { type RepoStatus, computeFlags, gatherRepoStatus } from "../lib/status";
 import { VERBOSE_COMMIT_LIMIT, formatVerboseCommits } from "../lib/status-verbose";
 import { readNamesFromStdin } from "../lib/stdin";
@@ -214,32 +215,17 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				}
 
 				// Consolidated conflict report
-				if (conflicted.length > 0) {
-					process.stderr.write(`\n  ${conflicted.length} repo(s) have conflicts:\n`);
-					for (const { assessment: a, stdout: gitStdout, stderr: gitStderr } of conflicted) {
-						const subcommand = a.pullMode === "rebase" ? "rebase" : "merge";
-						process.stderr.write(`\n    ${a.repo}\n`);
-						const combined = `${gitStdout}\n${gitStderr}`;
-						for (const line of combined.split("\n").filter((l) => l.startsWith("CONFLICT"))) {
-							process.stderr.write(`      ${dim(line)}\n`);
-						}
-						process.stderr.write(`      cd ${a.repo}\n`);
-						process.stderr.write(`      # fix conflicts, then: git ${subcommand} --continue\n`);
-						process.stderr.write(`      # or to undo: git ${subcommand} --abort\n`);
-					}
-				}
+				reportConflicts(
+					conflicted.map((c) => ({
+						repo: c.assessment.repo,
+						stdout: c.stdout,
+						stderr: c.stderr,
+						subcommand: c.assessment.pullMode === "rebase" ? ("rebase" as const) : ("merge" as const),
+					})),
+				);
 
 				// Stash pop failure report
-				if (stashPopFailed.length > 0) {
-					process.stderr.write(`\n  ${stashPopFailed.length} repo(s) need manual stash application:\n`);
-					for (const a of stashPopFailed) {
-						process.stderr.write(`\n    ${a.repo}\n`);
-						process.stderr.write("      Pull succeeded, but stash pop conflicted.\n");
-						process.stderr.write(`      cd ${a.repo}\n`);
-						process.stderr.write("      git stash pop    # re-apply and resolve conflicts\n");
-						process.stderr.write("      # or: git stash show  # inspect stashed changes\n");
-					}
-				}
+				reportStashPopFailures(stashPopFailed, "Pull");
 
 				// Phase 5: summary
 				process.stderr.write("\n");
@@ -248,11 +234,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				if (stashPopFailed.length > 0) parts.push(`${stashPopFailed.length} stash pop failed`);
 				if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
 				if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
-				if (conflicted.length > 0 || stashPopFailed.length > 0) {
-					warn(parts.join(", "));
-					throw new ArbError(parts.join(", "));
-				}
-				success(parts.join(", "));
+				finishSummary(parts, conflicted.length > 0 || stashPopFailed.length > 0);
 			},
 		);
 }
@@ -368,16 +350,7 @@ export function formatPullPlan(
 				conflictHint = ", conflict unlikely";
 			}
 			const rebasedHint = a.rebased > 0 ? `, ${a.rebased} rebased` : "";
-			let stashHint = "";
-			if (a.needsStash) {
-				if (a.stashPopConflictFiles && a.stashPopConflictFiles.length > 0) {
-					stashHint = ` ${yellow("(autostash, stash pop conflict likely)")}`;
-				} else if (a.stashPopConflictFiles) {
-					stashHint = " (autostash, stash pop conflict unlikely)";
-				} else {
-					stashHint = " (autostash)";
-				}
-			}
+			const stashHint = formatStashHint(a);
 			const mergeType = a.pullMode === "merge" ? (a.toPush === 0 ? ", fast-forward" : ", three-way") : "";
 			out += `  ${a.repo}   ${plural(a.behind, "commit")} to pull (${a.pullMode}${mergeType}${rebasedHint}${conflictHint})${stashHint}${forkSuffix}${headStr}\n`;
 			if (verbose && a.commits && a.commits.length > 0) {
@@ -389,10 +362,9 @@ export function formatPullPlan(
 				});
 			}
 		} else if (a.outcome === "up-to-date") {
-			out += `  ${a.repo}   up to date\n`;
+			out += formatUpToDateLine(a.repo);
 		} else {
-			const style = a.skipFlag && BENIGN_SKIPS.has(a.skipFlag) ? dim : yellow;
-			out += `  ${style(`${a.repo}   skipped — ${a.skipReason}`)}\n`;
+			out += formatSkipLine(a.repo, a.skipReason ?? "", a.skipFlag);
 		}
 	}
 	out += "\n";

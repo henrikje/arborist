@@ -12,8 +12,9 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
-import { dim, error, info, plural, success, warn, yellow } from "../lib/output";
+import { error, finishSummary, info, plural, warn, yellow } from "../lib/output";
 import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
+import { type Column, renderTable } from "../lib/table";
 import {
 	ARBTEMPLATE_EXT,
 	type ConflictInfo,
@@ -220,40 +221,54 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 				diffMap.set(`${d.scope}:${d.repo ?? ""}:${d.relPath}`, d.kind);
 			}
 
-			// Compute column widths
-			const scopeLabels = templates.map((t) => (t.scope === "workspace" ? "workspace" : (t.repo ?? "")));
-			const maxScope = Math.max("SCOPE".length, ...scopeLabels.map((s) => s.length));
-			const maxPath = Math.max("PATH".length, ...templates.map((t) => t.relPath.length));
-
-			// Header row
-			const header = `  ${dim("SCOPE")}${" ".repeat(maxScope - 5)}    ${dim("PATH")}${" ".repeat(maxPath - 4)}    ${dim("STATUS")}`;
-			process.stdout.write(`${header}\n`);
-
-			// Data rows
+			// Build status strings (may contain color codes)
 			const repoWarningDirs = new Set(checkWorkspaceTemplateRepoWarnings(ctx.arbRootDir));
+			const statusPlain: string[] = [];
+			const statusColored: string[] = [];
 			const conflicts: TemplateEntry[] = [];
+
 			for (const t of templates) {
-				const scopeLabel = t.scope === "workspace" ? "workspace" : (t.repo ?? "");
 				const key = `${t.scope}:${t.repo ?? ""}:${t.relPath}`;
 				const diffKind = diffMap.get(key);
 
-				let line = `  ${scopeLabel.padEnd(maxScope)}    ${t.relPath.padEnd(maxPath)}`;
-
-				const parts: string[] = [];
-				if (t.isTemplate) parts.push("template");
-				if (t.conflict) parts.push(yellow("conflict"));
-				if (diffKind === "modified") parts.push(yellow("modified"));
-				if (diffKind === "deleted") parts.push(yellow("deleted"));
+				const plainParts: string[] = [];
+				const coloredParts: string[] = [];
+				if (t.isTemplate) {
+					plainParts.push("template");
+					coloredParts.push("template");
+				}
+				if (t.conflict) {
+					plainParts.push("conflict");
+					coloredParts.push(yellow("conflict"));
+				}
+				if (diffKind === "modified") {
+					plainParts.push("modified");
+					coloredParts.push(yellow("modified"));
+				}
+				if (diffKind === "deleted") {
+					plainParts.push("deleted");
+					coloredParts.push(yellow("deleted"));
+				}
 				if (t.scope === "workspace" && repoWarningDirs.has(t.relPath.split("/")[0] ?? "")) {
-					parts.push(yellow("misplaced"));
+					plainParts.push("misplaced");
+					coloredParts.push(yellow("misplaced"));
 				}
-				if (parts.length > 0) {
-					line += `    ${parts.join(" ")}`;
-				}
-
-				process.stdout.write(`${line}\n`);
+				statusPlain.push(plainParts.join(" "));
+				statusColored.push(coloredParts.join(" "));
 				if (t.conflict) conflicts.push(t);
 			}
+
+			const columns: Column<TemplateEntry>[] = [
+				{ header: "SCOPE", value: (t) => (t.scope === "workspace" ? "workspace" : (t.repo ?? "")) },
+				{ header: "PATH", value: (t) => t.relPath },
+				{
+					header: "STATUS",
+					value: (_t, i) => statusPlain[i] ?? "",
+					render: (_t, i) => statusColored[i] ?? "",
+				},
+			];
+
+			process.stdout.write(renderTable(columns, templates));
 
 			displayTemplateConflicts(conflicts);
 			displayUnknownVariables(unknowns);
@@ -527,7 +542,7 @@ async function applyDefaultMode(
 	if (totalSeeded > 0) parts.push(`Seeded ${plural(totalSeeded, "template file")}`);
 	if (totalSkipped > 0) parts.push(`${totalSkipped} already present`);
 	if (parts.length === 0) parts.push("No templates to apply");
-	success(parts.join(", "));
+	finishSummary(parts, false);
 }
 
 async function applyForceMode(
@@ -607,7 +622,7 @@ async function applyForceMode(
 	if (totalReset > 0) parts.push(`${totalReset} reset`);
 	if (totalUnchanged > 0) parts.push(`${totalUnchanged} unchanged`);
 	if (parts.length === 0) parts.push("No templates to apply");
-	success(parts.join(", "));
+	finishSummary(parts, false);
 }
 
 function displayOverlayResults(result: OverlayResult, scope: string, maxScope: number): void {

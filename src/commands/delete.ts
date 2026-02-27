@@ -5,18 +5,7 @@ import { loadArbIgnore } from "../lib/arbignore";
 import { ArbError } from "../lib/errors";
 import { branchExistsLocally, git, remoteBranchExists, validateWorkspaceName } from "../lib/git";
 import { confirmOrExit } from "../lib/mutation-flow";
-import {
-	dim,
-	dryRunNotice,
-	error,
-	info,
-	inlineResult,
-	inlineStart,
-	plural,
-	success,
-	warn,
-	yellow,
-} from "../lib/output";
+import { dryRunNotice, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "../lib/output";
 import { resolveRemotes } from "../lib/remotes";
 import { listNonWorkspaces, listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import {
@@ -31,6 +20,7 @@ import {
 	wouldLoseWork,
 } from "../lib/status";
 import { readNamesFromStdin } from "../lib/stdin";
+import { type Column, renderTable } from "../lib/table";
 import { type TemplateDiff, diffTemplates, displayTemplateDiffs } from "../lib/templates";
 import {
 	type LastCommitWidths,
@@ -147,61 +137,42 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 }
 
 function displayDeleteTable(assessments: WorkspaceAssessment[]): void {
-	// Compute column widths
-	let maxName = "WORKSPACE".length;
-	let maxRepos = "REPOS".length;
-
-	for (const a of assessments) {
-		if (a.name.length > maxName) maxName = a.name.length;
-		const reposText = `${a.summary.total}`;
-		if (reposText.length > maxRepos) maxRepos = reposText.length;
-	}
-
 	// Last commit column
 	const allTimeParts: RelativeTimeParts[] = assessments.map((a) =>
 		a.summary.lastCommit ? formatRelativeTimeParts(a.summary.lastCommit) : { num: "", unit: "" },
 	);
 	const lcWidths: LastCommitWidths = computeLastCommitWidths(allTimeParts);
 
-	// Header
-	let header = `  ${dim("WORKSPACE")}${" ".repeat(maxName - 9)}`;
-	header += `    ${dim("LAST COMMIT")}${" ".repeat(lcWidths.total - 11)}`;
-	header += `    ${dim("REPOS")}${" ".repeat(maxRepos - 5)}`;
-	header += `    ${dim("STATUS")}`;
-	process.stderr.write(`${header}\n`);
+	// Status text (plain for width, colored for display)
+	const statusPlain: string[] = assessments.map((a) => {
+		if (a.summary.repos.length === 0 && a.summary.total > 0) return "(remotes not resolved)";
+		if (a.summary.statusCounts.length === 0) return "no issues";
+		return formatStatusCounts(a.summary.statusCounts, a.summary.rebasedOnlyCount, LOSE_WORK_FLAGS);
+	});
+	const statusColored: string[] = assessments.map((a, i) => {
+		if (a.summary.repos.length === 0 && a.summary.total > 0) return yellow("(remotes not resolved)");
+		return statusPlain[i] ?? "";
+	});
 
-	// Rows
-	for (let i = 0; i < assessments.length; i++) {
-		const a = assessments[i];
-		const parts = allTimeParts[i];
-		if (!a || !parts) continue;
+	const columns: Column<WorkspaceAssessment>[] = [
+		{ header: "WORKSPACE", value: (a) => a.name },
+		{
+			header: "LAST COMMIT",
+			value: (_a, i) => {
+				const parts = allTimeParts[i];
+				if (!parts || (!parts.num && !parts.unit)) return " ".repeat(lcWidths.total);
+				return formatLastCommitCell(parts, lcWidths, true);
+			},
+		},
+		{ header: "REPOS", value: (a) => `${a.summary.total}` },
+		{
+			header: "STATUS",
+			value: (_a, i) => statusPlain[i] ?? "",
+			render: (_a, i) => statusColored[i] ?? "",
+		},
+	];
 
-		let line = `  ${a.name.padEnd(maxName)}`;
-
-		// Last commit cell
-		let commitCell: string;
-		if (parts.num || parts.unit) {
-			commitCell = formatLastCommitCell(parts, lcWidths, true);
-		} else {
-			commitCell = " ".repeat(lcWidths.total);
-		}
-		line += `    ${commitCell}`;
-
-		// Repos
-		line += `    ${`${a.summary.total}`.padEnd(maxRepos)}`;
-
-		// Status
-		if (a.summary.repos.length === 0 && a.summary.total > 0) {
-			line += `    ${yellow("(remotes not resolved)")}`;
-		} else if (a.summary.statusCounts.length === 0) {
-			line += "    no issues";
-		} else {
-			line += `    ${formatStatusCounts(a.summary.statusCounts, a.summary.rebasedOnlyCount, LOSE_WORK_FLAGS)}`;
-		}
-
-		process.stderr.write(`${line}\n`);
-	}
-
+	process.stderr.write(renderTable(columns, assessments));
 	process.stderr.write("\n");
 
 	// Template diffs below the table

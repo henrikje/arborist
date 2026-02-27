@@ -4,11 +4,12 @@ import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
 import { getCommitsBetweenFull, getShortHead, git } from "../lib/git";
 import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
-import { dim, dryRunNotice, info, inlineResult, inlineStart, plural, red, success, yellow } from "../lib/output";
+import { dim, dryRunNotice, finishSummary, info, inlineResult, inlineStart, plural, red, yellow } from "../lib/output";
+import { formatSkipLine, formatUpToDateLine } from "../lib/plan-format";
 import type { RepoRemotes } from "../lib/remotes";
 import { resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
-import { BENIGN_SKIPS, type SkipFlag } from "../lib/skip-flags";
+import type { SkipFlag } from "../lib/skip-flags";
 import { type RepoStatus, gatherRepoStatus } from "../lib/status";
 import { VERBOSE_COMMIT_LIMIT, formatVerboseCommits } from "../lib/status-verbose";
 import { readNamesFromStdin } from "../lib/stdin";
@@ -159,7 +160,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				const parts = [`Pushed ${plural(pushOk, "repo")}`];
 				if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
 				if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
-				success(parts.join(", "));
+				finishSummary(parts, false);
 			},
 		);
 }
@@ -187,10 +188,9 @@ export function formatPushPlan(
 				out += `  ${a.repo}   ${plural(a.ahead, "commit")} to push (force — ${a.behind} behind ${a.shareRemote})${behindBaseSuffix}${headStr}\n`;
 			}
 		} else if (a.outcome === "up-to-date") {
-			out += `  ${a.repo}   up to date\n`;
+			out += formatUpToDateLine(a.repo);
 		} else {
-			const style = a.skipFlag && BENIGN_SKIPS.has(a.skipFlag) ? dim : yellow;
-			out += `  ${style(`${a.repo}   skipped — ${a.skipReason}`)}\n`;
+			out += formatSkipLine(a.repo, a.skipReason ?? "", a.skipFlag);
 		}
 		if (
 			verbose &&

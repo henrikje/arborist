@@ -8,6 +8,7 @@ import {
 	dim,
 	dryRunNotice,
 	error,
+	finishSummary,
 	info,
 	inlineResult,
 	inlineStart,
@@ -19,6 +20,7 @@ import {
 } from "../lib/output";
 import { resolveRemotesMap } from "../lib/remotes";
 import { workspaceRepoDirs } from "../lib/repos";
+import { type Column, renderTable } from "../lib/table";
 import type { ArbContext } from "../lib/types";
 import { requireWorkspace } from "../lib/workspace-context";
 
@@ -204,32 +206,25 @@ function formatPlan(
 		return { plainAction, coloredAction, remoteNote };
 	});
 
-	const maxRepo = Math.max("REPO".length, ...assessments.map((a) => a.repo.length));
-	const maxAction = Math.max("LOCAL".length, ...displays.map((d) => d.plainAction.length));
-
 	let out = `\n  Renaming branch '${oldBranch}' to '${newBranch}'\n\n`;
 
+	const columns: Column<RepoAssessment>[] = [
+		{ header: "REPO", value: (a) => a.repo },
+		{
+			header: "LOCAL",
+			value: (_a, i) => displays[i]?.plainAction ?? "",
+			render: (_a, i) => displays[i]?.coloredAction ?? "",
+		},
+	];
 	if (hasAnyRemote) {
-		out += `  ${dim("REPO".padEnd(maxRepo))}   ${dim("LOCAL".padEnd(maxAction))}   ${dim("REMOTE")}\n`;
-	} else {
-		out += `  ${dim("REPO".padEnd(maxRepo))}   ${dim("LOCAL")}\n`;
+		columns.push({
+			header: "REMOTE",
+			value: (_a, i) => displays[i]?.remoteNote || "no remote branch",
+			render: (_a, i) => displays[i]?.remoteNote || "no remote branch",
+		});
 	}
 
-	for (let i = 0; i < assessments.length; i++) {
-		const a = assessments[i];
-		const d = displays[i];
-		if (!a || !d) continue;
-
-		// Pad the colored action: extra spaces after colored text to align next column
-		const pad = maxAction - d.plainAction.length;
-		const paddedAction = `${d.coloredAction}${" ".repeat(pad)}`;
-
-		if (hasAnyRemote) {
-			out += `  ${a.repo.padEnd(maxRepo)}   ${paddedAction}   ${d.remoteNote || "no remote branch"}\n`;
-		} else {
-			out += `  ${a.repo.padEnd(maxRepo)}   ${d.coloredAction}\n`;
-		}
-	}
+	out += renderTable(columns, assessments, { gap: 3 });
 
 	if (fetchingNotice) {
 		out += fetchingNotice;
@@ -240,28 +235,44 @@ function formatPlan(
 }
 
 function formatAbortPlan(assessments: AbortAssessment[], oldBranch: string, newBranch: string): string {
-	const maxRepo = Math.max("REPO".length, ...assessments.map((a) => a.repo.length));
-
-	let out = `\n  Rolling back rename: '${newBranch}' to '${oldBranch}'\n\n`;
-	out += `  ${dim("REPO".padEnd(maxRepo))}   ${dim("LOCAL")}\n`;
-
-	for (const a of assessments) {
-		let action: string;
+	const plainActions = assessments.map((a) => {
 		switch (a.outcome) {
 			case "roll-back":
-				action = `rename ${newBranch} to ${oldBranch}`;
-				break;
+				return `rename ${newBranch} to ${oldBranch}`;
 			case "already-reverted":
-				action = dim(`already on ${oldBranch}`);
-				break;
+				return `already on ${oldBranch}`;
 			case "skip-unknown":
-				action = yellow(`skip — on branch ${a.currentBranch ?? "?"}, expected ${newBranch}`);
-				break;
+				return `skip — on branch ${a.currentBranch ?? "?"}, expected ${newBranch}`;
 			default:
-				action = "unknown";
+				return "unknown";
 		}
-		out += `  ${a.repo.padEnd(maxRepo)}   ${action}\n`;
-	}
+	});
+	const coloredActions = assessments.map((a, i) => {
+		switch (a.outcome) {
+			case "roll-back":
+				return plainActions[i] ?? "";
+			case "already-reverted":
+				return dim(plainActions[i] ?? "");
+			case "skip-unknown":
+				return yellow(plainActions[i] ?? "");
+			default:
+				return plainActions[i] ?? "";
+		}
+	});
+
+	let out = `\n  Rolling back rename: '${newBranch}' to '${oldBranch}'\n\n`;
+	out += renderTable<AbortAssessment>(
+		[
+			{ header: "REPO", value: (a) => a.repo },
+			{
+				header: "LOCAL",
+				value: (_a, i) => plainActions[i] ?? "",
+				render: (_a, i) => coloredActions[i] ?? "",
+			},
+		],
+		assessments,
+		{ gap: 3 },
+	);
 
 	out += "\n";
 	return out;
@@ -390,7 +401,7 @@ async function runRename(
 	if (alreadyRenamed > 0) parts.push(`${alreadyRenamed} already renamed`);
 	const skipped = assessments.filter((a) => a.outcome !== "will-rename" && a.outcome !== "already-on-new").length;
 	if (skipped > 0) parts.push(`${skipped} skipped`);
-	success(parts.join(", "));
+	finishSummary(parts, false);
 
 	// Warn about remaining remote branches if not deleting
 	if (!options.deleteRemoteOld) {

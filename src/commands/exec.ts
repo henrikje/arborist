@@ -2,7 +2,8 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
-import { boldLine, error, plural, success } from "../lib/output";
+import { error, plural, success } from "../lib/output";
+import { writeRepoHeaderSimple } from "../lib/repo-header";
 import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
 import { computeFlags, gatherRepoStatus, repoMatchesWhere, validateWhere } from "../lib/status";
 import type { ArbContext } from "../lib/types";
@@ -86,7 +87,7 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 					continue;
 				}
 
-				boldLine(`==> ${repo} <==`);
+				writeRepoHeaderSimple(repo);
 				const proc = Bun.spawn(args, {
 					cwd: repoDir,
 					stdout: "inherit",
