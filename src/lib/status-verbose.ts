@@ -233,8 +233,17 @@ export function formatVerboseCommits(
 	commits: { shortHash: string; subject: string; rebaseOf?: string; squashOf?: string[] }[],
 	totalCommits: number,
 	label: string,
+	options?: {
+		diffStats?: { files: number; insertions: number; deletions: number };
+		conflictCommits?: { shortHash: string; files: string[] }[];
+	},
 ): string {
-	let out = `\n${SECTION_INDENT}${dim(label)}\n`;
+	let displayLabel = label;
+	if (options?.diffStats) {
+		const { files, insertions, deletions } = options.diffStats;
+		displayLabel = `${label.replace(/:$/, "")} (${files} ${files === 1 ? "file" : "files"} changed, +${insertions}, -${deletions}):`;
+	}
+	let out = `\n${SECTION_INDENT}${dim(displayLabel)}\n`;
 	for (const c of commits) {
 		let tag = "";
 		if (c.rebaseOf) {

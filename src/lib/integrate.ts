@@ -6,6 +6,7 @@ import {
 	detectBranchMerged,
 	getCommitsBetweenFull,
 	getDefaultBranch,
+	getDiffShortstat,
 	getMergeBase,
 	getShortHead,
 	git,
@@ -53,6 +54,7 @@ export interface RepoAssessment {
 	mergeBaseSha?: string;
 	outgoingCommits?: { shortHash: string; subject: string }[];
 	totalOutgoingCommits?: number;
+	diffStats?: { files: number; insertions: number; deletions: number };
 }
 
 export async function integrate(
@@ -369,7 +371,9 @@ export function formatIntegratePlan(
 				out += formatBranchGraph(a, branch, !!verbose);
 			} else if (verbose && a.commits && a.commits.length > 0) {
 				const label = `Incoming from ${a.baseRemote}/${a.baseBranch}:`;
-				out += formatVerboseCommits(a.commits, a.totalCommits ?? a.commits.length, label);
+				out += formatVerboseCommits(a.commits, a.totalCommits ?? a.commits.length, label, {
+					diffStats: a.diffStats,
+				});
 			}
 		} else if (a.outcome === "up-to-date") {
 			out += `  ${a.repo}   up to date\n`;
@@ -460,6 +464,9 @@ async function gatherIntegrateVerboseCommits(assessments: RepoAssessment[]): Pro
 				}
 				a.totalCommits = total;
 				if (matchedCount > 0) a.matchedCount = matchedCount;
+
+				// Diff stats
+				a.diffStats = (await getDiffShortstat(a.repoDir, "HEAD", ref)) ?? undefined;
 			}),
 	);
 }

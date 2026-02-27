@@ -507,6 +507,59 @@ assert r['base']['mergedIntoBase'] == 'squash', f'expected squash, got {r[\"base
     [[ "$output" == *"feat: pull verbose test"* ]]
 }
 
+# ── pull merge-mode annotations ──────────────────────────────────
+
+@test "arb pull --merge fast-forward shows merge, fast-forward" {
+    arb create my-feature repo-a
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Push a remote commit
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-ff-pull" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-ff-pull" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --merge --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merge, fast-forward"* ]]
+}
+
+@test "arb pull --merge three-way shows merge, three-way when diverged" {
+    arb create my-feature repo-a
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Local commit
+    echo "local" > "$TEST_DIR/project/my-feature/repo-a/local.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add local.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "local" >/dev/null 2>&1
+
+    # Push a remote commit
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-3way-pull" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-3way-pull" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --merge --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merge, three-way"* ]]
+}
+
+@test "arb pull --rebase does not show fast-forward or three-way" {
+    arb create my-feature repo-a
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Push a remote commit
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-rebase-pull" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-rebase-pull" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    run arb pull --rebase --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"(rebase"* ]]
+    [[ "$output" != *"fast-forward"* ]]
+    [[ "$output" != *"three-way"* ]]
+}
+
+# ── push (verbose) ──────────────────────────────────────────────
+
 @test "arb push --dry-run without --verbose does not show commits" {
     arb create my-feature repo-a
     echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
