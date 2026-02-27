@@ -200,6 +200,77 @@ describe("classifyRepo", () => {
 		expect(a.skipFlag).toBe("no-base-remote");
 	});
 
+	test("skips when branch is squash-merged into base", () => {
+		const a = classifyRepo(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 11,
+					behind: 1,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipReason).toBe("already squash-merged into main");
+		expect(a.skipFlag).toBe("already-merged");
+	});
+
+	test("skips when branch is merged into base", () => {
+		const a = classifyRepo(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: "merge",
+					baseMergedIntoDefault: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipReason).toBe("already merged into main");
+		expect(a.skipFlag).toBe("already-merged");
+	});
+
+	test("mergedIntoBase takes priority over baseMergedIntoDefault", () => {
+		const a = classifyRepo(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: "feat/auth",
+					ahead: 5,
+					behind: 2,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: "merge",
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipFlag).toBe("already-merged");
+	});
+
 	test("skips when base branch merged into default", () => {
 		const a = classifyRepo(
 			makeRepo({

@@ -531,6 +531,7 @@ export function plainCells(repo: RepoStatus): CellData {
 }
 
 export function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
+	if (base.mergedIntoBase != null) return "merged";
 	if (base.baseMergedIntoDefault != null) return "base merged";
 	const parts = [base.ahead > 0 && `${base.ahead} ahead`, base.behind > 0 && `${base.behind} behind`]
 		.filter(Boolean)

@@ -1358,7 +1358,7 @@ load test_helper/common-setup
 
 # ── diverged commit matching in plan ─────────────────────────────
 
-@test "arb rebase --verbose --dry-run shows same/new breakdown when cherry-picked" {
+@test "arb rebase --verbose --dry-run skips cherry-picked commit (detected as squash-merged)" {
     arb create my-feature repo-a
     echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
@@ -1374,11 +1374,10 @@ load test_helper/common-setup
     fetch_all_repos
     run arb rebase --verbose --dry-run
     [ "$status" -eq 0 ]
-    [[ "$output" == *"same"* ]]
-    [[ "$output" == *"(same as"* ]]
+    [[ "$output" == *"already squash-merged into main"* ]]
 }
 
-@test "arb rebase --verbose --dry-run shows squash annotation when branch is squash-merged onto base" {
+@test "arb rebase skips repo that was squash-merged onto base" {
     arb create my-feature repo-a
     echo "first" > "$TEST_DIR/project/my-feature/repo-a/first.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add first.txt >/dev/null 2>&1
@@ -1393,9 +1392,34 @@ load test_helper/common-setup
 
     cd "$TEST_DIR/project/my-feature"
     fetch_all_repos
-    run arb rebase --verbose --dry-run
+    run arb rebase --dry-run
     [ "$status" -eq 0 ]
-    [[ "$output" == *"(squash of"* ]]
+    [[ "$output" == *"already squash-merged into main"* ]]
+}
+
+@test "arb rebase skips squash-merged repo and rebases others" {
+    arb create my-feature repo-a repo-b
+
+    # Make feature commits in repo-a and push
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feature work" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Squash merge repo-a's feature into main
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && git merge --squash origin/my-feature && git commit -m "squash: feature" && git push) >/dev/null 2>&1
+
+    # Push an upstream commit to repo-b so it has something to rebase
+    (cd "$TEST_DIR/project/.arb/repos/repo-b" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream change" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    fetch_all_repos
+    run arb rebase --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"already squash-merged into main"* ]]
+    [[ "$output" == *"rebased my-feature onto origin/main"* ]]
+    # Verify repo-b actually has the upstream commit after rebase
+    git -C "$TEST_DIR/project/my-feature/repo-b" log --oneline | grep -q "upstream change"
 }
 
 @test "arb rebase --verbose --dry-run shows no match annotations for genuinely different commits" {
