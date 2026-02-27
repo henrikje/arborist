@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.102.0](https://github.com/henrikje/arborist/compare/v0.101.0...v0.102.0) (2026-02-27)
+
+
+### Features
+
+* add --dry-run to repo remove ([02b61f7](https://github.com/henrikje/arborist/commit/02b61f7f8a73bc0a82b775051752c6753539cb17))
+* add --graph flag to rebase and merge for branch divergence visualization ([ff072c9](https://github.com/henrikje/arborist/commit/ff072c9a3f5857b91de46042c36f1484245c56b0))
+* annotate behind-base commits with rebase/squash match info ([85e4725](https://github.com/henrikje/arborist/commit/85e4725f4e15e912b7d5d0af6ccdf8973ed54c56))
+* auto-fetch by default for status and list commands ([24f1445](https://github.com/henrikje/arborist/commit/24f144563244fa1829a03341f0c23b971979a3ed))
+* detect merged branches and skip them during rebase/merge ([6829fd1](https://github.com/henrikje/arborist/commit/6829fd1b504744343d0d0be160df3f50098cdc67))
+* dim benign skip reasons in sync plans ([e74f105](https://github.com/henrikje/arborist/commit/e74f105862b59b3ba310bb8bd8366081749d8a27))
+* identify conflicting commits in rebase plans ([de60753](https://github.com/henrikje/arborist/commit/de60753104504f99bf89af2bde5588da2b0a1667))
+* show merge status for orphaned branches in arb clean ([0d368f2](https://github.com/henrikje/arborist/commit/0d368f287ad8887de563e9a069c1add48c56709f))
+* show merge type in pull plans and diff stats in verbose mode ([22d0ef8](https://github.com/henrikje/arborist/commit/22d0ef899dd2ce3b01fc19742b7a6a47f3f68733))
+* show retarget replay prediction in rebase plans ([4abb14a](https://github.com/henrikje/arborist/commit/4abb14a87cc237770837a1865053141e817e55f8))
+* support curl-pipe-bash installation via GitHub Releases ([fc808f2](https://github.com/henrikje/arborist/commit/fc808f2315cef5f3651be7e324d14ad8c603da2f))
+
+
+### Bug Fixes
+
+* eliminate blank screen gap in phased rendering ([0fafbff](https://github.com/henrikje/arborist/commit/0fafbff56097baee3d3a54a1cfd9065ac941a562))
+* remove local scope from tmp_dir in install script ([a08501c](https://github.com/henrikje/arborist/commit/a08501c8cd38e458cf1b2325158eca3342639232))
+* stop --force from implying --yes in arb delete ([e1c5ab2](https://github.com/henrikje/arborist/commit/e1c5ab28989338aa6831a48f8e0043858ef2f4d4))
+* validate repo names in create command before git operations ([d34f49a](https://github.com/henrikje/arborist/commit/d34f49ac7a885d38b036e34f7328f32a980c6444))
+
 ## [0.101.0](https://github.com/henrikje/arborist/compare/v0.100.0...v0.101.0) (2026-02-26)
 
 
