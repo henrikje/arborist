@@ -16,6 +16,7 @@ describe("assessPullRepo", () => {
 		const a = assessPullRepo(makeRepo(), DIR, "feature", ["test-repo"], "merge", false, SHA);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toBe("fetch failed");
+		expect(a.skipFlag).toBe("fetch-failed");
 	});
 
 	test("skips detached HEAD", () => {
@@ -30,6 +31,7 @@ describe("assessPullRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toBe("HEAD is detached");
+		expect(a.skipFlag).toBe("detached-head");
 	});
 
 	test("skips drifted branch", () => {
@@ -46,6 +48,7 @@ describe("assessPullRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("on branch other, expected feature");
+		expect(a.skipFlag).toBe("drifted");
 	});
 
 	test("skips dirty without autostash", () => {
@@ -61,6 +64,7 @@ describe("assessPullRepo", () => {
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("uncommitted changes");
 		expect(a.skipReason).toContain("--autostash");
+		expect(a.skipFlag).toBe("dirty");
 	});
 
 	test("sets needsStash when dirty with autostash and staged files", () => {
@@ -128,6 +132,7 @@ describe("assessPullRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toBe("not pushed yet");
+		expect(a.skipFlag).toBe("not-pushed");
 	});
 
 	test("skips when remote branch gone", () => {
@@ -144,6 +149,7 @@ describe("assessPullRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toBe("remote branch gone");
+		expect(a.skipFlag).toBe("remote-gone");
 	});
 
 	test("skips when base branch merged into default", () => {
@@ -169,6 +175,7 @@ describe("assessPullRepo", () => {
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("base branch feat/auth was merged into default");
 		expect(a.skipReason).toContain("retarget");
+		expect(a.skipFlag).toBe("base-merged-into-default");
 	});
 
 	test("baseMergedIntoDefault shows configuredRef when set", () => {
@@ -218,6 +225,7 @@ describe("assessPullRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("already merged into main");
+		expect(a.skipFlag).toBe("already-merged");
 	});
 
 	test("does not skip merged-into-base when toPull > 0", () => {
@@ -260,6 +268,7 @@ describe("assessPullRepo", () => {
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("rebased locally");
 		expect(a.skipReason).toContain("push --force");
+		expect(a.skipFlag).toBe("rebased-locally");
 	});
 
 	test("will-pull when commits behind", () => {

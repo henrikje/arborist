@@ -8,6 +8,7 @@ import { dim, dryRunNotice, info, inlineResult, inlineStart, plural, red, succes
 import type { RepoRemotes } from "../lib/remotes";
 import { resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
+import { BENIGN_SKIPS, type SkipFlag } from "../lib/skip-flags";
 import { type RepoStatus, gatherRepoStatus } from "../lib/status";
 import { VERBOSE_COMMIT_LIMIT, formatVerboseCommits } from "../lib/status-verbose";
 import { readNamesFromStdin } from "../lib/stdin";
@@ -19,6 +20,7 @@ export interface PushAssessment {
 	repoDir: string;
 	outcome: "will-push" | "will-force-push" | "up-to-date" | "skip";
 	skipReason?: string;
+	skipFlag?: SkipFlag;
 	ahead: number;
 	behind: number;
 	rebased: number;
@@ -83,6 +85,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 							a.outcome = "skip";
 							const rebasedHint = a.rebased > 0 ? `, ${a.rebased} rebased` : "";
 							a.skipReason = `diverged from ${a.shareRemote}${rebasedHint} (use --force)`;
+							a.skipFlag = "diverged";
 						}
 					}
 					return assessments;
@@ -186,7 +189,8 @@ export function formatPushPlan(
 		} else if (a.outcome === "up-to-date") {
 			out += `  ${a.repo}   up to date\n`;
 		} else {
-			out += `  ${yellow(`${a.repo}   skipped — ${a.skipReason}`)}\n`;
+			const style = a.skipFlag && BENIGN_SKIPS.has(a.skipFlag) ? dim : yellow;
+			out += `  ${style(`${a.repo}   skipped — ${a.skipReason}`)}\n`;
 		}
 		if (
 			verbose &&
@@ -263,10 +267,14 @@ export function assessPushRepo(
 
 	// Branch check — detached or drifted
 	if (status.identity.headMode.kind === "detached") {
-		return { ...base, skipReason: "HEAD is detached" };
+		return { ...base, skipReason: "HEAD is detached", skipFlag: "detached-head" };
 	}
 	if (status.identity.headMode.branch !== branch) {
-		return { ...base, skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}` };
+		return {
+			...base,
+			skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}`,
+			skipFlag: "drifted",
+		};
 	}
 
 	// Base branch merged into default — retarget before pushing
@@ -275,6 +283,7 @@ export function assessPushRepo(
 		return {
 			...base,
 			skipReason: `base branch ${baseName} was merged into default (retarget first with 'arb rebase --retarget')`,
+			skipFlag: "base-merged-into-default",
 		};
 	}
 
@@ -284,6 +293,7 @@ export function assessPushRepo(
 			return {
 				...base,
 				skipReason: `already merged into ${status.base.ref} (use --force to recreate)`,
+				skipFlag: "already-merged",
 			};
 		}
 		const ahead = status.base?.ahead ?? 1;
@@ -292,14 +302,14 @@ export function assessPushRepo(
 
 	// Merged but not gone — nothing useful to push unless forced
 	if (status.base?.mergedIntoBase != null && !options?.force) {
-		return { ...base, skipReason: `already merged into ${status.base.ref} (use --force)` };
+		return { ...base, skipReason: `already merged into ${status.base.ref} (use --force)`, skipFlag: "already-merged" };
 	}
 
 	// Never pushed (noRef) — new branch
 	if (status.share.refMode === "noRef") {
 		const ahead = status.base?.ahead ?? 1;
 		if (ahead === 0) {
-			return { ...base, outcome: "skip", skipReason: "no commits to push" };
+			return { ...base, outcome: "skip", skipReason: "no commits to push", skipFlag: "no-commits" };
 		}
 		return { ...base, outcome: "will-push", ahead, newBranch: true };
 	}
@@ -313,7 +323,13 @@ export function assessPushRepo(
 	}
 
 	if (toPush === 0 && toPull > 0) {
-		return { ...base, outcome: "skip", skipReason: `behind ${status.share.remote} (pull first?)`, behind: toPull };
+		return {
+			...base,
+			outcome: "skip",
+			skipReason: `behind ${status.share.remote} (pull first?)`,
+			skipFlag: "behind-remote",
+			behind: toPull,
+		};
 	}
 
 	if (toPush > 0 && toPull > 0) {

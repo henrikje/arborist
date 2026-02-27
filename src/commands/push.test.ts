@@ -21,6 +21,7 @@ describe("assessPushRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toBe("HEAD is detached");
+		expect(a.skipFlag).toBe("detached-head");
 	});
 
 	test("skips drifted branch", () => {
@@ -34,6 +35,7 @@ describe("assessPushRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("on branch other, expected feature");
+		expect(a.skipFlag).toBe("drifted");
 	});
 
 	test("skips when base branch merged into default", () => {
@@ -56,6 +58,7 @@ describe("assessPushRepo", () => {
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("base branch feat/auth was merged into default");
 		expect(a.skipReason).toContain("retarget");
+		expect(a.skipFlag).toBe("base-merged-into-default");
 	});
 
 	test("skips gone+merged without force", () => {
@@ -79,6 +82,7 @@ describe("assessPushRepo", () => {
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("already merged into main");
 		expect(a.skipReason).toContain("--force to recreate");
+		expect(a.skipFlag).toBe("already-merged");
 	});
 
 	test("will-push gone+merged with force (recreate)", () => {
@@ -148,6 +152,7 @@ describe("assessPushRepo", () => {
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("already merged into main");
 		expect(a.skipReason).toContain("--force");
+		expect(a.skipFlag).toBe("already-merged");
 	});
 
 	test("will-push noRef with commits (new branch)", () => {
@@ -193,6 +198,7 @@ describe("assessPushRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toBe("no commits to push");
+		expect(a.skipFlag).toBe("no-commits");
 	});
 
 	test("skips when only behind share", () => {
@@ -207,6 +213,7 @@ describe("assessPushRepo", () => {
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("behind origin");
 		expect(a.skipReason).toContain("pull first");
+		expect(a.skipFlag).toBe("behind-remote");
 	});
 
 	test("will-force-push when diverged", () => {

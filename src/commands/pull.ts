@@ -19,6 +19,7 @@ import {
 import type { RepoRemotes } from "../lib/remotes";
 import { resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
+import { BENIGN_SKIPS, type SkipFlag } from "../lib/skip-flags";
 import { type RepoStatus, computeFlags, gatherRepoStatus } from "../lib/status";
 import { VERBOSE_COMMIT_LIMIT, formatVerboseCommits } from "../lib/status-verbose";
 import { readNamesFromStdin } from "../lib/stdin";
@@ -30,6 +31,7 @@ export interface PullAssessment {
 	repoDir: string;
 	outcome: "will-pull" | "up-to-date" | "skip";
 	skipReason?: string;
+	skipFlag?: SkipFlag;
 	behind: number;
 	toPush: number;
 	rebased: number;
@@ -267,22 +269,26 @@ export function assessPullRepo(
 
 	// Fetch failed for this repo
 	if (fetchFailed.includes(status.name)) {
-		return { ...base, skipReason: "fetch failed" };
+		return { ...base, skipReason: "fetch failed", skipFlag: "fetch-failed" };
 	}
 
 	// Branch check — detached or drifted
 	if (status.identity.headMode.kind === "detached") {
-		return { ...base, skipReason: "HEAD is detached" };
+		return { ...base, skipReason: "HEAD is detached", skipFlag: "detached-head" };
 	}
 	if (status.identity.headMode.branch !== branch) {
-		return { ...base, skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}` };
+		return {
+			...base,
+			skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}`,
+			skipFlag: "drifted",
+		};
 	}
 
 	// Dirty check
 	const flags = computeFlags(status, branch);
 	if (flags.isDirty) {
 		if (!autostash) {
-			return { ...base, skipReason: "uncommitted changes (use --autostash)" };
+			return { ...base, skipReason: "uncommitted changes (use --autostash)", skipFlag: "dirty" };
 		}
 		// Only stash if there are staged or modified files (not untracked-only)
 		if (status.local.staged > 0 || status.local.modified > 0) {
@@ -292,12 +298,12 @@ export function assessPullRepo(
 
 	// Not pushed yet
 	if (status.share.refMode === "noRef") {
-		return { ...base, skipReason: "not pushed yet" };
+		return { ...base, skipReason: "not pushed yet", skipFlag: "not-pushed" };
 	}
 
 	// Remote branch gone
 	if (status.share.refMode === "gone") {
-		return { ...base, skipReason: "remote branch gone" };
+		return { ...base, skipReason: "remote branch gone", skipFlag: "remote-gone" };
 	}
 
 	// Base branch merged into default — retarget before pulling
@@ -306,13 +312,14 @@ export function assessPullRepo(
 		return {
 			...base,
 			skipReason: `base branch ${baseName} was merged into default (retarget first with 'arb rebase --retarget')`,
+			skipFlag: "base-merged-into-default",
 		};
 	}
 
 	// Already merged into base — but only skip if share has nothing to pull
 	// (e.g. on main behind origin/main, mergedIntoBase is set but toPull > 0)
 	if (status.base?.mergedIntoBase != null && (status.share.toPull ?? 0) === 0) {
-		return { ...base, skipReason: `already merged into ${status.base.ref}` };
+		return { ...base, skipReason: `already merged into ${status.base.ref}`, skipFlag: "already-merged" };
 	}
 
 	// Check toPull count
@@ -324,7 +331,7 @@ export function assessPullRepo(
 	// Skip if all to-pull commits are rebased locally
 	const rebased = status.share.rebased ?? 0;
 	if (rebased > 0 && rebased >= toPull) {
-		return { ...base, skipReason: "rebased locally (push --force instead)" };
+		return { ...base, skipReason: "rebased locally (push --force instead)", skipFlag: "rebased-locally" };
 	}
 
 	const toPush = status.share.toPush ?? 0;
@@ -370,7 +377,8 @@ export function formatPullPlan(
 		} else if (a.outcome === "up-to-date") {
 			out += `  ${a.repo}   up to date\n`;
 		} else {
-			out += `  ${yellow(`${a.repo}   skipped — ${a.skipReason}`)}\n`;
+			const style = a.skipFlag && BENIGN_SKIPS.has(a.skipFlag) ? dim : yellow;
+			out += `  ${style(`${a.repo}   skipped — ${a.skipReason}`)}\n`;
 		}
 	}
 	out += "\n";
