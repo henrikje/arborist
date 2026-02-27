@@ -4,8 +4,6 @@
 
 Based on [Git worktrees](https://git-scm.com/docs/git-worktree), Arborist does not replace Git but helps you coordinate across repositories.
 
-_Arborist is under active development._
-
 > **arborist** (noun) _ˈär-bə-rist_ — a specialist in the care and maintenance of trees
 
 ## Mental model
@@ -44,15 +42,16 @@ Arborist's synchronization commands handle this across all repos at once.
 
 Arborist requires Git and works on macOS and Linux.
 
-**Quick install:**
+**Quick install**:
 ```
 curl -fsSL https://raw.githubusercontent.com/henrikje/arborist/main/install.sh | bash
 ```
 
-**Homebrew** (macOS and Linux):
+**Homebrew**:
 ```
 brew install henrikje/tap/arb
 ```
+On Linux, make sure you have Homebrew's [requirements](https://docs.brew.sh/Homebrew-on-Linux#requirements) installed to avoid "cannot be installed" errors.
 
 **From source** (requires [Bun](https://bun.sh)):
 ```
