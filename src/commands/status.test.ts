@@ -59,6 +59,34 @@ describe("plainBaseDiff", () => {
 		).toBe("2 ahead, 3 behind");
 	});
 
+	test("returns 'merged' when mergedIntoBase is squash", () => {
+		expect(
+			plainBaseDiff({
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 11,
+				behind: 1,
+				mergedIntoBase: "squash",
+				baseMergedIntoDefault: null,
+			}),
+		).toBe("merged");
+	});
+
+	test("returns 'merged' when mergedIntoBase is merge", () => {
+		expect(
+			plainBaseDiff({
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 0,
+				behind: 3,
+				mergedIntoBase: "merge",
+				baseMergedIntoDefault: null,
+			}),
+		).toBe("merged");
+	});
+
 	test("shows base merged when baseMergedIntoDefault is set", () => {
 		expect(
 			plainBaseDiff({

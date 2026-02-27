@@ -548,6 +548,19 @@ export function classifyRepo(
 	}
 	base.baseRemote = status.base.remote;
 
+	// Feature branch already merged into base (merge or squash)
+	if (status.base.mergedIntoBase != null) {
+		const strategy = status.base.mergedIntoBase === "squash" ? "squash-merged" : "merged";
+		return {
+			...base,
+			skipReason: `already ${strategy} into ${status.base.ref}`,
+			skipFlag: "already-merged",
+			baseBranch: status.base.ref,
+			behind: status.base.behind,
+			ahead: status.base.ahead,
+		};
+	}
+
 	// Stacked base branch has been merged into default
 	if (status.base.baseMergedIntoDefault != null) {
 		return {
