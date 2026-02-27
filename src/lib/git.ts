@@ -495,3 +495,27 @@ export async function detectRebasedCommits(
 	}
 	return { count: rebasedLocalHashes.size, rebasedLocalHashes };
 }
+
+export async function getDiffShortstat(
+	repoDir: string,
+	ref1: string,
+	ref2: string,
+): Promise<{ files: number; insertions: number; deletions: number } | null> {
+	const result = await git(repoDir, "diff", "--shortstat", `${ref1}...${ref2}`);
+	if (result.exitCode !== 0) return null;
+	return parseDiffShortstat(result.stdout);
+}
+
+export function parseDiffShortstat(output: string): { files: number; insertions: number; deletions: number } | null {
+	const trimmed = output.trim();
+	if (!trimmed) return null;
+	const files = trimmed.match(/(\d+) files? changed/);
+	const ins = trimmed.match(/(\d+) insertions?\(\+\)/);
+	const del = trimmed.match(/(\d+) deletions?\(-\)/);
+	if (!files) return null;
+	return {
+		files: Number.parseInt(files[1] ?? "0", 10),
+		insertions: ins ? Number.parseInt(ins[1] ?? "0", 10) : 0,
+		deletions: del ? Number.parseInt(del[1] ?? "0", 10) : 0,
+	};
+}

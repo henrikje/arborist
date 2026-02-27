@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type RepoAssessment, classifyRepo, formatIntegratePlan } from "./integrate";
+import { formatVerboseCommits } from "./status-verbose";
 import { makeRepo } from "./test-helpers";
 
 const DIR = "/tmp/test-repo";
@@ -687,6 +688,37 @@ describe("formatIntegratePlan", () => {
 		expect(plan).not.toContain("Incoming from");
 	});
 
+	test("shows diff stats on verbose label when diffStats present", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "def5678", subject: "feat: add auth" }],
+					totalCommits: 1,
+					diffStats: { files: 47, insertions: 320, deletions: 180 },
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).toContain("47 files changed, +320, -180");
+	});
+
+	test("does not show diff stats when diffStats is undefined", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "def5678", subject: "feat: add auth" }],
+					totalCommits: 1,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).not.toContain("files changed");
+	});
+
 	test("retarget repos get retarget-style graph", () => {
 		const plan = formatIntegratePlan(
 			[
@@ -706,5 +738,39 @@ describe("formatIntegratePlan", () => {
 		expect(plan).toContain("feat/old");
 		expect(plan).toContain("old base, merged");
 		expect(plan).toContain("new base");
+	});
+});
+
+describe("formatVerboseCommits", () => {
+	test("appends diff stats to label when provided", () => {
+		const out = formatVerboseCommits(
+			[{ shortHash: "abc1234", subject: "feat: something" }],
+			1,
+			"Incoming from origin/main:",
+			{ diffStats: { files: 5, insertions: 100, deletions: 20 } },
+		);
+		expect(out).toContain("5 files changed, +100, -20");
+		expect(out).toContain("abc1234");
+	});
+
+	test("uses singular 'file' for 1 file", () => {
+		const out = formatVerboseCommits(
+			[{ shortHash: "abc1234", subject: "feat: something" }],
+			1,
+			"Incoming from origin/main:",
+			{ diffStats: { files: 1, insertions: 10, deletions: 5 } },
+		);
+		expect(out).toContain("1 file changed");
+		expect(out).not.toContain("1 files changed");
+	});
+
+	test("does not modify label when no options provided", () => {
+		const out = formatVerboseCommits(
+			[{ shortHash: "abc1234", subject: "feat: something" }],
+			1,
+			"Incoming from origin/main:",
+		);
+		expect(out).toContain("Incoming from origin/main:");
+		expect(out).not.toContain("files changed");
 	});
 });

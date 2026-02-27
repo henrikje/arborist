@@ -2,7 +2,14 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
-import { getCommitsBetweenFull, getShortHead, git, predictMergeConflict, predictStashPopConflict } from "../lib/git";
+import {
+	getCommitsBetweenFull,
+	getDiffShortstat,
+	getShortHead,
+	git,
+	predictMergeConflict,
+	predictStashPopConflict,
+} from "../lib/git";
 import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
 import {
 	dim,
@@ -42,6 +49,7 @@ export interface PullAssessment {
 	stashPopConflictFiles?: string[];
 	commits?: { shortHash: string; subject: string }[];
 	totalCommits?: number;
+	diffStats?: { files: number; insertions: number; deletions: number };
 }
 
 export function registerPullCommand(program: Command, getCtx: () => ArbContext): void {
@@ -368,11 +376,14 @@ export function formatPullPlan(
 					stashHint = " (autostash)";
 				}
 			}
-			out += `  ${a.repo}   ${plural(a.behind, "commit")} to pull (${a.pullMode}${rebasedHint}${conflictHint})${stashHint}${forkSuffix}${headStr}\n`;
+			const mergeType = a.pullMode === "merge" ? (a.toPush === 0 ? ", fast-forward" : ", three-way") : "";
+			out += `  ${a.repo}   ${plural(a.behind, "commit")} to pull (${a.pullMode}${mergeType}${rebasedHint}${conflictHint})${stashHint}${forkSuffix}${headStr}\n`;
 			if (verbose && a.commits && a.commits.length > 0) {
 				const shareRemote = remotes?.share ?? "origin";
 				const label = `Incoming from ${shareRemote}:`;
-				out += formatVerboseCommits(a.commits, a.totalCommits ?? a.commits.length, label);
+				out += formatVerboseCommits(a.commits, a.totalCommits ?? a.commits.length, label, {
+					diffStats: a.diffStats,
+				});
 			}
 		} else if (a.outcome === "up-to-date") {
 			out += `  ${a.repo}   up to date\n`;
@@ -430,6 +441,9 @@ async function gatherPullVerboseCommits(
 					subject: c.subject,
 				}));
 				a.totalCommits = total;
+
+				// Diff stats
+				a.diffStats = (await getDiffShortstat(a.repoDir, "HEAD", ref)) ?? undefined;
 			}),
 	);
 }
