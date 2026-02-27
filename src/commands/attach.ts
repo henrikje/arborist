@@ -6,7 +6,7 @@ import { error, info, plural, success, warn } from "../lib/output";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import { readNamesFromStdin } from "../lib/stdin";
-import { applyRepoTemplates, applyWorkspaceTemplates, displayUnknownVariables } from "../lib/templates";
+import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 import { addWorktrees } from "../lib/worktrees";
@@ -69,21 +69,7 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
 			const wsRepoNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
 			const repoTemplates = await applyRepoTemplates(ctx.arbRootDir, wsDir, wsRepoNames, changed);
 			const wsTemplates = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir, changed);
-			const totalSeeded = repoTemplates.seeded.length + wsTemplates.seeded.length;
-			const totalRegenerated = repoTemplates.regenerated.length + wsTemplates.regenerated.length;
-			if (totalSeeded > 0) {
-				info(`Seeded ${plural(totalSeeded, "template file")}`);
-			}
-			if (totalRegenerated > 0) {
-				info(`Regenerated ${plural(totalRegenerated, "template file")}`);
-			}
-			for (const f of [...repoTemplates.conflicts, ...wsTemplates.conflicts]) {
-				warn(`Conflicting templates for ${f} (both plain and .arbtemplate versions exist)`);
-			}
-			for (const f of [...repoTemplates.failed, ...wsTemplates.failed]) {
-				warn(`Failed to copy template ${f.path}: ${f.error}`);
-			}
-			displayUnknownVariables([...repoTemplates.unknownVariables, ...wsTemplates.unknownVariables]);
+			displayOverlaySummary(wsTemplates, repoTemplates);
 
 			process.stderr.write("\n");
 			if (result.failed.length === 0 && result.skipped.length === 0) {

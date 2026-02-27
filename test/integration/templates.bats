@@ -844,13 +844,13 @@ load test_helper/common-setup
     printf '{{ workspace.name }}' \
         > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
     echo "static" > "$TEST_DIR/project/.arb/templates/workspace/plain.txt"
-    # Outside workspace — no STATUS column
+    # Outside workspace — STATUS column still shows (template, conflict, misplaced are intrinsic)
     run arb template list
     [ "$status" -eq 0 ]
     [[ "$output" == *"config.json"* ]]
     [[ "$output" == *"plain.txt"* ]]
-    # STATUS column not shown outside workspace
-    [[ "$output" != *"STATUS"* ]]
+    [[ "$output" == *"STATUS"* ]]
+    [[ "$output" == *"template"* ]]
 }
 
 @test "mix of .arbtemplate and regular files in same template directory" {
@@ -876,8 +876,10 @@ load test_helper/common-setup
 
     run arb create tpl-conflict-test repo-a
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Conflict"* ]]
-    [[ "$output" == *"config.json"* ]]
+    # Grouped format with remediation instructions (matching template list/apply)
+    [[ "$output" == *"Conflicting templates"* ]]
+    [[ "$output" == *".arb/templates/workspace/config.json"* ]]
+    [[ "$output" == *"remove either"* ]]
     # The file should still be created (first one wins)
     [ -f "$TEST_DIR/project/tpl-conflict-test/config.json" ]
 }
@@ -1260,4 +1262,117 @@ TMPL
     # Both lines should have consistent bracket formatting
     [[ "$output" == *"[workspace]"* ]]
     [[ "$output" == *"[repo-a]"* ]]
+}
+
+# ── template leak prevention ─────────────────────────────────────
+
+@test "arb create does not create dirs for non-selected repo templates" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-a"
+    mkdir -p "$TEST_DIR/project/.arb/templates/repos/repo-b"
+    echo "A-ENV" > "$TEST_DIR/project/.arb/templates/repos/repo-a/.env"
+    echo "B-ENV" > "$TEST_DIR/project/.arb/templates/repos/repo-b/.env"
+
+    arb create leak-test repo-a
+    # repo-a template should be applied
+    [ -f "$TEST_DIR/project/leak-test/repo-a/.env" ]
+    # repo-b should NOT exist at all — no directory created
+    [ ! -d "$TEST_DIR/project/leak-test/repo-b" ]
+}
+
+@test "arb template apply --repo rejects non-workspace repo" {
+    arb create apply-reject repo-a >/dev/null 2>&1
+    cd "$TEST_DIR/project/apply-reject"
+    run arb template apply --repo repo-b
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not in this workspace"* ]]
+}
+
+@test "arb template apply --force --repo rejects non-workspace repo" {
+    arb create force-reject repo-a >/dev/null 2>&1
+    cd "$TEST_DIR/project/force-reject"
+    run arb template apply --force --repo repo-b
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not in this workspace"* ]]
+}
+
+@test "arb create warns when workspace template sits in a repo-named directory" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace/repo-a"
+    echo "leaked" > "$TEST_DIR/project/.arb/templates/workspace/repo-a/config.txt"
+
+    run arb create warn-repo-dir repo-a
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"*"repo-scoped templates"* ]]
+}
+
+@test "arb template apply warns when workspace template sits in a repo-named directory" {
+    arb create warn-apply repo-a >/dev/null 2>&1
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace/repo-a"
+    echo "leaked" > "$TEST_DIR/project/.arb/templates/workspace/repo-a/config.txt"
+
+    cd "$TEST_DIR/project/warn-apply"
+    run arb template apply
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"*"repo-scoped templates"* ]]
+}
+
+@test "arb template list warns when workspace template sits in a repo-named directory" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace/repo-a"
+    echo "leaked" > "$TEST_DIR/project/.arb/templates/workspace/repo-a/config.txt"
+
+    # Detail section warning shows outside workspace
+    run arb template list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"*"repo-scoped templates"* ]]
+
+    # STATUS column shows misplaced label inside workspace
+    arb create warn-list repo-a >/dev/null 2>&1
+    cd "$TEST_DIR/project/warn-list"
+    run arb template list
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"misplaced"* ]]
+}
+
+# ── unified display in lifecycle commands ─────────────────────────
+
+@test "arb detach shows seeded count when new template added during detach" {
+    arb create detach-seed repo-a repo-b >/dev/null 2>&1
+
+    # Add a new workspace template AFTER create
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "NEW" > "$TEST_DIR/project/.arb/templates/workspace/new-file.txt"
+
+    cd "$TEST_DIR/project/detach-seed"
+    run arb detach repo-b
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Seeded 1 template file"* ]]
+    [ -f "$TEST_DIR/project/detach-seed/new-file.txt" ]
+}
+
+@test "arb detach displays conflict warning when both plain and .arbtemplate exist" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "plain" > "$TEST_DIR/project/.arb/templates/workspace/config.json"
+    printf '{{ workspace.name }}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
+
+    arb create detach-conflict repo-a repo-b >/dev/null 2>&1
+    cd "$TEST_DIR/project/detach-conflict"
+    run arb detach repo-b
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Conflicting templates"* ]]
+    [[ "$output" == *"config.json"* ]]
+}
+
+@test "arb attach uses grouped conflict format with remediation instructions" {
+    mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
+    echo "plain" > "$TEST_DIR/project/.arb/templates/workspace/config.json"
+    printf '{{ workspace.name }}' \
+        > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
+
+    arb create attach-conflict repo-a >/dev/null 2>&1
+    cd "$TEST_DIR/project/attach-conflict"
+    run arb attach repo-b
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Conflicting templates"* ]]
+    [[ "$output" == *"remove either"* ]]
+    [[ "$output" == *".arb/templates/workspace/config.json"* ]]
 }

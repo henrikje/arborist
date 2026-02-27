@@ -13,7 +13,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
 import { dim, error, info, plural, success, warn, yellow } from "../lib/output";
-import { collectRepo, workspaceRepoDirs } from "../lib/repos";
+import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
 import {
 	ARBTEMPLATE_EXT,
 	type ConflictInfo,
@@ -27,8 +27,10 @@ import {
 	applyWorkspaceTemplates,
 	checkAllTemplateVariables,
 	checkUnknownVariables,
+	checkWorkspaceTemplateRepoWarnings,
 	detectScopeFromPath,
 	diffTemplates,
+	displayRepoDirectoryWarnings,
 	displayTemplateConflicts,
 	displayUnknownVariables,
 	forceApplyRepoTemplates,
@@ -218,21 +220,17 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 				diffMap.set(`${d.scope}:${d.repo ?? ""}:${d.relPath}`, d.kind);
 			}
 
-			const showStatus = ctx.currentWorkspace != null;
-
 			// Compute column widths
 			const scopeLabels = templates.map((t) => (t.scope === "workspace" ? "workspace" : (t.repo ?? "")));
 			const maxScope = Math.max("SCOPE".length, ...scopeLabels.map((s) => s.length));
 			const maxPath = Math.max("PATH".length, ...templates.map((t) => t.relPath.length));
 
 			// Header row
-			let header = `  ${dim("SCOPE")}${" ".repeat(maxScope - 5)}    ${dim("PATH")}`;
-			if (showStatus) {
-				header += `${" ".repeat(maxPath - 4)}    ${dim("STATUS")}`;
-			}
+			const header = `  ${dim("SCOPE")}${" ".repeat(maxScope - 5)}    ${dim("PATH")}${" ".repeat(maxPath - 4)}    ${dim("STATUS")}`;
 			process.stdout.write(`${header}\n`);
 
 			// Data rows
+			const repoWarningDirs = new Set(checkWorkspaceTemplateRepoWarnings(ctx.arbRootDir));
 			const conflicts: TemplateEntry[] = [];
 			for (const t of templates) {
 				const scopeLabel = t.scope === "workspace" ? "workspace" : (t.repo ?? "");
@@ -241,15 +239,16 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 
 				let line = `  ${scopeLabel.padEnd(maxScope)}    ${t.relPath.padEnd(maxPath)}`;
 
-				if (showStatus) {
-					const parts: string[] = [];
-					if (t.isTemplate) parts.push("template");
-					if (t.conflict) parts.push(yellow("conflict"));
-					if (diffKind === "modified") parts.push(yellow("modified"));
-					if (diffKind === "deleted") parts.push(yellow("deleted"));
-					if (parts.length > 0) {
-						line += `    ${parts.join(" ")}`;
-					}
+				const parts: string[] = [];
+				if (t.isTemplate) parts.push("template");
+				if (t.conflict) parts.push(yellow("conflict"));
+				if (diffKind === "modified") parts.push(yellow("modified"));
+				if (diffKind === "deleted") parts.push(yellow("deleted"));
+				if (t.scope === "workspace" && repoWarningDirs.has(t.relPath.split("/")[0] ?? "")) {
+					parts.push(yellow("misplaced"));
+				}
+				if (parts.length > 0) {
+					line += `    ${parts.join(" ")}`;
 				}
 
 				process.stdout.write(`${line}\n`);
@@ -258,6 +257,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 
 			displayTemplateConflicts(conflicts);
 			displayUnknownVariables(unknowns);
+			displayRepoDirectoryWarnings([...repoWarningDirs]);
 		});
 
 	// ── template diff ────────────────────────────────────────────────
@@ -379,6 +379,10 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 			const hasRepoFlag = options.repo && options.repo.length > 0;
 			const hasWsFlag = options.workspace === true;
 
+			if (hasRepoFlag && options.repo) {
+				validateRepoNames(wsDir, options.repo);
+			}
+
 			// Determine which scopes to apply
 			const applyWorkspace = hasWsFlag || (!hasRepoFlag && !hasWsFlag);
 			const reposToApply = hasRepoFlag && options.repo ? options.repo : !hasWsFlag ? allRepos : [];
@@ -460,6 +464,7 @@ async function applyDefaultMode(
 	let totalSkipped = 0;
 	const allUnknowns: UnknownVariable[] = [];
 	const allConflicts: ConflictInfo[] = [];
+	let repoDirectoryWarnings: string[] = [];
 	const scopes = [...(applyWorkspace ? ["workspace"] : []), ...repos];
 	const maxScope = Math.max(...scopes.map((s) => s.length));
 
@@ -468,6 +473,9 @@ async function applyDefaultMode(
 		const reposDir = join(ctx.arbRootDir, ".arb", "repos");
 		const allRepos = await workspaceRepoList(wsDir, reposDir);
 		for (const entry of entries) {
+			if (entry.scope === "repo" && entry.repo && !existsSync(join(wsDir, entry.repo))) {
+				continue;
+			}
 			const tplPath = templateFilePath(ctx.arbRootDir, entry.scope, entry.relPath, entry.repo);
 			const destPath = workspaceFilePath(wsDir, entry.scope, entry.relPath, entry.repo);
 			const scope = entry.scope === "workspace" ? "workspace" : (entry.repo ?? "");
@@ -489,19 +497,21 @@ async function applyDefaultMode(
 			if (status === "seeded") totalSeeded++;
 			else totalSkipped++;
 		}
+		repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(ctx.arbRootDir);
 	} else {
 		if (applyWorkspace) {
 			const result = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir);
 			displayOverlayResults(result, "workspace", maxScope);
-			collectConflicts(result.conflicts, "workspace", allConflicts);
+			allConflicts.push(...result.conflicts);
 			allUnknowns.push(...result.unknownVariables);
+			repoDirectoryWarnings = result.repoDirectoryWarnings;
 			totalSeeded += result.seeded.length;
 			totalSkipped += result.skipped.length + result.conflicts.length;
 		}
 		for (const repo of repos) {
 			const result = await applyRepoTemplates(ctx.arbRootDir, wsDir, [repo]);
 			displayOverlayResults(result, repo, maxScope);
-			collectConflicts(result.conflicts, repo, allConflicts);
+			allConflicts.push(...result.conflicts);
 			allUnknowns.push(...result.unknownVariables);
 			totalSeeded += result.seeded.length;
 			totalSkipped += result.skipped.length + result.conflicts.length;
@@ -510,6 +520,7 @@ async function applyDefaultMode(
 
 	displayTemplateConflicts(allConflicts);
 	displayUnknownVariables(allUnknowns);
+	displayRepoDirectoryWarnings(repoDirectoryWarnings);
 
 	process.stderr.write("\n");
 	const parts: string[] = [];
@@ -531,6 +542,7 @@ async function applyForceMode(
 	let totalUnchanged = 0;
 	const allUnknowns: UnknownVariable[] = [];
 	const allConflicts: ConflictInfo[] = [];
+	let repoDirectoryWarnings: string[] = [];
 	const scopes = [...(applyWorkspace ? ["workspace"] : []), ...repos];
 	const maxScope = Math.max(...scopes.map((s) => s.length));
 
@@ -539,6 +551,9 @@ async function applyForceMode(
 		const reposDir = join(ctx.arbRootDir, ".arb", "repos");
 		const allRepos = await workspaceRepoList(wsDir, reposDir);
 		for (const entry of entries) {
+			if (entry.scope === "repo" && entry.repo && !existsSync(join(wsDir, entry.repo))) {
+				continue;
+			}
 			const tplPath = templateFilePath(ctx.arbRootDir, entry.scope, entry.relPath, entry.repo);
 			const destPath = workspaceFilePath(wsDir, entry.scope, entry.relPath, entry.repo);
 			const scope = entry.scope === "workspace" ? "workspace" : (entry.repo ?? "");
@@ -560,12 +575,14 @@ async function applyForceMode(
 			else if (status === "reset") totalReset++;
 			else totalUnchanged++;
 		}
+		repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(ctx.arbRootDir);
 	} else {
 		if (applyWorkspace) {
 			const result = await forceApplyWorkspaceTemplates(ctx.arbRootDir, wsDir);
 			displayForceOverlayResults(result, "workspace", maxScope);
-			collectConflicts(result.conflicts, "workspace", allConflicts);
+			allConflicts.push(...result.conflicts);
 			allUnknowns.push(...result.unknownVariables);
+			repoDirectoryWarnings = result.repoDirectoryWarnings;
 			totalSeeded += result.seeded.length;
 			totalReset += result.reset.length;
 			totalUnchanged += result.unchanged.length + result.conflicts.length;
@@ -573,7 +590,7 @@ async function applyForceMode(
 		for (const repo of repos) {
 			const result = await forceApplyRepoTemplates(ctx.arbRootDir, wsDir, [repo]);
 			displayForceOverlayResults(result, repo, maxScope);
-			collectConflicts(result.conflicts, repo, allConflicts);
+			allConflicts.push(...result.conflicts);
 			allUnknowns.push(...result.unknownVariables);
 			totalSeeded += result.seeded.length;
 			totalReset += result.reset.length;
@@ -583,6 +600,7 @@ async function applyForceMode(
 
 	displayTemplateConflicts(allConflicts);
 	displayUnknownVariables(allUnknowns);
+	displayRepoDirectoryWarnings(repoDirectoryWarnings);
 	process.stderr.write("\n");
 	const parts: string[] = [];
 	if (totalSeeded > 0) parts.push(`Seeded ${plural(totalSeeded, "template file")}`);
@@ -590,16 +608,6 @@ async function applyForceMode(
 	if (totalUnchanged > 0) parts.push(`${totalUnchanged} unchanged`);
 	if (parts.length === 0) parts.push("No templates to apply");
 	success(parts.join(", "));
-}
-
-function collectConflicts(conflicts: string[], scope: string, target: ConflictInfo[]): void {
-	for (const relPath of conflicts) {
-		if (scope === "workspace") {
-			target.push({ scope: "workspace", relPath });
-		} else {
-			target.push({ scope: "repo", repo: scope, relPath });
-		}
-	}
 }
 
 function displayOverlayResults(result: OverlayResult, scope: string, maxScope: number): void {
@@ -614,7 +622,7 @@ function displayOverlayResults(result: OverlayResult, scope: string, maxScope: n
 		process.stderr.write(`  [${scope}]${pad} ${f.padEnd(40)} ${yellow("skipped (exists)")}\n`);
 	}
 	for (const f of result.conflicts) {
-		process.stderr.write(`  [${scope}]${pad} ${f.padEnd(40)} ${yellow("skipped (conflict)")}\n`);
+		process.stderr.write(`  [${scope}]${pad} ${f.relPath.padEnd(40)} ${yellow("skipped (conflict)")}\n`);
 	}
 	for (const f of result.failed) {
 		warn(`Failed to copy template ${f.path}: ${f.error}`);
@@ -633,7 +641,7 @@ function displayForceOverlayResults(result: ForceOverlayResult, scope: string, m
 		process.stderr.write(`  [${scope}]${pad} ${f.padEnd(40)} unchanged\n`);
 	}
 	for (const f of result.conflicts) {
-		process.stderr.write(`  [${scope}]${pad} ${f.padEnd(40)} ${yellow("skipped (conflict)")}\n`);
+		process.stderr.write(`  [${scope}]${pad} ${f.relPath.padEnd(40)} ${yellow("skipped (conflict)")}\n`);
 	}
 	for (const f of result.failed) {
 		warn(`Failed to copy template ${f.path}: ${f.error}`);

@@ -8,7 +8,7 @@ import { dim, error, info, plural, success, warn } from "../lib/output";
 import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, selectReposInteractive } from "../lib/repos";
 import { readNamesFromStdin } from "../lib/stdin";
-import { applyRepoTemplates, applyWorkspaceTemplates, displayUnknownVariables } from "../lib/templates";
+import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
 import type { ArbContext } from "../lib/types";
 import { addWorktrees } from "../lib/worktrees";
 
@@ -138,21 +138,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 
 				const wsTemplates = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir);
 				const repoTemplates = await applyRepoTemplates(ctx.arbRootDir, wsDir, result.created);
-				const totalSeeded = wsTemplates.seeded.length + repoTemplates.seeded.length;
-				const totalRegenerated = wsTemplates.regenerated.length + repoTemplates.regenerated.length;
-				if (totalSeeded > 0) {
-					info(`Seeded ${plural(totalSeeded, "template file")}`);
-				}
-				if (totalRegenerated > 0) {
-					info(`Regenerated ${plural(totalRegenerated, "template file")}`);
-				}
-				for (const f of [...wsTemplates.conflicts, ...repoTemplates.conflicts]) {
-					warn(`Conflicting templates for ${f} (both plain and .arbtemplate versions exist)`);
-				}
-				for (const f of [...wsTemplates.failed, ...repoTemplates.failed]) {
-					warn(`Failed to copy template ${f.path}: ${f.error}`);
-				}
-				displayUnknownVariables([...wsTemplates.unknownVariables, ...repoTemplates.unknownVariables]);
+				displayOverlaySummary(wsTemplates, repoTemplates);
 
 				process.stderr.write("\n");
 				const branchSuffix = branch === name.toLowerCase() ? "" : ` on branch ${branch}`;
