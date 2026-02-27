@@ -185,6 +185,13 @@ load test_helper/common-setup
     [[ "$output" == *"must not contain whitespace"* ]]
 }
 
+@test "arb create with nonexistent repo fails" {
+    run arb create ws-bad badrepo
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Unknown repos: badrepo"* ]]
+    [[ "$output" == *"Not found in .arb/repos/"* ]]
+}
+
 # ── attach ───────────────────────────────────────────────────────
 
 @test "arb attach reads branch from config" {
