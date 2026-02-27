@@ -286,6 +286,7 @@ _arb() {
                                 _arguments \
                                     '(-a --all-repos)'{-a,--all-repos}'[Remove all canonical repos]' \
                                     '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                                    '(-n --dry-run)'{-n,--dry-run}'[Show what would be removed without removing]' \
                                     '*:repo:($repo_names)'
                                 ;;
                             list)

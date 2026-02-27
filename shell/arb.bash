@@ -186,7 +186,7 @@ __arb_complete_repo() {
             ;;
         remove)
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--all-repos --yes" -- "$cur"))
+                COMPREPLY=($(compgen -W "--all-repos --yes -n --dry-run" -- "$cur"))
             else
                 local repo_names
                 repo_names=$(__arb_repo_names "$base_dir")

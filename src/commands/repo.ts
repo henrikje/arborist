@@ -5,7 +5,7 @@ import { ArbError } from "../lib/errors";
 import { git } from "../lib/git";
 import type { RepoListJsonEntry } from "../lib/json-types";
 import { confirmOrExit } from "../lib/mutation-flow";
-import { dim, error, info, inlineResult, inlineStart, plural, success, yellow } from "../lib/output";
+import { dim, dryRunNotice, error, info, inlineResult, inlineStart, plural, success, yellow } from "../lib/output";
 import { getRemoteUrl, resolveRemotes } from "../lib/remotes";
 import { findRepoUsage, listRepos, selectInteractive } from "../lib/repos";
 import type { ArbContext } from "../lib/types";
@@ -197,11 +197,12 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 		.command("remove [names...]")
 		.option("-a, --all-repos", "Remove all canonical repos")
 		.option("-y, --yes", "Skip confirmation prompt")
+		.option("-n, --dry-run", "Show what would be removed without removing")
 		.summary("Remove canonical repos from .arb/repos/")
 		.description(
 			"Remove one or more canonical repository clones from .arb/repos/ and their associated template files from .arb/templates/repos/. This is the inverse of 'arb repo clone'.\n\nRefuses to remove repos that are attached to a workspace. Run 'arb detach <repo>' or 'arb delete <workspace>' first, then retry. Prompts with a repo picker when run without arguments.",
 		)
-		.action(async (nameArgs: string[], options: { allRepos?: boolean; yes?: boolean }) => {
+		.action(async (nameArgs: string[], options: { allRepos?: boolean; yes?: boolean; dryRun?: boolean }) => {
 			const ctx = getCtx();
 			const allRepos = listRepos(ctx.reposDir);
 
@@ -258,6 +259,11 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 				info(`  ${name}${url ? `  ${dim(url)}` : ""}`);
 			}
 			process.stderr.write("\n");
+
+			if (options.dryRun) {
+				dryRunNotice();
+				return;
+			}
 
 			// Confirm
 			await confirmOrExit({ yes: options.yes, message: `Remove ${plural(repos.length, "repo")}?` });

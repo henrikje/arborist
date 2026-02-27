@@ -256,3 +256,22 @@ load test_helper/common-setup
     [ "$status" -ne 0 ]
     [[ "$output" == *"No repos specified"* ]]
 }
+
+@test "arb repo remove --dry-run shows plan but does not remove" {
+    run arb repo clone "$TEST_DIR/origin/repo-a.git" dry-rm
+    [ "$status" -eq 0 ]
+    run arb repo remove dry-rm --dry-run
+    [ "$status" -eq 0 ]
+    [ -d "$TEST_DIR/project/.arb/repos/dry-rm" ]
+    [[ "$output" == *"dry-rm"* ]]
+    [[ "$output" == *"Dry run"* ]]
+}
+
+@test "arb repo remove -n is equivalent to --dry-run" {
+    run arb repo clone "$TEST_DIR/origin/repo-a.git" dry-rm-short
+    [ "$status" -eq 0 ]
+    run arb repo remove dry-rm-short -n
+    [ "$status" -eq 0 ]
+    [ -d "$TEST_DIR/project/.arb/repos/dry-rm-short" ]
+    [[ "$output" == *"Dry run"* ]]
+}
