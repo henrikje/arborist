@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	analyzeRetargetReplay,
 	branchExistsLocally,
 	checkBranchMatch,
 	detectBranchMerged,
@@ -532,6 +533,94 @@ describe("git repo functions", () => {
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
 			const result = await detectBranchMerged(repoDir, defaultBranch, 200, "feat/auth");
 			expect(result).toBeNull();
+		});
+	});
+
+	describe("analyzeRetargetReplay", () => {
+		test("identifies commits already on new target via patch-id", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+			// Create old base branch with a commit
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feat/old-base"]);
+			writeFileSync(join(repoDir, "base.txt"), "base content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "base.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "base commit"]);
+
+			// Create feature branch from old-base with two commits
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content a");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add a"]);
+			writeFileSync(join(repoDir, "b.txt"), "content b");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "b.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add b"]);
+
+			// On default branch, cherry-pick "add a" (simulating it was merged)
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			// Get the SHA of the "add a" commit from feature
+			const logResult = Bun.spawnSync(["git", "-C", repoDir, "log", "feature", "--format=%H", "-2"]);
+			const shas = logResult.stdout.toString().trim().split("\n");
+			const addASha = shas[1] ?? "";
+			Bun.spawnSync(["git", "-C", repoDir, "cherry-pick", addASha]);
+
+			// Switch to feature branch for analysis
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+
+			const result = await analyzeRetargetReplay(repoDir, "feat/old-base", defaultBranch);
+			expect(result).not.toBeNull();
+			if (!result) throw new Error("expected non-null result");
+			expect(result.totalLocal).toBe(2);
+			expect(result.alreadyOnTarget).toBe(1); // "add a" matches
+			expect(result.toReplay).toBe(1); // "add b" needs replay
+		});
+
+		test("returns all to replay when no commits match", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+			// Create old base branch
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feat/old-base"]);
+			writeFileSync(join(repoDir, "base.txt"), "base content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "base.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "base commit"]);
+
+			// Create feature branch with a commit
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "feature.txt"), "feature content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "feature.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "feature commit"]);
+
+			// Default branch has different commits
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			writeFileSync(join(repoDir, "main-new.txt"), "main content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "main-new.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "main commit"]);
+
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+
+			const result = await analyzeRetargetReplay(repoDir, "feat/old-base", defaultBranch);
+			expect(result).not.toBeNull();
+			if (!result) throw new Error("expected non-null result");
+			expect(result.totalLocal).toBe(1);
+			expect(result.alreadyOnTarget).toBe(0);
+			expect(result.toReplay).toBe(1);
+		});
+
+		test("returns zero local when feature has no commits beyond old base", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+			// Create old base branch
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feat/old-base"]);
+
+			// Feature at same point as old-base (no extra commits)
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+			const result = await analyzeRetargetReplay(repoDir, "feat/old-base", defaultBranch);
+			expect(result).not.toBeNull();
+			if (!result) throw new Error("expected non-null result");
+			expect(result.totalLocal).toBe(0);
+			expect(result.alreadyOnTarget).toBe(0);
+			expect(result.toReplay).toBe(0);
 		});
 	});
 

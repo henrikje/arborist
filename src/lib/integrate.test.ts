@@ -719,6 +719,71 @@ describe("formatIntegratePlan", () => {
 		expect(plan).not.toContain("files changed");
 	});
 
+	test("shows retarget replay breakdown when alreadyOnTarget > 0", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					retargetFrom: "feat/old",
+					retargetTo: "main",
+					baseBranch: "main",
+					retargetReplayCount: 2,
+					retargetAlreadyOnTarget: 3,
+				}),
+			],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("5 local, 3 already on target, 2 to replay");
+	});
+
+	test("shows simplified retarget replay when alreadyOnTarget is 0", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					retargetFrom: "feat/old",
+					retargetTo: "main",
+					baseBranch: "main",
+					retargetReplayCount: 4,
+					retargetAlreadyOnTarget: 0,
+				}),
+			],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("4 to replay");
+		expect(plan).not.toContain("already on target");
+	});
+
+	test("shows no replay info when retarget replay fields are undefined", () => {
+		const plan = formatIntegratePlan(
+			[makeAssessment({ retargetFrom: "feat/old", retargetTo: "main", baseBranch: "main" })],
+			"rebase",
+			"feature",
+		);
+		expect(plan).not.toContain("to replay");
+		expect(plan).not.toContain("already on target");
+	});
+
+	test("retarget graph shows replay breakdown when enriched", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					retargetFrom: "feat/old",
+					retargetTo: "main",
+					baseBranch: "main",
+					mergeBaseSha: "xyz7890",
+					retargetReplayCount: 2,
+					retargetAlreadyOnTarget: 3,
+				}),
+			],
+			"rebase",
+			"feature",
+			false,
+			true,
+		);
+		expect(plan).toContain("5 local, 3 already on target, 2 to replay");
+	});
+
 	test("retarget repos get retarget-style graph", () => {
 		const plan = formatIntegratePlan(
 			[
