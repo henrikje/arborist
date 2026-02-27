@@ -118,6 +118,15 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 					if (stdinNames.length > 0) repos = stdinNames;
 				}
 
+				if (repos.length > 0 && !options.allRepos) {
+					const allRepos = listRepos(ctx.reposDir);
+					const unknown = repos.filter((r) => !allRepos.includes(r));
+					if (unknown.length > 0) {
+						error(`Unknown repos: ${unknown.join(", ")}. Not found in .arb/repos/.`);
+						throw new ArbError(`Unknown repos: ${unknown.join(", ")}. Not found in .arb/repos/.`);
+					}
+				}
+
 				if (repos.length === 0 && process.stdin.isTTY) {
 					try {
 						repos = await selectReposInteractive(ctx.reposDir);
