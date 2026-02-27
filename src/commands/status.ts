@@ -153,8 +153,9 @@ async function runStatus(
 
 	if (canPhase) {
 		const repoNamesForFetch = fetchDirs.map((d) => basename(d));
-		const remotesMap = await resolveRemotesMap(repoNamesForFetch, ctx.reposDir);
-		const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, { silent: true });
+		const fetchPromise = resolveRemotesMap(repoNamesForFetch, ctx.reposDir).then((remotesMap) =>
+			parallelFetch(fetchDirs, undefined, remotesMap, { silent: true }),
+		);
 		const state: { fetchResults?: Map<string, FetchResult> } = {};
 
 		await runPhasedRender([
