@@ -6,7 +6,7 @@ import {
 	parseGitStatusFiles,
 } from "./git";
 import type { StatusJsonRepo } from "./json-types";
-import { dim } from "./output";
+import { dim, yellow } from "./output";
 import { type RepoStatus, baseRef } from "./status";
 
 export const SECTION_INDENT = "      ";
@@ -244,6 +244,14 @@ export function formatVerboseCommits(
 		displayLabel = `${label.replace(/:$/, "")} (${files} ${files === 1 ? "file" : "files"} changed, +${insertions}, -${deletions}):`;
 	}
 	let out = `\n${SECTION_INDENT}${dim(displayLabel)}\n`;
+	// Build a lookup for conflict commits
+	const conflictMap = new Map<string, string[]>();
+	if (options?.conflictCommits) {
+		for (const cc of options.conflictCommits) {
+			conflictMap.set(cc.shortHash, cc.files);
+		}
+	}
+
 	for (const c of commits) {
 		let tag = "";
 		if (c.rebaseOf) {
@@ -253,7 +261,14 @@ export function formatVerboseCommits(
 			const last = c.squashOf[c.squashOf.length - 1] ?? "";
 			tag = dim(` (squash of ${first}..${last})`);
 		}
+		const conflictFiles = conflictMap.get(c.shortHash);
+		if (conflictFiles) {
+			tag += yellow("  (conflict)");
+		}
 		out += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
+		if (conflictFiles && conflictFiles.length > 0) {
+			out += `${ITEM_INDENT}    ${dim(conflictFiles.join(", "))}\n`;
+		}
 	}
 	if (totalCommits > commits.length) {
 		out += `${ITEM_INDENT}${dim(`... and ${totalCommits - commits.length} more`)}\n`;

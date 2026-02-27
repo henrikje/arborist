@@ -12,6 +12,7 @@ import {
 	git,
 	matchDivergedCommits,
 	predictMergeConflict,
+	predictRebaseConflictCommits,
 	predictStashPopConflict,
 	remoteBranchExists,
 } from "./git";
@@ -55,6 +56,7 @@ export interface RepoAssessment {
 	outgoingCommits?: { shortHash: string; subject: string }[];
 	totalOutgoingCommits?: number;
 	diffStats?: { files: number; insertions: number; deletions: number };
+	conflictCommits?: { shortHash: string; files: string[] }[];
 }
 
 export async function integrate(
@@ -373,6 +375,7 @@ export function formatIntegratePlan(
 				const label = `Incoming from ${a.baseRemote}/${a.baseBranch}:`;
 				out += formatVerboseCommits(a.commits, a.totalCommits ?? a.commits.length, label, {
 					diffStats: a.diffStats,
+					conflictCommits: a.conflictCommits,
 				});
 			}
 		} else if (a.outcome === "up-to-date") {
@@ -405,6 +408,11 @@ async function predictIntegrateConflicts(assessments: RepoAssessment[]): Promise
 				if (!a.retargetFrom && a.ahead > 0 && a.behind > 0) {
 					const prediction = await predictMergeConflict(a.repoDir, ref);
 					a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
+					// Per-commit conflict detail for rebase mode
+					if (prediction?.hasConflict) {
+						const conflictCommits = await predictRebaseConflictCommits(a.repoDir, ref);
+						if (conflictCommits.length > 0) a.conflictCommits = conflictCommits;
+					}
 				} else if (!a.retargetFrom) {
 					a.conflictPrediction = "no-conflict";
 				}

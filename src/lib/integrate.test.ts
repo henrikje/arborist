@@ -773,4 +773,51 @@ describe("formatVerboseCommits", () => {
 		expect(out).toContain("Incoming from origin/main:");
 		expect(out).not.toContain("files changed");
 	});
+
+	test("annotates conflicting commits with (conflict) and file list", () => {
+		const out = formatVerboseCommits(
+			[
+				{ shortHash: "abc1234", subject: "feat: add auth" },
+				{ shortHash: "def5678", subject: "fix: typo" },
+				{ shortHash: "ghi9012", subject: "refactor: routes" },
+			],
+			3,
+			"Incoming from origin/main:",
+			{
+				conflictCommits: [
+					{ shortHash: "abc1234", files: ["src/auth.ts", "src/middleware.ts"] },
+					{ shortHash: "ghi9012", files: ["src/routes.ts"] },
+				],
+			},
+		);
+		expect(out).toContain("abc1234");
+		expect(out).toContain("(conflict)");
+		expect(out).toContain("src/auth.ts, src/middleware.ts");
+		expect(out).toContain("ghi9012");
+		expect(out).toContain("src/routes.ts");
+		// Non-conflicting commit should not have (conflict)
+		expect(out).toContain("def5678");
+	});
+
+	test("does not annotate commits when conflictCommits is empty", () => {
+		const out = formatVerboseCommits(
+			[{ shortHash: "abc1234", subject: "feat: something" }],
+			1,
+			"Incoming from origin/main:",
+			{ conflictCommits: [] },
+		);
+		expect(out).not.toContain("conflict");
+	});
+
+	test("conflict annotation coexists with rebaseOf tag", () => {
+		const out = formatVerboseCommits(
+			[{ shortHash: "abc1234", subject: "feat: something", rebaseOf: "xyz7890" }],
+			1,
+			"Incoming from origin/main:",
+			{ conflictCommits: [{ shortHash: "abc1234", files: ["file.ts"] }] },
+		);
+		expect(out).toContain("same as xyz7890");
+		expect(out).toContain("(conflict)");
+		expect(out).toContain("file.ts");
+	});
 });
