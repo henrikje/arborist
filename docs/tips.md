@@ -36,9 +36,9 @@ Most commands accept `--where` to filter by repo status. This is handy for surgi
 
 ```bash
 arb status --where dirty              # which repos have uncommitted changes?
-arb exec --where unpushed git stash   # stash only in repos with unpushed work
+arb exec --where unpushed git log --oneline @{u}..HEAD  # review outgoing commits
 arb open --where dirty code           # open only dirty repos in your editor
-arb exec --where dirty+unpushed git stash  # only repos that are both dirty AND unpushed
+arb push --where ^behind-base         # only push repos that are already rebased
 ```
 
 Use `,` for OR and `+` for AND — `+` binds tighter, so `dirty+unpushed,gone` means (dirty AND unpushed) OR gone. See [Scripting & automation](scripting-automation.md#filtering) for the full term list.

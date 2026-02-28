@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import { configGet } from "./config";
+import { ArbError } from "./errors";
 import {
 	type GitOperation,
 	branchExistsLocally,
@@ -14,7 +15,7 @@ import {
 	remoteBranchExists,
 } from "./git";
 import type { GitCache } from "./git-cache";
-import { yellow } from "./output";
+import { error, yellow } from "./output";
 import type { RepoRemotes } from "./remotes";
 import { workspaceRepoDirs } from "./repos";
 import { latestCommitDate } from "./time";
@@ -264,6 +265,22 @@ export function validateWhere(where: string): string | null {
 		return `Unknown filter ${invalid.length === 1 ? "term" : "terms"}: ${invalid.join(", ")}. Valid terms: ${VALID_TERMS.join(", ")} (prefix with ^ to negate)`;
 	}
 	return null;
+}
+
+export function resolveWhereFilter(options: { dirty?: boolean; where?: string }): string | undefined {
+	if (options.dirty && options.where) {
+		error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
+		throw new ArbError("Cannot combine --dirty with --where. Use --where dirty,... instead.");
+	}
+	const where = options.dirty ? "dirty" : options.where;
+	if (where) {
+		const err = validateWhere(where);
+		if (err) {
+			error(err);
+			throw new ArbError(err);
+		}
+	}
+	return where;
 }
 
 export function repoMatchesWhere(flags: RepoFlags, where: string): boolean {

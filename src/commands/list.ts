@@ -16,7 +16,7 @@ import {
 	type WorkspaceSummary,
 	formatStatusCounts,
 	gatherWorkspaceSummary,
-	validateWhere,
+	resolveWhereFilter,
 	workspaceMatchesWhere,
 } from "../lib/status";
 import { type Column, renderTable } from "../lib/table";
@@ -98,22 +98,10 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					throw new ArbError("Cannot combine --quiet with --json.");
 				}
 
-				// Resolve --dirty as shorthand for --where dirty
-				if (options.dirty && options.where) {
-					error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-					throw new ArbError("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-				}
-				const whereFilter = options.dirty ? "dirty" : options.where;
-				if (whereFilter) {
-					const validationErr = validateWhere(whereFilter);
-					if (validationErr) {
-						error(validationErr);
-						throw new ArbError(validationErr);
-					}
-					if (options.status === false) {
-						error("Cannot combine --no-status with --where. --where requires status gathering.");
-						throw new ArbError("Cannot combine --no-status with --where. --where requires status gathering.");
-					}
+				const whereFilter = resolveWhereFilter(options);
+				if (whereFilter && options.status === false) {
+					error("Cannot combine --no-status with --where. --where requires status gathering.");
+					throw new ArbError("Cannot combine --no-status with --where. --where requires status gathering.");
 				}
 
 				const workspaces = listWorkspaces(ctx.arbRootDir);

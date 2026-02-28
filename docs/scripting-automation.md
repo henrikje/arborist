@@ -46,7 +46,7 @@ arb delete --all-safe --where gone          # batch-remove workspaces whose bran
 
 For workspace-level commands (`list`, `delete`), AND applies per-repo: a workspace matches `dirty+unpushed` only if a _single_ repo is both dirty and unpushed, not if one repo is dirty and a different repo is unpushed.
 
-`--where` is supported on `status`, `exec`, `open`, `diff`, `log`, `list`, and `delete`. On `exec`, `open`, `diff`, and `log`, the shorthand `--dirty` (`-d`) is equivalent to `--where dirty`.
+`--where` is supported on `status`, `exec`, `open`, `diff`, `log`, `list`, `delete`, `push`, `pull`, `rebase`, and `merge`. On `status`, `exec`, `open`, `diff`, `log`, and `list`, the shorthand `--dirty` (`-d`) is equivalent to `--where dirty`.
 
 The full list of filter terms:
 
@@ -90,10 +90,17 @@ arb status -q --where dirty          # only dirty repo names
 Commands that accept `[repos...]` or `[names...]` also read names from stdin when piped. Positional args take precedence over stdin, and stdin takes precedence over the default (all).
 
 ```bash
-arb status -q --where dirty | arb push -y        # push only dirty repos
+arb status -q --where dirty | arb exec git stash  # stash only dirty repos (exec doesn't read stdin)
 arb status -q --where unpushed | arb diff         # diff only unpushed repos
 arb list -q --where gone | arb delete -y          # delete gone workspaces
 arb status -q | grep -v legacy | arb rebase -y    # rebase all except "legacy"
+```
+
+Since `push`, `pull`, `rebase`, and `merge` now support `--where` natively, prefer the direct flag over piping:
+
+```bash
+arb push --where ^behind-base -y      # only push repos that are already rebased
+arb rebase --where ^diverged -y       # skip diverged repos, rebase the easy ones
 ```
 
 Stdin-accepting commands: `create`, `attach`, `detach`, `status`, `diff`, `log`, `push`, `pull`, `rebase`, `merge`, `delete`.

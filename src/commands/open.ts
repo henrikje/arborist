@@ -5,7 +5,7 @@ import { ArbError } from "../lib/errors";
 import { GitCache } from "../lib/git-cache";
 import { error, info } from "../lib/output";
 import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
-import { computeFlags, gatherRepoStatus, repoMatchesWhere, validateWhere } from "../lib/status";
+import { computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
@@ -31,20 +31,7 @@ export function registerOpenCommand(program: Command, getCtx: () => ArbContext):
 				validateRepoNames(wsDir, options.repo);
 			}
 
-			// Resolve --dirty as shorthand for --where dirty
-			if (options.dirty && options.where) {
-				error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-				throw new ArbError("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-			}
-			const where = options.dirty ? "dirty" : options.where;
-
-			if (where) {
-				const err = validateWhere(where);
-				if (err) {
-					error(err);
-					throw new ArbError(err);
-				}
-			}
+			const where = resolveWhereFilter(options);
 
 			// Check if command exists in PATH
 			const which = Bun.spawnSync(["which", command], { cwd: wsDir });

@@ -24,7 +24,7 @@ import { dim, dryRunNotice, error, finishSummary, info, inlineResult, inlineStar
 import { formatSkipLine, formatStashHint, formatUpToDateLine } from "./plan-format";
 import { resolveRepoSelection, workspaceRepoDirs } from "./repos";
 import type { SkipFlag } from "./skip-flags";
-import { type RepoStatus, computeFlags, gatherRepoStatus } from "./status";
+import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "./status";
 import { VERBOSE_COMMIT_LIMIT, formatVerboseCommits } from "./status-verbose";
 import type { ArbContext } from "./types";
 import { workspaceBranch } from "./workspace-branch";
@@ -74,6 +74,7 @@ export async function integrate(
 		autostash?: boolean;
 		verbose?: boolean;
 		graph?: boolean;
+		where?: string;
 	},
 	repoArgs: string[],
 ): Promise<void> {
@@ -99,6 +100,7 @@ export async function integrate(
 	}
 
 	const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
+	const where = resolveWhereFilter(options);
 
 	// Resolve remotes for all repos
 	const cache = new GitCache();
@@ -113,13 +115,18 @@ export async function integrate(
 
 	const autostash = options.autostash === true;
 	const assess = async (fetchFailed: string[]) => {
-		return Promise.all(
+		const assessments = await Promise.all(
 			selectedRepos.map(async (repo) => {
 				const repoDir = `${wsDir}/${repo}`;
 				const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo), cache);
+				if (where) {
+					const flags = computeFlags(status, branch);
+					if (!repoMatchesWhere(flags, where)) return null;
+				}
 				return assessRepo(status, repoDir, branch, fetchFailed, retarget, retargetExplicit, autostash, cache);
 			}),
 		);
+		return assessments.filter((a): a is RepoAssessment => a !== null);
 	};
 
 	const postAssess = async (nextAssessments: RepoAssessment[]) => {

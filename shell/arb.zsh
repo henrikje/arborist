@@ -166,10 +166,9 @@ _arb() {
                         '*:workspace:($ws_names)' \
                         '(-f --force)'{-f,--force}'[Force removal]' \
                         '(-r --delete-remote)'{-r,--delete-remote}'[Delete remote branches]' \
-                        '(-d --dirty -w --where)'{-d,--dirty}'[Only target dirty workspaces]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-a --all-safe)'{-a,--all-safe}'[Remove all safe workspaces]' \
-                        '(-d --dirty -w --where)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
+                        '(-w --where)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]'
                     ;;
                 clean)
@@ -360,6 +359,7 @@ _arb() {
                         '(--merge)--rebase[Pull with rebase]' \
                         '(--rebase)--merge[Pull with merge]' \
                         '--autostash[Stash uncommitted changes before pull, re-apply after]' \
+                        '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($repo_names)'
                     ;;
                 push)
@@ -370,6 +370,7 @@ _arb() {
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show outgoing commits in the plan]' \
+                        '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($repo_names)'
                     ;;
                 rebase)
@@ -382,6 +383,7 @@ _arb() {
                         '(-g --graph)'{-g,--graph}'[Show branch divergence graph in the plan]' \
                         '--retarget=-[Retarget repos whose base has been merged; optionally specify branch]::branch:' \
                         '--autostash[Stash uncommitted changes before rebase, re-apply after]' \
+                        '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($repo_names)'
                     ;;
                 merge)
@@ -393,6 +395,7 @@ _arb() {
                         '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \
                         '(-g --graph)'{-g,--graph}'[Show branch divergence graph in the plan]' \
                         '--autostash[Stash uncommitted changes before merge, re-apply after]' \
+                        '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($repo_names)'
                     ;;
                 rebranch)

@@ -108,6 +108,17 @@ arb push --force      # after rebasing (prompts for confirmation)
 
 Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
 
+All sync commands support `--where` (`-w`) to filter which repos are included in the plan:
+
+```bash
+arb push --where ^behind-base         # only push repos that are already rebased
+arb push --where ^behind-base+^diverged  # only push repos that are fully ready
+arb rebase --where ^diverged          # skip diverged repos, rebase the easy ones
+arb merge --where ^diverged           # same for merge — avoid likely conflicts
+```
+
+Positional repo names and `--where` compose with AND logic — `arb push repo-a --where ^behind-base` only pushes repo-a if it is also up to date with the base branch.
+
 All commands show a plan before proceeding. Add `--verbose` (`-v`) to see the actual commits involved — useful when you want to know *what* you're rebasing onto, not just how many commits.
 
 ## Run commands across repos
@@ -117,7 +128,7 @@ arb exec git log --oneline -5
 arb exec npm install
 arb exec --repo api --repo web -- npm test   # only in specific repos
 arb exec --dirty git diff -d                 # --dirty is arb's, -d goes to git diff
-arb exec --where unpushed git stash          # only repos with unpushed commits
+arb exec --where behind-base git status      # check working trees before rebase
 ```
 
 Runs the given command in each repo sequentially. It supports running interactive commands. Each execution of the command uses the corresponding repo directory as working directory. Use `--dirty` (`-d`) to limit to repos with uncommitted changes, or `--where` (`-w`) for any status filter. Arb flags come before the command — everything after the command name passes through verbatim. See `arb exec --help` for all options.

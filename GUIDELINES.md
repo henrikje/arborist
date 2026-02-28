@@ -97,6 +97,14 @@ Colors, progress indicators, and interactive prompts only appear when stderr is 
 
 When repos are the command's primary target, they are positional arguments (`arb push [repos...]`). When the positional is consumed by another argument, repos become `--repo <name>` (repeatable). Examples: `arb exec <command...>` (positional consumed by command), `arb template diff [file] --repo <name>`.
 
+### Status-based filtering: `--where` and `--dirty`
+
+`--where` (`-w`) filters repos by `RepoFlags`. Supported on every command that gathers workspace status: `status`, `diff`, `log`, `exec`, `open`, `list`, `delete`, `push`, `pull`, `rebase`, `merge`. Commands that don't gather status (e.g. `attach`, `create`, `rebranch`) do not get `--where`.
+
+`--dirty` (`-d`) is a shorthand for `--where dirty`, mutually exclusive with `--where`. Only offered where "dirty" is a natural filter: `status`, `diff`, `log`, `exec`, `open`, `list`. Omitted from sync commands and `delete`.
+
+All commands use `resolveWhereFilter()` from `status.ts` for validation. Follow the existing pattern when adding `--where` to a new command.
+
 ### Quiet output and stdin piping
 
 `--quiet` / `-q` outputs one primary identifier per line to stdout — no headers, no ANSI, no trailing whitespace. Supported on `list`, `status`, `repo list`. Conflicts with `--json` and `--verbose`.

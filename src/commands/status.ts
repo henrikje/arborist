@@ -18,7 +18,7 @@ import {
 	computeSummaryAggregates,
 	gatherWorkspaceSummary,
 	repoMatchesWhere,
-	validateWhere,
+	resolveWhereFilter,
 } from "../lib/status";
 import { formatVerboseDetail, gatherVerboseDetail, toJsonVerbose } from "../lib/status-verbose";
 import { readNamesFromStdin } from "../lib/stdin";
@@ -102,21 +102,7 @@ async function runStatus(
 	const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
 	const cache = new GitCache();
 
-	// Resolve --dirty as shorthand for --where dirty
-	if (options.dirty && options.where) {
-		error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-		throw new ArbError("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-	}
-	const where = options.dirty ? "dirty" : options.where;
-
-	// Validate --where terms
-	if (where) {
-		const err = validateWhere(where);
-		if (err) {
-			error(err);
-			throw new ArbError(err);
-		}
-	}
+	const where = resolveWhereFilter(options);
 
 	// Conflict checks
 	if (options.quiet && options.json) {

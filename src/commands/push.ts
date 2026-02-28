@@ -10,7 +10,7 @@ import { formatSkipLine, formatUpToDateLine } from "../lib/plan-format";
 import type { RepoRemotes } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import type { SkipFlag } from "../lib/skip-flags";
-import { type RepoStatus, gatherRepoStatus } from "../lib/status";
+import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
 import { VERBOSE_COMMIT_LIMIT, formatVerboseCommits } from "../lib/status-verbose";
 import { readNamesFromStdin } from "../lib/stdin";
 import type { ArbContext } from "../lib/types";
@@ -44,18 +44,27 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 		.option("-y, --yes", "Skip confirmation prompt")
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.option("-v, --verbose", "Show outgoing commits in the plan")
+		.option("-w, --where <filter>", "Only push repos matching status filter (comma = OR, + = AND, ^ = negate)")
 		.summary("Push the feature branch to the share remote")
 		.description(
-			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos whose branches have been merged into the base branch. If a remote branch was deleted after merge, use --force to recreate it. Use --force after rebase or amend to force push with lease. Use --verbose to show the outgoing commits for each repo in the plan. Fetches before push by default; use -N/--no-fetch to skip fetching when refs are known to be fresh.\n\nSee 'arb help remotes' for remote role resolution.",
+			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos whose branches have been merged into the base branch. If a remote branch was deleted after merge, use --force to recreate it. Use --force after rebase or amend to force push with lease. Use --verbose to show the outgoing commits for each repo in the plan. Fetches before push by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
 		)
 		.action(
 			async (
 				repoArgs: string[],
-				options: { force?: boolean; fetch?: boolean; yes?: boolean; dryRun?: boolean; verbose?: boolean },
+				options: {
+					force?: boolean;
+					fetch?: boolean;
+					yes?: boolean;
+					dryRun?: boolean;
+					verbose?: boolean;
+					where?: string;
+				},
 			) => {
 				const ctx = getCtx();
 				const { wsDir, workspace } = requireWorkspace(ctx);
 				const branch = await requireBranch(wsDir, workspace);
+				const where = resolveWhereFilter(options);
 
 				let repoNames = repoArgs;
 				if (repoNames.length === 0) {
@@ -78,11 +87,16 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 						selectedRepos.map(async (repo) => {
 							const repoDir = `${wsDir}/${repo}`;
 							const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo), cache);
+							if (where) {
+								const flags = computeFlags(status, branch);
+								if (!repoMatchesWhere(flags, where)) return null;
+							}
 							const headSha = await getShortHead(repoDir);
 							return assessPushRepo(status, repoDir, branch, headSha, { force: options.force });
 						}),
 					);
-					for (const a of assessments) {
+					const filtered = assessments.filter((a): a is PushAssessment => a !== null);
+					for (const a of filtered) {
 						if (a.outcome === "will-force-push" && !options.force) {
 							a.outcome = "skip";
 							const rebasedHint = a.rebased > 0 ? `, ${a.rebased} rebased` : "";
@@ -90,7 +104,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 							a.skipFlag = "diverged";
 						}
 					}
-					return assessments;
+					return filtered;
 				};
 
 				const postAssess = options.verbose

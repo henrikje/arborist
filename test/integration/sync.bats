@@ -571,3 +571,116 @@ assert r['base']['mergedIntoBase'] == 'squash', f'expected squash, got {r[\"base
     [[ "$output" != *"Outgoing to"* ]]
     [[ "$output" != *"feat: should not appear"* ]]
 }
+
+# ── --where filtering ────────────────────────────────────────────
+
+@test "arb push --where filters repos from the plan" {
+    arb create my-feature repo-a repo-b
+    # Make repo-a dirty (uncommitted changes)
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add dirty.txt >/dev/null 2>&1
+    # Make repo-b have a commit to push (unpushed)
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-b/feature.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-b" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" commit -m "feature" >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    # --where unpushed should only show repo-b (which has a commit), not repo-a (only dirty)
+    run arb push --where unpushed --dry-run --no-fetch
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-b"* ]]
+    [[ "$output" != *"repo-a"* ]]
+}
+
+@test "arb push --where with invalid term errors" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb push --where bogus
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Unknown filter"* ]]
+    [[ "$output" == *"bogus"* ]]
+}
+
+@test "arb pull --where filters repos from the plan" {
+    arb create my-feature repo-a repo-b
+    # Push both branches so they're tracked
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" push -u origin my-feature >/dev/null 2>&1
+
+    # Push a remote commit to repo-a only
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone-a" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone-a" && git checkout my-feature && echo "remote" > r.txt && git add r.txt && git commit -m "remote" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    # --where behind-share should only show repo-a (which has something to pull)
+    run arb pull --where behind-share --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb rebase --where filters repos from the plan" {
+    arb create my-feature repo-a repo-b
+
+    # Push an upstream commit to repo-a's main branch
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone-a" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    # Fetch first so refs are fresh
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" fetch >/dev/null 2>&1
+
+    # --where behind-base should only show repo-a (which is behind main)
+    run arb rebase --where behind-base --dry-run --no-fetch
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb merge --where filters repos from the plan" {
+    arb create my-feature repo-a repo-b
+
+    # Push an upstream commit to repo-a's main branch
+    git clone "$TEST_DIR/origin/repo-a.git" "$TEST_DIR/tmp-clone-a" >/dev/null 2>&1
+    (cd "$TEST_DIR/tmp-clone-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream" && git push) >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" fetch >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" fetch >/dev/null 2>&1
+
+    # --where behind-base should only show repo-a
+    run arb merge --where behind-base --dry-run --no-fetch
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}
+
+@test "arb rebase --where with invalid term errors" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb rebase --where invalid-term
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Unknown filter"* ]]
+}
+
+@test "arb push positional repos + --where compose with AND logic" {
+    arb create my-feature repo-a repo-b
+    # Make both repos have commits to push
+    echo "a" > "$TEST_DIR/project/my-feature/repo-a/a.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add a.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "commit a" >/dev/null 2>&1
+    echo "b" > "$TEST_DIR/project/my-feature/repo-b/b.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-b" add b.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-b" commit -m "commit b" >/dev/null 2>&1
+    # Also make repo-a dirty
+    echo "dirty" > "$TEST_DIR/project/my-feature/repo-a/dirty.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add dirty.txt >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    # positional selects repo-a only, --where dirty narrows further — repo-a matches both
+    run arb push repo-a --where dirty --dry-run --no-fetch
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"repo-b"* ]]
+}

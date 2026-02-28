@@ -600,23 +600,6 @@ load test_helper/common-setup
     [ ! -d "$TEST_DIR/project/ws-behind" ]
 }
 
-@test "arb delete --dirty filters to dirty workspaces" {
-    arb create ws-clean repo-a
-    arb create ws-dirty repo-a
-    echo "uncommitted" > "$TEST_DIR/project/ws-dirty/repo-a/dirty.txt"
-    run arb delete ws-clean ws-dirty --dirty --yes --force
-    [ "$status" -eq 0 ]
-    [ -d "$TEST_DIR/project/ws-clean" ]
-    [ ! -d "$TEST_DIR/project/ws-dirty" ]
-}
-
-@test "arb delete --dirty --where conflicts" {
-    arb create ws-one repo-a
-    run arb delete ws-one --dirty --where unpushed
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"Cannot combine --dirty with --where"* ]]
-}
-
 @test "arb delete --where alone selects matching workspaces" {
     arb create ws-gone repo-a
     arb create ws-clean repo-a

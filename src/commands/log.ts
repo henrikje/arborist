@@ -15,7 +15,7 @@ import {
 	computeFlags,
 	gatherWorkspaceSummary,
 	repoMatchesWhere,
-	validateWhere,
+	resolveWhereFilter,
 } from "../lib/status";
 import { readNamesFromStdin } from "../lib/stdin";
 import { isTTY } from "../lib/tty";
@@ -107,20 +107,7 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 					throw new ArbError("--max-count must be a positive integer");
 				}
 
-				// Resolve --dirty as shorthand for --where dirty
-				if (options.dirty && options.where) {
-					error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-					throw new ArbError("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-				}
-				const where = options.dirty ? "dirty" : options.where;
-
-				if (where) {
-					const err = validateWhere(where);
-					if (err) {
-						error(err);
-						throw new ArbError(err);
-					}
-				}
+				const where = resolveWhereFilter(options);
 
 				const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
 				const selectedSet = new Set(selectedRepos);

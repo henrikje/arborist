@@ -15,7 +15,7 @@ import {
 	formatStatusCounts,
 	gatherWorkspaceSummary,
 	isWorkspaceSafe,
-	validateWhere,
+	resolveWhereFilter,
 	workspaceMatchesWhere,
 	wouldLoseWork,
 } from "../lib/status";
@@ -256,7 +256,6 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 		.option("-y, --yes", "Skip confirmation prompt")
 		.option("-f, --force", "Force deletion of at-risk workspaces")
 		.option("-r, --delete-remote", "Delete remote branches")
-		.option("-d, --dirty", "Only target dirty workspaces (shorthand for --where dirty)")
 		.option(
 			"-a, --all-safe",
 			"Delete all safe workspaces (no uncommitted changes, unpushed commits, or branch drift; behind base is fine)",
@@ -265,7 +264,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.summary("Delete one or more workspaces")
 		.description(
-			"Delete one or more workspaces and their repos. Shows the status of each repo (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-delete all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Use --dirty / -d to target only dirty workspaces, or --where <filter> to filter by status flags. When used without workspace names, --where (or --dirty) selects all matching workspaces (e.g. arb delete --where gone deletes all gone workspaces). When combined with names, --where narrows the selection further (AND logic). Combine with --all-safe to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). See 'arb help where' for filter syntax.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.\n\nSee 'arb help stacked' for stacked workspace deletion.",
+			"Delete one or more workspaces and their repos. Shows the status of each repo (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-delete all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Use --where <filter> to filter by status flags. When used without workspace names, --where selects all matching workspaces (e.g. arb delete --where gone deletes all gone workspaces). When combined with names, --where narrows the selection further (AND logic). Combine with --all-safe to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). See 'arb help where' for filter syntax.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.\n\nSee 'arb help stacked' for stacked workspace deletion.",
 		)
 		.action(
 			async (
@@ -274,7 +273,6 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 					yes?: boolean;
 					force?: boolean;
 					deleteRemote?: boolean;
-					dirty?: boolean;
 					allSafe?: boolean;
 					where?: string;
 					dryRun?: boolean;
@@ -285,19 +283,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 				const forceAtRisk = options.force ?? false;
 				const deleteRemote = options.deleteRemote ?? false;
 
-				// Resolve --dirty as shorthand for --where dirty
-				if (options.dirty && options.where) {
-					error("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-					throw new ArbError("Cannot combine --dirty with --where. Use --where dirty,... instead.");
-				}
-				const whereFilter = options.dirty ? "dirty" : options.where;
-				if (whereFilter) {
-					const err = validateWhere(whereFilter);
-					if (err) {
-						error(err);
-						throw new ArbError(err);
-					}
-				}
+				const whereFilter = resolveWhereFilter(options);
 
 				if (options.allSafe) {
 					if (nameArgs.length > 0) {
