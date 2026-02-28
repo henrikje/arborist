@@ -4,10 +4,10 @@ import type { Command } from "commander";
 import { debugGit, isDebug } from "../lib/debug";
 import { ArbError } from "../lib/errors";
 import { git } from "../lib/git";
+import { GitCache } from "../lib/git-cache";
 import type { RepoListJsonEntry } from "../lib/json-types";
 import { confirmOrExit } from "../lib/mutation-flow";
 import { dim, dryRunNotice, error, info, inlineResult, inlineStart, plural, success, yellow } from "../lib/output";
-import { getRemoteUrl, resolveRemotes } from "../lib/remotes";
 import { findRepoUsage, listRepos, selectInteractive } from "../lib/repos";
 import { type Column, renderTable } from "../lib/table";
 import type { ArbContext } from "../lib/types";
@@ -121,36 +121,36 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 				return;
 			}
 
-			const entries: RepoListJsonEntry[] = [];
-			for (const r of repos) {
-				const repoDir = `${ctx.reposDir}/${r}`;
-				let shareName = "";
-				let shareUrl = "";
-				let baseName = "";
-				let baseUrl = "";
-				try {
-					const remotes = await resolveRemotes(repoDir);
-					shareName = remotes.share;
-					baseName = remotes.base;
-					const [sUrl, bUrl] = await Promise.all([
-						getRemoteUrl(repoDir, remotes.share),
-						getRemoteUrl(repoDir, remotes.base),
-					]);
-					shareUrl = sUrl ?? "";
-					baseUrl = bUrl ?? "";
-				} catch {
-					// Ambiguous remotes — fall back to origin URL with warning
-					const url = await getRemoteUrl(repoDir, "origin");
-					shareUrl = url ?? "";
-					baseUrl = url ?? "";
-				}
-				entries.push({
-					name: r,
-					url: shareUrl,
-					share: { name: shareName, url: shareUrl },
-					base: { name: baseName, url: baseUrl },
-				});
-			}
+			const cache = new GitCache();
+			const entries: RepoListJsonEntry[] = await Promise.all(
+				repos.map(async (r) => {
+					const repoDir = `${ctx.reposDir}/${r}`;
+					let shareName = "";
+					let shareUrl = "";
+					let baseName = "";
+					let baseUrl = "";
+					try {
+						const remotes = await cache.resolveRemotes(repoDir);
+						shareName = remotes.share;
+						baseName = remotes.base;
+						const sUrl = await cache.getRemoteUrl(repoDir, remotes.share);
+						shareUrl = sUrl ?? "";
+						baseUrl =
+							remotes.base === remotes.share ? shareUrl : ((await cache.getRemoteUrl(repoDir, remotes.base)) ?? "");
+					} catch {
+						// Ambiguous remotes — fall back to origin URL with warning
+						const url = await cache.getRemoteUrl(repoDir, "origin");
+						shareUrl = url ?? "";
+						baseUrl = url ?? "";
+					}
+					return {
+						name: r,
+						url: shareUrl,
+						share: { name: shareName, url: shareUrl },
+						base: { name: baseName, url: baseUrl },
+					};
+				}),
+			);
 
 			// JSON output
 			if (options.json) {
@@ -278,10 +278,11 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 			}
 
 			// Display plan
+			const removeCache = new GitCache();
 			process.stderr.write("\n");
 			for (const name of repos) {
 				const repoDir = `${ctx.reposDir}/${name}`;
-				const url = await getRemoteUrl(repoDir, "origin");
+				const url = await removeCache.getRemoteUrl(repoDir, "origin");
 				info(`  ${name}${url ? `  ${dim(url)}` : ""}`);
 			}
 			process.stderr.write("\n");

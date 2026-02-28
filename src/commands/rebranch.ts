@@ -3,6 +3,7 @@ import type { Command } from "commander";
 import { configGet, writeConfig } from "../lib/config";
 import { ArbError } from "../lib/errors";
 import { branchExistsLocally, detectOperation, git, remoteBranchExists, validateBranchName } from "../lib/git";
+import { GitCache } from "../lib/git-cache";
 import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
 import {
 	dim,
@@ -18,7 +19,6 @@ import {
 	warn,
 	yellow,
 } from "../lib/output";
-import { resolveRemotesMap } from "../lib/remotes";
 import { workspaceRepoDirs } from "../lib/repos";
 import { type Column, renderTable } from "../lib/table";
 import type { ArbContext } from "../lib/types";
@@ -296,7 +296,8 @@ async function runRename(
 	}
 
 	// Resolve remotes for all repos (canonical repos share remote config with worktrees)
-	const fullRemotesMap = await resolveRemotesMap(repos, ctx.reposDir);
+	const cache = new GitCache();
+	const fullRemotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
 
 	const fetchDirs = workspaceRepoDirs(wsDir);
 
@@ -322,6 +323,7 @@ async function runRename(
 		assess,
 		formatPlan: (nextAssessments) =>
 			formatPlan(nextAssessments, oldBranch, newBranch, options.deleteRemoteOld ?? false),
+		onPostFetch: () => cache.invalidateAfterFetch(),
 	});
 
 	const willRename = assessments.filter((a) => a.outcome === "will-rename");

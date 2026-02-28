@@ -2,11 +2,11 @@ import { basename, resolve } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
 import { predictMergeConflict } from "../lib/git";
+import { GitCache } from "../lib/git-cache";
 import type { StatusJsonOutput } from "../lib/json-types";
 import { bold, clearScanProgress, dim, error, scanProgress, stderr, yellow } from "../lib/output";
 import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { runPhasedRender } from "../lib/phased-render";
-import { resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import {
 	type RepoStatus,
@@ -88,6 +88,7 @@ async function runStatus(
 	},
 ): Promise<void> {
 	const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
+	const cache = new GitCache();
 
 	// Resolve --dirty as shorthand for --where dirty
 	if (options.dirty && options.where) {
@@ -126,9 +127,14 @@ async function runStatus(
 
 	// Shared gather helper: scan + filter
 	const gatherFiltered = async (): Promise<WorkspaceSummary> => {
-		const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, (scanned, total) => {
-			scanProgress(scanned, total);
-		});
+		const summary = await gatherWorkspaceSummary(
+			wsDir,
+			ctx.reposDir,
+			(scanned, total) => {
+				scanProgress(scanned, total);
+			},
+			cache,
+		);
 		clearScanProgress();
 
 		let repos = summary.repos.filter((r) => selectedSet.has(r.name));
@@ -150,9 +156,9 @@ async function runStatus(
 
 	if (canPhase) {
 		const repoNamesForFetch = fetchDirs.map((d) => basename(d));
-		const fetchPromise = resolveRemotesMap(repoNamesForFetch, ctx.reposDir).then((remotesMap) =>
-			parallelFetch(fetchDirs, undefined, remotesMap, { silent: true }),
-		);
+		const fetchPromise = cache
+			.resolveRemotesMap(repoNamesForFetch, ctx.reposDir)
+			.then((remotesMap) => parallelFetch(fetchDirs, undefined, remotesMap, { silent: true }));
 		const state: { fetchResults?: Map<string, FetchResult> } = {};
 
 		await runPhasedRender([
@@ -166,6 +172,7 @@ async function runStatus(
 			{
 				render: async () => {
 					state.fetchResults = await fetchPromise;
+					cache.invalidateAfterFetch();
 					const data = await gatherFiltered();
 					return await renderStatusTable(data, wsDir, { verbose: options.verbose });
 				},
@@ -179,9 +186,10 @@ async function runStatus(
 	// Non-two-phase fetch (non-TTY / CI): warn and continue on failure
 	if (shouldFetch && fetchDirs.length > 0) {
 		const repos = fetchDirs.map((d) => basename(d));
-		const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
+		const remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
 		const results = await parallelFetch(fetchDirs, undefined, remotesMap);
 		reportFetchFailures(repos, results);
+		cache.invalidateAfterFetch();
 	}
 
 	const filteredSummary = await gatherFiltered();

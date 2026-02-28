@@ -2,11 +2,11 @@ import { existsSync } from "node:fs";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
+import { GitCache } from "../lib/git-cache";
 import type { ListJsonEntry } from "../lib/json-types";
 import { clearScanProgress, dim, error, info, scanProgress, stripAnsi, yellow } from "../lib/output";
 import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { runPhasedRender } from "../lib/phased-render";
-import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, listWorkspaces, workspaceRepoDirs } from "../lib/repos";
 import {
 	type WorkspaceSummary,
@@ -76,6 +76,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				json?: boolean;
 			}) => {
 				const ctx = getCtx();
+				const cache = new GitCache();
 
 				// Conflict checks
 				if (options.quiet && options.json) {
@@ -119,12 +120,12 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 				// ── Quiet output path ──
 				if (options.quiet) {
-					if (options.fetch) await blockingFetchAllRepos(ctx); // only if explicitly requested
+					if (options.fetch) await blockingFetchAllRepos(ctx, cache); // only if explicitly requested
 					if (whereFilter) {
 						const results = await Promise.all(
 							metadata.toScan.map(async (entry) => {
 								try {
-									const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir);
+									const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir, undefined, cache);
 									return { index: entry.index, summary };
 								} catch {
 									return { index: entry.index, summary: null };
@@ -153,7 +154,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 				// ── JSON output path ──
 				if (options.json) {
-					if (shouldFetch) await blockingFetchAllRepos(ctx);
+					if (shouldFetch) await blockingFetchAllRepos(ctx, cache);
 
 					const jsonEntries: ListJsonEntry[] = metadata.rows.map((row) => ({
 						workspace: row.name,
@@ -172,7 +173,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					const results = await Promise.all(
 						metadata.toScan.map(async (entry) => {
 							try {
-								const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir);
+								const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir, undefined, cache);
 								return { index: entry.index, summary };
 							} catch {
 								return { index: entry.index, summary: null };
@@ -213,7 +214,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				// ── Table output path ──
 
 				if (!showStatus) {
-					if (shouldFetch) await blockingFetchAllRepos(ctx);
+					if (shouldFetch) await blockingFetchAllRepos(ctx, cache);
 					process.stdout.write(formatListTable(metadata.rows, metadata.cols, false));
 					return;
 				}
@@ -225,7 +226,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					// 3-phase: placeholder → stale + fetching → fresh
 					const allRepoNames = listRepos(ctx.reposDir);
 					const fetchDirs = allRepoNames.map((r) => `${ctx.reposDir}/${r}`);
-					const remotesMap = await resolveRemotesMap(allRepoNames, ctx.reposDir);
+					const remotesMap = await cache.resolveRemotesMap(allRepoNames, ctx.reposDir);
 					const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, { silent: true });
 					const state: { fetchResults?: Map<string, FetchResult> } = {};
 
@@ -233,14 +234,15 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						{ render: () => formatListTable(metadata.rows, metadata.cols, true) },
 						{
 							render: async () => {
-								const statusRows = await gatherListStatus(metadata, ctx, whereFilter);
+								const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache);
 								return formatListTable(statusRows, metadata.cols, true) + fetchSuffix(fetchDirs.length);
 							},
 						},
 						{
 							render: async () => {
 								state.fetchResults = await fetchPromise;
-								const statusRows = await gatherListStatus(metadata, ctx, whereFilter);
+								cache.invalidateAfterFetch();
+								const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache);
 								return formatListTable(statusRows, metadata.cols, true);
 							},
 							write: (o) => process.stdout.write(o),
@@ -253,7 +255,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						{ render: () => formatListTable(metadata.rows, metadata.cols, true) },
 						{
 							render: async () => {
-								const statusRows = await gatherListStatus(metadata, ctx, whereFilter);
+								const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache);
 								return formatListTable(statusRows, metadata.cols, true);
 							},
 							write: (o) => process.stdout.write(o),
@@ -261,8 +263,8 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					]);
 				} else {
 					// Non-phased (non-TTY or nothing to scan)
-					if (shouldFetch) await blockingFetchAllRepos(ctx);
-					const statusRows = await gatherListStatus(metadata, ctx, whereFilter);
+					if (shouldFetch) await blockingFetchAllRepos(ctx, cache);
+					const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache);
 					process.stdout.write(formatListTable(statusRows, metadata.cols, true));
 				}
 			},
@@ -364,6 +366,7 @@ async function gatherListStatus(
 	metadata: ListMetadata,
 	ctx: ArbContext,
 	whereFilter: string | undefined,
+	cache: GitCache,
 ): Promise<ListRow[]> {
 	const rows = metadata.rows.map((r) => ({ ...r }));
 	const summaryByIndex = new Map<number, WorkspaceSummary>();
@@ -374,11 +377,16 @@ async function gatherListStatus(
 	const results = await Promise.all(
 		metadata.toScan.map(async (entry) => {
 			try {
-				const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir, (scanned, total) => {
-					if (scanned === 1) totalRepos += total;
-					scannedRepos++;
-					scanProgress(scannedRepos, totalRepos);
-				});
+				const summary = await gatherWorkspaceSummary(
+					entry.wsDir,
+					ctx.reposDir,
+					(scanned, total) => {
+						if (scanned === 1) totalRepos += total;
+						scannedRepos++;
+						scanProgress(scannedRepos, totalRepos);
+					},
+					cache,
+				);
 				return { index: entry.index, summary };
 			} catch {
 				return { index: entry.index, summary: null };
@@ -471,12 +479,13 @@ function formatListTable(displayRows: ListRow[], cols: ListColumnWidths, showSta
 
 // ── Helpers ──
 
-async function blockingFetchAllRepos(ctx: ArbContext): Promise<void> {
+async function blockingFetchAllRepos(ctx: ArbContext, cache: GitCache): Promise<void> {
 	const allRepoNames = listRepos(ctx.reposDir);
 	const fetchDirs = allRepoNames.map((r) => `${ctx.reposDir}/${r}`);
-	const remotesMap = await resolveRemotesMap(allRepoNames, ctx.reposDir);
+	const remotesMap = await cache.resolveRemotesMap(allRepoNames, ctx.reposDir);
 	const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
 	reportFetchFailures(allRepoNames, fetchResults);
+	cache.invalidateAfterFetch();
 }
 
 function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {

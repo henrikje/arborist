@@ -6,7 +6,6 @@ import {
 	detectBranchMerged,
 	detectOperation,
 	detectRebasedCommits,
-	getDefaultBranch,
 	getHeadCommitDate,
 	git,
 	isLinkedWorktree,
@@ -14,8 +13,9 @@ import {
 	parseGitStatus,
 	remoteBranchExists,
 } from "./git";
+import type { GitCache } from "./git-cache";
 import { yellow } from "./output";
-import { type RepoRemotes, getRemoteNames, resolveRemotes } from "./remotes";
+import type { RepoRemotes } from "./remotes";
 import { workspaceRepoDirs } from "./repos";
 import { latestCommitDate } from "./time";
 import { workspaceBranch } from "./workspace-branch";
@@ -356,7 +356,8 @@ export async function gatherRepoStatus(
 	repoDir: string,
 	reposDir: string,
 	configBase: string | null,
-	remotes?: RepoRemotes,
+	remotes: RepoRemotes | undefined,
+	cache: GitCache,
 ): Promise<RepoStatus> {
 	const repo = basename(repoDir);
 	const repoPath = `${reposDir}/${repo}`;
@@ -382,7 +383,7 @@ export async function gatherRepoStatus(
 
 	// Resolve remote names (upstream for base, share for tracking).
 	// When caller didn't pre-resolve, resolve here. Errors propagate.
-	const resolvedRemotes = remotes ?? (await resolveRemotes(repoPath));
+	const resolvedRemotes = remotes ?? (await cache.resolveRemotes(repoPath));
 	const baseRemote = resolvedRemotes.base;
 	const shareRemote = resolvedRemotes.share;
 
@@ -403,7 +404,7 @@ export async function gatherRepoStatus(
 			}
 		}
 		if (!defaultBranch && baseRemote) {
-			defaultBranch = await getDefaultBranch(repoPath, baseRemote);
+			defaultBranch = await cache.getDefaultBranch(repoPath, baseRemote);
 			if (configBase && defaultBranch) fellBack = true;
 		}
 
@@ -540,7 +541,7 @@ export async function gatherRepoStatus(
 	if (configBase && baseStatus !== null && baseRemote && !detached) {
 		if (baseStatus.ref === configBase) {
 			// Base branch exists on remote — use remote ref for detection
-			const trueDefault = await getDefaultBranch(repoPath, baseRemote);
+			const trueDefault = await cache.getDefaultBranch(repoPath, baseRemote);
 			if (trueDefault && trueDefault !== configBase) {
 				const configBaseRef = `${baseRemote}/${configBase}`;
 				const defaultRef = `${baseRemote}/${trueDefault}`;
@@ -570,7 +571,8 @@ export async function gatherRepoStatus(
 export async function gatherWorkspaceSummary(
 	wsDir: string,
 	reposDir: string,
-	onProgress?: (scanned: number, total: number) => void,
+	onProgress: ((scanned: number, total: number) => void) | undefined,
+	cache: GitCache,
 ): Promise<WorkspaceSummary> {
 	const workspace = basename(wsDir);
 	const wb = await workspaceBranch(wsDir);
@@ -584,11 +586,10 @@ export async function gatherWorkspaceSummary(
 			const repo = basename(repoDir);
 			const canonicalPath = `${reposDir}/${repo}`;
 
-			const remoteNames = await getRemoteNames(canonicalPath);
-			const remotes = await resolveRemotes(canonicalPath, remoteNames);
+			const remotes = await cache.resolveRemotes(canonicalPath);
 
 			const [status, commitDate] = await Promise.all([
-				gatherRepoStatus(repoDir, reposDir, configBase, remotes),
+				gatherRepoStatus(repoDir, reposDir, configBase, remotes, cache),
 				getHeadCommitDate(repoDir),
 			]);
 			scanned++;

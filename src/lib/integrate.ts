@@ -7,7 +7,6 @@ import {
 	branchExistsLocally,
 	detectBranchMerged,
 	getCommitsBetweenFull,
-	getDefaultBranch,
 	getDiffShortstat,
 	getMergeBase,
 	getShortHead,
@@ -18,11 +17,11 @@ import {
 	predictStashPopConflict,
 	remoteBranchExists,
 } from "./git";
+import { GitCache } from "./git-cache";
 import { formatBranchGraph } from "./integrate-graph";
 import { confirmOrExit, runPlanFlow } from "./mutation-flow";
 import { dim, dryRunNotice, error, finishSummary, info, inlineResult, inlineStart, plural, yellow } from "./output";
 import { formatSkipLine, formatStashHint, formatUpToDateLine } from "./plan-format";
-import { resolveRemotesMap } from "./remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "./repos";
 import type { SkipFlag } from "./skip-flags";
 import { type RepoStatus, computeFlags, gatherRepoStatus } from "./status";
@@ -102,7 +101,8 @@ export async function integrate(
 	const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
 
 	// Resolve remotes for all repos
-	const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
+	const cache = new GitCache();
+	const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
 
 	// Phase 2: fetch
 	const shouldFetch = options.fetch !== false;
@@ -116,8 +116,8 @@ export async function integrate(
 		return Promise.all(
 			selectedRepos.map(async (repo) => {
 				const repoDir = `${wsDir}/${repo}`;
-				const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
-				return assessRepo(status, repoDir, branch, fetchFailed, retarget, retargetExplicit, autostash);
+				const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo), cache);
+				return assessRepo(status, repoDir, branch, fetchFailed, retarget, retargetExplicit, autostash, cache);
 			}),
 		);
 	};
@@ -140,6 +140,7 @@ export async function integrate(
 		assess,
 		postAssess,
 		formatPlan: (nextAssessments) => formatIntegratePlan(nextAssessments, mode, branch, options.verbose, options.graph),
+		onPostFetch: () => cache.invalidateAfterFetch(),
 	});
 
 	// All-or-nothing check: when retarget is active, any non-local skipped repo blocks the entire retarget
@@ -269,7 +270,7 @@ export async function integrate(
 			// If retargeting to a non-default branch, set it as the new base
 			const firstRetarget = retargetAssessments[0];
 			const repoDefault = firstRetarget
-				? await getDefaultBranch(firstRetarget.repoDir, firstRetarget.baseRemote)
+				? await cache.getDefaultBranch(firstRetarget.repoDir, firstRetarget.baseRemote)
 				: null;
 			if (repoDefault && retargetTo !== repoDefault) {
 				writeConfig(configFile, wsBranch, retargetTo);
@@ -589,9 +590,10 @@ async function assessRepo(
 	repoDir: string,
 	branch: string,
 	fetchFailed: string[],
-	retarget = false,
-	retargetExplicit: string | null = null,
-	autostash = false,
+	retarget: boolean,
+	retargetExplicit: string | null,
+	autostash: boolean,
+	cache: GitCache,
 ): Promise<RepoAssessment> {
 	const headSha = await getShortHead(repoDir);
 	const classified = classifyRepo(status, repoDir, branch, fetchFailed, autostash, headSha);
@@ -678,7 +680,7 @@ async function assessRepo(
 		}
 
 		// Resolve the true default branch for retarget
-		const trueDefault = await getDefaultBranch(repoDir, baseRemote);
+		const trueDefault = await cache.getDefaultBranch(repoDir, baseRemote);
 		if (!trueDefault) {
 			return {
 				...classified,

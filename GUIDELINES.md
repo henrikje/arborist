@@ -215,6 +215,10 @@ The parallel pre-fetch also serves a performance purpose: `parallelFetch()` fetc
 
 All repos in a workspace must have valid, resolvable git remotes. `resolveRemotesMap()` resolves remote roles (base/share) for each repo and propagates errors — repos without remotes or with ambiguous remote configurations cause an error with actionable fix instructions rather than silently degrading.
 
+### Request-scoped GitCache for read-only git queries
+
+Commands must create a `GitCache` instance and pass it to status and template functions. The cache stores **Promises** so concurrent callers coalesce onto the same in-flight git process. After a fetch, call `cache.invalidateAfterFetch()`. The low-level functions `getRemoteNames`, `resolveRemotes`, `getRemoteUrl`, and `getDefaultBranch` should only be imported in `git-cache.ts` and test files — all other code should use `GitCache` methods. See `decisions/0044-request-scoped-git-cache.md`.
+
 ### Exception-based exit handling
 
 Commands and library code never call `process.exit()` directly. Instead, they throw `ArbError` for error exits (code 1) or `ArbAbort` for user cancellations (code 130). A single try/catch in `index.ts` maps these to exit codes. This makes command code testable in-process and gives one place to audit or extend exit behavior.

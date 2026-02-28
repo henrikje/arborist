@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
+import { GitCache } from "../lib/git-cache";
 import { error, plural, success } from "../lib/output";
 import { writeRepoHeaderSimple } from "../lib/repo-header";
 import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
@@ -69,10 +70,11 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 				const workspace = ctx.currentWorkspace ?? "";
 				const branch = await requireBranch(wsDir, workspace);
 				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
+				const cache = new GitCache();
 				await Promise.all(
 					repoDirs.map(async (repoDir) => {
 						const repo = basename(repoDir);
-						const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase);
+						const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, undefined, cache);
 						const flags = computeFlags(status, branch);
 						repoFilter.set(repo, repoMatchesWhere(flags, where));
 					}),

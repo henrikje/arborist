@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
+import { GitCache } from "../lib/git-cache";
 import { error, finishSummary, info, plural, warn, yellow } from "../lib/output";
 import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
 import { type Column, renderTable } from "../lib/table";
@@ -209,9 +210,10 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 			if (ctx.currentWorkspace) {
 				const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
 				if (existsSync(join(wsDir, ".arbws"))) {
+					const cache = new GitCache();
 					const repos = workspaceRepoDirs(wsDir).map((d) => basename(d));
-					diffs = await diffTemplates(ctx.arbRootDir, wsDir, repos);
-					unknowns = await checkAllTemplateVariables(ctx.arbRootDir, wsDir, repos);
+					diffs = await diffTemplates(ctx.arbRootDir, wsDir, repos, cache);
+					unknowns = await checkAllTemplateVariables(ctx.arbRootDir, wsDir, repos, cache);
 				}
 			}
 
@@ -288,8 +290,9 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 		.action(async (file: string | undefined, options: { repo?: string[]; workspace?: boolean }) => {
 			const ctx = getCtx();
 			const { wsDir } = requireWorkspace(ctx);
+			const cache = new GitCache();
 			const repos = workspaceRepoDirs(wsDir).map((d) => basename(d));
-			let diffs = await diffTemplates(ctx.arbRootDir, wsDir, repos);
+			let diffs = await diffTemplates(ctx.arbRootDir, wsDir, repos, cache);
 
 			// template diff only shows modified files (deleted files have no workspace copy to diff)
 			diffs = diffs.filter((d) => d.kind === "modified");
@@ -321,7 +324,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 			}
 
 			const reposDir = join(ctx.arbRootDir, ".arb", "repos");
-			const allRepos = await workspaceRepoList(wsDir, reposDir);
+			const allRepos = await workspaceRepoList(wsDir, reposDir, cache);
 
 			for (const diff of diffs) {
 				const tplPath = templateFilePath(ctx.arbRootDir, diff.scope, diff.relPath, diff.repo);
@@ -389,6 +392,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 		.action(async (file: string | undefined, options: { repo?: string[]; workspace?: boolean; force?: boolean }) => {
 			const ctx = getCtx();
 			const { wsDir } = requireWorkspace(ctx);
+			const cache = new GitCache();
 			const allRepos = workspaceRepoDirs(wsDir).map((d) => basename(d));
 
 			const hasRepoFlag = options.repo && options.repo.length > 0;
@@ -403,9 +407,9 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 			const reposToApply = hasRepoFlag && options.repo ? options.repo : !hasWsFlag ? allRepos : [];
 
 			if (options.force) {
-				await applyForceMode(ctx, wsDir, applyWorkspace, reposToApply, file);
+				await applyForceMode(ctx, wsDir, applyWorkspace, reposToApply, cache, file);
 			} else {
-				await applyDefaultMode(ctx, wsDir, applyWorkspace, reposToApply, file);
+				await applyDefaultMode(ctx, wsDir, applyWorkspace, reposToApply, cache, file);
 			}
 		});
 }
@@ -473,6 +477,7 @@ async function applyDefaultMode(
 	wsDir: string,
 	applyWorkspace: boolean,
 	repos: string[],
+	cache: GitCache,
 	fileFilter?: string,
 ): Promise<void> {
 	let totalSeeded = 0;
@@ -486,7 +491,7 @@ async function applyDefaultMode(
 	if (fileFilter) {
 		const entries = resolveTemplatesToApply(ctx, applyWorkspace, repos, fileFilter);
 		const reposDir = join(ctx.arbRootDir, ".arb", "repos");
-		const allRepos = await workspaceRepoList(wsDir, reposDir);
+		const allRepos = await workspaceRepoList(wsDir, reposDir, cache);
 		for (const entry of entries) {
 			if (entry.scope === "repo" && entry.repo && !existsSync(join(wsDir, entry.repo))) {
 				continue;
@@ -515,7 +520,7 @@ async function applyDefaultMode(
 		repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(ctx.arbRootDir);
 	} else {
 		if (applyWorkspace) {
-			const result = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir);
+			const result = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir, undefined, cache);
 			displayOverlayResults(result, "workspace", maxScope);
 			allConflicts.push(...result.conflicts);
 			allUnknowns.push(...result.unknownVariables);
@@ -524,7 +529,7 @@ async function applyDefaultMode(
 			totalSkipped += result.skipped.length + result.conflicts.length;
 		}
 		for (const repo of repos) {
-			const result = await applyRepoTemplates(ctx.arbRootDir, wsDir, [repo]);
+			const result = await applyRepoTemplates(ctx.arbRootDir, wsDir, [repo], undefined, cache);
 			displayOverlayResults(result, repo, maxScope);
 			allConflicts.push(...result.conflicts);
 			allUnknowns.push(...result.unknownVariables);
@@ -550,6 +555,7 @@ async function applyForceMode(
 	wsDir: string,
 	applyWorkspace: boolean,
 	repos: string[],
+	cache: GitCache,
 	fileFilter?: string,
 ): Promise<void> {
 	let totalSeeded = 0;
@@ -564,7 +570,7 @@ async function applyForceMode(
 	if (fileFilter) {
 		const entries = resolveTemplatesToApply(ctx, applyWorkspace, repos, fileFilter);
 		const reposDir = join(ctx.arbRootDir, ".arb", "repos");
-		const allRepos = await workspaceRepoList(wsDir, reposDir);
+		const allRepos = await workspaceRepoList(wsDir, reposDir, cache);
 		for (const entry of entries) {
 			if (entry.scope === "repo" && entry.repo && !existsSync(join(wsDir, entry.repo))) {
 				continue;
@@ -593,7 +599,7 @@ async function applyForceMode(
 		repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(ctx.arbRootDir);
 	} else {
 		if (applyWorkspace) {
-			const result = await forceApplyWorkspaceTemplates(ctx.arbRootDir, wsDir);
+			const result = await forceApplyWorkspaceTemplates(ctx.arbRootDir, wsDir, cache);
 			displayForceOverlayResults(result, "workspace", maxScope);
 			allConflicts.push(...result.conflicts);
 			allUnknowns.push(...result.unknownVariables);
@@ -603,7 +609,7 @@ async function applyForceMode(
 			totalUnchanged += result.unchanged.length + result.conflicts.length;
 		}
 		for (const repo of repos) {
-			const result = await forceApplyRepoTemplates(ctx.arbRootDir, wsDir, [repo]);
+			const result = await forceApplyRepoTemplates(ctx.arbRootDir, wsDir, [repo], cache);
 			displayForceOverlayResults(result, repo, maxScope);
 			allConflicts.push(...result.conflicts);
 			allUnknowns.push(...result.unknownVariables);
