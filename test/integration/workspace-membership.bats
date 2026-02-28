@@ -324,6 +324,15 @@ load test_helper/common-setup
     [[ "$output" == *"not in this workspace"* ]]
 }
 
+@test "arb detach rejects unknown repos" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb detach nonexistent
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Unknown repos: nonexistent"* ]]
+    [[ "$output" == *"Not found in .arb/repos/"* ]]
+}
+
 @test "arb detach without args fails in non-TTY" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"

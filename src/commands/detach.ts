@@ -4,7 +4,7 @@ import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
 import { branchExistsLocally, git, isRepoDirty, parseGitStatus } from "../lib/git";
 import { error, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
-import { selectInteractive, workspaceRepoDirs } from "../lib/repos";
+import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import { isLocalDirty } from "../lib/status";
 import { readNamesFromStdin } from "../lib/stdin";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
@@ -52,6 +52,15 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 				if (repos.length === 0) {
 					error("No repos selected.");
 					throw new ArbError("No repos selected.");
+				}
+			}
+
+			if (!options.allRepos) {
+				const allRepos = listRepos(ctx.reposDir);
+				const unknown = repos.filter((r) => !allRepos.includes(r));
+				if (unknown.length > 0) {
+					error(`Unknown repos: ${unknown.join(", ")}. Not found in .arb/repos/.`);
+					throw new ArbError(`Unknown repos: ${unknown.join(", ")}. Not found in .arb/repos/.`);
 				}
 			}
 
