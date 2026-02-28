@@ -262,11 +262,12 @@ One command clones your fork and registers the canonical repository. Arborist au
 ```bash
 arb push --dry-run          # preview without executing
 arb rebase --yes            # skip confirmation
+arb branch -q               # just the branch name
 arb status --json | jq ...  # machine-readable output
 arb list --quiet | xargs ...     # one workspace name per line
 ```
 
-All state-changing commands support `--dry-run` to preview the plan and `--yes` to skip confirmation prompts. `status`, `list`, `log`, `diff`, and `repo list` support `--json` for structured output and `--quiet` for one name per line — useful for feeding into other commands. Exit codes are meaningful: 0 for success, 1 for issues, 130 for user abort. Human-facing output goes to stderr, machine-parseable data to stdout — so piping works naturally.
+All state-changing commands support `--dry-run` to preview the plan and `--yes` to skip confirmation prompts. `status`, `branch`, `list`, `log`, `diff`, and `repo list` support `--json` for structured output and `--quiet` for one name per line — useful for feeding into other commands. Exit codes are meaningful: 0 for success, 1 for issues, 130 for user abort. Human-facing output goes to stderr, machine-parseable data to stdout — so piping works naturally.
 
 ### Discover more with `--help`
 

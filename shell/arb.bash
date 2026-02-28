@@ -361,6 +361,11 @@ __arb_complete_status() {
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
 }
 
+__arb_complete_branch() {
+    local cur="$1"
+    COMPREPLY=($(compgen -W "-q --quiet --json" -- "$cur"))
+}
+
 __arb_complete_rebranch() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
@@ -548,7 +553,7 @@ _arb() {
 
     # Completing the subcommand itself
     if ((COMP_CWORD <= cmd_pos)); then
-        local commands="init repo create delete clean list path cd attach detach status pull push rebase merge rebranch log diff exec open template help"
+        local commands="init repo create delete clean list path cd attach detach status branch pull push rebase merge rebranch log diff exec open template help"
         # Also complete global flags
         if [[ "$cur" == -* ]]; then
             COMPREPLY=($(compgen -W "-C -h --help -v --version --debug" -- "$cur"))
@@ -572,6 +577,7 @@ _arb() {
         attach)   __arb_complete_attach "$base_dir" "$cur" ;;
         detach)   __arb_complete_detach "$base_dir" "$cur" ;;
         status)   __arb_complete_status "$base_dir" "$cur" ;;
+        branch)   __arb_complete_branch "$cur" ;;
         pull)     __arb_complete_pull "$base_dir" "$cur" ;;
         push)     __arb_complete_push "$base_dir" "$cur" ;;
         rebase)   __arb_complete_rebase "$base_dir" "$cur" ;;
