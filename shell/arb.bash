@@ -533,7 +533,7 @@ __arb_complete_template() {
 
 __arb_complete_help() {
     local base_dir="$1" cur="$2"
-    local topics="where"
+    local topics="where remotes stacked templates scripting"
     local commands="init repo create delete clean list path cd attach detach status branch pull push rebase merge rebranch log diff exec open template"
     COMPREPLY=($(compgen -W "$topics $commands" -- "$cur"))
 }

@@ -19,7 +19,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 		.command("repo")
 		.summary("Manage canonical repos")
 		.description(
-			"Manage the canonical repository clones in .arb/repos/. These permanent clones are never worked in directly — instead, arb creates worktrees that point back to them. Use subcommands to clone new repos, list existing ones, or remove repos that are no longer needed.",
+			"Manage the canonical repository clones in .arb/repos/. These permanent clones are never worked in directly — instead, arb creates worktrees that point back to them. Use subcommands to clone new repos, list existing ones, or remove repos that are no longer needed.\n\nSee 'arb help remotes' for remote role resolution.",
 		);
 
 	// ── repo clone ──────────────────────────────────────────────────
