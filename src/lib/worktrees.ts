@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
-import { branchExistsLocally, getDefaultBranch, git, isRepoDirty, remoteBranchExists } from "./git";
+import { branchExistsLocally, git, isRepoDirty, remoteBranchExists } from "./git";
+import { GitCache } from "./git-cache";
 import { error, inlineResult, inlineStart, warn } from "./output";
 import { type FetchResult, parallelFetch } from "./parallel-fetch";
 import type { RepoRemotes } from "./remotes";
@@ -18,7 +19,9 @@ export async function addWorktrees(
 	arbRootDir: string,
 	baseBranch?: string,
 	remotesMap?: Map<string, RepoRemotes>,
+	cache?: GitCache,
 ): Promise<AddWorktreesResult> {
+	const c = cache ?? new GitCache();
 	const wsDir = `${arbRootDir}/${name}`;
 	const result: AddWorktreesResult = { created: [], skipped: [], failed: [] };
 
@@ -91,7 +94,7 @@ export async function addWorktrees(
 			if (baseExists) {
 				effectiveBase = baseBranch;
 			} else if (baseRemote) {
-				effectiveBase = await getDefaultBranch(repoPath, baseRemote);
+				effectiveBase = await c.getDefaultBranch(repoPath, baseRemote);
 				if (effectiveBase) {
 					warn(`  [${repo}] base branch '${baseBranch}' not found — using '${effectiveBase}'`);
 				} else {
@@ -105,7 +108,7 @@ export async function addWorktrees(
 				continue;
 			}
 		} else if (baseRemote) {
-			effectiveBase = await getDefaultBranch(repoPath, baseRemote);
+			effectiveBase = await c.getDefaultBranch(repoPath, baseRemote);
 			if (!effectiveBase) {
 				error(`  [${repo}] could not determine default branch`);
 				result.failed.push(repo);

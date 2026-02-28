@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
+import { GitCache } from "../lib/git-cache";
 import { error, info } from "../lib/output";
 import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
 import { computeFlags, gatherRepoStatus, repoMatchesWhere, validateWhere } from "../lib/status";
@@ -66,9 +67,10 @@ export function registerOpenCommand(program: Command, getCtx: () => ArbContext):
 				const workspace = ctx.currentWorkspace ?? "";
 				const branch = await requireBranch(wsDir, workspace);
 				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
+				const cache = new GitCache();
 				await Promise.all(
 					repoDirs.map(async (repoDir) => {
-						const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase);
+						const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, undefined, cache);
 						const flags = computeFlags(status, branch);
 						if (repoMatchesWhere(flags, where)) {
 							dirsToOpen.push(repoDir);

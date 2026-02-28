@@ -2,8 +2,8 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
+import { GitCache } from "../lib/git-cache";
 import { error, info, plural, success, warn } from "../lib/output";
-import { resolveRemotesMap } from "../lib/remotes";
 import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import { readNamesFromStdin } from "../lib/stdin";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
@@ -62,13 +62,23 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
 			}
 			const base = configGet(`${wsDir}/.arbws/config`, "base") ?? undefined;
 
-			const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
-			const result = await addWorktrees(workspace, branch, repos, ctx.reposDir, ctx.arbRootDir, base, remotesMap);
+			const cache = new GitCache();
+			const remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
+			const result = await addWorktrees(
+				workspace,
+				branch,
+				repos,
+				ctx.reposDir,
+				ctx.arbRootDir,
+				base,
+				remotesMap,
+				cache,
+			);
 
 			const changed = { added: result.created };
 			const wsRepoNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
-			const repoTemplates = await applyRepoTemplates(ctx.arbRootDir, wsDir, wsRepoNames, changed);
-			const wsTemplates = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir, changed);
+			const repoTemplates = await applyRepoTemplates(ctx.arbRootDir, wsDir, wsRepoNames, changed, cache);
+			const wsTemplates = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir, changed, cache);
 			displayOverlaySummary(wsTemplates, repoTemplates);
 
 			process.stderr.write("\n");

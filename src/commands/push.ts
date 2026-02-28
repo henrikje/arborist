@@ -3,11 +3,11 @@ import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
 import { getCommitsBetweenFull, getShortHead, git } from "../lib/git";
+import { GitCache } from "../lib/git-cache";
 import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
 import { dim, dryRunNotice, finishSummary, info, inlineResult, inlineStart, plural, red, yellow } from "../lib/output";
 import { formatSkipLine, formatUpToDateLine } from "../lib/plan-format";
 import type { RepoRemotes } from "../lib/remotes";
-import { resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import type { SkipFlag } from "../lib/skip-flags";
 import { type RepoStatus, gatherRepoStatus } from "../lib/status";
@@ -63,7 +63,8 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 					if (stdinNames.length > 0) repoNames = stdinNames;
 				}
 				const selectedRepos = resolveRepoSelection(wsDir, repoNames);
-				const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
+				const cache = new GitCache();
+				const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
 				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 
 				const shouldFetch = options.fetch !== false;
@@ -76,7 +77,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 					const assessments = await Promise.all(
 						selectedRepos.map(async (repo) => {
 							const repoDir = `${wsDir}/${repo}`;
-							const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
+							const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo), cache);
 							const headSha = await getShortHead(repoDir);
 							return assessPushRepo(status, repoDir, branch, headSha, { force: options.force });
 						}),
@@ -104,6 +105,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 					assess,
 					postAssess,
 					formatPlan: (nextAssessments) => formatPushPlan(nextAssessments, remotesMap, options.verbose),
+					onPostFetch: () => cache.invalidateAfterFetch(),
 				});
 
 				const willPush = assessments.filter((a) => a.outcome === "will-push" || a.outcome === "will-force-push");

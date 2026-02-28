@@ -2,10 +2,10 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
 import { getCommitsBetweenFull, git } from "../lib/git";
+import { GitCache } from "../lib/git-cache";
 import type { LogJsonOutput, LogJsonRepo } from "../lib/json-types";
 import { error, plural, stdout, success } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
-import { resolveRemotesMap } from "../lib/remotes";
 import { writeRepoHeader, writeRepoSkipHeader } from "../lib/repo-header";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import {
@@ -67,14 +67,16 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 					if (stdinNames.length > 0) repoNames = stdinNames;
 				}
 				const selectedRepos = resolveRepoSelection(wsDir, repoNames);
+				const cache = new GitCache();
 
 				if (options.fetch) {
 					const allFetchDirs = workspaceRepoDirs(wsDir);
 					const selectedSet = new Set(selectedRepos);
 					const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
 					const repos = fetchDirs.map((d) => basename(d));
-					const remotesMap = await resolveRemotesMap(repos, ctx.reposDir);
+					const remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
 					const results = await parallelFetch(fetchDirs, undefined, remotesMap);
+					cache.invalidateAfterFetch();
 					const failed = reportFetchFailures(repos, results);
 					if (failed.length > 0) {
 						error("Aborting due to fetch failures.");
@@ -103,7 +105,7 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 					}
 				}
 
-				const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir);
+				const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
 				const selectedSet = new Set(selectedRepos);
 				let repos = summary.repos.filter((r) => selectedSet.has(r.name));
 

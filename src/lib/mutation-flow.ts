@@ -20,6 +20,7 @@ export interface PlanFlowOptions<TAssessment> {
 	assess: (fetchFailed: string[]) => Promise<TAssessment[]>;
 	postAssess?: (assessments: TAssessment[]) => Promise<void>;
 	formatPlan: (assessments: TAssessment[]) => string;
+	onPostFetch?: () => void;
 }
 
 async function assessWithPost<TAssessment>(
@@ -50,6 +51,7 @@ export async function runPlanFlow<TAssessment>(options: PlanFlowOptions<TAssessm
 			{
 				render: async () => {
 					state.fetchResults = await fetchPromise;
+					options.onPostFetch?.();
 					const ff = getFetchFailedRepos(options.reposForFetchReport, state.fetchResults);
 					state.assessments = await assessWithPost(options, ff);
 					return options.formatPlan(state.assessments);
@@ -62,6 +64,7 @@ export async function runPlanFlow<TAssessment>(options: PlanFlowOptions<TAssessm
 
 	if (shouldFetch && options.fetchDirs.length > 0) {
 		const fetchResults = await parallelFetch(options.fetchDirs, undefined, options.remotesMap);
+		options.onPostFetch?.();
 		const fetchFailed = reportFetchFailures(options.reposForFetchReport, fetchResults);
 		const assessments = await assessWithPost(options, fetchFailed);
 		stderr(options.formatPlan(assessments));

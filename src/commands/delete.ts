@@ -4,9 +4,9 @@ import type { Command } from "commander";
 import { loadArbIgnore } from "../lib/arbignore";
 import { ArbError } from "../lib/errors";
 import { branchExistsLocally, git, remoteBranchExists, validateWorkspaceName } from "../lib/git";
+import { GitCache } from "../lib/git-cache";
 import { confirmOrExit } from "../lib/mutation-flow";
 import { dryRunNotice, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "../lib/output";
-import { resolveRemotes } from "../lib/remotes";
 import { listNonWorkspaces, listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import {
 	LOSE_WORK_FLAGS,
@@ -91,8 +91,9 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 	// Delete must be resilient to repos with broken/missing/ambiguous remotes —
 	// if we can't determine the state, treat the workspace as at-risk.
 	let summary: WorkspaceSummary;
+	const cache = new GitCache();
 	try {
-		summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir);
+		summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
 	} catch (e) {
 		warn(`Could not gather status for ${name}: ${e instanceof Error ? e.message : e}`);
 		summary = {
@@ -122,7 +123,7 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 	}
 
 	// Template drift detection
-	const templateDiffs = await diffTemplates(ctx.arbRootDir, wsDir, repos);
+	const templateDiffs = await diffTemplates(ctx.arbRootDir, wsDir, repos, cache);
 
 	return {
 		name,
@@ -216,7 +217,8 @@ async function executeDelete(
 		if (deleteRemote) {
 			let shareRemote: string | undefined;
 			try {
-				const remotes = await resolveRemotes(`${ctx.reposDir}/${repo}`);
+				const deleteCache = new GitCache();
+				const remotes = await deleteCache.resolveRemotes(`${ctx.reposDir}/${repo}`);
 				shareRemote = remotes.share;
 			} catch {
 				// Ambiguous remotes — can't determine which remote to delete from

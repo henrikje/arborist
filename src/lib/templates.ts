@@ -1,8 +1,8 @@
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { Liquid } from "liquidjs";
+import { GitCache } from "./git-cache";
 import { info, plural, warn, yellow } from "./output";
-import { getRemoteUrl, resolveRemotes } from "./remotes";
 import { listRepos, workspaceRepoDirs } from "./repos";
 
 export const ARBTEMPLATE_EXT = ".arbtemplate";
@@ -249,10 +249,12 @@ export async function applyWorkspaceTemplates(
 	arbRootDir: string,
 	wsDir: string,
 	changedRepos?: { added?: string[]; removed?: string[] },
+	cache?: GitCache,
 ): Promise<OverlayResult> {
 	const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 	const reposDir = join(arbRootDir, ".arb", "repos");
-	const repos = await workspaceRepoList(wsDir, reposDir);
+	const c = cache ?? new GitCache();
+	const repos = await workspaceRepoList(wsDir, reposDir, c);
 	const ctx: TemplateContext = {
 		rootPath: arbRootDir,
 		workspaceName: basename(wsDir),
@@ -261,7 +263,7 @@ export async function applyWorkspaceTemplates(
 	};
 
 	if (changedRepos) {
-		ctx.previousRepos = await reconstructPreviousRepos(repos, changedRepos, reposDir);
+		ctx.previousRepos = await reconstructPreviousRepos(repos, changedRepos, reposDir, c);
 	}
 
 	const result = overlayDirectory(templateDir, wsDir, ctx, ".arb/templates/workspace", "workspace");
@@ -274,10 +276,12 @@ export async function applyRepoTemplates(
 	wsDir: string,
 	repos: string[],
 	changedRepos?: { added?: string[]; removed?: string[] },
+	cache?: GitCache,
 ): Promise<OverlayResult> {
 	const result = emptyResult();
 	const reposDir = join(arbRootDir, ".arb", "repos");
-	const allRepos = await workspaceRepoList(wsDir, reposDir);
+	const c = cache ?? new GitCache();
+	const allRepos = await workspaceRepoList(wsDir, reposDir, c);
 
 	for (const repo of repos) {
 		const templateDir = join(arbRootDir, ".arb", "templates", "repos", repo);
@@ -294,7 +298,7 @@ export async function applyRepoTemplates(
 			repos: allRepos,
 		};
 		if (changedRepos) {
-			ctx.previousRepos = await reconstructPreviousRepos(allRepos, changedRepos, reposDir);
+			ctx.previousRepos = await reconstructPreviousRepos(allRepos, changedRepos, reposDir, c);
 		}
 		const repoResult = overlayDirectory(templateDir, repoDir, ctx, `.arb/templates/repos/${repo}`, "repo", repo);
 		result.seeded.push(...repoResult.seeded);
@@ -311,11 +315,14 @@ export async function applyRepoTemplates(
 const emptyRemote: RemoteInfo = { name: "", url: "" };
 
 /** Resolve remote info for a single repo, falling back to empty on error. */
-async function resolveRepoRemoteInfo(repoDir: string): Promise<{ baseRemote: RemoteInfo; shareRemote: RemoteInfo }> {
+async function resolveRepoRemoteInfo(
+	repoDir: string,
+	cache: GitCache,
+): Promise<{ baseRemote: RemoteInfo; shareRemote: RemoteInfo }> {
 	try {
-		const remotes = await resolveRemotes(repoDir);
-		const baseUrl = await getRemoteUrl(repoDir, remotes.base);
-		const shareUrl = remotes.share !== remotes.base ? await getRemoteUrl(repoDir, remotes.share) : baseUrl;
+		const remotes = await cache.resolveRemotes(repoDir);
+		const baseUrl = await cache.getRemoteUrl(repoDir, remotes.base);
+		const shareUrl = remotes.share !== remotes.base ? await cache.getRemoteUrl(repoDir, remotes.share) : baseUrl;
 		return {
 			baseRemote: { name: remotes.base, url: baseUrl ?? "" },
 			shareRemote: { name: remotes.share, url: shareUrl ?? "" },
@@ -326,8 +333,9 @@ async function resolveRepoRemoteInfo(repoDir: string): Promise<{ baseRemote: Rem
 }
 
 /** Build the repo list for template context from a workspace directory. */
-export async function workspaceRepoList(wsDir: string, reposDir: string): Promise<RepoInfo[]> {
+export async function workspaceRepoList(wsDir: string, reposDir: string, cache?: GitCache): Promise<RepoInfo[]> {
 	if (!existsSync(wsDir)) return [];
+	const c = cache ?? new GitCache();
 	const dirs = readdirSync(wsDir)
 		.filter((entry) => entry !== ".arbws")
 		.map((entry) => join(wsDir, entry))
@@ -346,7 +354,7 @@ export async function workspaceRepoList(wsDir: string, reposDir: string): Promis
 		// Resolve remotes from canonical repo (workspace repos may not have independent remote config)
 		const canonicalDir = join(reposDir, name);
 		const remoteDir = existsSync(canonicalDir) ? canonicalDir : fullPath;
-		const { baseRemote, shareRemote } = await resolveRepoRemoteInfo(remoteDir);
+		const { baseRemote, shareRemote } = await resolveRepoRemoteInfo(remoteDir, c);
 		results.push({ name, path: fullPath, baseRemote, shareRemote });
 	}
 	return results;
@@ -357,6 +365,7 @@ async function reconstructPreviousRepos(
 	currentRepos: RepoInfo[],
 	changedRepos: { added?: string[]; removed?: string[] },
 	reposDir: string,
+	cache: GitCache,
 ): Promise<RepoInfo[]> {
 	const addedSet = new Set(changedRepos.added ?? []);
 	const removedSet = new Set(changedRepos.removed ?? []);
@@ -370,7 +379,7 @@ async function reconstructPreviousRepos(
 			const wsDir = currentRepos.length > 0 ? dirname(currentRepos[0]?.path ?? "") : "";
 			if (wsDir) {
 				const canonicalDir = join(reposDir, name);
-				const { baseRemote, shareRemote } = await resolveRepoRemoteInfo(canonicalDir);
+				const { baseRemote, shareRemote } = await resolveRepoRemoteInfo(canonicalDir, cache);
 				prev.push({ name, path: join(wsDir, name), baseRemote, shareRemote });
 			}
 		}
@@ -436,10 +445,16 @@ function diffDirectory(srcDir: string, destDir: string, ctx?: TemplateContext): 
 	return { modified, deleted };
 }
 
-export async function diffTemplates(arbRootDir: string, wsDir: string, repos: string[]): Promise<TemplateDiff[]> {
+export async function diffTemplates(
+	arbRootDir: string,
+	wsDir: string,
+	repos: string[],
+	cache?: GitCache,
+): Promise<TemplateDiff[]> {
 	const result: TemplateDiff[] = [];
 	const reposDir = join(arbRootDir, ".arb", "repos");
-	const allRepos = await workspaceRepoList(wsDir, reposDir);
+	const c = cache ?? new GitCache();
+	const allRepos = await workspaceRepoList(wsDir, reposDir, c);
 
 	const wsTemplateDir = join(arbRootDir, ".arb", "templates", "workspace");
 	const wsCtx: TemplateContext = {
@@ -485,10 +500,12 @@ export async function checkAllTemplateVariables(
 	arbRootDir: string,
 	wsDir: string,
 	repos: string[],
+	cache?: GitCache,
 ): Promise<UnknownVariable[]> {
 	const unknowns: UnknownVariable[] = [];
 	const reposDir = join(arbRootDir, ".arb", "repos");
-	const allRepos = await workspaceRepoList(wsDir, reposDir);
+	const c = cache ?? new GitCache();
+	const allRepos = await workspaceRepoList(wsDir, reposDir, c);
 	const templatesDir = join(arbRootDir, ".arb", "templates");
 
 	const wsTemplateDir = join(templatesDir, "workspace");
@@ -735,10 +752,15 @@ export function forceOverlayDirectory(
 	return result;
 }
 
-export async function forceApplyWorkspaceTemplates(arbRootDir: string, wsDir: string): Promise<ForceOverlayResult> {
+export async function forceApplyWorkspaceTemplates(
+	arbRootDir: string,
+	wsDir: string,
+	cache?: GitCache,
+): Promise<ForceOverlayResult> {
 	const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
 	const reposDir = join(arbRootDir, ".arb", "repos");
-	const repos = await workspaceRepoList(wsDir, reposDir);
+	const c = cache ?? new GitCache();
+	const repos = await workspaceRepoList(wsDir, reposDir, c);
 	const ctx: TemplateContext = {
 		rootPath: arbRootDir,
 		workspaceName: basename(wsDir),
@@ -754,6 +776,7 @@ export async function forceApplyRepoTemplates(
 	arbRootDir: string,
 	wsDir: string,
 	repos: string[],
+	cache?: GitCache,
 ): Promise<ForceOverlayResult> {
 	const result: ForceOverlayResult = {
 		seeded: [],
@@ -765,7 +788,8 @@ export async function forceApplyRepoTemplates(
 		repoDirectoryWarnings: [],
 	};
 	const reposDir = join(arbRootDir, ".arb", "repos");
-	const allRepos = await workspaceRepoList(wsDir, reposDir);
+	const c = cache ?? new GitCache();
+	const allRepos = await workspaceRepoList(wsDir, reposDir, c);
 
 	for (const repo of repos) {
 		const templateDir = join(arbRootDir, ".arb", "templates", "repos", repo);

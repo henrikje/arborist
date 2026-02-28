@@ -12,6 +12,7 @@ import {
 	predictRebaseConflictCommits,
 	predictStashPopConflict,
 } from "../lib/git";
+import { GitCache } from "../lib/git-cache";
 import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
 import {
 	dim,
@@ -26,7 +27,6 @@ import {
 } from "../lib/output";
 import { formatSkipLine, formatStashHint, formatUpToDateLine } from "../lib/plan-format";
 import type { RepoRemotes } from "../lib/remotes";
-import { resolveRemotesMap } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import type { SkipFlag } from "../lib/skip-flags";
 import { type RepoStatus, computeFlags, gatherRepoStatus } from "../lib/status";
@@ -101,7 +101,8 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				}
 				const selectedRepos = resolveRepoSelection(wsDir, repoNames);
 				const selectedSet = new Set(selectedRepos);
-				const remotesMap = await resolveRemotesMap(selectedRepos, ctx.reposDir);
+				const cache = new GitCache();
+				const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
 				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 
 				// Phase 1: fetch
@@ -116,7 +117,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					return Promise.all(
 						repos.map(async (repo) => {
 							const repoDir = `${wsDir}/${repo}`;
-							const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo));
+							const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo), cache);
 							const headSha = await getShortHead(repoDir);
 							const pullMode = flagMode ?? (await detectPullMode(repoDir, branch));
 							return assessPullRepo(status, repoDir, branch, fetchFailed, pullMode, autostash, headSha);
@@ -138,6 +139,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					assess,
 					postAssess,
 					formatPlan: (nextAssessments) => formatPullPlan(nextAssessments, remotesMap, options.verbose),
+					onPostFetch: () => cache.invalidateAfterFetch(),
 				});
 
 				const willPull = assessments.filter((a) => a.outcome === "will-pull");

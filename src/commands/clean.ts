@@ -6,6 +6,7 @@ import { loadArbIgnore } from "../lib/arbignore";
 import { findOrphanedBranches, findStaleWorktrees, pruneWorktrees } from "../lib/clean";
 import { ArbAbort, ArbError } from "../lib/errors";
 import { git } from "../lib/git";
+import { GitCache } from "../lib/git-cache";
 import { dryRunNotice, error, info, plural, skipConfirmNotice, success, yellow } from "../lib/output";
 import { listNonWorkspaces, listWorkspaces, selectInteractive } from "../lib/repos";
 import { renderTable } from "../lib/table";
@@ -80,7 +81,8 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 				const wb = await workspaceBranch(join(ctx.arbRootDir, ws));
 				if (wb) workspaceBranches.add(wb.branch);
 			}
-			const orphanedBranches = await findOrphanedBranches(ctx.reposDir, workspaceBranches);
+			const cache = new GitCache();
+			const orphanedBranches = await findOrphanedBranches(ctx.reposDir, workspaceBranches, cache);
 
 			// ── Check if there's anything to do ──────────────────────
 			const hasDirs = targetDirs.length > 0;

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { detectBranchMerged, getDefaultBranch, git } from "./git";
+import { detectBranchMerged, git } from "./git";
+import type { GitCache } from "./git-cache";
 import { listRepos } from "./repos";
 
 export async function findStaleWorktrees(reposDir: string): Promise<string[]> {
@@ -36,6 +37,7 @@ export async function pruneWorktrees(reposDir: string): Promise<void> {
 export async function findOrphanedBranches(
 	reposDir: string,
 	workspaceBranches: Set<string>,
+	cache: GitCache,
 ): Promise<{ repo: string; branch: string; mergeStatus: "merged" | "unmerged"; aheadCount: number }[]> {
 	const repos = listRepos(reposDir);
 	const orphaned: { repo: string; branch: string; mergeStatus: "merged" | "unmerged"; aheadCount: number }[] = [];
@@ -43,7 +45,7 @@ export async function findOrphanedBranches(
 		const repoDir = join(reposDir, repo);
 		const result = await git(repoDir, "for-each-ref", "refs/heads/", "--format=%(refname:short)");
 		if (result.exitCode !== 0) continue;
-		const defaultBranch = await getDefaultBranch(repoDir, "origin");
+		const defaultBranch = await cache.getDefaultBranch(repoDir, "origin");
 		for (const branch of result.stdout.split("\n").filter(Boolean)) {
 			if (branch === defaultBranch) continue;
 			if (!workspaceBranches.has(branch)) {

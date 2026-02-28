@@ -105,10 +105,11 @@ async function getPushDefault(repoDir: string): Promise<string | null> {
  * Errors propagate if any repo has no remotes or ambiguous remotes.
  */
 export async function resolveRemotesMap(repos: string[], reposDir: string): Promise<Map<string, RepoRemotes>> {
-	const remotesMap = new Map<string, RepoRemotes>();
-	for (const repo of repos) {
-		const remotes = await resolveRemotes(`${reposDir}/${repo}`);
-		remotesMap.set(repo, remotes);
-	}
-	return remotesMap;
+	const entries = await Promise.all(
+		repos.map(async (repo) => {
+			const remotes = await resolveRemotes(`${reposDir}/${repo}`);
+			return [repo, remotes] as const;
+		}),
+	);
+	return new Map(entries);
 }
