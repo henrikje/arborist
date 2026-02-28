@@ -90,6 +90,29 @@ load test_helper/common-setup
     [[ "$output" == *"Usage:"* ]]
 }
 
+@test "arb help where shows filter syntax reference" {
+    run arb help where
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"WHERE FILTER SYNTAX"* ]]
+    [[ "$output" == *"dirty"* ]]
+    [[ "$output" == *"unpushed"* ]]
+    [[ "$output" == *"synced"* ]]
+    [[ "$output" == *"EXAMPLES"* ]]
+}
+
+@test "arb help status shows status command help" {
+    run arb help status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"arb status"* ]]
+    [[ "$output" == *"arb help where"* ]]
+}
+
+@test "arb help nonexistent shows error" {
+    run arb help nonexistent
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Unknown command or topic"* ]]
+}
+
 @test "unknown command shows error" {
     run arb nonsense
     [ "$status" -ne 0 ]
