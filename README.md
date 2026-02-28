@@ -1,8 +1,8 @@
 # Arborist (`arb`)
 
-**Arborist** lets you work on multiple features across several repositories in parallel, without juggling branches, losing your place, or losing changes.
+**Arborist** lets you work on multiple features across several repositories in parallel, without juggling branches, breaking your flow, or losing changes.
 
-Based on [Git worktrees](https://git-scm.com/docs/git-worktree), Arborist does not replace Git but helps you coordinate across repositories.
+Based on [Git worktrees](https://git-scm.com/docs/git-worktree), Arborist complements standard Git with structured workspaces and cross-repo coordination.
 
 > **arborist** (noun) _ˈär-bə-rist_ — a specialist in the care and maintenance of trees
 
