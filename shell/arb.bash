@@ -531,6 +531,13 @@ __arb_complete_template() {
     esac
 }
 
+__arb_complete_help() {
+    local base_dir="$1" cur="$2"
+    local topics="where"
+    local commands="init repo create delete clean list path cd attach detach status branch pull push rebase merge rebranch log diff exec open template"
+    COMPREPLY=($(compgen -W "$topics $commands" -- "$cur"))
+}
+
 # ── Main completion function ─────────────────────────────────────
 
 _arb() {
@@ -588,6 +595,7 @@ _arb() {
         exec)     __arb_complete_exec "$base_dir" "$cur" ;;
         open)     __arb_complete_open "$base_dir" "$cur" ;;
         template) __arb_complete_template "$base_dir" "$cur" ;;
+        help)     __arb_complete_help "$base_dir" "$cur" ;;
     esac
 }
 

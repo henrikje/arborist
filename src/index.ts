@@ -10,6 +10,7 @@ import { registerDeleteCommand } from "./commands/delete";
 import { registerDetachCommand } from "./commands/detach";
 import { registerDiffCommand } from "./commands/diff";
 import { registerExecCommand } from "./commands/exec";
+import { registerHelpCommand } from "./commands/help";
 import { registerInitCommand } from "./commands/init";
 import { registerListCommand } from "./commands/list";
 import { registerLogCommand } from "./commands/log";
@@ -26,6 +27,7 @@ import { registerTemplateCommand } from "./commands/template";
 import { detectArbRoot, detectWorkspace } from "./lib/arb-root";
 import { debugLog, enableDebug, getGitCallCount, isDebug } from "./lib/debug";
 import { ArbAbort, ArbError } from "./lib/errors";
+import { allTopics } from "./lib/help-topics";
 import { bold, dim, error, info } from "./lib/output";
 import type { ArbContext } from "./lib/types";
 import { ARB_VERSION } from "./version";
@@ -118,7 +120,24 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 		output = output.concat([helper.styleTitle("Commands:"), ...list, ""]);
 	}
 
-	// Global Options (moved after commands)
+	// Help Topics (root command only, before options)
+	if (cmd.name() === "arb") {
+		const topics = allTopics();
+		if (topics.length > 0) {
+			const topicList = topics.map((t) =>
+				callFormatItem(helper.styleSubcommandTerm(t.name), helper.styleSubcommandDescription(t.summary)),
+			);
+			output = output.concat([
+				helper.styleTitle("Help Topics:"),
+				dim("  Run 'arb help <topic>' to read about a topic."),
+				"",
+				...topicList,
+				"",
+			]);
+		}
+	}
+
+	// Global Options
 	const optionList = helper.visibleOptions(cmd).map((option) => {
 		return callFormatItem(
 			helper.styleOptionTerm(helper.optionTerm(option)),
@@ -190,6 +209,7 @@ program.hook("preAction", () => {
 });
 
 // Register all commands
+registerHelpCommand(program);
 registerInitCommand(program);
 registerRepoCommand(program, getCtx);
 registerCreateCommand(program, getCtx);

@@ -429,6 +429,34 @@ _arb() {
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($repo_names)'
                     ;;
+                help)
+                    local -a help_completions=(
+                        'where:Filter syntax for --where'
+                        'init:Initialize a directory as an arb root'
+                        'repo:Manage canonical repos'
+                        'create:Create a new workspace'
+                        'delete:Remove a workspace'
+                        'clean:Clean up non-workspace directories and stale git state'
+                        'list:List all workspaces'
+                        'path:Print the path to the arb root or a workspace'
+                        'cd:Navigate to a workspace directory'
+                        'attach:Attach repos to the workspace'
+                        'detach:Detach repos from the workspace'
+                        'status:Show workspace status'
+                        'branch:Show the workspace branch'
+                        'pull:Pull the feature branch from the share remote'
+                        'push:Push the feature branch to the share remote'
+                        'rebase:Rebase feature branches onto the base branch'
+                        'merge:Merge the base branch into feature branches'
+                        'rebranch:Rename the workspace branch across all repos'
+                        'log:Show feature branch commits across repos'
+                        'diff:Show feature branch diff across repos'
+                        'exec:Run a command in each worktree'
+                        'open:Open worktrees in an application'
+                        'template:Manage workspace templates'
+                    )
+                    _describe 'command or topic' help_completions
+                    ;;
                 template)
                     shift words; (( CURRENT-- ))
                     local -a template_subcmds=(
