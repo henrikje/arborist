@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
@@ -7,7 +8,7 @@ import type { ListJsonEntry } from "../lib/json-types";
 import { clearScanProgress, dim, error, info, scanProgress, stripAnsi, yellow } from "../lib/output";
 import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { runPhasedRender } from "../lib/phased-render";
-import { listRepos, listWorkspaces, workspaceRepoDirs } from "../lib/repos";
+import { listWorkspaces, workspaceRepoDirs } from "../lib/repos";
 import {
 	type WorkspaceSummary,
 	formatStatusCounts,
@@ -57,9 +58,9 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		.command("list")
 		.summary("List all workspaces")
 		.description(
-			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --dirty / -d to show only workspaces with dirty repos, or --where <filter> for other status flags (any workspace with at least one matching repo is shown): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Positive/healthy terms: clean, pushed, synced-base, synced-share, synced, safe. Prefix any term with ^ to negate (e.g. --where ^dirty is equivalent to --where clean). Comma-separated values use OR logic; use + for AND (e.g. --where dirty+unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. Use --no-status to skip per-repo status gathering for faster output. Fetches all repos by default for fresh remote data (skip with --no-fetch). Quiet mode (-q) skips fetching by default for scripting speed. Use --json for machine-readable output.",
+			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --dirty / -d to show only workspaces with dirty repos, or --where <filter> for other status flags (any workspace with at least one matching repo is shown): dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Positive/healthy terms: clean, pushed, synced-base, synced-share, synced, safe. Prefix any term with ^ to negate (e.g. --where ^dirty is equivalent to --where clean). Comma-separated values use OR logic; use + for AND (e.g. --where dirty+unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. Use --no-status to skip per-repo status gathering for faster output. Fetches workspace repos by default for fresh remote data (skip with --no-fetch). Quiet mode (-q) skips fetching by default for scripting speed. Use --json for machine-readable output.",
 		)
-		.option("-F, --fetch", "Fetch all repos before listing (default)")
+		.option("-F, --fetch", "Fetch workspace repos before listing (default)")
 		.option("--no-fetch", "Skip fetching")
 		.option("--no-status", "Skip per-repo status (faster for large setups)")
 		.option("-d, --dirty", "Only list dirty workspaces (shorthand for --where dirty)")
@@ -117,10 +118,11 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				const showStatus = options.status !== false;
 
 				const shouldFetch = options.fetch !== false && !options.quiet;
+				const repoNames = workspaceRepoNames(metadata);
 
 				// ── Quiet output path ──
 				if (options.quiet) {
-					if (options.fetch) await blockingFetchAllRepos(ctx, cache); // only if explicitly requested
+					if (options.fetch) await blockingFetchRepos(ctx, cache, repoNames); // only if explicitly requested
 					if (whereFilter) {
 						const results = await Promise.all(
 							metadata.toScan.map(async (entry) => {
@@ -154,7 +156,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 				// ── JSON output path ──
 				if (options.json) {
-					if (shouldFetch) await blockingFetchAllRepos(ctx, cache);
+					if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames);
 
 					const jsonEntries: ListJsonEntry[] = metadata.rows.map((row) => ({
 						workspace: row.name,
@@ -214,7 +216,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				// ── Table output path ──
 
 				if (!showStatus) {
-					if (shouldFetch) await blockingFetchAllRepos(ctx, cache);
+					if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames);
 					process.stdout.write(formatListTable(metadata.rows, metadata.cols, false));
 					return;
 				}
@@ -224,9 +226,8 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 				if (canPhase && shouldFetch) {
 					// 3-phase: placeholder → stale + fetching → fresh
-					const allRepoNames = listRepos(ctx.reposDir);
-					const fetchDirs = allRepoNames.map((r) => `${ctx.reposDir}/${r}`);
-					const remotesMap = await cache.resolveRemotesMap(allRepoNames, ctx.reposDir);
+					const fetchDirs = repoNames.map((r) => `${ctx.reposDir}/${r}`);
+					const remotesMap = await cache.resolveRemotesMap(repoNames, ctx.reposDir);
 					const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, { silent: true });
 					const state: { fetchResults?: Map<string, FetchResult> } = {};
 
@@ -248,7 +249,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 							write: (o) => process.stdout.write(o),
 						},
 					]);
-					reportFetchFailures(allRepoNames, state.fetchResults as Map<string, FetchResult>);
+					reportFetchFailures(repoNames, state.fetchResults as Map<string, FetchResult>);
 				} else if (canPhase) {
 					// 2-phase: placeholder → status
 					await runPhasedRender([
@@ -263,7 +264,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					]);
 				} else {
 					// Non-phased (non-TTY or nothing to scan)
-					if (shouldFetch) await blockingFetchAllRepos(ctx, cache);
+					if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames);
 					const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache);
 					process.stdout.write(formatListTable(statusRows, metadata.cols, true));
 				}
@@ -479,12 +480,22 @@ function formatListTable(displayRows: ListRow[], cols: ListColumnWidths, showSta
 
 // ── Helpers ──
 
-async function blockingFetchAllRepos(ctx: ArbContext, cache: GitCache): Promise<void> {
-	const allRepoNames = listRepos(ctx.reposDir);
-	const fetchDirs = allRepoNames.map((r) => `${ctx.reposDir}/${r}`);
-	const remotesMap = await cache.resolveRemotesMap(allRepoNames, ctx.reposDir);
+function workspaceRepoNames(metadata: ListMetadata): string[] {
+	const names = new Set<string>();
+	for (const { wsDir } of metadata.toScan) {
+		for (const dir of workspaceRepoDirs(wsDir)) {
+			names.add(basename(dir));
+		}
+	}
+	return [...names].sort();
+}
+
+async function blockingFetchRepos(ctx: ArbContext, cache: GitCache, repoNames: string[]): Promise<void> {
+	if (repoNames.length === 0) return;
+	const fetchDirs = repoNames.map((r) => `${ctx.reposDir}/${r}`);
+	const remotesMap = await cache.resolveRemotesMap(repoNames, ctx.reposDir);
 	const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
-	reportFetchFailures(allRepoNames, fetchResults);
+	reportFetchFailures(repoNames, fetchResults);
 	cache.invalidateAfterFetch();
 }
 
