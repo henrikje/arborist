@@ -1,5 +1,6 @@
 import { basename, resolve } from "node:path";
 import type { Command } from "commander";
+import { listenForAbortKeypress } from "../lib/abort-keypress";
 import { ArbError } from "../lib/errors";
 import { predictMergeConflict } from "../lib/git";
 import { GitCache } from "../lib/git-cache";
@@ -44,7 +45,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("--schema", "Print JSON Schema for this command's --json output and exit")
 		.summary("Show workspace status")
 		.description(
-			"Show each repo's position relative to the base branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line), enabling composition like: arb status -q --where dirty | arb diff.\n\nUse --dirty to only show repos with uncommitted changes. Use --where <filter> to filter by status flags. See 'arb help where' for filter syntax. Fetches from all remotes by default for fresh data (skip with -N/--no-fetch). Quiet mode (-q) skips fetching by default for scripting speed. Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.\n\nSee 'arb help stacked' for stacked workspace status flags. See 'arb help scripting' for output modes and piping.",
+			"Show each repo's position relative to the base branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line), enabling composition like: arb status -q --where dirty | arb diff.\n\nUse --dirty to only show repos with uncommitted changes. Use --where <filter> to filter by status flags. See 'arb help where' for filter syntax. Fetches from all remotes by default for fresh data (skip with -N/--no-fetch). Press Escape during the fetch to cancel and use stale data. Quiet mode (-q) skips fetching by default for scripting speed. Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.\n\nSee 'arb help stacked' for stacked workspace status flags. See 'arb help scripting' for output modes and piping.",
 		)
 		.action(
 			async (
@@ -167,30 +168,47 @@ async function runStatus(
 
 	if (canPhase) {
 		const repoNamesForFetch = fetchDirs.map((d) => basename(d));
+		const { signal: abortSignal, cleanup: abortCleanup } = listenForAbortKeypress();
 		const fetchPromise = cache
 			.resolveRemotesMap(repoNamesForFetch, ctx.reposDir)
-			.then((remotesMap) => parallelFetch(fetchDirs, undefined, remotesMap, { silent: true }));
-		const state: { fetchResults?: Map<string, FetchResult> } = {};
+			.then((remotesMap) => parallelFetch(fetchDirs, undefined, remotesMap, { silent: true, signal: abortSignal }));
+		fetchPromise.catch(() => {}); // Prevent unhandled rejection on abort
+		const state: { fetchResults?: Map<string, FetchResult>; aborted?: boolean; staleTable?: string } = {};
 
-		await runPhasedRender([
-			{
-				render: async () => {
-					const data = await gatherFiltered();
-					return (await renderStatusTable(data, wsDir, { verbose: options.verbose })) + fetchSuffix(fetchDirs.length);
+		try {
+			await runPhasedRender([
+				{
+					render: async () => {
+						const data = await gatherFiltered();
+						state.staleTable = await renderStatusTable(data, wsDir, { verbose: options.verbose });
+						return state.staleTable + fetchSuffix(fetchDirs.length, { abortable: true });
+					},
+					write: stderr,
 				},
-				write: stderr,
-			},
-			{
-				render: async () => {
-					state.fetchResults = await fetchPromise;
-					cache.invalidateAfterFetch();
-					const data = await gatherFiltered();
-					return await renderStatusTable(data, wsDir, { verbose: options.verbose });
+				{
+					render: async () => {
+						if (abortSignal.aborted) {
+							state.aborted = true;
+							return state.staleTable as string;
+						}
+						state.fetchResults = await fetchPromise;
+						if (abortSignal.aborted) {
+							state.aborted = true;
+							return state.staleTable as string;
+						}
+						cache.invalidateAfterFetch();
+						const data = await gatherFiltered();
+						return await renderStatusTable(data, wsDir, { verbose: options.verbose });
+					},
+					write: (output) => process.stdout.write(output),
 				},
-				write: (output) => process.stdout.write(output),
-			},
-		]);
-		reportFetchFailures(repoNamesForFetch, state.fetchResults as Map<string, FetchResult>);
+			]);
+		} finally {
+			abortCleanup();
+		}
+		if (!state.aborted) {
+			reportFetchFailures(repoNamesForFetch, state.fetchResults as Map<string, FetchResult>);
+		}
 		return;
 	}
 
