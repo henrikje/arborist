@@ -363,7 +363,7 @@ __arb_complete_status() {
 
 __arb_complete_branch() {
     local cur="$1"
-    COMPREPLY=($(compgen -W "-q --quiet --json --schema" -- "$cur"))
+    COMPREPLY=($(compgen -W "-q --quiet -v --verbose --fetch -N --no-fetch --json --schema" -- "$cur"))
 }
 
 __arb_complete_rebranch() {

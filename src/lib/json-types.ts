@@ -168,10 +168,18 @@ export const ListJsonEntrySchema = z.object({
 
 // ── Branch JSON schema ──
 
+export const BranchJsonRepoSchema = z.object({
+	name: z.string(),
+	branch: z.string().nullable(),
+	base: z.string().nullable().optional(),
+	share: z.string().nullable().optional(),
+	refMode: z.enum(["noRef", "implicit", "configured", "gone"]).optional(),
+});
+
 export const BranchJsonOutputSchema = z.object({
 	branch: z.string(),
 	base: z.string().nullable(),
-	repos: z.array(z.object({ name: z.string(), branch: z.string().nullable() })),
+	repos: z.array(BranchJsonRepoSchema),
 });
 
 // ── Derived TypeScript types ──
@@ -188,4 +196,5 @@ export type DiffJsonRepo = z.infer<typeof DiffJsonRepoSchema>;
 export type DiffJsonOutput = z.infer<typeof DiffJsonOutputSchema>;
 export type RepoListJsonEntry = z.infer<typeof RepoListJsonEntrySchema>;
 export type ListJsonEntry = z.infer<typeof ListJsonEntrySchema>;
+export type BranchJsonRepo = z.infer<typeof BranchJsonRepoSchema>;
 export type BranchJsonOutput = z.infer<typeof BranchJsonOutputSchema>;
