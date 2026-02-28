@@ -306,7 +306,7 @@ _arb() {
                     ;;
                 list)
                     _arguments \
-                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch all repos before listing (default)]' \
+                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch workspace repos before listing (default)]' \
                         '(-F --fetch --no-fetch)--no-fetch[Skip fetching]' \
                         '--no-status[Skip per-repo status (faster for large setups)]' \
                         '(-q --quiet --json)'{-q,--quiet}'[Output one workspace name per line]' \

@@ -758,6 +758,15 @@ assert 'url' in data[0]['base']
     [[ "$output" == *"Cannot combine --verbose with --json"* ]]
 }
 
+@test "arb list -F only fetches repos used in workspaces" {
+    arb create ws-one repo-a
+    # repo-b exists as canonical but is not in any workspace
+    run arb list -F
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Fetched 1 repo"* ]]
+    [[ "$output" != *"Fetched 2 repos"* ]]
+}
+
 @test "arb list suppresses diverged and behind-base for squash-merged workspace" {
     arb create merged-ws repo-a
     local wt="$TEST_DIR/project/merged-ws/repo-a"
