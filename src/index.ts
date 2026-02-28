@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { Command, type Help } from "commander";
 import { registerAttachCommand } from "./commands/attach";
+import { registerBranchCommand } from "./commands/branch";
 import { registerCdCommand } from "./commands/cd";
 import { registerCleanCommand } from "./commands/clean";
 import { registerCreateCommand } from "./commands/create";
@@ -43,7 +44,7 @@ const COMMAND_GROUPS = [
 	{
 		title: "Inspection Commands:",
 		description: "  Inspect workspace branch state across repositories.",
-		commands: ["status", "log", "diff"],
+		commands: ["status", "branch", "log", "diff"],
 	},
 	{
 		title: "Synchronization Commands:",
@@ -200,6 +201,7 @@ registerCdCommand(program, getCtx);
 registerAttachCommand(program, getCtx);
 registerDetachCommand(program, getCtx);
 registerStatusCommand(program, getCtx);
+registerBranchCommand(program, getCtx);
 registerPullCommand(program, getCtx);
 registerPushCommand(program, getCtx);
 registerRebaseCommand(program, getCtx);

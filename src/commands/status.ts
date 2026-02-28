@@ -232,14 +232,8 @@ async function renderStatusTable(
 	let output = "";
 	const repos = filteredSummary.repos;
 
-	// Branch header line
-	const branchHeader = filteredSummary.base
-		? `On branch ${filteredSummary.branch}  ${dim(`(base: ${filteredSummary.base})`)}`
-		: `On branch ${filteredSummary.branch}`;
-	output += `${branchHeader}\n`;
-
 	if (repos.length === 0) {
-		output += "\n  (no repos)\n";
+		output += "  (no repos)\n";
 		return output;
 	}
 
@@ -343,7 +337,6 @@ async function renderStatusTable(
 	const finalRemoteGroupWidth = maxRemoteName + 2 + maxRemoteDiff;
 
 	// Table header line
-	output += "\n";
 	let header = `  ${dim("REPO")}${" ".repeat(maxRepo - 4)}`;
 	if (showBranch) {
 		header += `    ${dim("BRANCH")}${" ".repeat(maxBranch - 6)}`;

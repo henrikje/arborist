@@ -144,6 +144,7 @@ _arb() {
                 'attach:Attach repos to the workspace'
                 'detach:Detach repos from the workspace'
                 'status:Show workspace status'
+                'branch:Show the workspace branch'
                 'pull:Pull the feature branch from the share remote'
                 'push:Push the feature branch to the share remote'
                 'rebase:Rebase feature branches onto the base branch'
@@ -324,6 +325,11 @@ _arb() {
                         '(-q --quiet --json -v --verbose)'{-q,--quiet}'[Output one repo name per line]' \
                         '(--json -q --quiet)--json[Output structured JSON]' \
                         '*:repo:($repo_names)'
+                    ;;
+                branch)
+                    _arguments \
+                        '(-q --quiet --json)'{-q,--quiet}'[Output just the branch name]' \
+                        '(--json -q --quiet)--json[Output structured JSON]'
                     ;;
                 exec)
                     _arguments \

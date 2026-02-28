@@ -533,49 +533,6 @@ load test_helper/common-setup
     [[ "$output" == *"second feature"* ]]
 }
 
-# ── branch header line ─────────────────────────────────────────────
-
-@test "arb status shows branch header line" {
-    arb create my-feature repo-a
-    cd "$TEST_DIR/project/my-feature"
-    run arb status
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"On branch my-feature"* ]]
-}
-
-@test "arb status shows branch and base in header line" {
-    # Create a stacked workspace with an explicit base
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout -b feat/auth >/dev/null 2>&1
-    echo "auth" > "$TEST_DIR/project/.arb/repos/repo-a/auth.txt"
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" add auth.txt >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" commit -m "auth" >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" push -u origin feat/auth >/dev/null 2>&1
-    git -C "$TEST_DIR/project/.arb/repos/repo-a" checkout --detach >/dev/null 2>&1
-
-    arb create stacked --base feat/auth -b feat/auth-ui repo-a
-    cd "$TEST_DIR/project/stacked"
-    run arb status
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"On branch feat/auth-ui"* ]]
-    [[ "$output" == *"(base: feat/auth)"* ]]
-}
-
-@test "arb status --quiet does not show branch header" {
-    arb create my-feature repo-a
-    cd "$TEST_DIR/project/my-feature"
-    run arb status --quiet
-    [ "$status" -eq 0 ]
-    [[ "$output" != *"On branch"* ]]
-}
-
-@test "arb status --json does not show branch header" {
-    arb create my-feature repo-a
-    cd "$TEST_DIR/project/my-feature"
-    run arb status --json
-    [ "$status" -eq 0 ]
-    [[ "$output" != *"On branch"* ]]
-}
-
 # ── compact status display ────────────────────────────────────────
 
 @test "arb status hides BRANCH column when no repos are drifted" {
