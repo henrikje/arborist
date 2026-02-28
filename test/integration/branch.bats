@@ -31,12 +31,13 @@ load test_helper/common-setup
     [[ "$output" == *"feat/auth"* ]]
 }
 
-@test "arb branch does not show BASE column without base" {
+@test "arb branch shows (default branch) when no explicit base" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     run arb branch
     [ "$status" -eq 0 ]
-    [[ "$output" != *"BASE"* ]]
+    [[ "$output" == *"BASE"* ]]
+    [[ "$output" == *"(default branch)"* ]]
 }
 
 # ── quiet mode ────────────────────────────────────────────────────
@@ -84,6 +85,67 @@ load test_helper/common-setup
     [[ "$output" == *"Repos on a different branch"* ]]
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" == *"(detached)"* ]]
+}
+
+# ── verbose mode ──────────────────────────────────────────────────
+
+@test "arb branch -v shows per-repo table with REPO, BASE, and SHARE headers" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb branch -v
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"REPO"* ]]
+    [[ "$output" == *"BRANCH"* ]]
+    [[ "$output" == *"BASE"* ]]
+    [[ "$output" == *"SHARE"* ]]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"repo-b"* ]]
+}
+
+@test "arb branch -v detects drifted repo" {
+    arb create my-feature repo-a repo-b
+    git -C "$TEST_DIR/project/my-feature/repo-a" checkout -b experiment >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb branch -v
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"experiment"* ]]
+}
+
+@test "arb branch -v detects detached repo" {
+    arb create my-feature repo-a repo-b
+    git -C "$TEST_DIR/project/my-feature/repo-a" checkout --detach >/dev/null 2>&1
+    cd "$TEST_DIR/project/my-feature"
+    run arb branch -v
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"(detached)"* ]]
+}
+
+@test "arb branch -v shows local only for unpushed repos" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb branch -v
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"(local only)"* ]]
+}
+
+@test "arb branch --verbose --json includes base, share, and refMode fields" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb branch --verbose --json
+    [ "$status" -eq 0 ]
+    echo "$output" | jq -e '.branch == "my-feature"'
+    echo "$output" | jq -e '.repos | length == 2'
+    echo "$output" | jq -e '.repos[0].refMode'
+    echo "$output" | jq -e '.repos[0] | has("base")'
+    echo "$output" | jq -e '.repos[0] | has("share")'
+}
+
+@test "arb branch -q -v errors with Cannot combine" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb branch -q -v
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Cannot combine"* ]]
 }
 
 # ── schema mode ──────────────────────────────────────────────────

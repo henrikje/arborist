@@ -331,9 +331,12 @@ _arb() {
                     ;;
                 branch)
                     _arguments \
-                        '(-q --quiet --json --schema)'{-q,--quiet}'[Output just the branch name]' \
+                        '(-q --quiet --json --schema -v --verbose)'{-q,--quiet}'[Output just the branch name]' \
+                        '(-v --verbose -q --quiet --schema)'{-v,--verbose}'[Show per-repo branch and remote tracking detail]' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch remotes before displaying]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching (default)]' \
                         '(--json -q --quiet --schema)--json[Output structured JSON]' \
-                        '(--schema --json -q --quiet)--schema[Print JSON Schema for --json output]'
+                        '(--schema --json -q --quiet -v --verbose)--schema[Print JSON Schema for --json output]'
                     ;;
                 exec)
                     _arguments \
