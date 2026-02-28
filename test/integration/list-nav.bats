@@ -213,12 +213,12 @@ load test_helper/common-setup
     [[ "$output" == *"ws-one"* ]]
 }
 
-@test "arb list -F fetches before listing (short for --fetch)" {
+@test "arb list -N skips fetch (short for --no-fetch)" {
     arb create ws-one repo-a
     cd "$TEST_DIR/project/ws-one"
-    run arb list -F
+    run arb list -N
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Fetched"* ]]
+    [[ "$output" != *"Fetched"* ]]
     [[ "$output" == *"ws-one"* ]]
 }
 
@@ -231,24 +231,24 @@ load test_helper/common-setup
     [[ "$output" != *"Fetched"* ]]
 }
 
-@test "arb list -F shows status after fetch" {
+@test "arb list --fetch shows status after fetch" {
     arb create ws-one repo-a
-    run arb list -F
+    run arb list --fetch
     [ "$status" -eq 0 ]
     [[ "$output" == *"no issues"* ]]
 }
 
-@test "arb list -F with dirty repo shows dirty status" {
+@test "arb list --fetch with dirty repo shows dirty status" {
     arb create ws-one repo-a
     echo "dirty" > "$TEST_DIR/project/ws-one/repo-a/dirty.txt"
-    run arb list -F
+    run arb list --fetch
     [ "$status" -eq 0 ]
     [[ "$output" == *"dirty"* ]]
 }
 
-@test "arb list -F --json outputs valid JSON with status" {
+@test "arb list --fetch --json outputs valid JSON with status" {
     arb create ws-one repo-a
-    run bash -c 'arb list -F --json 2>/dev/null'
+    run bash -c 'arb list --fetch --json 2>/dev/null'
     [ "$status" -eq 0 ]
     echo "$output" | python3 -c "
 import sys, json
@@ -259,9 +259,9 @@ assert 'statusLabels' in ws
 "
 }
 
-@test "arb list -F --quiet outputs workspace names" {
+@test "arb list --fetch --quiet outputs workspace names" {
     arb create ws-one repo-a
-    run arb list -F --quiet
+    run arb list --fetch --quiet
     [ "$status" -eq 0 ]
     [[ "$output" == *"ws-one"* ]]
     [[ "$output" != *"WORKSPACE"* ]]
@@ -758,10 +758,10 @@ assert 'url' in data[0]['base']
     [[ "$output" == *"Cannot combine --verbose with --json"* ]]
 }
 
-@test "arb list -F only fetches repos used in workspaces" {
+@test "arb list --fetch only fetches repos used in workspaces" {
     arb create ws-one repo-a
     # repo-b exists as canonical but is not in any workspace
-    run arb list -F
+    run arb list --fetch
     [ "$status" -eq 0 ]
     [[ "$output" == *"Fetched 1 repo"* ]]
     [[ "$output" != *"Fetched 2 repos"* ]]

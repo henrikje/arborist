@@ -306,8 +306,8 @@ _arb() {
                     ;;
                 list)
                     _arguments \
-                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch workspace repos before listing (default)]' \
-                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching]' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch workspace repos before listing (default)]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching]' \
                         '--no-status[Skip per-repo status (faster for large setups)]' \
                         '(-q --quiet --json)'{-q,--quiet}'[Output one workspace name per line]' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only list dirty workspaces]' \
@@ -318,8 +318,8 @@ _arb() {
                     _arguments \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only show dirty repos]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before showing status (default)]' \
-                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching]' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch before showing status (default)]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching]' \
                         '(-v --verbose -q --quiet)'{-v,--verbose}'[Show file-level detail]' \
                         '(-q --quiet --json -v --verbose)'{-q,--quiet}'[Output one repo name per line]' \
                         '(--json -q --quiet)--json[Output structured JSON]' \
@@ -352,8 +352,8 @@ _arb() {
                 push)
                     _arguments \
                         '(-f --force)'{-f,--force}'[Force push with lease]' \
-                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before push (default)]' \
-                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching before push]' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch before push (default)]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before push]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show outgoing commits in the plan]' \
@@ -361,8 +361,8 @@ _arb() {
                     ;;
                 rebase)
                     _arguments \
-                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before rebase (default)]' \
-                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching before rebase]' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch before rebase (default)]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before rebase]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \
@@ -373,8 +373,8 @@ _arb() {
                     ;;
                 merge)
                     _arguments \
-                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before merge (default)]' \
-                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching before merge]' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch before merge (default)]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before merge]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \
@@ -387,8 +387,8 @@ _arb() {
                         '--continue[Resume an in-progress rebranch]' \
                         '--abort[Roll back an in-progress rebranch]' \
                         '--delete-remote-old[Delete old branch on remote after rename]' \
-                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before rebranch (default)]' \
-                        '(-F --fetch --no-fetch)--no-fetch[Skip pre-rename remote fetch]' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch before rebranch (default)]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-rename remote fetch]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '--include-in-progress[Rename repos even if they have an in-progress git operation]' \
@@ -396,8 +396,8 @@ _arb() {
                     ;;
                 log)
                     _arguments \
-                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before showing log]' \
-                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching (default)]' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch before showing log]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching (default)]' \
                         '(-n --max-count)'{-n,--max-count}'[Limit commits shown per repo]:count:' \
                         '--json[Output structured JSON]' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only log dirty repos]' \
@@ -406,8 +406,8 @@ _arb() {
                     ;;
                 diff)
                     _arguments \
-                        '(-F --fetch --no-fetch)'{-F,--fetch}'[Fetch before showing diff]' \
-                        '(-F --fetch --no-fetch)--no-fetch[Skip fetching (default)]' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch before showing diff]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching (default)]' \
                         '--stat[Show diffstat summary instead of full diff]' \
                         '--json[Output structured JSON]' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only diff dirty repos]' \

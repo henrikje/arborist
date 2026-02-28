@@ -374,12 +374,12 @@ load test_helper/common-setup
     [[ "$file_name" == *"=>"* ]]
 }
 
-@test "arb diff -F fetches before showing diff (short for --fetch)" {
+@test "arb diff -N skips fetch (short for --no-fetch)" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
-    run arb diff -F
+    run arb diff -N
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Fetched"* ]]
+    [[ "$output" != *"Fetched"* ]]
 }
 
 # ── untracked file hints ──────────────────────────────────────────
