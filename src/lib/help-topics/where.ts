@@ -1,12 +1,7 @@
-import { bold, dim } from "./output";
+import { bold, dim } from "../output";
+import type { HelpTopic } from "./index";
 
-export interface HelpTopic {
-	name: string;
-	summary: string;
-	render(): void;
-}
-
-const whereFilterTopic: HelpTopic = {
+export const whereFilterTopic: HelpTopic = {
 	name: "where",
 	summary: "Filter syntax for --where",
 	render() {
@@ -65,13 +60,3 @@ const whereFilterTopic: HelpTopic = {
 		out(`  ${dim("arb list --where stale")}                List workspaces with any stale repo`);
 	},
 };
-
-const TOPICS: HelpTopic[] = [whereFilterTopic];
-
-export function findTopic(name: string): HelpTopic | undefined {
-	return TOPICS.find((t) => t.name === name);
-}
-
-export function allTopics(): HelpTopic[] {
-	return TOPICS;
-}

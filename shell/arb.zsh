@@ -432,6 +432,10 @@ _arb() {
                 help)
                     local -a help_completions=(
                         'where:Filter syntax for --where'
+                        'remotes:Fork workflows and remote roles'
+                        'stacked:Stacked workspaces (branching off features)'
+                        'templates:Template system quick reference'
+                        'scripting:Scripting patterns and conventions'
                         'init:Initialize a directory as an arb root'
                         'repo:Manage canonical repos'
                         'create:Create a new workspace'

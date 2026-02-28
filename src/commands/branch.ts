@@ -42,7 +42,7 @@ export function registerBranchCommand(program: Command, getCtx: () => ArbContext
 		.option("--schema", "Print JSON Schema for this command's --json output and exit")
 		.summary("Show the workspace branch")
 		.description(
-			"Show the workspace branch, base branch (if configured), and any per-repo deviations. Use --verbose to show a per-repo table with branch and remote tracking info (fetches by default; use -N to skip). Use --quiet to output just the branch name (useful for scripting). Use --json for machine-readable output.",
+			"Show the workspace branch, base branch (if configured), and any per-repo deviations. Use --verbose to show a per-repo table with branch and remote tracking info (fetches by default; use -N to skip). Use --quiet to output just the branch name (useful for scripting). Use --json for machine-readable output.\n\nSee 'arb help scripting' for output modes and piping.",
 		)
 		.action(
 			async (options: { quiet?: boolean; verbose?: boolean; json?: boolean; fetch?: boolean; schema?: boolean }) => {

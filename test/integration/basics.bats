@@ -107,6 +107,30 @@ load test_helper/common-setup
     [[ "$output" == *"arb help where"* ]]
 }
 
+@test "arb help remotes shows remote roles reference" {
+    run arb help remotes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"REMOTE ROLES"* ]]
+}
+
+@test "arb help stacked shows stacked workspaces reference" {
+    run arb help stacked
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"STACKED WORKSPACES"* ]]
+}
+
+@test "arb help templates shows template reference" {
+    run arb help templates
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"TEMPLATE"* ]]
+}
+
+@test "arb help scripting shows scripting reference" {
+    run arb help scripting
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"SCRIPTING"* ]]
+}
+
 @test "arb help nonexistent shows error" {
     run arb help nonexistent
     [ "$status" -ne 0 ]
