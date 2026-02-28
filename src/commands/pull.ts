@@ -29,7 +29,7 @@ import { formatSkipLine, formatStashHint, formatUpToDateLine } from "../lib/plan
 import type { RepoRemotes } from "../lib/remotes";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import type { SkipFlag } from "../lib/skip-flags";
-import { type RepoStatus, computeFlags, gatherRepoStatus } from "../lib/status";
+import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
 import { VERBOSE_COMMIT_LIMIT, formatVerboseCommits } from "../lib/status-verbose";
 import { readNamesFromStdin } from "../lib/stdin";
 import type { ArbContext } from "../lib/types";
@@ -64,9 +64,10 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 		.option("--merge", "Pull with merge")
 		.option("--autostash", "Stash uncommitted changes before pull, re-apply after")
 		.option("-v, --verbose", "Show incoming commits in the plan")
+		.option("-w, --where <filter>", "Only pull repos matching status filter (comma = OR, + = AND, ^ = negate)")
 		.summary("Pull the feature branch from the share remote")
 		.description(
-			"Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos with uncommitted changes are skipped unless --autostash is used. Repos that haven't been pushed yet or where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end. Use --verbose to show the incoming commits for each repo in the plan. Use --autostash to stash uncommitted changes before pulling and re-apply them after.\n\nThe pull mode (rebase or merge) is determined per-repo from git config (branch.<name>.rebase, then pull.rebase), defaulting to merge if neither is set. Use --rebase or --merge to override for all repos.\n\nSee 'arb help remotes' for remote role resolution.",
+			"Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos with uncommitted changes are skipped unless --autostash is used. Repos that haven't been pushed yet or where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end. Use --verbose to show the incoming commits for each repo in the plan. Use --autostash to stash uncommitted changes before pulling and re-apply them after. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nThe pull mode (rebase or merge) is determined per-repo from git config (branch.<name>.rebase, then pull.rebase), defaulting to merge if neither is set. Use --rebase or --merge to override for all repos.\n\nSee 'arb help remotes' for remote role resolution.",
 		)
 		.action(
 			async (
@@ -78,6 +79,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					dryRun?: boolean;
 					verbose?: boolean;
 					autostash?: boolean;
+					where?: string;
 				},
 			) => {
 				if (options.rebase && options.merge) {
@@ -85,6 +87,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					throw new ArbError("Cannot use both --rebase and --merge");
 				}
 
+				const where = resolveWhereFilter(options);
 				const flagMode: "rebase" | "merge" | undefined = options.rebase
 					? "rebase"
 					: options.merge
@@ -114,15 +117,20 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 
 				// Phase 2: assess
 				const assess = async (fetchFailed: string[]) => {
-					return Promise.all(
+					const assessments = await Promise.all(
 						repos.map(async (repo) => {
 							const repoDir = `${wsDir}/${repo}`;
 							const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo), cache);
+							if (where) {
+								const flags = computeFlags(status, branch);
+								if (!repoMatchesWhere(flags, where)) return null;
+							}
 							const headSha = await getShortHead(repoDir);
 							const pullMode = flagMode ?? (await detectPullMode(repoDir, branch));
 							return assessPullRepo(status, repoDir, branch, fetchFailed, pullMode, autostash, headSha);
 						}),
 					);
+					return assessments.filter((a): a is PullAssessment => a !== null);
 				};
 
 				const postAssess = async (nextAssessments: PullAssessment[]) => {

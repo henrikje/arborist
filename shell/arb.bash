@@ -221,7 +221,7 @@ __arb_complete_delete() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-f --force -r --delete-remote -d --dirty -y --yes -a --all-safe -w --where -n --dry-run" -- "$cur"))
+        COMPREPLY=($(compgen -W "-f --force -r --delete-remote -y --yes -a --all-safe -w --where -n --dry-run" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_workspace_names "$base_dir")" -- "$cur"))
@@ -404,8 +404,13 @@ __arb_complete_diff() {
 
 __arb_complete_pull() {
     local base_dir="$1" cur="$2"
+    local prev="${COMP_WORDS[COMP_CWORD-1]}"
+    if [[ "$prev" == "-w" || "$prev" == "--where" ]]; then
+        __arb_complete_where_value "$cur"
+        return
+    fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-y --yes -n --dry-run -v --verbose --rebase --merge --autostash" -- "$cur"))
+        COMPREPLY=($(compgen -W "-y --yes -n --dry-run -v --verbose --rebase --merge --autostash -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -413,8 +418,13 @@ __arb_complete_pull() {
 
 __arb_complete_push() {
     local base_dir="$1" cur="$2"
+    local prev="${COMP_WORDS[COMP_CWORD-1]}"
+    if [[ "$prev" == "-w" || "$prev" == "--where" ]]; then
+        __arb_complete_where_value "$cur"
+        return
+    fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-f --force --fetch -N --no-fetch -y --yes -n --dry-run -v --verbose" -- "$cur"))
+        COMPREPLY=($(compgen -W "-f --force --fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -422,8 +432,13 @@ __arb_complete_push() {
 
 __arb_complete_rebase() {
     local base_dir="$1" cur="$2"
+    local prev="${COMP_WORDS[COMP_CWORD-1]}"
+    if [[ "$prev" == "-w" || "$prev" == "--where" ]]; then
+        __arb_complete_where_value "$cur"
+        return
+    fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --retarget --autostash" -- "$cur"))
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --retarget --autostash -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -431,8 +446,13 @@ __arb_complete_rebase() {
 
 __arb_complete_merge() {
     local base_dir="$1" cur="$2"
+    local prev="${COMP_WORDS[COMP_CWORD-1]}"
+    if [[ "$prev" == "-w" || "$prev" == "--where" ]]; then
+        __arb_complete_where_value "$cur"
+        return
+    fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --autostash" -- "$cur"))
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --autostash -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))

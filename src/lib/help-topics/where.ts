@@ -10,7 +10,7 @@ export const whereFilterTopic: HelpTopic = {
 		out(bold("WHERE FILTER SYNTAX"));
 		out("");
 		out("  The --where flag filters repos (or workspaces) by status flags.");
-		out("  It is supported by: status, list, exec, open, log, diff, delete.");
+		out("  It is supported by: status, list, exec, open, log, diff, delete, push, pull, rebase, merge.");
 		out("");
 		out(bold("SYNTAX"));
 		out("");
@@ -58,5 +58,7 @@ export const whereFilterTopic: HelpTopic = {
 		out(`  ${dim("arb exec --where dirty git stash")}      Stash in all dirty repos`);
 		out(`  ${dim("arb delete --where gone")}               Delete all gone workspaces`);
 		out(`  ${dim("arb list --where stale")}                List workspaces with any stale repo`);
+		out(`  ${dim("arb push --where ^behind-base")}          Push only repos already rebased`);
+		out(`  ${dim("arb rebase --where ^diverged")}          Skip diverged repos, rebase the rest`);
 	},
 };

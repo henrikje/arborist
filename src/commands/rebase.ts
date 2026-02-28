@@ -17,9 +17,10 @@ export function registerRebaseCommand(program: Command, getCtx: () => ArbContext
 			"--retarget [branch]",
 			"Retarget repos whose base has been merged; optionally specify the new base branch (defaults to the default branch)",
 		)
+		.option("-w, --where <filter>", "Only rebase repos matching status filter (comma = OR, + = AND, ^ = negate)")
 		.summary("Rebase feature branches onto the base branch")
 		.description(
-			"Fetches all repos, then rebases the feature branch onto the updated base branch (e.g. main) for all repos, or only the named repos. Shows a plan and asks for confirmation before proceeding. Repos with uncommitted changes are skipped unless --autostash is used. Repos already up to date are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. Fetches before rebase by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --autostash to stash uncommitted changes before rebasing and re-apply them after. Use --verbose to show the incoming commits for each repo in the plan. Use --graph to show a branch divergence diagram with the merge-base point. Combine --graph --verbose to see commits inline in the diagram. Use --retarget when the configured base branch has been merged — this rebases onto the default branch and updates the workspace config. Use --retarget <branch> for deep stacks where the base was merged into a non-default branch (e.g. --retarget feat/A when B was merged into A).\n\nSee 'arb help remotes' for remote role resolution. See 'arb help stacked' for stacked workspace workflows.",
+			"Fetches all repos, then rebases the feature branch onto the updated base branch (e.g. main) for all repos, or only the named repos. Shows a plan and asks for confirmation before proceeding. Repos with uncommitted changes are skipped unless --autostash is used. Repos already up to date are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. Fetches before rebase by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --autostash to stash uncommitted changes before rebasing and re-apply them after. Use --verbose to show the incoming commits for each repo in the plan. Use --graph to show a branch divergence diagram with the merge-base point. Combine --graph --verbose to see commits inline in the diagram. Use --retarget when the configured base branch has been merged — this rebases onto the default branch and updates the workspace config. Use --retarget <branch> for deep stacks where the base was merged into a non-default branch (e.g. --retarget feat/A when B was merged into A). Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution. See 'arb help stacked' for stacked workspace workflows.",
 		)
 		.action(
 			async (
@@ -32,6 +33,7 @@ export function registerRebaseCommand(program: Command, getCtx: () => ArbContext
 					graph?: boolean;
 					retarget?: string | boolean;
 					autostash?: boolean;
+					where?: string;
 				},
 			) => {
 				let repoNames = repoArgs;

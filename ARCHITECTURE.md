@@ -17,7 +17,7 @@ Every command that needs to understand repo state must work from `RepoStatus` an
 3. Add the flag to `computeFlags()` and the label to `FLAG_LABELS`.
 4. All existing consumers (status display, list aggregation, remove safety checks, etc.) automatically pick it up through `isAtRisk()` and `flagLabels()`.
 
-Commands must use shared functions (`isAtRisk`, `wouldLoseWork`, `flagLabels`) rather than re-deriving conclusions from raw flags — this keeps evaluation logic centralized.
+Commands must use shared functions (`isAtRisk`, `wouldLoseWork`, `flagLabels`) rather than re-deriving conclusions from raw flags — this keeps evaluation logic centralized. `resolveWhereFilter()` handles `--dirty`/`--where` option validation and resolution; `repoMatchesWhere()` tests a `RepoFlags` against a parsed filter expression.
 
 **Remote roles terminology.** The two remote roles are `base` (integration) and `share` (sharing), defined in `RepoRemotes`. The corresponding status sections are `base` and `share` in `RepoStatus`. The user-facing column headers are `BASE` and `SHARE`. Flag labels are `behind base` and `behind share`. Note: the git remote *name* may still be `"upstream"` (a fork workflow convention), but the *role* in code is always `base`.
 
