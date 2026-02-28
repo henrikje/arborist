@@ -188,8 +188,9 @@ The tour covered the essentials. Here are more capabilities worth knowing about.
 Before a rebase, merge, or pull runs, Arborist performs a trial three-way merge in memory (using the same algorithm Git uses) against each repo to identify actual file-level conflicts. It can identify when earlier commits have been merged, rebased, and even squash merged. The result appears in the plan:
 
 ```
-  backend    up to date
-  frontend   rebase add-dark-mode onto origin/main — 1 behind, 1 ahead (conflict unlikely)
+  api        rebase add-auth onto origin/main — 4 behind, 3 ahead (conflict unlikely) (autostash)
+  frontend   rebase add-auth onto origin/main — 2 behind, 1 ahead (no conflict)
+  shared     up to date
 ```
 
 You see which repos will conflict before you commit to the operation. Arborist also suggests options to handle possibly dangerous situations, such as `--autostash` to operate on a repo with uncommitted changes without manual stashing.
@@ -199,14 +200,14 @@ If a rebase or merge does hit a conflict, Arborist continues with the remaining 
 ### Filter by status
 
 ```bash
+arb list --where at-risk                 # workspaces that need attention
+arb delete --where gone                  # clean up after merged PRs
 arb status --where dirty,unpushed        # OR — repos matching either
 arb status --where dirty+unpushed        # AND — repos matching both
-arb list --where at-risk
-arb list --where safe                    # workspaces with no issues
-arb delete --where ^at-risk              # ^ negates any term
+arb list --where ^merged                 # ^ negates — exclude merged workspaces
 ```
 
-Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, drifted, and more — plus their positive counterparts like clean, pushed, synced-base, and safe. The `--where` flag lets you filter by any combination, and works across `status`, `list`, `exec`, `open`, `diff`, and `delete`, so you can find what needs attention or confirm what's good. Prefix any term with `^` to negate it (e.g. `^shallow`). Use `--dirty` as a shorthand for `--where dirty`.
+Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, drifted, and more — plus their positive counterparts like clean, pushed, synced-base, and safe. The `--where` flag (`-w` for short) lets you filter by any combination, and works across `status`, `list`, `exec`, `open`, `diff`, and `delete`, so you can find what needs attention or confirm what's good. Prefix any term with `^` to negate it (e.g. `^shallow`). Use `--dirty` as a shorthand for `--where dirty`.
 
 ### Run commands across repos
 
@@ -260,11 +261,11 @@ One command clones your fork and registers the canonical repository. Arborist au
 ### Script-friendly by design
 
 ```bash
-arb push --dry-run          # preview without executing
-arb rebase --yes            # skip confirmation
-arb branch -q               # just the branch name
-arb status --json | jq ...  # machine-readable output
-arb list --quiet | xargs ...     # one workspace name per line
+arb push --dry-run            # preview without executing
+arb rebase --yes              # skip confirmation
+arb branch --quiet            # just the branch name
+arb status --json | jq ...    # machine-readable output
+arb list --quiet | xargs ...  # one workspace name per line
 ```
 
 All state-changing commands support `--dry-run` to preview the plan and `--yes` to skip confirmation prompts. `status`, `branch`, `list`, `log`, `diff`, and `repo list` support `--json` for structured output and `--quiet` for one name per line — useful for feeding into other commands. Exit codes are meaningful: 0 for success, 1 for issues, 130 for user abort. Human-facing output goes to stderr, machine-parseable data to stdout — so piping works naturally.
