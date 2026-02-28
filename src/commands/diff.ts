@@ -3,7 +3,8 @@ import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
 import { git, parseGitNumstat } from "../lib/git";
 import { GitCache } from "../lib/git-cache";
-import type { DiffJsonFileStat, DiffJsonOutput, DiffJsonRepo } from "../lib/json-types";
+import { printSchema } from "../lib/json-schema";
+import { type DiffJsonFileStat, type DiffJsonOutput, DiffJsonOutputSchema, type DiffJsonRepo } from "../lib/json-types";
 import { error, plural, stdout, success } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { writeRepoHeader, writeRepoSkipHeader } from "../lib/repo-header";
@@ -102,6 +103,7 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
 		.option("-N, --no-fetch", "Skip fetching (default)")
 		.option("--stat", "Show diffstat summary instead of full diff")
 		.option("--json", "Output structured JSON to stdout")
+		.option("--schema", "Print JSON Schema for this command's --json output and exit")
 		.option("-d, --dirty", "Only diff dirty repos (shorthand for --where dirty)")
 		.option("-w, --where <filter>", "Only diff repos matching status filter (comma = OR, + = AND, ^ = negate)")
 		.summary("Show feature branch diff across repos")
@@ -111,8 +113,16 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
 		.action(
 			async (
 				repoArgs: string[],
-				options: { stat?: boolean; json?: boolean; dirty?: boolean; where?: string; fetch?: boolean },
+				options: { stat?: boolean; json?: boolean; schema?: boolean; dirty?: boolean; where?: string; fetch?: boolean },
 			) => {
+				if (options.schema) {
+					if (options.json) {
+						error("Cannot combine --schema with --json.");
+						throw new ArbError("Cannot combine --schema with --json.");
+					}
+					printSchema(DiffJsonOutputSchema);
+					return;
+				}
 				const ctx = getCtx();
 				const { wsDir, workspace } = requireWorkspace(ctx);
 				const branch = await requireBranch(wsDir, workspace);

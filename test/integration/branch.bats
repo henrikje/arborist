@@ -86,6 +86,24 @@ load test_helper/common-setup
     [[ "$output" == *"(detached)"* ]]
 }
 
+# ── schema mode ──────────────────────────────────────────────────
+
+@test "arb branch --schema outputs valid JSON Schema without requiring workspace" {
+    cd "$BATS_TMPDIR"
+    run arb branch --schema
+    [ "$status" -eq 0 ]
+    echo "$output" | jq -e '."$schema"'
+    echo "$output" | jq -e '.properties.branch'
+    echo "$output" | jq -e '.properties.repos'
+}
+
+@test "arb branch --schema conflicts with --json" {
+    cd "$TEST_DIR/project"
+    run arb branch --schema --json
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Cannot combine"* ]]
+}
+
 # ── error handling ────────────────────────────────────────────────
 
 @test "arb branch outside a workspace errors" {

@@ -635,6 +635,22 @@ load test_helper/common-setup
     [[ "$output" == *"Cannot combine --quiet with --verbose"* ]]
 }
 
+@test "arb status --schema outputs valid JSON Schema without requiring workspace" {
+    cd "$BATS_TMPDIR"
+    run arb status --schema
+    [ "$status" -eq 0 ]
+    echo "$output" | jq -e '."$schema"'
+    echo "$output" | jq -e '.properties.repos'
+    echo "$output" | jq -e '.properties.workspace'
+}
+
+@test "arb status --schema conflicts with --json" {
+    cd "$TEST_DIR/project"
+    run arb status --schema --json
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Cannot combine"* ]]
+}
+
 # ── positive filter terms ─────────────────────────────────────────
 
 @test "arb status --where clean shows only clean repos" {

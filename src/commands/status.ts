@@ -3,7 +3,8 @@ import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
 import { predictMergeConflict } from "../lib/git";
 import { GitCache } from "../lib/git-cache";
-import type { StatusJsonOutput } from "../lib/json-types";
+import { printSchema } from "../lib/json-schema";
+import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json-types";
 import { bold, clearScanProgress, dim, error, scanProgress, stderr, yellow } from "../lib/output";
 import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { runPhasedRender } from "../lib/phased-render";
@@ -40,6 +41,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("-v, --verbose", "Show file-level detail for each repo")
 		.option("-q, --quiet", "Output one repo name per line")
 		.option("--json", "Output structured JSON (combine with --verbose for commit and file detail)")
+		.option("--schema", "Print JSON Schema for this command's --json output and exit")
 		.summary("Show workspace status")
 		.description(
 			"Show each repo's position relative to the base branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line), enabling composition like: arb status -q --where dirty | arb diff.\n\nUse --dirty to only show repos with uncommitted changes. Use --where <filter> to filter by any status flag: dirty, unpushed, behind-share, behind-base, diverged, drifted, detached, operation, gone, shallow, merged, base-merged, base-missing, at-risk, stale. Positive/healthy terms: clean, pushed, synced-base, synced-share, synced, safe. Prefix any term with ^ to negate (e.g. --where ^dirty is equivalent to --where clean). Comma-separated values use OR logic (e.g. --where dirty,unpushed). Use + for AND (e.g. --where dirty+unpushed matches repos that are both dirty and unpushed). + binds tighter than comma: dirty+unpushed,gone = (dirty AND unpushed) OR gone. Fetches from all remotes by default for fresh data (skip with -N/--no-fetch). Quiet mode (-q) skips fetching by default for scripting speed. Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.",
@@ -54,8 +56,17 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 					verbose?: boolean;
 					quiet?: boolean;
 					json?: boolean;
+					schema?: boolean;
 				},
 			) => {
+				if (options.schema) {
+					if (options.json || options.quiet || options.verbose) {
+						error("Cannot combine --schema with --json, --quiet, or --verbose.");
+						throw new ArbError("Cannot combine --schema with --json, --quiet, or --verbose.");
+					}
+					printSchema(StatusJsonOutputSchema);
+					return;
+				}
 				const ctx = getCtx();
 				requireWorkspace(ctx);
 				await runStatus(ctx, repoArgs, options);

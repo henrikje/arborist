@@ -1,11 +1,13 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Command } from "commander";
+import { z } from "zod";
 import { debugGit, isDebug } from "../lib/debug";
 import { ArbError } from "../lib/errors";
 import { git } from "../lib/git";
 import { GitCache } from "../lib/git-cache";
-import type { RepoListJsonEntry } from "../lib/json-types";
+import { printSchema } from "../lib/json-schema";
+import { type RepoListJsonEntry, RepoListJsonEntrySchema } from "../lib/json-types";
 import { confirmOrExit } from "../lib/mutation-flow";
 import { dim, dryRunNotice, error, info, inlineResult, inlineStart, plural, success, yellow } from "../lib/output";
 import { findRepoUsage, listRepos, selectInteractive } from "../lib/repos";
@@ -90,11 +92,20 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 		.option("-q, --quiet", "Output one repo name per line")
 		.option("-v, --verbose", "Show remote URLs alongside names")
 		.option("--json", "Output structured JSON")
+		.option("--schema", "Print JSON Schema for this command's --json output and exit")
 		.summary("List cloned repos")
 		.description(
 			"List all repositories that have been cloned into .arb/repos/. Shows resolved SHARE and BASE remote names for each repo. Use --verbose to include remote URLs alongside names. Use --quiet for plain enumeration (one name per line). Use --json for machine-readable output.",
 		)
-		.action(async (options: { quiet?: boolean; verbose?: boolean; json?: boolean }) => {
+		.action(async (options: { quiet?: boolean; verbose?: boolean; json?: boolean; schema?: boolean }) => {
+			if (options.schema) {
+				if (options.json || options.quiet || options.verbose) {
+					error("Cannot combine --schema with --json, --quiet, or --verbose.");
+					throw new ArbError("Cannot combine --schema with --json, --quiet, or --verbose.");
+				}
+				printSchema(z.array(RepoListJsonEntrySchema));
+				return;
+			}
 			const ctx = getCtx();
 
 			if (options.quiet && options.json) {

@@ -290,3 +290,12 @@ load test_helper/common-setup
     [ "$status" -eq 0 ]
     [[ "$output" != *"Fetched"* ]]
 }
+
+@test "arb log --schema outputs valid JSON Schema without requiring workspace" {
+    cd "$BATS_TMPDIR"
+    run arb log --schema
+    [ "$status" -eq 0 ]
+    echo "$output" | jq -e '."$schema"'
+    echo "$output" | jq -e '.properties.repos'
+    echo "$output" | jq -e '.properties.totalCommits'
+}
