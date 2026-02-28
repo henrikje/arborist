@@ -519,14 +519,14 @@ export function registerRebranchCommand(program: Command, getCtx: () => ArbConte
 		.option("--continue", "Resume an in-progress rebranch")
 		.option("--abort", "Roll back an in-progress rebranch")
 		.option("--delete-remote-old", "Delete old branch on remote after rename")
-		.option("-F, --fetch", "Fetch from all remotes before rebranch (default)")
-		.option("--no-fetch", "Skip fetching before rebranch")
+		.option("--fetch", "Fetch from all remotes before rebranch (default)")
+		.option("-N, --no-fetch", "Skip fetching before rebranch")
 		.option("-n, --dry-run", "Show what would happen without executing")
 		.option("-y, --yes", "Skip confirmation prompt")
 		.option("--include-in-progress", "Rename repos even if they have an in-progress git operation")
 		.summary("Rename the workspace branch across all repos")
 		.description(
-			"Renames the workspace branch locally across all repos and updates .arbws/config. Fetches before assessing to get fresh remote state (use --no-fetch to skip). Shows a plan and asks for confirmation before proceeding. Repos with an in-progress git operation (rebase, merge, cherry-pick) are skipped by default — use --include-in-progress to override.\n\nBranch rename is non-atomic across repos: if it fails partway, migration state is preserved in .arbws/config so the operation can be resumed. Use --continue to retry remaining repos or --abort to roll back. Remote branches are not renamed automatically — push the renamed branch with 'arb push'. Use --delete-remote-old to delete the old remote branch after local rename.",
+			"Renames the workspace branch locally across all repos and updates .arbws/config. Fetches before assessing to get fresh remote state (use -N/--no-fetch to skip). Shows a plan and asks for confirmation before proceeding. Repos with an in-progress git operation (rebase, merge, cherry-pick) are skipped by default — use --include-in-progress to override.\n\nBranch rename is non-atomic across repos: if it fails partway, migration state is preserved in .arbws/config so the operation can be resumed. Use --continue to retry remaining repos or --abort to roll back. Remote branches are not renamed automatically — push the renamed branch with 'arb push'. Use --delete-remote-old to delete the old remote branch after local rename.",
 		)
 		.action(async (newBranchArg: string | undefined, options: RebranchOptions) => {
 			const ctx = getCtx();

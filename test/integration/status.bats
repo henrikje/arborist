@@ -123,11 +123,12 @@ load test_helper/common-setup
     [[ "$output" == *"repo-a"* ]]
 }
 
-@test "arb status -F fetches before showing status" {
+@test "arb status -N skips fetch (short for --no-fetch)" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
-    run arb status -F
+    run arb status -N
     [[ "$output" == *"repo-a"* ]]
+    [[ "$output" != *"Fetched"* ]]
 }
 
 @test "arb status shows origin to push count" {
@@ -861,7 +862,7 @@ load test_helper/common-setup
     [[ "$output" != *"Fetched"* ]]
 }
 
-@test "arb status -F -v shows verbose detail after fetch" {
+@test "arb status --fetch -v shows verbose detail after fetch" {
     arb create my-feature repo-a
     echo "feature" > "$TEST_DIR/project/my-feature/repo-a/file.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add file.txt >/dev/null 2>&1
@@ -872,7 +873,7 @@ load test_helper/common-setup
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && echo "upstream" > upstream.txt && git add upstream.txt && git commit -m "upstream change" && git push) >/dev/null 2>&1
 
     cd "$TEST_DIR/project/my-feature"
-    run arb status -F -v
+    run arb status --fetch -v
     [ "$status" -eq 0 ]
     # Should show verbose detail — the ahead-of-base commit
     [[ "$output" == *"feature commit"* ]]
@@ -880,12 +881,12 @@ load test_helper/common-setup
     [[ "$output" == *"upstream change"* ]]
 }
 
-@test "arb status -F --json produces clean JSON" {
+@test "arb status --fetch --json produces clean JSON" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
     # Redirect stderr so fetch progress doesn't pollute JSON on stdout
     local json_output
-    json_output="$(arb status -F --json 2>/dev/null)"
+    json_output="$(arb status --fetch --json 2>/dev/null)"
     # Output should be valid JSON
     echo "$json_output" | jq . >/dev/null 2>&1
     local repo_name

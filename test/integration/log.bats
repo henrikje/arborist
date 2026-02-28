@@ -283,10 +283,10 @@ load test_helper/common-setup
     [[ "$output" == *"Fetched"* ]]
 }
 
-@test "arb log -F fetches before showing log (short for --fetch)" {
+@test "arb log -N skips fetch (short for --no-fetch)" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature"
-    run arb log -F
+    run arb log -N
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Fetched"* ]]
+    [[ "$output" != *"Fetched"* ]]
 }

@@ -256,7 +256,7 @@ __arb_complete_list() {
         __arb_complete_where_value "$cur"
         return
     fi
-    COMPREPLY=($(compgen -W "-F --fetch --no-fetch --no-status -q --quiet -d --dirty -w --where --json" -- "$cur"))
+    COMPREPLY=($(compgen -W "--fetch -N --no-fetch --no-status -q --quiet -d --dirty -w --where --json" -- "$cur"))
 }
 
 __arb_complete_path() {
@@ -355,7 +355,7 @@ __arb_complete_status() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-d --dirty -w --where -F --fetch --no-fetch -v --verbose -q --quiet --json" -- "$cur"))
+        COMPREPLY=($(compgen -W "-d --dirty -w --where --fetch -N --no-fetch -v --verbose -q --quiet --json" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -364,7 +364,7 @@ __arb_complete_status() {
 __arb_complete_rebranch() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--continue --abort --delete-remote-old -F --fetch --no-fetch -n --dry-run -y --yes --include-in-progress" -- "$cur"))
+        COMPREPLY=($(compgen -W "--continue --abort --delete-remote-old --fetch -N --no-fetch -n --dry-run -y --yes --include-in-progress" -- "$cur"))
         return
     fi
 }
@@ -377,7 +377,7 @@ __arb_complete_log() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-F --fetch --no-fetch -n --max-count --json -d --dirty -w --where" -- "$cur"))
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -n --max-count --json -d --dirty -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -391,7 +391,7 @@ __arb_complete_diff() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-F --fetch --no-fetch --stat --json -d --dirty -w --where" -- "$cur"))
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch --stat --json -d --dirty -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -409,7 +409,7 @@ __arb_complete_pull() {
 __arb_complete_push() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-f --force -F --fetch --no-fetch -y --yes -n --dry-run -v --verbose" -- "$cur"))
+        COMPREPLY=($(compgen -W "-f --force --fetch -N --no-fetch -y --yes -n --dry-run -v --verbose" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -418,7 +418,7 @@ __arb_complete_push() {
 __arb_complete_rebase() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-F --fetch --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --retarget --autostash" -- "$cur"))
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --retarget --autostash" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -427,7 +427,7 @@ __arb_complete_rebase() {
 __arb_complete_merge() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-F --fetch --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --autostash" -- "$cur"))
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --autostash" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
