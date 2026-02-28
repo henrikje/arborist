@@ -1,6 +1,6 @@
 # GUIDELINES.md
 
-Design principles, UX conventions, and architectural patterns that govern the Arborist codebase. Each guideline explains *why* things work the way they do so new code stays consistent with existing code.
+Design principles and UX conventions that govern the Arborist codebase. Each guideline explains *why* things work the way they do so new code stays consistent.
 
 ---
 
@@ -14,37 +14,37 @@ Everything in Arborist exists to let a developer work on multiple features acros
 
 Commands, flags, and terminology mirror Git wherever possible. A developer who knows Git should feel at home immediately. Arborist is a thin coordination layer on top of Git worktrees, not a replacement for Git.
 
-### Visibility and control are everything
+### Visibility, safety, and protection
 
-Arborist operates across many repositories, so clarity is non-negotiable. The developer must always have a complete, honest view of the workspace — what changed, what drifted, what is at risk — and nothing mutates without explicit approval. The user is never left guessing about the current state or the consequences of an action. Features such as a fast, information-dense, and scannable `arb status`, along with preview–confirm–execute workflows for state changes, are expressions of this principle: visibility first, control always in the developer's hands.
+The developer must always have a complete, honest view of the workspace — what changed, what drifted, what is at risk — and nothing mutates without explicit approval. When an operation would cause data loss, Arborist refuses and explains why. The plan display always shows what's at risk so the developer can make an informed decision. Option `--yes` skips the confirmation prompt; `--force` overrides safety checks — never combine their semantics into a single flag.
+
+### Detect, warn, and protect
+
+Beyond showing honest state, Arborist actively watches for conditions that signal trouble and responds before they cause harm: refusing to remove workspaces with unpushed commits, detecting merged base branches, warning on unexpected branch drift, providing per-repo conflict recovery instead of stopping at the first failure. When implementing a new command, ask "what can go wrong that I should detect?" — proactive detection is a first-class concern.
 
 ### Coordination and overview, not authoring
 
-Arborist coordinates multi-repo operations (push, rebase, merge) and provides workspace-level overview (status, log, diff). It does not replace Git for authoring operations. Committing, staging, interactive rebase, and PR creation belong to the developer's direct interaction with each repository. `arb exec` bridges the gap for any per-repo operation Arborist doesn't cover.
+Arborist coordinates multi-repo operations (push, rebase, merge) and provides workspace-level overview (status, log, diff). It does not replace Git for authoring operations. Committing, staging, interactive rebase, and PR creation belong to direct interaction with each repository. `arb exec` bridges the gap for anything Arborist doesn't cover.
 
 ### Do one thing and do it well
 
 Each command has a clear, single purpose. Avoid adding flags or modes that expand a command's scope beyond its core question. When a use case falls outside a command's purpose, `arb exec` is the escape hatch — not a new flag.
 
-### Convention over configuration
+### Filesystem as database
 
-Arborist uses marker directories (`.arb/`, `.arbws/`) and filesystem scanning instead of databases, registries, or config files beyond what's needed. If something can be discovered from the directory tree, it should be.
-
-### Detect, warn, and protect
-
-If Arborist can detect a bad situation, it should warn, prevent, or compensate — don't wait for the developer to discover problems on their own. This goes beyond visibility (showing honest state) and safety gates (blocking destructive operations). It means actively watching for conditions that signal trouble and responding before they cause harm. Examples: refusing to remove workspaces with unpushed commits, detecting when a base branch has been merged and suggesting `--retarget`, warning when a repo has drifted onto an unexpected branch, automatically skipping repos mid-rebase, and providing per-repo conflict recovery instructions instead of stopping at the first failure.
-
-### Record significant decisions
-
-When a feature or change involves weighing multiple meaningful options, the reasoning should be preserved in a decision record (`decisions/NNNN-*.md`). After implementation, distill the Claude plan into the decision record format — stripping implementation details, keeping only context, options, decision, reasoning, and consequences. If the decision reveals a new enduring principle, add it to GUIDELINES.md and reference it from the decision record. See `decisions/README.md` for the template and heuristic on what warrants a record.
+Arborist uses marker directories (`.arb/`, `.arbws/`), filesystem scanning, and git's own metadata instead of databases, registries, or config files. If something can be discovered from the directory tree or inferred from git state, Arborist does not store it. This makes state inspectable, debuggable, and impossible to corrupt through arb bugs alone. Prefer convention over configuration.
 
 ### Minimal, semantic CLI
 
-Provide commands only for operations that require Arborist's understanding. A command earns its place when it encapsulates domain knowledge (multi-repo coordination, fork workflows), provides safety gates (refuses risky operations, detects at-risk state), or renders/transforms data that isn't directly comparable (template rendering, base branch resolution, status aggregation). A command that wraps `rm`, `ls`, or `cp` on a plain-text file in `.arb/` does not earn its place — the "filesystem as database" principle already provides that interface. An exception applies when the command provides onboarding UX through non-obvious path or scope inference — `template add` is an example.
+A command earns its place when it encapsulates domain knowledge (multi-repo coordination, fork workflows), provides safety gates (refuses risky operations, detects at-risk state), or renders data that isn't directly comparable. A command that wraps `rm`, `ls`, or `cp` on a plain-text file does not earn its place — the filesystem already provides that interface.
 
 ### Prefer correctness over backwards compatibility
 
-Arborist is in pre-release. The priority is getting the design right to form a cohesive, stable foundation — not preserving compatibility with earlier pre-release behavior. When a better approach is found, adopt it directly: rename commands, change defaults, restructure output, alter flag semantics. Breaking changes are expected and acceptable during this phase. Locking in suboptimal behavior early is more costly than any migration pain before 1.0.
+Arborist is in pre-release. The priority is getting the design right — not preserving compatibility with earlier pre-release behavior. When a better approach is found, adopt it directly: rename commands, change defaults, restructure output. Breaking changes are expected and acceptable during this phase.
+
+### Record significant decisions
+
+When a feature or change involves weighing meaningful options, preserve the reasoning in a decision record. See ARCHITECTURE.md § Decision Records for the process and template.
 
 ---
 
@@ -52,191 +52,65 @@ Arborist is in pre-release. The priority is getting the design right to form a c
 
 ### Color semantics
 
-- **Green**: success confirmation only — the final summary line ("Pushed 3 repos"). Used very sparingly.
-- **Yellow**: noteworthy or mildly risky — things that need attention or action. Unpushed commits, local changes, unexpected branches, skipped repos, unstaged/untracked files, operations with caveats.
+- **Green**: success confirmation only — the final summary line ("Pushed 3 repos"). Used sparingly.
+- **Yellow**: noteworthy or mildly risky — this that need attention or action. Unpushed commits, local changes, unexpected branches, skipped repos, operations with caveats.
 - **Red**: errors or immediate risks — failed operations, at-risk workspaces, fatal messages.
-- **Dim (gray)**: de-emphasized, supplementary information — column headings, commit hashes, section labels in expanded views.
+- **Dim (gray)**: de-emphasized, supplementary — column headings, commit hashes, section labels.
 - **Bold**: structural emphasis — section separators in `exec` (`==> repo <==`).
-- **Default (no color)**: normal, expected content. Repo names, branch names, inline progress results, informational counts ("up to date", "3 refs updated"). The baseline.
+- **Default (no color)**: normal, expected content. Repo names, branch names, inline progress results, informational counts.
 
-### Descriptive outcomes, not just status
+### Clear, descriptive output
 
-Tell the user *what happened*, not just *that it happened*. Instead of a generic "ok", describe the practical outcome so the user understands the result without investigating further.
+Tell the user *what happened*, not just *that it happened*. Use descriptive per-repo outcomes: "pushed 3 commits", "rebased onto origin/main", "3 refs updated", "created", "detached", "up to date". Every multi-repo command ends with a single green summary line on stderr that aggregates counts ("Pushed 3 repos, 1 up to date, 2 skipped"). When a repo is skipped, the reason is always stated ("diverged from origin", "uncommitted changes", "on branch X, expected Y") — the developer should never have to guess.
 
-- Push/pull: include the commit count from the assessment — "pushed 3 commits", "pulled 2 commits".
-- Rebase/merge: past-tense of the action — "rebased onto origin/main", "merged onto origin/main".
-- Attach/create (repos): past-tense — "created".
-- Detach: past-tense — "detached", "branch deleted".
-- Fetch: describe what changed — "3 refs updated" or "up to date".
+### Command interaction patterns
 
-### Membership-changing commands
+**Membership-changing commands** (`attach`, `detach`, `create`, workspace selection in `delete`): accept `[repos...]` args. When none given and stdin is a TTY, show an interactive picker. Offer `-a, --all-repos` for scripting. Non-TTY without args is an error with usage guidance.
 
-Scope: `attach`, `detach`, `create` (and workspace selection in `delete`).
+**State-changing commands** (`push`, `pull`, `rebase`, `merge`): accept optional `[repos...]` to narrow scope; default to all repos. Follow the five-phase workflow: assess → plan → confirm → execute → summarize. Each defines a typed assessment interface classifying repos into will-operate / up-to-date / skip-with-reason.
 
-Accept `[repos...]` args. When none given and stdin is a TTY, show an interactive picker. Offer `-a, --all-repos` for scripting. Non-TTY without args is an error with usage guidance.
+**Overview commands** (`status`, `log`, `diff`) are read-only. They scope to the feature branch via base branch resolution, skip detached/drifted repos with explanation, and support `[repos...]` filtering, `--json`, and `--verbose`.
 
-### State-changing commands
+### Command groups for subsystems
 
-Scope: `push`, `pull`, `rebase`, `merge`.
+When multiple operations manage the same `.arb/` subsystem (repos, templates), group them under a singular noun (`repo`, `template`) with subcommands. The parent command shows help when invoked without a subcommand.
 
-Accept optional `[repos...]` to narrow scope; default to all repos in the workspace. Follow the five-phase workflow: assess → plan → confirm → execute → summarize. Each defines a typed assessment interface (e.g. `PushAssessment`) classifying repos into will-operate / up-to-date / skip-with-reason. This separates decision-making from execution and makes the plan display trivial.
+### Fetch behavior
 
-### Command groups for `.arb/` subsystems
+**Sync commands** (`push`, `rebase`, `merge`) and **dashboard commands** (`status`, `list`) fetch by default. `-N, --no-fetch` skips the pre-fetch when refs are fresh. Dashboard commands use phased rendering for instant feedback. Short-option assignments: `-N` → `--no-fetch` (common action), `-f` → `--force` (conventional), `--fetch` has no short option (infrequent — fetch is the default).
 
-When multiple operations manage the same `.arb/` subsystem (repos, templates), group them under a singular noun (`repo`, `template`) with subcommands. The parent command shows help when invoked without a subcommand. Each subcommand has its own summary, description, options, and action. This keeps the top-level command list focused on workflows while grouping management operations by the resource they act on.
+**Content commands** (`log`, `diff`) do not fetch by default — stale content is less confusing. `--fetch` opts in.
 
-### Overview commands
+See `decisions/0045-universal-fetch-flags.md`.
 
-Scope: `status`, `log`, `diff`. Read-only commands that provide workspace-level visibility. `status` fetches by default (with two-phase rendering for instant feedback); `log` and `diff` do not fetch by default (content commands where stale data is less confusing). All support `--fetch` / `--no-fetch` for explicit control. They scope to the feature branch by default using base branch resolution. They skip detached/drifted repos with explanation. They support `[repos...]` filtering, `--json` for structured output, and delegate to git for TTY rendering.
+### Progress feedback
 
-### Safety gates for destructive operations
+**Sequential commands** (push, pull, rebase, merge, detach, attach): in TTY mode, write `  [repo] verb...` as progress, then replace the line with `  [repo] <descriptive result>` on completion. Non-TTY: skip progress, write only results. `exec` uses `==> repo <==` section headers instead (supports interactive content).
 
-When an operation would cause data loss, Arborist refuses and explains why. The `delete` command detects at-risk workspaces (unpushed commits, uncommitted changes) and will not delete them without `--force`. Use `--yes` to skip the confirmation prompt without overriding safety checks. The plan display always shows what's at risk and why, so the developer can make an informed decision.
+**Fetch-then-display commands** (status, list): use phased rendering to show stale data instantly while the fetch runs, then replace with fresh data. See ARCHITECTURE.md for technical details.
 
 ### TTY-aware behavior
 
-Colors, progress indicators, and interactive prompts only appear when stderr is connected to a terminal. In non-TTY contexts (pipes, CI), output is plain text and confirmation prompts require `--yes` to proceed. The `output.ts` module wraps all color formatting through a `isTTY()` guard, and commands check `isTTY()` before launching interactive prompts.
-
-### Inline progress with line replacement
-
-Scope: all sequential multi-repo commands that suppress git output (push, pull, rebase, merge, detach, attach/create repos).
-
-In TTY mode: write `  [repo] verb...` as a progress indicator, then on completion use `\r` + ANSI clear to replace the entire line with `  [repo] <descriptive result>`. In non-TTY mode: skip the progress line, write only the result line. Result uses default color (not green) — green is reserved for the final summary line.
-
-`exec` intentionally uses `==> repo <==` section headers instead because it supports interactive content (inherited stdin/stdout/stderr). Parallel operations (fetch) don't use this pattern — they show an aggregate counter during work, then per-repo results after completion.
-
-### Summary line after operations
-
-Every multi-repo command ends with a single green line on stderr that aggregates counts, like "Pushed 3 repos, 1 up to date, 2 skipped". This gives instant confirmation of what happened without scrolling.
-
-### Detail sections
-
-Scope: supplementary information that follows the main per-repo output — verbose commit/file detail in `arb status --verbose`, template drift warnings in `arb delete`, unknown template variable warnings in `arb template apply` and `arb template list`.
-
-A detail section is a labeled, indented block of related items. It appears between the per-repo results and the summary line, set apart by blank lines. Format:
-
-- **Header**: 6-space indent + descriptive label (yellow for warnings, dim for neutral). Ends with `:\n`.
-- **Items**: 10-space indent + one line per item.
-- **Spacing**: blank line before the header (to separate from preceding output). No trailing blank line — the caller provides the final separator.
-
-Constants `SECTION_INDENT` (6 spaces) and `ITEM_INDENT` (10 spaces) are defined in `status-verbose.ts`; `displayTemplateDiffs` and `displayUnknownVariables` in `templates.ts` use the same literal values.
-
-When to use this pattern: any supplementary list (commits, files, variables, warnings) that appears below the main table or per-repo output. When not to use it: inline per-repo annotations (use the `[repo] result` line pattern instead) or top-level error messages (use `warn()` / `error()`).
-
-### Helpful skip reasons
-
-When a repo is skipped during the plan phase, the reason is always stated. Examples: "diverged from origin (use --force)", "uncommitted changes", "not pushed yet", "on branch X, expected Y". The developer should never have to guess why a repo was excluded.
-
-### Error recovery guidance
-
-Scope: all state-changing commands (push, pull, rebase, merge).
-
-The recovery pattern depends on whether failures are **independent and mechanical** or **systemic and investigative**.
-
-**Conflicts (rebase, merge, pull):** Repos are fully independent — a conflict in repo-a has no effect on repo-b. Recovery is always the same mechanical process: resolve conflicts, then `--continue` or `--abort`. So arb continues processing all repos, then prints a consolidated conflict report with per-repo resolution instructions. The summary line uses yellow (needs attention, not an error). Exit 1.
-
-**Unexpected failures (push):** Post-assessment push failures are genuinely unexpected (auth errors, server errors, branch protection). They are often systemic — if one repo fails due to auth, the rest likely will too. Recovery depends on the specific error, not a fixed procedure. So arb stops at the first failure, prints git's error output for diagnosis, and tells the user to investigate and re-run.
-
-In both cases, the developer is never left stranded — arb always shows what happened and what to do next.
+Colors, progress indicators, and interactive prompts only appear when stderr is connected to a terminal. In non-TTY contexts (pipes, CI), output is plain text and confirmation prompts require `--yes`. The `output.ts` module wraps all color formatting through `isTTY()`.
 
 ### Repo specification: positional vs option
 
-When repos are the command's primary target, they are positional arguments (`arb push [repos...]`). When the positional is consumed by another primary argument (a command, a file path), repos become a secondary filter via the `--repo <name>` option, which can be specified multiple times. Examples: `arb exec <command...>` runs in all repos (positional consumed by command), `arb template diff [file] --repo <name>` filters by repo (positional consumed by file path).
+When repos are the command's primary target, they are positional arguments (`arb push [repos...]`). When the positional is consumed by another argument, repos become `--repo <name>` (repeatable). Examples: `arb exec <command...>` (positional consumed by command), `arb template diff [file] --repo <name>`.
 
 ### Quiet output and stdin piping
 
-`--quiet` / `-q` outputs one primary identifier per line to stdout — no headers, no ANSI codes, no trailing whitespace. Supported on all three list commands: `list` (workspace names), `status` (repo names), `repo list` (repo names). Conflicts with `--json` and `--verbose`.
+`--quiet` / `-q` outputs one primary identifier per line to stdout — no headers, no ANSI, no trailing whitespace. Supported on `list`, `status`, `repo list`. Conflicts with `--json` and `--verbose`.
 
-Commands that accept positional `[repos...]` or `[names...]` also accept names from stdin when piped. Convention: positional args take precedence, then stdin if piped, then default (all). Commands that inherit stdin for child processes (`exec`, `open`) are excluded — use xargs instead.
+Commands accepting positional `[repos...]` also accept names from stdin when piped. Positional args take precedence, then stdin, then default (all). Commands that inherit stdin (`exec`, `open`) are excluded.
+
+### Error recovery guidance
+
+Recovery depends on whether failures are independent or systemic.
+
+**Conflicts** (rebase, merge, pull): repos are independent — arb continues processing all, then prints a consolidated conflict report with per-repo resolution instructions. Summary uses yellow. Exit 1.
+
+**Unexpected failures** (push): often systemic (auth, server errors). Arb stops at first failure, prints git's error output, and tells the user to investigate and re-run.
 
 ### Documentation: help is reference, README is tutorial
 
-The `--help` output for each command is the authoritative reference. It should document every option, argument, and behavioral detail a user needs. Keep descriptions concise but complete.
-
-The README is a tutorial. It walks through workflows with examples and explains the mental model. It does not need to cover every option or every command — it focuses on the bigger picture and links to `arb help <command>` for details.
-
----
-
-## Architectural Patterns
-
-### Command registration with lazy context
-
-Each command lives in its own file under `src/commands/` and exports a `register*Command(program, getCtx)` function. The `getCtx` callback lazily resolves `ArbContext` (base dir, repos dir, current workspace) only when the command's action handler actually runs. This means commands like `init` and `help` never need a valid arb root.
-
-### Shared library composition
-
-Commands compose small, focused library functions rather than inheriting from base classes. Git helpers, repo selection, workspace context, parallel fetch, and output formatting are all independent modules. The `integrate.ts` module demonstrates how to parameterize shared logic: rebase and merge share the exact same five-phase flow, differing only in the git subcommand and the verb strings.
-
-### Parallel fetch, sequential mutations
-
-Network I/O (fetching from remotes) runs in parallel for speed, with a configurable timeout. State-changing git operations (push, pull, rebase, merge) run sequentially, one repo at a time. This gives predictable ordering, clear error messages, and the ability to stop on first failure with actionable recovery instructions.
-
-### Output separation: stderr for UX, stdout for data
-
-All human-facing output (progress lines, prompts, summaries, errors) goes to stderr. Only machine-parseable data goes to stdout. This enables piping arb output to other tools. The `output.ts` module enforces this by providing `success`/`info`/`warn`/`error` helpers that write to stderr and a separate `stdout` helper for data.
-
-### Context validation guards
-
-`requireWorkspace()` and `requireBranch()` validate that the developer is inside a workspace with a configured branch, exiting early with a helpful message if not. Commands call these at the top of their action handler so failures happen before any work is done, not halfway through an operation.
-
-### Filesystem as database
-
-Arborist maintains no state files beyond the `.arb/` marker directory, `.arbws/config` in each workspace, and git's own metadata. Workspaces are discovered by scanning for directories containing `.arbws`. Repos are discovered by scanning `.arb/repos/` for directories containing `.git`. This makes the state inspectable, debuggable, and impossible to corrupt through arb bugs alone.
-
-### Universal fetch flags
-
-All relevant commands expose both `--fetch` and `-N, --no-fetch`. The default is stated in each flag's help text, making behavior visible without reading docs. Short option assignments: `-N` → `--no-fetch` (common action: skip fetch when refs are fresh), `-f` → `--force` (universal, conventional), `--fetch` has no short (infrequent; the default on most commands). See decision record 0045.
-
-**Sync commands** (`push`, `rebase`, `merge`) and **dashboard commands** (`status`, `list`) fetch by default. `--fetch` is labeled "(default)" in help; `-N/--no-fetch` skips the pre-fetch when refs are known to be fresh. Dashboard commands use two-phase/three-phase rendering to show stale data instantly while the fetch runs in the background, so there is no perceived latency increase. Quiet mode (`-q`) on dashboard commands skips fetching by default for scripting speed — pass `--fetch` explicitly to override.
-
-**Content commands** (`log`, `diff`) do not fetch by default — they show commit and diff content that is less confusing when stale. `--fetch` opts in to a pre-fetch; `-N/--no-fetch` makes the default explicit.
-
-`branch` exposes fetch flags for its `--verbose` mode, which fetches by default (like dashboard commands) because it shows remote tracking state where freshness matters. Without `--verbose`, fetch is a no-op since the output uses only local data.
-
-`pull` is excluded: `git pull` inherently fetches, so a skip flag would be misleading even if the pre-fetch were skipped.
-
-The parallel pre-fetch also serves a performance purpose: `parallelFetch()` fetches all repos concurrently, while the subsequent mutation operations (pull, push, rebase, merge) run sequentially one repo at a time. Batching the network I/O upfront avoids per-repo fetch latency during the sequential phase.
-
-### Canonical status model
-
-`status.ts` defines Arborist's view of reality for repository state. The `RepoStatus` type is a 5-section model (identity, local, base, share, operation) that captures everything git tells us about a repo. `RepoFlags` computes independent boolean flags from that model. Named flag sets (`AT_RISK_FLAGS`, `LOSE_WORK_FLAGS`, `STALE_FLAGS`) group flags by concern. Shared functions (`computeFlags`, `isAtRisk`, `wouldLoseWork`, `flagLabels`) derive decisions and display text from those flags and sets.
-
-**Terminology: remote roles and status sections.** The two remote roles are `base` (integration) and `share` (sharing), defined in `RepoRemotes`. The corresponding status sections are `base` and `share` in `RepoStatus`. The user-facing column headers are `BASE` and `SHARE`. Flag labels are `behind base` and `behind share`. Note: the git remote *name* may still be `"upstream"` (a fork workflow convention), but the *role* in code is always `base`.
-
-**This model is the single source of truth.** Every command that needs to understand repo state — whether for display, filtering, safety checks, or operational decisions — must work from `RepoStatus` and `RepoFlags`. Do not invent local status representations, ad-hoc dirty checks, or one-off git queries that duplicate what the model already captures. If a command needs information that the model doesn't provide, extend the model in `status.ts` so every consumer benefits.
-
-**Extend, don't fork.** When adding a new concept (e.g. a new kind of issue, a new git state to detect):
-1. Add the observation to `RepoStatus` if it's raw git state.
-2. Add a flag to `RepoFlags` if it represents a condition that needs attention.
-3. Add the flag to `computeFlags()` and the label to `FLAG_LABELS`.
-4. All existing consumers (status display, list aggregation, remove safety checks, etc.) automatically pick it up through `isAtRisk()` and `flagLabels()`.
-
-**Rendering and derived decisions should be centralized.** Functions like `isAtRisk()` (used for filtering and aggregate counts) and `flagLabels()` (used for summary lines in both `status` and `list`) exist so that the same logic governs every place a repo's state is evaluated. Commands should call these shared functions rather than re-deriving the same conclusions from raw fields.
-
-### Repo classification and remote validation
-
-All repos in a workspace must have valid, resolvable git remotes. `resolveRemotesMap()` resolves remote roles (base/share) for each repo and propagates errors — repos without remotes or with ambiguous remote configurations cause an error with actionable fix instructions rather than silently degrading.
-
-### Request-scoped GitCache for read-only git queries
-
-Commands must create a `GitCache` instance and pass it to status and template functions. The cache stores **Promises** so concurrent callers coalesce onto the same in-flight git process. After a fetch, call `cache.invalidateAfterFetch()`. The low-level functions `getRemoteNames`, `resolveRemotes`, `getRemoteUrl`, and `getDefaultBranch` should only be imported in `git-cache.ts` and test files — all other code should use `GitCache` methods. See `decisions/0044-request-scoped-git-cache.md`.
-
-### Exception-based exit handling
-
-Commands and library code never call `process.exit()` directly. Instead, they throw `ArbError` for error exits (code 1) or `ArbAbort` for user cancellations (code 130). A single try/catch in `index.ts` maps these to exit codes. This makes command code testable in-process and gives one place to audit or extend exit behavior.
-
-**Convention:** Always call `error()` (or `warn()`) for user-facing output *before* throwing. The top-level handler does not print the exception message — it only maps the type to an exit code. The user-facing message and the control-flow signal are separate concerns.
-
-**Exception types:**
-- `ArbError` — an error condition. The top-level handler calls `process.exit(1)`.
-- `ArbAbort` — a user cancellation (declined prompt, Ctrl-C during inquirer). The top-level handler prints `info(err.message)` (default: "Aborted.") and calls `process.exit(130)`.
-
-**The only `process.exit()` calls live in `index.ts`:** the top-level catch handler and the SIGINT signal handler. Signal handlers must call `process.exit()` directly because they cannot throw into an async context. See `decisions/0036-exception-based-exit-handling.md`.
-
-### Phased rendering
-
-Commands that support `--fetch` / `-N, --no-fetch` and display formatted output use phased rendering in TTY mode to provide immediate feedback. The shared helper `runPhasedRender` in `phased-render.ts` takes an array of `RenderPhase` objects and iterates them sequentially — for each phase after the first, it renders the new output (awaiting async work while the previous phase remains visible), clears the previous phase's output (using `clearLines`/`countLines`), then writes the new output. This render-then-clear order ensures the user always sees content on screen — there is no blank gap between phases. The `\x1B[J` erase-to-end-of-screen in `clearLines` handles output length changes between renders. Callers compose their own phase sequences inline with full control over the fetch lifecycle (e.g., 2 phases for status/mutations, 3 phases for list). Fetch-related helpers (`fetchSuffix`, `getFetchFailedRepos`, `reportFetchFailures`) live in `parallel-fetch.ts`. `reportFetchFailures` must be called after `runPhasedRender` completes, not inside a render callback, to avoid its stderr output being erased by `clearLines`. Used by: mutation commands (via `runPlanFlow`), `status`, `list`, and `branch --verbose`. See `decisions/0039-two-phase-status-render.md` and `decisions/0041-render-then-clear-phased-rendering.md`.
-
-### In-progress state for partially-completing commands
-
-Commands that execute sequentially across multiple repos and can fail partway through (leaving some repos done and others not) must carry explicit in-progress state in `.arbws/config`. This state enables `--continue` (resume from where it left off) and `--abort` (roll back completed steps), modeled after git's own rebase-in-progress / merge-in-progress pattern. Without this state, a partial failure leaves the workspace in an ambiguous split state that cannot be safely recovered by re-running the same command. See `decisions/0025-rebranch-migration-state.md` for the reasoning behind this pattern.
+`--help` is the authoritative reference — every option, argument, and behavioral detail. Keep descriptions concise but complete. The README walks through workflows and explains the mental model, linking to `arb help <command>` for details.
