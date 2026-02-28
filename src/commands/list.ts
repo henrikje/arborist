@@ -1,10 +1,12 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
+import { z } from "zod";
 import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
 import { GitCache } from "../lib/git-cache";
-import type { ListJsonEntry } from "../lib/json-types";
+import { printSchema } from "../lib/json-schema";
+import { type ListJsonEntry, ListJsonEntrySchema } from "../lib/json-types";
 import { clearScanProgress, dim, error, info, scanProgress, stripAnsi, yellow } from "../lib/output";
 import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { runPhasedRender } from "../lib/phased-render";
@@ -67,6 +69,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		.option("-w, --where <filter>", "Filter workspaces by repo status flags (comma = OR, + = AND, ^ = negate)")
 		.option("-q, --quiet", "Output one workspace name per line")
 		.option("--json", "Output structured JSON")
+		.option("--schema", "Print JSON Schema for this command's --json output and exit")
 		.action(
 			async (options: {
 				fetch?: boolean;
@@ -75,7 +78,16 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				where?: string;
 				quiet?: boolean;
 				json?: boolean;
+				schema?: boolean;
 			}) => {
+				if (options.schema) {
+					if (options.json || options.quiet) {
+						error("Cannot combine --schema with --json or --quiet.");
+						throw new ArbError("Cannot combine --schema with --json or --quiet.");
+					}
+					printSchema(z.array(ListJsonEntrySchema));
+					return;
+				}
 				const ctx = getCtx();
 				const cache = new GitCache();
 

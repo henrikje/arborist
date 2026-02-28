@@ -758,6 +758,25 @@ assert 'url' in data[0]['base']
     [[ "$output" == *"Cannot combine --verbose with --json"* ]]
 }
 
+@test "arb list --schema outputs valid JSON Schema without requiring workspace" {
+    cd "$BATS_TMPDIR"
+    run arb list --schema
+    [ "$status" -eq 0 ]
+    echo "$output" | jq -e '."$schema"'
+    echo "$output" | jq -e '.type == "array"'
+    echo "$output" | jq -e '.items.properties.workspace'
+}
+
+@test "arb repo list --schema outputs valid JSON Schema without requiring workspace" {
+    cd "$BATS_TMPDIR"
+    run arb repo list --schema
+    [ "$status" -eq 0 ]
+    echo "$output" | jq -e '."$schema"'
+    echo "$output" | jq -e '.type == "array"'
+    echo "$output" | jq -e '.items.properties.name'
+    echo "$output" | jq -e '.items.properties.share'
+}
+
 @test "arb list --fetch only fetches repos used in workspaces" {
     arb create ws-one repo-a
     # repo-b exists as canonical but is not in any workspace

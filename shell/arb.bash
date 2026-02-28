@@ -194,7 +194,7 @@ __arb_complete_repo() {
             fi
             ;;
         list)
-            COMPREPLY=($(compgen -W "-q --quiet -v --verbose --json" -- "$cur"))
+            COMPREPLY=($(compgen -W "-q --quiet -v --verbose --json --schema" -- "$cur"))
             ;;
     esac
 }
@@ -256,7 +256,7 @@ __arb_complete_list() {
         __arb_complete_where_value "$cur"
         return
     fi
-    COMPREPLY=($(compgen -W "--fetch -N --no-fetch --no-status -q --quiet -d --dirty -w --where --json" -- "$cur"))
+    COMPREPLY=($(compgen -W "--fetch -N --no-fetch --no-status -q --quiet -d --dirty -w --where --json --schema" -- "$cur"))
 }
 
 __arb_complete_path() {
@@ -355,7 +355,7 @@ __arb_complete_status() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-d --dirty -w --where --fetch -N --no-fetch -v --verbose -q --quiet --json" -- "$cur"))
+        COMPREPLY=($(compgen -W "-d --dirty -w --where --fetch -N --no-fetch -v --verbose -q --quiet --json --schema" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -363,7 +363,7 @@ __arb_complete_status() {
 
 __arb_complete_branch() {
     local cur="$1"
-    COMPREPLY=($(compgen -W "-q --quiet --json" -- "$cur"))
+    COMPREPLY=($(compgen -W "-q --quiet --json --schema" -- "$cur"))
 }
 
 __arb_complete_rebranch() {
@@ -382,7 +382,7 @@ __arb_complete_log() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -n --max-count --json -d --dirty -w --where" -- "$cur"))
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -n --max-count --json --schema -d --dirty -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -396,7 +396,7 @@ __arb_complete_diff() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--fetch -N --no-fetch --stat --json -d --dirty -w --where" -- "$cur"))
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch --stat --json --schema -d --dirty -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))

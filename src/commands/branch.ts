@@ -3,6 +3,8 @@ import type { Command } from "commander";
 import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
 import { git } from "../lib/git";
+import { printSchema } from "../lib/json-schema";
+import { type BranchJsonOutput, BranchJsonOutputSchema } from "../lib/json-types";
 import { dim, error, yellow } from "../lib/output";
 import { workspaceRepoDirs } from "../lib/repos";
 import { ITEM_INDENT, SECTION_INDENT } from "../lib/status-verbose";
@@ -20,11 +22,20 @@ export function registerBranchCommand(program: Command, getCtx: () => ArbContext
 		.command("branch")
 		.option("-q, --quiet", "Output just the branch name")
 		.option("--json", "Output structured JSON")
+		.option("--schema", "Print JSON Schema for this command's --json output and exit")
 		.summary("Show the workspace branch")
 		.description(
 			"Show the workspace branch, base branch (if configured), and any per-repo deviations. Use --quiet to output just the branch name (useful for scripting). Use --json for machine-readable output.",
 		)
-		.action(async (options: { quiet?: boolean; json?: boolean }) => {
+		.action(async (options: { quiet?: boolean; json?: boolean; schema?: boolean }) => {
+			if (options.schema) {
+				if (options.json || options.quiet) {
+					error("Cannot combine --schema with --json or --quiet.");
+					throw new ArbError("Cannot combine --schema with --json or --quiet.");
+				}
+				printSchema(BranchJsonOutputSchema);
+				return;
+			}
 			const ctx = getCtx();
 			requireWorkspace(ctx);
 			await runBranch(ctx, options);
@@ -60,7 +71,7 @@ async function runBranch(ctx: ArbContext, options: { quiet?: boolean; json?: boo
 	}
 
 	if (options.json) {
-		const output = {
+		const output: BranchJsonOutput = {
 			branch,
 			base: base ?? null,
 			repos: repos.map((r) => ({ name: r.name, branch: r.branch })),

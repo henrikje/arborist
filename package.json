@@ -19,7 +19,8 @@
 		"@inquirer/input": "^5.0.4",
 		"@inquirer/select": "^5.0.6",
 		"commander": "^13",
-		"liquidjs": "^10.24.0"
+		"liquidjs": "^10.24.0",
+		"zod": "^4.3.6"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9",

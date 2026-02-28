@@ -106,22 +106,30 @@ arb status -q --where dirty | xargs -I{} arb exec --repo {} make test
 
 ## Machine-readable output
 
-`arb list --json` writes a JSON array of workspace objects to stdout with aggregate status counts, labels (`atRiskCount`, `statusLabels`), and last commit date (`lastCommit` as ISO 8601). Combine with `--no-status` to skip status gathering:
+Six commands support `--json` for structured output to stdout:
+
+| Command | Output shape |
+|---------|-------------|
+| `arb status --json` | Object with `workspace`, `branch`, `base`, `repos[]`, aggregates |
+| `arb list --json` | Array of workspace objects with status counts and labels |
+| `arb log --json` | Object with `workspace`, `branch`, `base`, `repos[]`, `totalCommits` |
+| `arb diff --json` | Object with `workspace`, `branch`, `base`, `repos[]`, file/line totals |
+| `arb branch --json` | Object with `branch`, `base`, per-repo branches |
+| `arb repo list --json` | Array of repo entries with remote role detail |
+
+Use `--schema` on any of these commands to print the JSON Schema describing the output shape. This works without being inside a workspace — it's pure schema introspection:
+
+```bash
+arb status --schema | jq .          # inspect the full JSON Schema
+arb branch --schema > schema.json   # save schema to file
+```
+
+Examples:
 
 ```bash
 arb list --json | jq '[.[] | select(.active)]'
 arb list --json --no-status | jq '.[].workspace'
-```
-
-`arb status --json` writes structured JSON to stdout. Each repo includes branch state, base branch drift, remote push/pull status, local changes, and any in-progress operation:
-
-```bash
 arb status --json | jq '[.repos[] | select(.base.behind > 0) | .name]'
-```
-
-`arb repo list --json` writes a JSON array with each entry containing `name`, `url`, and remote role detail (`share` and `base` with name and URL):
-
-```bash
 arb repo list --json | jq '.[].name'
 ```
 

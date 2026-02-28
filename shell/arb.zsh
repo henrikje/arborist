@@ -295,9 +295,10 @@ _arb() {
                             list)
                                 shift words; (( CURRENT-- ))
                                 _arguments \
-                                    '(-q --quiet --json -v --verbose)'{-q,--quiet}'[Output one repo name per line]' \
-                                    '(-v --verbose -q --quiet --json)'{-v,--verbose}'[Show remote URLs alongside names]' \
-                                    '(--json -q --quiet -v --verbose)--json[Output structured JSON]'
+                                    '(-q --quiet --json -v --verbose --schema)'{-q,--quiet}'[Output one repo name per line]' \
+                                    '(-v --verbose -q --quiet --json --schema)'{-v,--verbose}'[Show remote URLs alongside names]' \
+                                    '(--json -q --quiet -v --verbose --schema)--json[Output structured JSON]' \
+                                    '(--schema --json -q --quiet -v --verbose)--schema[Print JSON Schema for --json output]'
                                 ;;
                         esac
                     fi
@@ -310,10 +311,11 @@ _arb() {
                         '(-N --fetch --no-fetch)--fetch[Fetch workspace repos before listing (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching]' \
                         '--no-status[Skip per-repo status (faster for large setups)]' \
-                        '(-q --quiet --json)'{-q,--quiet}'[Output one workspace name per line]' \
+                        '(-q --quiet --json --schema)'{-q,--quiet}'[Output one workspace name per line]' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only list dirty workspaces]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
-                        '(--json -q --quiet)--json[Output structured JSON]'
+                        '(--json -q --quiet --schema)--json[Output structured JSON]' \
+                        '(--schema --json -q --quiet)--schema[Print JSON Schema for --json output]'
                     ;;
                 status)
                     _arguments \
@@ -321,15 +323,17 @@ _arb() {
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '(-N --fetch --no-fetch)--fetch[Fetch before showing status (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching]' \
-                        '(-v --verbose -q --quiet)'{-v,--verbose}'[Show file-level detail]' \
-                        '(-q --quiet --json -v --verbose)'{-q,--quiet}'[Output one repo name per line]' \
-                        '(--json -q --quiet)--json[Output structured JSON]' \
+                        '(-v --verbose -q --quiet --schema)'{-v,--verbose}'[Show file-level detail]' \
+                        '(-q --quiet --json -v --verbose --schema)'{-q,--quiet}'[Output one repo name per line]' \
+                        '(--json -q --quiet --schema)--json[Output structured JSON]' \
+                        '(--schema --json -q --quiet -v --verbose)--schema[Print JSON Schema for --json output]' \
                         '*:repo:($repo_names)'
                     ;;
                 branch)
                     _arguments \
-                        '(-q --quiet --json)'{-q,--quiet}'[Output just the branch name]' \
-                        '(--json -q --quiet)--json[Output structured JSON]'
+                        '(-q --quiet --json --schema)'{-q,--quiet}'[Output just the branch name]' \
+                        '(--json -q --quiet --schema)--json[Output structured JSON]' \
+                        '(--schema --json -q --quiet)--schema[Print JSON Schema for --json output]'
                     ;;
                 exec)
                     _arguments \
@@ -405,7 +409,8 @@ _arb() {
                         '(-N --fetch --no-fetch)--fetch[Fetch before showing log]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching (default)]' \
                         '(-n --max-count)'{-n,--max-count}'[Limit commits shown per repo]:count:' \
-                        '--json[Output structured JSON]' \
+                        '(--json --schema)--json[Output structured JSON]' \
+                        '(--schema --json)--schema[Print JSON Schema for --json output]' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only log dirty repos]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($repo_names)'
@@ -415,7 +420,8 @@ _arb() {
                         '(-N --fetch --no-fetch)--fetch[Fetch before showing diff]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching (default)]' \
                         '--stat[Show diffstat summary instead of full diff]' \
-                        '--json[Output structured JSON]' \
+                        '(--json --schema)--json[Output structured JSON]' \
+                        '(--schema --json)--schema[Print JSON Schema for --json output]' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only diff dirty repos]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($repo_names)'

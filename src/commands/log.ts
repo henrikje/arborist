@@ -3,7 +3,8 @@ import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
 import { getCommitsBetweenFull, git } from "../lib/git";
 import { GitCache } from "../lib/git-cache";
-import type { LogJsonOutput, LogJsonRepo } from "../lib/json-types";
+import { printSchema } from "../lib/json-schema";
+import { type LogJsonOutput, LogJsonOutputSchema, type LogJsonRepo } from "../lib/json-types";
 import { error, plural, stdout, success } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { writeRepoHeader, writeRepoSkipHeader } from "../lib/repo-header";
@@ -48,6 +49,7 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 		.option("-d, --dirty", "Only log dirty repos (shorthand for --where dirty)")
 		.option("-w, --where <filter>", "Only log repos matching status filter (comma = OR, + = AND, ^ = negate)")
 		.option("--json", "Output structured JSON to stdout")
+		.option("--schema", "Print JSON Schema for this command's --json output and exit")
 		.summary("Show feature branch commits across repos")
 		.description(
 			"Show commits on the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what have I done in this workspace?' by showing only the commits that belong to the current feature.\n\nShows commits in the range base..HEAD for each repo. Use --fetch to fetch before showing log (default is no fetch). Use -n to limit how many commits are shown per repo. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line). Use --where to filter by status flags (comma = OR, + = AND; e.g. --where dirty+unpushed). Prefix any term with ^ to negate (e.g. --where ^dirty). Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.",
@@ -55,8 +57,23 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 		.action(
 			async (
 				repoArgs: string[],
-				options: { maxCount?: string; json?: boolean; dirty?: boolean; where?: string; fetch?: boolean },
+				options: {
+					maxCount?: string;
+					json?: boolean;
+					schema?: boolean;
+					dirty?: boolean;
+					where?: string;
+					fetch?: boolean;
+				},
 			) => {
+				if (options.schema) {
+					if (options.json) {
+						error("Cannot combine --schema with --json.");
+						throw new ArbError("Cannot combine --schema with --json.");
+					}
+					printSchema(LogJsonOutputSchema);
+					return;
+				}
 				const ctx = getCtx();
 				const { wsDir, workspace } = requireWorkspace(ctx);
 				const branch = await requireBranch(wsDir, workspace);

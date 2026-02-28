@@ -435,3 +435,12 @@ load test_helper/common-setup
     [ "$status" -eq 0 ]
     [[ "$output" != *"untracked not in diff"* ]]
 }
+
+@test "arb diff --schema outputs valid JSON Schema without requiring workspace" {
+    cd "$BATS_TMPDIR"
+    run arb diff --schema
+    [ "$status" -eq 0 ]
+    echo "$output" | jq -e '."$schema"'
+    echo "$output" | jq -e '.properties.repos'
+    echo "$output" | jq -e '.properties.totalFiles'
+}
