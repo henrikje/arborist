@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
+import { listenForAbortKeypress } from "../lib/abort-keypress";
 import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
 import { git } from "../lib/git";
@@ -42,7 +43,7 @@ export function registerBranchCommand(program: Command, getCtx: () => ArbContext
 		.option("--schema", "Print JSON Schema for this command's --json output and exit")
 		.summary("Show the workspace branch")
 		.description(
-			"Show the workspace branch, base branch (if configured), and any per-repo deviations. Use --verbose to show a per-repo table with branch and remote tracking info (fetches by default; use -N to skip). Use --quiet to output just the branch name (useful for scripting). Use --json for machine-readable output.\n\nSee 'arb help scripting' for output modes and piping.",
+			"Show the workspace branch, base branch (if configured), and any per-repo deviations. Use --verbose to show a per-repo table with branch and remote tracking info (fetches by default; use -N to skip). Press Escape during the fetch to cancel and use stale data. Use --quiet to output just the branch name (useful for scripting). Use --json for machine-readable output.\n\nSee 'arb help scripting' for output modes and piping.",
 		)
 		.action(
 			async (options: { quiet?: boolean; verbose?: boolean; json?: boolean; fetch?: boolean; schema?: boolean }) => {
@@ -155,31 +156,52 @@ async function runVerboseBranch(
 	if (options.fetch !== false && !options.json && isTTY()) {
 		// Phased rendering: stale → fetch → fresh
 		const repoNames = repoDirs.map((d) => basename(d));
+		const { signal: abortSignal, cleanup: abortCleanup } = listenForAbortKeypress();
 		const fetchPromise = cache
 			.resolveRemotesMap(repoNames, ctx.reposDir)
-			.then((remotesMap) => parallelFetch(repoDirs, undefined, remotesMap, { silent: true }));
+			.then((remotesMap) => parallelFetch(repoDirs, undefined, remotesMap, { silent: true, signal: abortSignal }));
+		fetchPromise.catch(() => {}); // Prevent unhandled rejection on abort
 
-		const state: { fetchResults?: Map<string, { exitCode: number; output: string }> } = {};
+		const state: {
+			fetchResults?: Map<string, { exitCode: number; output: string }>;
+			aborted?: boolean;
+			staleOutput?: string;
+		} = {};
 
-		await runPhasedRender([
-			{
-				render: async () => {
-					const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
-					return renderVerboseOutput(summary.repos, branch, base) + fetchSuffix(repoNames.length);
+		try {
+			await runPhasedRender([
+				{
+					render: async () => {
+						const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
+						state.staleOutput = renderVerboseOutput(summary.repos, branch, base);
+						return state.staleOutput + fetchSuffix(repoNames.length, { abortable: true });
+					},
+					write: stderr,
 				},
-				write: stderr,
-			},
-			{
-				render: async () => {
-					state.fetchResults = await fetchPromise;
-					cache.invalidateAfterFetch();
-					const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
-					return renderVerboseOutput(summary.repos, branch, base);
+				{
+					render: async () => {
+						if (abortSignal.aborted) {
+							state.aborted = true;
+							return state.staleOutput as string;
+						}
+						state.fetchResults = await fetchPromise;
+						if (abortSignal.aborted) {
+							state.aborted = true;
+							return state.staleOutput as string;
+						}
+						cache.invalidateAfterFetch();
+						const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
+						return renderVerboseOutput(summary.repos, branch, base);
+					},
+					write: (output) => process.stdout.write(output),
 				},
-				write: (output) => process.stdout.write(output),
-			},
-		]);
-		reportFetchFailures(repoNames, state.fetchResults as Map<string, { exitCode: number; output: string }>);
+			]);
+		} finally {
+			abortCleanup();
+		}
+		if (!state.aborted) {
+			reportFetchFailures(repoNames, state.fetchResults as Map<string, { exitCode: number; output: string }>);
+		}
 		return;
 	}
 

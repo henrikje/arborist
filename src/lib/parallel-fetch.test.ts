@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { reportFetchFailures } from "./parallel-fetch";
+import { fetchSuffix, reportFetchFailures } from "./parallel-fetch";
 
 describe("reportFetchFailures", () => {
 	test("returns empty array when all succeed", () => {
@@ -30,5 +30,32 @@ describe("reportFetchFailures", () => {
 		const results = new Map<string, { exitCode: number; output: string }>();
 		const failed = reportFetchFailures(["repo-a"], results);
 		expect(failed).toEqual(["repo-a"]);
+	});
+});
+
+describe("fetchSuffix", () => {
+	test("returns fetch message without hint by default", () => {
+		const result = fetchSuffix(3);
+		expect(result).toContain("Fetching 3 repos...");
+		expect(result).not.toContain("<Esc to cancel>");
+	});
+
+	test("returns fetch message without hint when abortable is false", () => {
+		const result = fetchSuffix(3, { abortable: false });
+		expect(result).toContain("Fetching 3 repos...");
+		expect(result).not.toContain("<Esc to cancel>");
+	});
+
+	test("returns singular form for 1 repo", () => {
+		const result = fetchSuffix(1);
+		expect(result).toContain("Fetching 1 repo...");
+	});
+
+	// Note: abortable hint only appears when both isTTY() and process.stdin.isTTY are true.
+	// In test environment stdin is not a TTY, so the hint is not included even with abortable: true.
+	test("does not include hint when stdin is not a TTY", () => {
+		const result = fetchSuffix(3, { abortable: true });
+		expect(result).toContain("Fetching 3 repos...");
+		expect(result).not.toContain("<Esc to cancel>");
 	});
 });

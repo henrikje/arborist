@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { z } from "zod";
+import { listenForAbortKeypress } from "../lib/abort-keypress";
 import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
 import { GitCache } from "../lib/git-cache";
@@ -60,7 +61,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		.command("list")
 		.summary("List all workspaces")
 		.description(
-			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --dirty / -d to show only workspaces with dirty repos, or --where <filter> to filter by status flags (any workspace with at least one matching repo is shown). See 'arb help where' for filter syntax. Use --no-status to skip per-repo status gathering for faster output. Fetches workspace repos by default for fresh remote data (skip with -N/--no-fetch). Quiet mode (-q) skips fetching by default for scripting speed. Use --json for machine-readable output.\n\nSee 'arb help scripting' for output modes and piping.",
+			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --dirty / -d to show only workspaces with dirty repos, or --where <filter> to filter by status flags (any workspace with at least one matching repo is shown). See 'arb help where' for filter syntax. Use --no-status to skip per-repo status gathering for faster output. Fetches workspace repos by default for fresh remote data (skip with -N/--no-fetch). Press Escape during the fetch to cancel and use stale data. Quiet mode (-q) skips fetching by default for scripting speed. Use --json for machine-readable output.\n\nSee 'arb help scripting' for output modes and piping.",
 		)
 		.option("--fetch", "Fetch workspace repos before listing (default)")
 		.option("-N, --no-fetch", "Skip fetching")
@@ -240,28 +241,52 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					// 3-phase: placeholder → stale + fetching → fresh
 					const fetchDirs = repoNames.map((r) => `${ctx.reposDir}/${r}`);
 					const remotesMap = await cache.resolveRemotesMap(repoNames, ctx.reposDir);
-					const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, { silent: true });
-					const state: { fetchResults?: Map<string, FetchResult> } = {};
+					const { signal: abortSignal, cleanup: abortCleanup } = listenForAbortKeypress();
+					const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, {
+						silent: true,
+						signal: abortSignal,
+					});
+					fetchPromise.catch(() => {}); // Prevent unhandled rejection on abort
+					const state: {
+						fetchResults?: Map<string, FetchResult>;
+						aborted?: boolean;
+						staleTable?: string;
+					} = {};
 
-					await runPhasedRender([
-						{ render: () => formatListTable(metadata.rows, metadata.cols, true) },
-						{
-							render: async () => {
-								const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache);
-								return formatListTable(statusRows, metadata.cols, true) + fetchSuffix(fetchDirs.length);
+					try {
+						await runPhasedRender([
+							{ render: () => formatListTable(metadata.rows, metadata.cols, true) },
+							{
+								render: async () => {
+									const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache);
+									state.staleTable = formatListTable(statusRows, metadata.cols, true);
+									return state.staleTable + fetchSuffix(fetchDirs.length, { abortable: true });
+								},
 							},
-						},
-						{
-							render: async () => {
-								state.fetchResults = await fetchPromise;
-								cache.invalidateAfterFetch();
-								const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache);
-								return formatListTable(statusRows, metadata.cols, true);
+							{
+								render: async () => {
+									if (abortSignal.aborted) {
+										state.aborted = true;
+										return state.staleTable as string;
+									}
+									state.fetchResults = await fetchPromise;
+									if (abortSignal.aborted) {
+										state.aborted = true;
+										return state.staleTable as string;
+									}
+									cache.invalidateAfterFetch();
+									const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache);
+									return formatListTable(statusRows, metadata.cols, true);
+								},
+								write: (o) => process.stdout.write(o),
 							},
-							write: (o) => process.stdout.write(o),
-						},
-					]);
-					reportFetchFailures(repoNames, state.fetchResults as Map<string, FetchResult>);
+						]);
+					} finally {
+						abortCleanup();
+					}
+					if (!state.aborted) {
+						reportFetchFailures(repoNames, state.fetchResults as Map<string, FetchResult>);
+					}
 				} else if (canPhase) {
 					// 2-phase: placeholder → status
 					await runPhasedRender([

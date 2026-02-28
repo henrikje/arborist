@@ -15,7 +15,7 @@ export async function parallelFetch(
 	repoDirs: string[],
 	timeout?: number,
 	remotesMap?: Map<string, RepoRemotes>,
-	options?: { silent?: boolean },
+	options?: { silent?: boolean; signal?: AbortSignal },
 ): Promise<Map<string, FetchResult>> {
 	const fetchTimeout = timeout ?? (Number(process.env.ARB_FETCH_TIMEOUT) || 120);
 	const results = new Map<string, FetchResult>();
@@ -38,6 +38,10 @@ export async function parallelFetch(
 
 	const controller = new AbortController();
 	let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+	if (options?.signal) {
+		options.signal.addEventListener("abort", () => controller.abort(), { once: true });
+	}
 
 	if (fetchTimeout > 0) {
 		timeoutId = setTimeout(() => controller.abort(), fetchTimeout * 1000);
@@ -189,8 +193,9 @@ export function reportFetchFailures(
 	return failed;
 }
 
-export function fetchSuffix(count: number): string {
-	return dim(`Fetching ${plural(count, "repo")}...`);
+export function fetchSuffix(count: number, options?: { abortable?: boolean }): string {
+	const hint = options?.abortable && isTTY() && process.stdin.isTTY ? " <Esc to cancel>" : "";
+	return dim(`Fetching ${plural(count, "repo")}...${hint}`);
 }
 
 export function getFetchFailedRepos(

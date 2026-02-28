@@ -63,7 +63,7 @@ The only `process.exit()` calls live in `index.ts`: the top-level catch handler 
 
 ### Phased rendering
 
-Commands with `--fetch`/`--no-fetch` use `runPhasedRender` to show stale data instantly while a fetch runs in the background, then replace it with fresh data. The render-then-clear order ensures content is always visible — no blank gaps between phases. `reportFetchFailures` must be called after `runPhasedRender` completes, not inside a render callback. See `decisions/0039-two-phase-status-render.md` and `decisions/0041-render-then-clear-phased-rendering.md`.
+Commands with `--fetch`/`--no-fetch` use `runPhasedRender` to show stale data instantly while a fetch runs in the background, then replace it with fresh data. The render-then-clear order ensures content is always visible — no blank gaps between phases. `reportFetchFailures` must be called after `runPhasedRender` completes, not inside a render callback. Dashboard commands (`status`, `list`) and `branch --verbose` support pressing Escape to cancel the background fetch and exit immediately with stale data on stdout. The keypress listener (`listenForAbortKeypress`) is a no-op when stdin is not a TTY. See `decisions/0039-two-phase-status-render.md`, `decisions/0041-render-then-clear-phased-rendering.md`, and `decisions/0047-escape-to-cancel-background-fetch.md`.
 
 ### Repo classification and remote validation
 
