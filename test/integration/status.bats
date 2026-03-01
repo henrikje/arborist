@@ -978,6 +978,33 @@ load test_helper/common-setup
     [ "$pr_number" = "55" ]
 }
 
+@test "arb status detects MR number from GitLab squash merge commit" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feat: add feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Squash merge with MR number in subject (GitLab squash merge format)
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && git merge --squash origin/my-feature && git commit -m "feat: add feature (!55)") >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push origin --delete my-feature >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    fetch_all_repos
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merged"* ]]
+    [[ "$output" == *"(#55)"* ]]
+
+    # Verify JSON output
+    local json_output
+    json_output="$(arb status --no-fetch --json 2>/dev/null)"
+    local pr_number
+    pr_number="$(echo "$json_output" | jq '.repos[0].base.detectedPr.number')"
+    [ "$pr_number" = "55" ]
+}
+
 @test "arb status detects PR via ticket fallback" {
     # Branch name contains ticket PROJ-99; the commit subject references PROJ-99 with a PR number.
     # Merge commit search fails (no merge commit mentioning "proj-99-feature" in subject),
@@ -1005,6 +1032,37 @@ load test_helper/common-setup
     local pr_number
     pr_number="$(echo "$json_output" | jq '.repos[0].base.detectedPr.number')"
     [ "$pr_number" = "77" ]
+}
+
+@test "arb status detects PR via ticket fallback on squash merge" {
+    # Branch name contains ticket PROJ-99; the squash commit references PROJ-99 with a PR number.
+    # The squash commit subject has no (#N) or (!N) pattern, so extractPrNumber returns null.
+    # The ticket fallback kicks in: detectTicketFromName finds PROJ-99, then
+    # findTicketReferencedCommit finds the commit referencing PROJ-99 with a PR number.
+    arb create proj-99-squash repo-a
+    echo "feature" > "$TEST_DIR/project/proj-99-squash/repo-a/feature.txt"
+    git -C "$TEST_DIR/project/proj-99-squash/repo-a" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/proj-99-squash/repo-a" commit -m "feat: resolve PROJ-99 issue (#88)" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/proj-99-squash/repo-a" push -u origin proj-99-squash >/dev/null 2>&1
+
+    # Squash merge with a generic subject that does NOT contain (#N) or (!N)
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && git merge --squash origin/proj-99-squash && git commit -m "feat: resolve PROJ-99 issue") >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push origin --delete proj-99-squash >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/proj-99-squash"
+    fetch_all_repos
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merged"* ]]
+    [[ "$output" == *"(#88)"* ]]
+
+    # Verify JSON output
+    local json_output
+    json_output="$(arb status --no-fetch --json 2>/dev/null)"
+    local pr_number
+    pr_number="$(echo "$json_output" | jq '.repos[0].base.detectedPr.number')"
+    [ "$pr_number" = "88" ]
 }
 
 # ── ticket detection ─────────────────────────────────────────────
