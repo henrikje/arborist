@@ -8,6 +8,8 @@ import {
 	checkBranchMatch,
 	detectBranchMerged,
 	detectRebasedCommits,
+	findMergeCommitForBranch,
+	findTicketReferencedCommit,
 	getCommitsBetweenFull,
 	getDefaultBranch,
 	isRepoDirty,
@@ -359,7 +361,7 @@ describe("git repo functions", () => {
 			// Back on feature — HEAD is ancestor of main via the merge commit
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
 			const result = await detectBranchMerged(repoDir, defaultBranch);
-			expect(result).toBe("merge");
+			expect(result?.kind).toBe("merge");
 		});
 
 		test("detects single-commit rebase merge via patch-id", async () => {
@@ -382,7 +384,9 @@ describe("git repo functions", () => {
 			// Back on feature — not an ancestor (main diverged), but patch-id matches
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
 			const result = await detectBranchMerged(repoDir, defaultBranch);
-			expect(result).toBe("squash");
+			expect(result?.kind).toBe("squash");
+			expect(result?.matchingCommit).toBeDefined();
+			expect(result?.matchingCommit?.subject).toBe("feature commit");
 		});
 
 		test("detects squash merge via patch-id", async () => {
@@ -400,12 +404,13 @@ describe("git repo functions", () => {
 			// Squash merge onto main
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
 			Bun.spawnSync(["git", "-C", repoDir, "merge", "--squash", "feature"]);
-			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "squash: add a and b"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "squash: add a and b (#42)"]);
 
 			// Back on feature — not an ancestor, but cumulative patch-id matches
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
 			const result = await detectBranchMerged(repoDir, defaultBranch);
-			expect(result).toBe("squash");
+			expect(result?.kind).toBe("squash");
+			expect(result?.matchingCommit?.subject).toBe("squash: add a and b (#42)");
 		});
 
 		test("returns null for unmerged branch", async () => {
@@ -449,7 +454,7 @@ describe("git repo functions", () => {
 
 			const result = await detectBranchMerged(repoDir, defaultBranch);
 			// HEAD is trivially an ancestor of main (they're the same commit)
-			expect(result).toBe("merge");
+			expect(result?.kind).toBe("merge");
 		});
 
 		test("respects commit limit", async () => {
@@ -480,7 +485,7 @@ describe("git repo functions", () => {
 
 			// With default limit, it should be found
 			const full = await detectBranchMerged(repoDir, defaultBranch);
-			expect(full).toBe("squash");
+			expect(full?.kind).toBe("squash");
 		});
 
 		test("detects merge commit with explicit branchRef", async () => {
@@ -498,7 +503,7 @@ describe("git repo functions", () => {
 
 			// Check if feat/auth has been merged into main using explicit branchRef
 			const result = await detectBranchMerged(repoDir, defaultBranch, 200, "feat/auth");
-			expect(result).toBe("merge");
+			expect(result?.kind).toBe("merge");
 		});
 
 		test("detects squash merge with explicit branchRef", async () => {
@@ -517,7 +522,7 @@ describe("git repo functions", () => {
 
 			// Check if feat/auth has been squash-merged into main using explicit branchRef
 			const result = await detectBranchMerged(repoDir, defaultBranch, 200, "feat/auth");
-			expect(result).toBe("squash");
+			expect(result?.kind).toBe("squash");
 		});
 
 		test("returns null with explicit branchRef when not merged", async () => {
@@ -705,6 +710,135 @@ describe("git repo functions", () => {
 			const result = await matchDivergedCommits(repoDir, "HEAD");
 			expect(result.rebaseMatches.size).toBe(0);
 			expect(result.squashMatch).toBeNull();
+		});
+	});
+
+	describe("findMergeCommitForBranch", () => {
+		test("finds merge commit with afterRef scoping", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+			// Create feature branch with a commit
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "feature.txt"), "feature content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "feature.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "feature commit"]);
+			const featureHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+
+			// Merge feature into default branch
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			Bun.spawnSync([
+				"git",
+				"-C",
+				repoDir,
+				"merge",
+				"feature",
+				"--no-ff",
+				"-m",
+				"Merge pull request #42 from user/feature",
+			]);
+
+			// Back on feature — use HEAD (feature tip) as afterRef
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+			const result = await findMergeCommitForBranch(repoDir, defaultBranch, "feature", 50, featureHead);
+			expect(result).not.toBeNull();
+			expect(result?.subject).toContain("feature");
+		});
+
+		test("works without afterRef (backward compatible)", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+			// Create feature branch with a commit
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "feature.txt"), "feature content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "feature.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "feature commit"]);
+
+			// Merge feature into default branch
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			Bun.spawnSync([
+				"git",
+				"-C",
+				repoDir,
+				"merge",
+				"feature",
+				"--no-ff",
+				"-m",
+				"Merge pull request #42 from user/feature",
+			]);
+
+			// Back on feature — no afterRef
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+			const result = await findMergeCommitForBranch(repoDir, defaultBranch, "feature");
+			expect(result).not.toBeNull();
+			expect(result?.subject).toContain("feature");
+		});
+	});
+
+	describe("findTicketReferencedCommit", () => {
+		test("finds commit with ticket in subject", async () => {
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: enable batching ESTER-208 (#76)"]);
+
+			const result = await findTicketReferencedCommit(repoDir, "ESTER-208");
+			expect(result).not.toBeNull();
+			expect(result?.subject).toContain("ESTER-208");
+		});
+
+		test("finds commit with ticket in body (trailers)", async () => {
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync([
+				"git",
+				"-C",
+				repoDir,
+				"commit",
+				"-m",
+				"fix: enable query batching (#76)\n\nReferences: ESTER-208",
+			]);
+
+			const result = await findTicketReferencedCommit(repoDir, "ESTER-208");
+			expect(result).not.toBeNull();
+			expect(result?.subject).toContain("batching");
+		});
+
+		test("returns most recent match when multiple exist", async () => {
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content a");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "first ESTER-208 (#10)"]);
+
+			writeFileSync(join(repoDir, "b.txt"), "content b");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "b.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "second ESTER-208 (#20)"]);
+
+			const result = await findTicketReferencedCommit(repoDir, "ESTER-208");
+			expect(result).not.toBeNull();
+			// git log returns most recent first
+			expect(result?.subject).toContain("second");
+		});
+
+		test("returns null when no ticket match", async () => {
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "unrelated commit (#99)"]);
+
+			const result = await findTicketReferencedCommit(repoDir, "ESTER-208");
+			expect(result).toBeNull();
+		});
+
+		test("is case-insensitive", async () => {
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: something (#76)\n\nReferences: ester-208"]);
+
+			const result = await findTicketReferencedCommit(repoDir, "ESTER-208");
+			expect(result).not.toBeNull();
+			expect(result?.subject).toContain("something");
 		});
 	});
 });

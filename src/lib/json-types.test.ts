@@ -47,6 +47,7 @@ describe("json-types zod validation", () => {
 				behind: 1,
 				mergedIntoBase: null,
 				baseMergedIntoDefault: null,
+				detectedPr: null,
 			},
 			share: {
 				remote: "origin",
@@ -98,6 +99,7 @@ describe("json-types zod validation", () => {
 			statusLabels: [],
 			statusCounts: [],
 			lastCommit: null,
+			detectedTicket: null,
 		};
 		expect(() => StatusJsonOutputSchema.parse(output)).not.toThrow();
 	});

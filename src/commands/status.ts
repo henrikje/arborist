@@ -45,7 +45,7 @@ export function registerStatusCommand(program: Command, getCtx: () => ArbContext
 		.option("--schema", "Print JSON Schema for this command's --json output and exit")
 		.summary("Show workspace status")
 		.description(
-			"Show each repo's position relative to the base branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line), enabling composition like: arb status -q --where dirty | arb diff.\n\nUse --dirty to only show repos with uncommitted changes. Use --where <filter> to filter by status flags. See 'arb help where' for filter syntax. Fetches from all remotes by default for fresh data (skip with -N/--no-fetch). Press Escape during the fetch to cancel and use stale data. Quiet mode (-q) skips fetching by default for scripting speed. Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.\n\nSee 'arb help stacked' for stacked workspace status flags. See 'arb help scripting' for output modes and piping.",
+			"Show each repo's position relative to the base branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line), enabling composition like: arb status -q --where dirty | arb diff.\n\nUse --dirty to only show repos with uncommitted changes. Use --where <filter> to filter by status flags. See 'arb help where' for filter syntax. Fetches from all remotes by default for fresh data (skip with -N/--no-fetch). Press Escape during the fetch to cancel and use stale data. Quiet mode (-q) skips fetching by default for scripting speed. Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.\n\nMerged branches show the detected PR number when available (e.g. 'merged (#123), gone'), extracted from merge or squash commit subjects. JSON output includes detectedPr and detectedTicket fields.\n\nSee 'arb help stacked' for stacked workspace status flags. See 'arb help scripting' for output modes and piping.",
 		)
 		.action(
 			async (
@@ -560,9 +560,11 @@ export function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
 
 export function plainRemoteDiff(repo: RepoStatus): string {
 	const merged = repo.base?.mergedIntoBase != null;
+	const prNumber = repo.base?.detectedPr?.number;
+	const prSuffix = prNumber ? ` (#${prNumber})` : "";
 
 	if (repo.share.refMode === "gone") {
-		if (merged) return "merged (gone)";
+		if (merged) return `merged${prSuffix}, gone`;
 		if (repo.base !== null && repo.base.ahead > 0) {
 			return `gone, ${repo.base.ahead} to push`;
 		}
@@ -574,7 +576,7 @@ export function plainRemoteDiff(repo: RepoStatus): string {
 		return "not pushed";
 	}
 
-	if (merged && (repo.share.toPull ?? 0) === 0) return "merged";
+	if (merged && (repo.share.toPull ?? 0) === 0) return `merged${prSuffix}`;
 	// configured or implicit — use toPush/toPull
 	const toPush = repo.share.toPush ?? 0;
 	const toPull = repo.share.toPull ?? 0;

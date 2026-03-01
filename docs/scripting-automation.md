@@ -146,6 +146,19 @@ Add `--verbose` to `arb status --json` for file-level detail — staged files, m
 arb status --json --verbose | jq '[.repos[] | select(.verbose.unstaged | length > 0)]'
 ```
 
+JSON output includes detected PR numbers and ticket keys when available:
+
+```bash
+# Get detected PR URLs for merged repos
+arb status --json | jq '[.repos[] | select(.base.detectedPr) | {name, pr: .base.detectedPr}]'
+
+# Get the workspace ticket key
+arb status --json | jq '.detectedTicket.key'
+
+# List workspaces with their detected tickets
+arb list --json | jq '[.[] | {workspace, ticket: .detectedTicket.key}]'
+```
+
 ## Exit codes
 
 `0` means success, `1` means failure, `130` means the user aborted a confirmation prompt.

@@ -651,8 +651,8 @@ async function assessRepo(
 		const targetRef = `${baseRemote}/${retargetExplicit}`;
 		const oldBaseRef = oldBaseRemoteExists ? `${baseRemote}/${oldBaseName}` : oldBaseName;
 		let retargetWarning: string | undefined;
-		const mergeResult = await detectBranchMerged(repoDir, targetRef, 200, oldBaseRef);
-		if (mergeResult === null) {
+		const mergeDetection = await detectBranchMerged(repoDir, targetRef, 200, oldBaseRef);
+		if (mergeDetection === null) {
 			retargetWarning = `base branch ${oldBaseName} may not be merged`;
 		}
 

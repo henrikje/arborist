@@ -142,7 +142,13 @@ export function formatVerboseDetail(repo: RepoStatus, verbose: VerboseDetail | u
 	if (repo.base?.mergedIntoBase) {
 		const ref = baseRef(repo.base);
 		const strategy = repo.base.mergedIntoBase === "squash" ? "squash" : "merge";
-		sections.push(`\n${SECTION_INDENT}Branch merged into ${ref} (${strategy})\n`);
+		let prSuffix = "";
+		if (repo.base.detectedPr) {
+			prSuffix = repo.base.detectedPr.url
+				? ` — detected PR #${repo.base.detectedPr.number} (${repo.base.detectedPr.url})`
+				: ` — detected PR #${repo.base.detectedPr.number}`;
+		}
+		sections.push(`\n${SECTION_INDENT}Branch merged into ${ref} (${strategy})${prSuffix}\n`);
 	}
 
 	// Base branch merged into default
