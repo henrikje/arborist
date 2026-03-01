@@ -951,6 +951,48 @@ describe("formatIntegratePlan", () => {
 		expect(plan).toContain("old base, merged");
 		expect(plan).toContain("new base");
 	});
+
+	// ── Header & alignment tests ────────────────────────────────
+
+	test("includes REPO and ACTION column headers", () => {
+		const plan = formatIntegratePlan([makeAssessment()], "rebase", "feature");
+		expect(plan).toContain("REPO");
+		expect(plan).toContain("ACTION");
+	});
+
+	test("aligns actions across repos with different name lengths", () => {
+		const plan = formatIntegratePlan(
+			[makeAssessment({ repo: "short" }), makeAssessment({ repo: "much-longer-repo-name", outcome: "up-to-date" })],
+			"rebase",
+			"feature",
+		);
+		// Both action texts should start at the same column
+		const lines = plan.split("\n").filter((l) => l.trim().length > 0);
+		const actionStarts = lines
+			.slice(1)
+			.map((l) => (l.indexOf("rebase") !== -1 ? l.indexOf("rebase") : l.indexOf("up to date")));
+		// All action columns should start at the same position
+		const nonNeg = actionStarts.filter((s) => s >= 0);
+		expect(nonNeg.length).toBe(2);
+		expect(nonNeg[0]).toBe(nonNeg[1]);
+	});
+
+	test("afterRow emits verbose commits for will-operate repos", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "def5678", subject: "feat: add auth" }],
+					totalCommits: 1,
+				}),
+				makeAssessment({ repo: "repo-b", outcome: "up-to-date" }),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).toContain("Incoming from origin/main:");
+		expect(plan).toContain("def5678");
+	});
 });
 
 describe("formatVerboseCommits", () => {

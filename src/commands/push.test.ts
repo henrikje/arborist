@@ -630,4 +630,33 @@ describe("formatPushPlan", () => {
 		);
 		expect(plan).not.toContain("merged with new commits");
 	});
+
+	// ── Header & alignment tests ────────────────────────────────
+
+	test("includes REPO and ACTION column headers", () => {
+		const plan = formatPushPlan([makeAssessment()], makeRemotesMap(["repo-a", {}]));
+		expect(plan).toContain("REPO");
+		expect(plan).toContain("ACTION");
+	});
+
+	test("aligns actions across repos with different name lengths", () => {
+		const plan = formatPushPlan(
+			[
+				makeAssessment({ repo: "short", ahead: 2 }),
+				makeAssessment({ repo: "much-longer-repo-name", outcome: "up-to-date" }),
+			],
+			makeRemotesMap(["short", {}], ["much-longer-repo-name", {}]),
+		);
+		const lines = plan.split("\n").filter((l) => l.trim().length > 0);
+		const dataLines = lines.slice(1);
+		// Find where the action text starts (first match of the action content)
+		const actionStarts = dataLines.map((l) => {
+			const pushIdx = l.indexOf("2 commits");
+			const upIdx = l.indexOf("up to date");
+			return pushIdx !== -1 ? pushIdx : upIdx;
+		});
+		const nonNeg = actionStarts.filter((s) => s >= 0);
+		expect(nonNeg.length).toBe(2);
+		expect(nonNeg[0]).toBe(nonNeg[1]);
+	});
 });
