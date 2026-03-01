@@ -21,6 +21,25 @@ exports[`json-schema stability StatusJsonOutputSchema 1`] = `
     "branch": {
       "type": "string",
     },
+    "detectedTicket": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "type": "string",
+            },
+          },
+          "required": [
+            "key",
+          ],
+          "type": "object",
+        },
+        {
+          "type": "null",
+        },
+      ],
+    },
     "lastCommit": {
       "anyOf": [
         {
@@ -73,6 +92,36 @@ exports[`json-schema stability StatusJsonOutputSchema 1`] = `
                       },
                     ],
                   },
+                  "detectedPr": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "number": {
+                            "type": "number",
+                          },
+                          "url": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                              },
+                              {
+                                "type": "null",
+                              },
+                            ],
+                          },
+                        },
+                        "required": [
+                          "number",
+                          "url",
+                        ],
+                        "type": "object",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
                   "mergedIntoBase": {
                     "anyOf": [
                       {
@@ -109,6 +158,7 @@ exports[`json-schema stability StatusJsonOutputSchema 1`] = `
                   "behind",
                   "mergedIntoBase",
                   "baseMergedIntoDefault",
+                  "detectedPr",
                 ],
                 "type": "object",
               },
@@ -481,6 +531,7 @@ exports[`json-schema stability StatusJsonOutputSchema 1`] = `
     "statusLabels",
     "statusCounts",
     "lastCommit",
+    "detectedTicket",
   ],
   "type": "object",
   "~standard": {
@@ -844,6 +895,25 @@ exports[`json-schema stability ListJsonEntrySchema (array) 1`] = `
         "anyOf": [
           {
             "type": "string",
+          },
+          {
+            "type": "null",
+          },
+        ],
+      },
+      "detectedTicket": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "type": "string",
+              },
+            },
+            "required": [
+              "key",
+            ],
+            "type": "object",
           },
           {
             "type": "null",

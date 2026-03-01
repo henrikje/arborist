@@ -38,6 +38,9 @@ Each command exports a `register*Command(program, getCtx)` function. The `getCtx
 - **`parallel-fetch.ts`** — concurrent git fetch with configurable timeout (`ARB_FETCH_TIMEOUT` env var, default 120s)
 - **`output.ts`** — TTY-aware colored output helpers; `success/info/warn/error` write to stderr, `stdout` writes to stdout, `inlineStart/inlineResult` for progress lines
 - **`tty.ts`** — TTY detection helper used by output formatting
+- **`pr-detection.ts`** — extracts PR/MR numbers from commit subjects (GitHub, Azure DevOps patterns)
+- **`remote-url.ts`** — parses git remote URLs and constructs PR URLs for GitHub, GitLab, Bitbucket, Azure DevOps
+- **`ticket-detection.ts`** — detects Jira/Linear-style ticket keys from branch names and commit messages
 
 ### Testing
 

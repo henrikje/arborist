@@ -82,6 +82,8 @@ Use `,` for OR (match any term) and `+` for AND (match all terms). `+` binds tig
 
 See `arb status --help` for all options.
 
+Arborist also detects ticket keys (like `ESTER-208` or `PROJ-42`) from branch names and commit messages, showing them in `arb list` as a TICKET column. When a branch has been merged, the detected PR number from the merge commit, squash commit, or branch tip commit subject appears in `arb status` (e.g. `merged (#123), gone`). All detected values are heuristic — they come from local git data, not API calls.
+
 ## Stay in sync
 
 Arborist's synchronization commands — `push`, `rebase`, and `merge` — keep your workspace current. They automatically fetch all repos before operating, so you always work against the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh. `pull` always fetches (no `--no-fetch`). Overview commands (`status`, `log`, `diff`, `list`) accept `--fetch` to opt in to a pre-fetch.

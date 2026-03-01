@@ -36,6 +36,12 @@ export const StatusJsonRepoSchema = z.object({
 			behind: z.number(),
 			mergedIntoBase: z.enum(["merge", "squash"]).nullable(),
 			baseMergedIntoDefault: z.enum(["merge", "squash"]).nullable(),
+			detectedPr: z
+				.object({
+					number: z.number(),
+					url: z.string().nullable(),
+				})
+				.nullable(),
 		})
 		.nullable(),
 	share: z.object({
@@ -76,6 +82,12 @@ export const StatusJsonRepoSchema = z.object({
 		.optional(),
 });
 
+export const DetectedTicketSchema = z
+	.object({
+		key: z.string(),
+	})
+	.nullable();
+
 export const StatusJsonOutputSchema = z.object({
 	workspace: z.string(),
 	branch: z.string(),
@@ -87,6 +99,7 @@ export const StatusJsonOutputSchema = z.object({
 	statusLabels: z.array(z.string()),
 	statusCounts: z.array(z.object({ label: z.string(), count: z.number() })),
 	lastCommit: z.string().nullable(),
+	detectedTicket: DetectedTicketSchema,
 });
 
 // ── Log JSON schemas ──
@@ -166,6 +179,7 @@ export const ListJsonEntrySchema = z.object({
 	statusLabels: z.array(z.string()).optional(),
 	statusCounts: z.array(z.object({ label: z.string(), count: z.number() })).optional(),
 	lastCommit: z.string().nullable().optional(),
+	detectedTicket: DetectedTicketSchema.optional(),
 });
 
 // ── Branch JSON schema ──

@@ -869,6 +869,167 @@ load test_helper/common-setup
 
 # ── diverged commit matching ──────────────────────────────────────
 
+@test "arb status detects PR number from branch tip commit subject" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feat(repos): add seeder repository (#188)" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Fast-forward merge into main (no merge commit — so merge commit search finds nothing)
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && git merge origin/my-feature --ff-only && git push) >/dev/null 2>&1
+    # Delete the remote branch so status detects "gone"
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push origin --delete my-feature >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    fetch_all_repos
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merged"* ]]
+    [[ "$output" == *"(#188)"* ]]
+
+    # Verify JSON output includes detectedPr
+    local json_output
+    json_output="$(arb status --no-fetch --json 2>/dev/null)"
+    local pr_number
+    pr_number="$(echo "$json_output" | jq '.repos[0].base.detectedPr.number')"
+    [ "$pr_number" = "188" ]
+}
+
+@test "arb status detects PR number from merge commit" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feat: add feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Merge with --no-ff to produce a merge commit with PR number in subject
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && git merge origin/my-feature --no-ff -m "Merge pull request #42 from user/my-feature" && git push) >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push origin --delete my-feature >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    fetch_all_repos
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merged"* ]]
+    [[ "$output" == *"(#42)"* ]]
+
+    # Verify JSON output
+    local json_output
+    json_output="$(arb status --no-fetch --json 2>/dev/null)"
+    local pr_number
+    pr_number="$(echo "$json_output" | jq '.repos[0].base.detectedPr.number')"
+    [ "$pr_number" = "42" ]
+}
+
+@test "arb status detects PR number from squash merge commit" {
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feat: add feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Squash merge with PR number in subject (GitHub squash merge format)
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && git merge --squash origin/my-feature && git commit -m "feat: add feature (#55)") >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push origin --delete my-feature >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    fetch_all_repos
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merged"* ]]
+    [[ "$output" == *"(#55)"* ]]
+
+    # Verify JSON output
+    local json_output
+    json_output="$(arb status --no-fetch --json 2>/dev/null)"
+    local pr_number
+    pr_number="$(echo "$json_output" | jq '.repos[0].base.detectedPr.number')"
+    [ "$pr_number" = "55" ]
+}
+
+@test "arb status detects PR via ticket fallback" {
+    # Branch name contains ticket PROJ-99; the commit subject references PROJ-99 with a PR number.
+    # Merge commit search fails (no merge commit mentioning "proj-99-feature" in subject),
+    # but findTicketReferencedCommit finds the commit because it references PROJ-99.
+    arb create proj-99-feature repo-a
+    echo "feature" > "$TEST_DIR/project/proj-99-feature/repo-a/feature.txt"
+    git -C "$TEST_DIR/project/proj-99-feature/repo-a" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/proj-99-feature/repo-a" commit -m "feat: resolve PROJ-99 issue (#77)" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/proj-99-feature/repo-a" push -u origin proj-99-feature >/dev/null 2>&1
+
+    # Merge with --no-ff but use a generic subject that does NOT mention the branch name
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && git merge origin/proj-99-feature --no-ff -m "Merge branch into main" && git push) >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push origin --delete proj-99-feature >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/proj-99-feature"
+    fetch_all_repos
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merged"* ]]
+    [[ "$output" == *"(#77)"* ]]
+
+    # Verify JSON output
+    local json_output
+    json_output="$(arb status --no-fetch --json 2>/dev/null)"
+    local pr_number
+    pr_number="$(echo "$json_output" | jq '.repos[0].base.detectedPr.number')"
+    [ "$pr_number" = "77" ]
+}
+
+# ── ticket detection ─────────────────────────────────────────────
+
+@test "arb list shows ticket from branch name" {
+    arb create proj-42-feature repo-a
+    cd "$TEST_DIR/project"
+
+    run arb list --no-fetch
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"TICKET"* ]]
+    [[ "$output" == *"PROJ-42"* ]]
+}
+
+@test "arb list --json includes detectedTicket from branch name" {
+    arb create ester-208-fix repo-a
+    cd "$TEST_DIR/project"
+
+    local json_output
+    json_output="$(arb list --no-fetch --json 2>/dev/null)"
+    local ticket
+    ticket="$(echo "$json_output" | jq -r '.[] | select(.workspace == "ester-208-fix") | .detectedTicket.key')"
+    [ "$ticket" = "ESTER-208" ]
+}
+
+@test "arb status --json includes detectedTicket from branch name" {
+    arb create proj-42-feature repo-a
+    cd "$TEST_DIR/project/proj-42-feature"
+
+    local json_output
+    json_output="$(arb status --no-fetch --json 2>/dev/null)"
+    local ticket
+    ticket="$(echo "$json_output" | jq -r '.detectedTicket.key')"
+    [ "$ticket" = "PROJ-42" ]
+}
+
+@test "arb list does not detect PR reference as ticket" {
+    arb create svc-riskman-pr-74 repo-a
+    cd "$TEST_DIR/project"
+
+    # Text output should not show TICKET column (no workspace has a real ticket)
+    run arb list --no-fetch
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"TICKET"* ]]
+    [[ "$output" != *"PR-74"* ]]
+
+    # JSON output should not have detectedTicket
+    local json_output
+    json_output="$(arb list --no-fetch --json 2>/dev/null)"
+    local has_ticket
+    has_ticket="$(echo "$json_output" | jq '[.[] | select(.detectedTicket != null)] | length')"
+    [ "$has_ticket" = "0" ]
+}
+
 @test "arb status -v shows (same as ...) when feature commit is cherry-picked onto base" {
     arb create my-feature repo-a
     echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"

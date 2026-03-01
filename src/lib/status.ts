@@ -7,6 +7,8 @@ import {
 	detectBranchMerged,
 	detectOperation,
 	detectRebasedCommits,
+	findMergeCommitForBranch,
+	findTicketReferencedCommit,
 	getHeadCommitDate,
 	git,
 	isLinkedWorktree,
@@ -16,8 +18,11 @@ import {
 } from "./git";
 import type { GitCache } from "./git-cache";
 import { error, yellow } from "./output";
+import { extractPrNumber } from "./pr-detection";
+import { buildPrUrl, parseRemoteUrl } from "./remote-url";
 import type { RepoRemotes } from "./remotes";
 import { workspaceRepoDirs } from "./repos";
+import { detectTicketFromCommits, detectTicketFromName } from "./ticket-detection";
 import { latestCommitDate } from "./time";
 import { workspaceBranch } from "./workspace-branch";
 
@@ -39,6 +44,7 @@ export interface RepoStatus {
 		behind: number;
 		mergedIntoBase: "merge" | "squash" | null;
 		baseMergedIntoDefault: "merge" | "squash" | null;
+		detectedPr: { number: number; url: string | null } | null;
 	} | null;
 	share: {
 		remote: string;
@@ -323,6 +329,7 @@ export interface WorkspaceSummary {
 	statusLabels: string[];
 	statusCounts: { label: string; count: number; key: keyof RepoFlags }[];
 	lastCommit: string | null;
+	detectedTicket: { key: string } | null;
 }
 
 export function computeSummaryAggregates(
@@ -440,6 +447,7 @@ export async function gatherRepoStatus(
 					behind,
 					mergedIntoBase: null,
 					baseMergedIntoDefault: null,
+					detectedPr: null,
 				};
 			}
 		}
@@ -536,6 +544,7 @@ export async function gatherRepoStatus(
 	const isGone = shareStatus.refMode === "gone";
 	const isOnBaseBranch = actualBranch === baseStatus?.ref;
 	const skipForNeverPushed = baseStatus !== null && baseStatus.ahead === 0 && shareStatus.refMode === "noRef";
+	let mergeMatchingCommit: { hash: string; subject: string } | undefined;
 	if (baseStatus !== null && !detached && (hasWork || isGone) && !isOnBaseBranch && !skipForNeverPushed) {
 		const compareRef = baseRemote ? `${baseRemote}/${baseStatus.ref}` : baseStatus.ref;
 		const shareUpToDate =
@@ -546,9 +555,51 @@ export async function gatherRepoStatus(
 		const ancestorResult = await git(repoDir, "merge-base", "--is-ancestor", "HEAD", compareRef);
 		if (ancestorResult.exitCode === 0) {
 			baseStatus.mergedIntoBase = "merge";
+			// Try to find the merge commit that references this branch for PR attribution
+			const mergeCommit = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, "HEAD");
+			if (mergeCommit) {
+				mergeMatchingCommit = mergeCommit;
+			} else {
+				// Fallback 1: extract PR number from the branch tip commit itself (free — single git log)
+				const headResult = await git(repoDir, "log", "-1", "--format=%h %s", "HEAD");
+				if (headResult.exitCode === 0) {
+					const line = headResult.stdout.trim();
+					const spaceIdx = line.indexOf(" ");
+					if (spaceIdx > 0) {
+						mergeMatchingCommit = { hash: line.slice(0, spaceIdx), subject: line.slice(spaceIdx + 1) };
+					}
+				}
+				// Fallback 2: find the most recent commit referencing the workspace ticket (expensive — scans history)
+				if (!mergeMatchingCommit) {
+					const ticket = detectTicketFromName(actualBranch);
+					if (ticket) {
+						const ticketCommit = await findTicketReferencedCommit(repoDir, ticket);
+						if (ticketCommit) mergeMatchingCommit = ticketCommit;
+					}
+				}
+			}
 		} else if (shouldCheckSquash) {
 			// Phase 2: Squash merge detection via cumulative patch-id
-			baseStatus.mergedIntoBase = await detectBranchMerged(repoDir, compareRef);
+			const squashResult = await detectBranchMerged(repoDir, compareRef);
+			if (squashResult) {
+				baseStatus.mergedIntoBase = squashResult.kind;
+				if (squashResult.matchingCommit) mergeMatchingCommit = squashResult.matchingCommit;
+			}
+		}
+
+		// Extract PR number from matching commit subject
+		if (baseStatus.mergedIntoBase && mergeMatchingCommit) {
+			const prNumber = extractPrNumber(mergeMatchingCommit.subject);
+			if (prNumber) {
+				// Try to construct a PR URL from the share remote URL
+				const remoteUrlResult = await git(repoDir, "remote", "get-url", shareRemote);
+				let prUrl: string | null = null;
+				if (remoteUrlResult.exitCode === 0) {
+					const parsed = parseRemoteUrl(remoteUrlResult.stdout.trim());
+					if (parsed) prUrl = buildPrUrl(parsed, prNumber);
+				}
+				baseStatus.detectedPr = { number: prNumber, url: prUrl };
+			}
 		}
 	}
 
@@ -562,14 +613,16 @@ export async function gatherRepoStatus(
 			if (trueDefault && trueDefault !== configBase) {
 				const configBaseRef = `${baseRemote}/${configBase}`;
 				const defaultRef = `${baseRemote}/${trueDefault}`;
-				baseStatus.baseMergedIntoDefault = await detectBranchMerged(repoDir, defaultRef, 200, configBaseRef);
+				const result = await detectBranchMerged(repoDir, defaultRef, 200, configBaseRef);
+				baseStatus.baseMergedIntoDefault = result?.kind ?? null;
 			}
 		} else {
 			// Base branch gone from remote — try local branch ref for detection
 			const localExists = await branchExistsLocally(repoPath, configBase);
 			if (localExists) {
 				const defaultRef = `${baseRemote}/${baseStatus.ref}`;
-				baseStatus.baseMergedIntoDefault = await detectBranchMerged(repoDir, defaultRef, 200, configBase);
+				const result = await detectBranchMerged(repoDir, defaultRef, 200, configBase);
+				baseStatus.baseMergedIntoDefault = result?.kind ?? null;
 			}
 		}
 	}
@@ -624,6 +677,37 @@ export async function gatherWorkspaceSummary(
 
 	const lastCommit = latestCommitDate(repoResults.map((r) => r.commitDate));
 
+	// ── Ticket detection ──
+	// 1. Try branch name first (cheap, no git call)
+	let detectedTicket: { key: string } | null = null;
+	const ticketFromName = detectTicketFromName(branch);
+	if (ticketFromName) {
+		detectedTicket = { key: ticketFromName };
+	} else if (repos.length > 0) {
+		// 2. Fall back to scanning commit messages across repos
+		const ticketCounts = new Map<string, number>();
+		await Promise.all(
+			repos.map(async (repo) => {
+				if (!repo.base) return;
+				const repoDir = `${wsDir}/${repo.name}`;
+				const ref = repo.base.remote ? `${repo.base.remote}/${repo.base.ref}` : repo.base.ref;
+				const ticket = await detectTicketFromCommits(repoDir, ref);
+				if (ticket) ticketCounts.set(ticket, (ticketCounts.get(ticket) ?? 0) + 1);
+			}),
+		);
+		if (ticketCounts.size > 0) {
+			let best: string | null = null;
+			let bestCount = 0;
+			for (const [key, count] of ticketCounts) {
+				if (count > bestCount) {
+					best = key;
+					bestCount = count;
+				}
+			}
+			if (best) detectedTicket = { key: best };
+		}
+	}
+
 	return {
 		workspace,
 		branch,
@@ -635,5 +719,6 @@ export async function gatherWorkspaceSummary(
 		statusLabels,
 		statusCounts,
 		lastCommit,
+		detectedTicket,
 	};
 }

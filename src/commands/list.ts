@@ -20,6 +20,7 @@ import {
 	workspaceMatchesWhere,
 } from "../lib/status";
 import { type Column, renderTable } from "../lib/table";
+import { detectTicketFromName } from "../lib/ticket-detection";
 import {
 	type RelativeTimeParts,
 	computeLastCommitWidths,
@@ -36,6 +37,7 @@ interface ListRow {
 	branch: string;
 	base: string;
 	baseFellBack: boolean;
+	ticket: string;
 	repos: string;
 	statusColored: string;
 	lastCommit: string | null;
@@ -46,8 +48,10 @@ interface ListColumnWidths {
 	maxName: number;
 	maxBranch: number;
 	maxBase: number;
+	maxTicket: number;
 	maxRepos: number;
 	hasAnyBase: boolean;
+	hasAnyTicket: boolean;
 }
 
 interface ListMetadata {
@@ -61,7 +65,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 		.command("list")
 		.summary("List all workspaces")
 		.description(
-			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --dirty / -d to show only workspaces with dirty repos, or --where <filter> to filter by status flags (any workspace with at least one matching repo is shown). See 'arb help where' for filter syntax. Use --no-status to skip per-repo status gathering for faster output. Fetches workspace repos by default for fresh remote data (skip with -N/--no-fetch). Press Escape during the fetch to cancel and use stale data. Quiet mode (-q) skips fetching by default for scripting speed. Use --json for machine-readable output.\n\nSee 'arb help scripting' for output modes and piping.",
+			"List all workspaces in the arb root with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --dirty / -d to show only workspaces with dirty repos, or --where <filter> to filter by status flags (any workspace with at least one matching repo is shown). See 'arb help where' for filter syntax. Use --no-status to skip per-repo status gathering for faster output. Fetches workspace repos by default for fresh remote data (skip with -N/--no-fetch). Press Escape during the fetch to cancel and use stale data. Quiet mode (-q) skips fetching by default for scripting speed. Use --json for machine-readable output.\n\nA TICKET column appears when ticket keys (e.g. ESTER-208, PROJ-42) are detected from branch names or commit messages.\n\nSee 'arb help scripting' for output modes and piping.",
 		)
 		.option("--fetch", "Fetch workspace repos before listing (default)")
 		.option("-N, --no-fetch", "Skip fetching")
@@ -166,6 +170,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						base: row.special === "config-missing" ? null : row.base || null,
 						repoCount: row.special === "config-missing" ? null : Number.parseInt(row.repos, 10) || 0,
 						status: row.special,
+						...(row.ticket ? { detectedTicket: { key: row.ticket } } : {}),
 					}));
 
 					if (!showStatus) {
@@ -198,6 +203,9 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 							entry.statusLabels = summary.statusLabels;
 							entry.statusCounts = summary.statusCounts.map(({ label, count }) => ({ label, count }));
 							entry.lastCommit = summary.lastCommit;
+							if (!entry.detectedTicket && summary.detectedTicket) {
+								entry.detectedTicket = summary.detectedTicket;
+							}
 						}
 					}
 
@@ -305,8 +313,10 @@ async function gatherListMetadata(ctx: ArbContext, workspaces: string[]): Promis
 	let maxName = 0;
 	let maxBranch = 0;
 	let maxBase = 0;
+	let maxTicket = 0;
 	let maxRepos = 0;
 	let hasAnyBase = false;
+	let hasAnyTicket = false;
 
 	for (const name of workspaces) {
 		const wsDir = `${ctx.arbRootDir}/${name}`;
@@ -322,6 +332,7 @@ async function gatherListMetadata(ctx: ArbContext, workspaces: string[]): Promis
 				branch: "",
 				base: "",
 				baseFellBack: false,
+				ticket: "",
 				repos: "",
 				statusColored: yellow("(config missing)"),
 				lastCommit: null,
@@ -336,6 +347,11 @@ async function gatherListMetadata(ctx: ArbContext, workspaces: string[]): Promis
 		const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 		const base = configBase ?? "";
 
+		// Detect ticket from branch name (cheap, no git call)
+		const ticket = detectTicketFromName(branch) ?? "";
+		if (ticket) hasAnyTicket = true;
+		if (ticket.length > maxTicket) maxTicket = ticket.length;
+
 		if (branch.length > maxBranch) maxBranch = branch.length;
 		if (base.length > maxBase) maxBase = base.length;
 		if (base) hasAnyBase = true;
@@ -349,6 +365,7 @@ async function gatherListMetadata(ctx: ArbContext, workspaces: string[]): Promis
 				branch,
 				base,
 				baseFellBack: false,
+				ticket,
 				repos: reposText,
 				statusColored: yellow("(empty)"),
 				lastCommit: null,
@@ -366,6 +383,7 @@ async function gatherListMetadata(ctx: ArbContext, workspaces: string[]): Promis
 			branch,
 			base,
 			baseFellBack: false,
+			ticket,
 			repos: reposText,
 			statusColored: dim("..."),
 			lastCommit: null,
@@ -377,12 +395,13 @@ async function gatherListMetadata(ctx: ArbContext, workspaces: string[]): Promis
 	if (maxName < 9) maxName = 9;
 	if (maxBranch < 6) maxBranch = 6;
 	if (hasAnyBase && maxBase < 4) maxBase = 4;
+	if (hasAnyTicket && maxTicket < 6) maxTicket = 6;
 	if (maxRepos < 5) maxRepos = 5;
 
 	return {
 		rows,
 		toScan,
-		cols: { maxName, maxBranch, maxBase, maxRepos, hasAnyBase },
+		cols: { maxName, maxBranch, maxBase, maxTicket, maxRepos, hasAnyBase, hasAnyTicket },
 	};
 }
 
@@ -456,16 +475,34 @@ function formatListTable(displayRows: ListRow[], cols: ListColumnWidths, showSta
 
 	const statusPlain: string[] = displayRows.map((row) => stripAnsi(row.statusColored));
 
+	// Recompute hasAnyTicket from current rows (may have changed after status gathering)
+	const hasAnyTicket = displayRows.some((row) => row.ticket.length > 0);
+	let maxTicket = cols.maxTicket;
+	if (hasAnyTicket) {
+		for (const row of displayRows) {
+			if (row.ticket.length > maxTicket) maxTicket = row.ticket.length;
+		}
+		if (maxTicket < 6) maxTicket = 6;
+	}
+
 	const columns: Column<ListRow>[] = [
 		{
 			header: "WORKSPACE",
 			value: (row) => row.name,
 		},
-		{
-			header: "BRANCH",
-			value: (row) => (row.special === "config-missing" ? " ".repeat(cols.maxBranch) : row.branch),
-		},
 	];
+
+	if (hasAnyTicket) {
+		columns.push({
+			header: "TICKET",
+			value: (row) => (row.special === "config-missing" ? " ".repeat(maxTicket) : row.ticket),
+		});
+	}
+
+	columns.push({
+		header: "BRANCH",
+		value: (row) => (row.special === "config-missing" ? " ".repeat(cols.maxBranch) : row.branch),
+	});
 
 	if (cols.hasAnyBase) {
 		columns.push({
@@ -532,4 +569,8 @@ function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
 	}
 	row.lastCommit = summary.lastCommit;
 	row.baseFellBack = summary.repos.some((r) => r.base?.configuredRef != null);
+	// Update ticket from summary if it detected one from commits and branch didn't have one
+	if (!row.ticket && summary.detectedTicket) {
+		row.ticket = summary.detectedTicket.key;
+	}
 }

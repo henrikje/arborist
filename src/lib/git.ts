@@ -298,15 +298,21 @@ export function parseGitNumstat(output: string): { file: string; insertions: num
 		.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 }
 
+export interface MergeDetectionResult {
+	kind: "merge" | "squash";
+	/** The commit on the base branch that represents the merge/squash. */
+	matchingCommit?: { hash: string; subject: string };
+}
+
 export async function detectBranchMerged(
 	repoDir: string,
 	baseBranchRef: string,
 	commitLimit = 200,
 	branchRef = "HEAD",
-): Promise<"merge" | "squash" | null> {
+): Promise<MergeDetectionResult | null> {
 	// Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
 	const ancestor = await git(repoDir, "merge-base", "--is-ancestor", branchRef, baseBranchRef);
-	if (ancestor.exitCode === 0) return "merge";
+	if (ancestor.exitCode === 0) return { kind: "merge" };
 
 	// Phase 2: Squash check — cumulative patch-id comparison
 	const mergeBaseResult = await git(repoDir, "merge-base", branchRef, baseBranchRef);
@@ -348,10 +354,80 @@ export async function detectBranchMerged(
 	if (perCommitResult.exitCode !== 0) return null;
 
 	for (const line of perCommitResult.text().split("\n")) {
-		const patchId = line.split(" ")[0];
-		if (patchId === cumulativePatchId) return "squash";
+		const parts = line.split(" ");
+		const patchId = parts[0];
+		const commitHash = parts[1];
+		if (patchId === cumulativePatchId && commitHash) {
+			// Retrieve the commit subject for PR number extraction
+			const subjectResult = await git(repoDir, "log", "-1", "--format=%s", commitHash);
+			const subject = subjectResult.exitCode === 0 ? subjectResult.stdout.trim() : "";
+			return { kind: "squash", matchingCommit: { hash: commitHash, subject } };
+		}
 	}
 
+	return null;
+}
+
+/**
+ * Scan recent merge commits on the base branch to find one that references the given branch name.
+ * Used to attribute regular merge commits (not squash) to a specific PR.
+ */
+export async function findMergeCommitForBranch(
+	repoDir: string,
+	baseBranchRef: string,
+	branchName: string,
+	commitLimit = 50,
+	afterRef?: string,
+): Promise<{ hash: string; subject: string } | null> {
+	const range = afterRef ? `${afterRef}..${baseBranchRef}` : baseBranchRef;
+	const result = await git(repoDir, "log", "--merges", "--oneline", `--max-count=${commitLimit}`, range);
+	if (result.exitCode !== 0) return null;
+
+	for (const line of result.stdout.split("\n")) {
+		if (!line.trim()) continue;
+		const spaceIdx = line.indexOf(" ");
+		if (spaceIdx < 0) continue;
+		const hash = line.slice(0, spaceIdx);
+		const subject = line.slice(spaceIdx + 1);
+		// Match merge commits that reference this branch name
+		if (subject.includes(branchName)) {
+			return { hash, subject };
+		}
+	}
+	return null;
+}
+
+/**
+ * Search recent commits reachable from HEAD for ones whose message (subject or body)
+ * references the given ticket key. Returns the most recent match's hash and subject.
+ *
+ * Used as a fallback when findMergeCommitForBranch() returns null — e.g. when
+ * individual commits were merged via separate PRs instead of a single branch merge.
+ */
+export async function findTicketReferencedCommit(
+	repoDir: string,
+	ticketKey: string,
+	commitLimit = 100,
+): Promise<{ hash: string; subject: string } | null> {
+	const result = await git(
+		repoDir,
+		"log",
+		"--format=%H %s",
+		`--grep=${ticketKey}`,
+		"-i",
+		`--max-count=${commitLimit}`,
+		"HEAD",
+	);
+	if (result.exitCode !== 0) return null;
+
+	for (const line of result.stdout.split("\n")) {
+		if (!line.trim()) continue;
+		const spaceIdx = line.indexOf(" ");
+		if (spaceIdx < 0) continue;
+		const hash = line.slice(0, spaceIdx);
+		const subject = line.slice(spaceIdx + 1);
+		return { hash, subject };
+	}
 	return null;
 }
 

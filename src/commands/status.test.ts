@@ -13,6 +13,7 @@ describe("plainBaseDiff", () => {
 				behind: 0,
 				mergedIntoBase: null,
 				baseMergedIntoDefault: null,
+				detectedPr: null,
 			}),
 		).toBe("equal");
 	});
@@ -27,6 +28,7 @@ describe("plainBaseDiff", () => {
 				behind: 0,
 				mergedIntoBase: null,
 				baseMergedIntoDefault: null,
+				detectedPr: null,
 			}),
 		).toBe("3 ahead");
 	});
@@ -41,6 +43,7 @@ describe("plainBaseDiff", () => {
 				behind: 5,
 				mergedIntoBase: null,
 				baseMergedIntoDefault: null,
+				detectedPr: null,
 			}),
 		).toBe("5 behind");
 	});
@@ -55,6 +58,7 @@ describe("plainBaseDiff", () => {
 				behind: 3,
 				mergedIntoBase: null,
 				baseMergedIntoDefault: null,
+				detectedPr: null,
 			}),
 		).toBe("2 ahead, 3 behind");
 	});
@@ -69,6 +73,7 @@ describe("plainBaseDiff", () => {
 				behind: 1,
 				mergedIntoBase: "squash",
 				baseMergedIntoDefault: null,
+				detectedPr: null,
 			}),
 		).toBe("merged");
 	});
@@ -83,6 +88,7 @@ describe("plainBaseDiff", () => {
 				behind: 3,
 				mergedIntoBase: "merge",
 				baseMergedIntoDefault: null,
+				detectedPr: null,
 			}),
 		).toBe("merged");
 	});
@@ -97,6 +103,7 @@ describe("plainBaseDiff", () => {
 				behind: 0,
 				mergedIntoBase: null,
 				baseMergedIntoDefault: "merge",
+				detectedPr: null,
 			}),
 		).toBe("base merged");
 	});
@@ -115,10 +122,49 @@ describe("plainRemoteDiff", () => {
 					behind: 0,
 					mergedIntoBase: "merge",
 					baseMergedIntoDefault: null,
+					detectedPr: null,
 				},
 			}),
 		);
-		expect(text).toBe("merged (gone)");
+		expect(text).toBe("merged, gone");
+	});
+
+	test("shows merged with PR number and gone", () => {
+		const text = plainRemoteDiff(
+			makeRepo({
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 0,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: null,
+					detectedPr: { number: 123, url: "https://github.com/acme/repo/pull/123" },
+				},
+			}),
+		);
+		expect(text).toBe("merged (#123), gone");
+	});
+
+	test("shows merged with PR number without gone", () => {
+		const text = plainRemoteDiff(
+			makeRepo({
+				share: { remote: "origin", ref: "my-branch", refMode: "configured", toPush: 0, toPull: 0, rebased: null },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 0,
+					mergedIntoBase: "merge",
+					baseMergedIntoDefault: null,
+					detectedPr: { number: 42, url: null },
+				},
+			}),
+		);
+		expect(text).toBe("merged (#42)");
 	});
 
 	test("shows gone with ahead", () => {
@@ -133,6 +179,7 @@ describe("plainRemoteDiff", () => {
 					behind: 0,
 					mergedIntoBase: null,
 					baseMergedIntoDefault: null,
+					detectedPr: null,
 				},
 			}),
 		);
@@ -151,6 +198,7 @@ describe("plainRemoteDiff", () => {
 					behind: 0,
 					mergedIntoBase: null,
 					baseMergedIntoDefault: null,
+					detectedPr: null,
 				},
 			}),
 		);
@@ -169,6 +217,7 @@ describe("plainRemoteDiff", () => {
 					behind: 0,
 					mergedIntoBase: "squash",
 					baseMergedIntoDefault: null,
+					detectedPr: null,
 				},
 			}),
 		);
@@ -187,6 +236,7 @@ describe("plainRemoteDiff", () => {
 					behind: 0,
 					mergedIntoBase: "merge",
 					baseMergedIntoDefault: null,
+					detectedPr: null,
 				},
 			}),
 		);
@@ -205,6 +255,7 @@ describe("plainRemoteDiff", () => {
 					behind: 0,
 					mergedIntoBase: null,
 					baseMergedIntoDefault: null,
+					detectedPr: null,
 				},
 			}),
 		);
@@ -223,6 +274,7 @@ describe("plainRemoteDiff", () => {
 					behind: 0,
 					mergedIntoBase: null,
 					baseMergedIntoDefault: null,
+					detectedPr: null,
 				},
 			}),
 		);
@@ -347,6 +399,7 @@ describe("plainCells", () => {
 					behind: 0,
 					mergedIntoBase: null,
 					baseMergedIntoDefault: null,
+					detectedPr: null,
 				},
 			}),
 		);
@@ -365,6 +418,7 @@ describe("plainCells", () => {
 					behind: 0,
 					mergedIntoBase: null,
 					baseMergedIntoDefault: "merge",
+					detectedPr: null,
 				},
 			}),
 		);

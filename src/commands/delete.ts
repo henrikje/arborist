@@ -107,6 +107,7 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 			statusLabels: [],
 			statusCounts: [],
 			lastCommit: null,
+			detectedTicket: null,
 		};
 	}
 

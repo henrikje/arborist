@@ -17,6 +17,7 @@ export function makeRepo(overrides: Partial<RepoStatus> = {}): RepoStatus {
 			behind: 0,
 			mergedIntoBase: null,
 			baseMergedIntoDefault: null,
+			detectedPr: null,
 		},
 		share: {
 			remote: "origin",
