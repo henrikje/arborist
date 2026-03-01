@@ -110,7 +110,7 @@ describe("formatBranchGraph", () => {
 			false,
 		);
 		expect(graph).toContain("feat/xyz  HEAD");
-		expect(graph).toContain("2 commits to replay");
+		expect(graph).toContain("2 commits to rebase");
 		expect(graph).toContain("--x--");
 		expect(graph).toContain("feat/auth");
 		expect(graph).toContain("old base, merged");

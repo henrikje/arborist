@@ -202,7 +202,7 @@ export async function integrate(
 			const n = a.retargetReplayCount ?? a.ahead;
 			const progressMsg =
 				a.retargetReason === "branch-merged"
-					? `replaying ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`
+					? `rebasing ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`
 					: `rebasing ${branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
 			inlineStart(a.repo, progressMsg);
 			const retargetArgs = ["rebase"];
@@ -239,7 +239,7 @@ export async function integrate(
 			let doneMsg: string;
 			if (a.retargetFrom && a.retargetReason === "branch-merged") {
 				const n = a.retargetReplayCount ?? a.ahead;
-				doneMsg = `replayed ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`;
+				doneMsg = `rebased ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`;
 			} else if (a.retargetFrom) {
 				doneMsg = `rebased ${branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
 			} else {
@@ -327,21 +327,21 @@ export function formatIntegratePlan(
 				// Retarget display
 				if (a.retargetReason === "branch-merged") {
 					const n = a.retargetReplayCount ?? a.ahead;
-					out += `  ${a.repo}   replay onto ${baseRef} (merged)`;
+					out += `  ${a.repo}   rebase onto ${baseRef} (merged)`;
 					const merged = a.retargetAlreadyOnTarget ?? 0;
 					if (merged > 0) {
-						out += ` — replay ${n} new ${n === 1 ? "commit" : "commits"}, skip ${merged} already merged`;
+						out += ` — rebase ${n} new ${n === 1 ? "commit" : "commits"}, skip ${merged} already merged`;
 					} else {
-						out += ` — replay ${n} new ${n === 1 ? "commit" : "commits"}`;
+						out += ` — rebase ${n} new ${n === 1 ? "commit" : "commits"}`;
 					}
 				} else {
 					out += `  ${a.repo}   rebase onto ${baseRef} from ${a.retargetFrom} (retarget)`;
 					// Replay breakdown
 					if (a.retargetAlreadyOnTarget != null && a.retargetAlreadyOnTarget > 0) {
 						const total = (a.retargetReplayCount ?? 0) + a.retargetAlreadyOnTarget;
-						out += ` — ${total} local, ${a.retargetAlreadyOnTarget} already on target, ${a.retargetReplayCount ?? 0} to replay`;
+						out += ` — ${total} local, ${a.retargetAlreadyOnTarget} already on target, ${a.retargetReplayCount ?? 0} to rebase`;
 					} else if (a.retargetReplayCount != null && a.retargetReplayCount > 0) {
-						out += ` — ${a.retargetReplayCount} to replay`;
+						out += ` — ${a.retargetReplayCount} to rebase`;
 					}
 				}
 				if (a.retargetWarning) {

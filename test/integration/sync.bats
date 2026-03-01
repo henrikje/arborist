@@ -751,7 +751,7 @@ assert r['base']['mergedIntoBase'] == 'squash', f'expected squash, got {r[\"base
     cd "$TEST_DIR/project/rebase-replay-test"
     run arb rebase --yes
     [ "$status" -eq 0 ]
-    [[ "$output" == *"replay"* ]] || [[ "$output" == *"Rebased"* ]] || [[ "$output" == *"rebased"* ]]
+    [[ "$output" == *"rebased"* ]] || [[ "$output" == *"Rebased"* ]]
 
     # After rebase, the branch should have only the new commit on top of main
     local commit_count
