@@ -61,6 +61,7 @@ export interface RepoAssessment {
 	conflictCommits?: { shortHash: string; files: string[] }[];
 	retargetReplayCount?: number;
 	retargetAlreadyOnTarget?: number;
+	retargetReason?: "base-merged" | "branch-merged";
 }
 
 export async function integrate(
@@ -123,7 +124,7 @@ export async function integrate(
 					const flags = computeFlags(status, branch);
 					if (!repoMatchesWhere(flags, where)) return null;
 				}
-				return assessRepo(status, repoDir, branch, fetchFailed, retarget, retargetExplicit, autostash, cache);
+				return assessRepo(status, repoDir, branch, fetchFailed, retarget, retargetExplicit, autostash, cache, mode);
 			}),
 		);
 		return assessments.filter((a): a is RepoAssessment => a !== null);
@@ -198,7 +199,11 @@ export async function integrate(
 		if (a.retargetFrom) {
 			const remoteRefExists = await remoteBranchExists(a.repoDir, a.retargetFrom, a.baseRemote);
 			const oldBaseRef = remoteRefExists ? `${a.baseRemote}/${a.retargetFrom}` : a.retargetFrom;
-			const progressMsg = `rebasing ${branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
+			const n = a.retargetReplayCount ?? a.ahead;
+			const progressMsg =
+				a.retargetReason === "branch-merged"
+					? `replaying ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`
+					: `rebasing ${branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
 			inlineStart(a.repo, progressMsg);
 			const retargetArgs = ["rebase"];
 			if (a.needsStash) retargetArgs.push("--autostash");
@@ -232,7 +237,10 @@ export async function integrate(
 				}
 			}
 			let doneMsg: string;
-			if (a.retargetFrom) {
+			if (a.retargetFrom && a.retargetReason === "branch-merged") {
+				const n = a.retargetReplayCount ?? a.ahead;
+				doneMsg = `replayed ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`;
+			} else if (a.retargetFrom) {
 				doneMsg = `rebased ${branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
 			} else {
 				doneMsg = mode === "rebase" ? `rebased ${branch} onto ${ref}` : `merged ${ref} into ${branch}`;
@@ -264,8 +272,8 @@ export async function integrate(
 	// Stash pop failure report
 	reportStashPopFailures(stashPopFailed, mode === "rebase" ? "Rebase" : "Merge");
 
-	// Update config after successful retarget
-	const retargetAssessments = willOperate.filter((a) => a.retargetTo);
+	// Update config after successful retarget (skip branch-merged replays — base doesn't change)
+	const retargetAssessments = willOperate.filter((a) => a.retargetTo && a.retargetReason !== "branch-merged");
 	if (retargetAssessments.length > 0 && conflicted.length === 0) {
 		const retargetTo = retargetAssessments[0]?.retargetTo;
 		if (retargetTo) {
@@ -317,13 +325,24 @@ export function formatIntegratePlan(
 
 			if (a.retargetFrom) {
 				// Retarget display
-				out += `  ${a.repo}   rebase onto ${baseRef} from ${a.retargetFrom} (retarget)`;
-				// Replay breakdown
-				if (a.retargetAlreadyOnTarget != null && a.retargetAlreadyOnTarget > 0) {
-					const total = (a.retargetReplayCount ?? 0) + a.retargetAlreadyOnTarget;
-					out += ` — ${total} local, ${a.retargetAlreadyOnTarget} already on target, ${a.retargetReplayCount ?? 0} to replay`;
-				} else if (a.retargetReplayCount != null && a.retargetReplayCount > 0) {
-					out += ` — ${a.retargetReplayCount} to replay`;
+				if (a.retargetReason === "branch-merged") {
+					const n = a.retargetReplayCount ?? a.ahead;
+					out += `  ${a.repo}   replay onto ${baseRef} (merged)`;
+					const merged = a.retargetAlreadyOnTarget ?? 0;
+					if (merged > 0) {
+						out += ` — replay ${n} new ${n === 1 ? "commit" : "commits"}, skip ${merged} already merged`;
+					} else {
+						out += ` — replay ${n} new ${n === 1 ? "commit" : "commits"}`;
+					}
+				} else {
+					out += `  ${a.repo}   rebase onto ${baseRef} from ${a.retargetFrom} (retarget)`;
+					// Replay breakdown
+					if (a.retargetAlreadyOnTarget != null && a.retargetAlreadyOnTarget > 0) {
+						const total = (a.retargetReplayCount ?? 0) + a.retargetAlreadyOnTarget;
+						out += ` — ${total} local, ${a.retargetAlreadyOnTarget} already on target, ${a.retargetReplayCount ?? 0} to replay`;
+					} else if (a.retargetReplayCount != null && a.retargetReplayCount > 0) {
+						out += ` — ${a.retargetReplayCount} to replay`;
+					}
 				}
 				if (a.retargetWarning) {
 					out += ` ${yellow(`(${a.retargetWarning})`)}`;
@@ -601,18 +620,56 @@ async function assessRepo(
 	retargetExplicit: string | null,
 	autostash: boolean,
 	cache: GitCache,
+	mode: IntegrateMode,
 ): Promise<RepoAssessment> {
 	const headSha = await getShortHead(repoDir);
 	const classified = classifyRepo(status, repoDir, branch, fetchFailed, autostash, headSha);
 
 	// Hard skips from basic checks (steps 1–7) — retarget can't help.
 	// Only the baseMergedIntoDefault skip should pass through to retarget logic.
-	if (classified.outcome === "skip" && classified.skipFlag !== "base-merged-into-default") {
+	// Also allow already-merged with new commits to pass through for replay recovery.
+	const base = status.base;
+	const isMergedNewWork =
+		classified.skipFlag === "already-merged" && base?.newCommitsAfterMerge && base.newCommitsAfterMerge > 0;
+	if (classified.outcome === "skip" && classified.skipFlag !== "base-merged-into-default" && !isMergedNewWork) {
 		return classified;
 	}
 
 	const baseRemote = classified.baseRemote;
-	const base = status.base;
+
+	// Merged branch with new commits — in merge mode, just do a normal merge;
+	// in rebase mode, replay only the new commits via rebase --onto
+	if (isMergedNewWork && base && mode === "merge") {
+		if (base.behind === 0) {
+			return { ...classified, outcome: "up-to-date", baseBranch: base.ref, behind: 0, ahead: base.ahead };
+		}
+		return {
+			...classified,
+			outcome: "will-operate",
+			baseBranch: base.ref,
+			behind: base.behind,
+			ahead: base.ahead,
+		};
+	}
+	if (isMergedNewWork && base) {
+		const n = base.newCommitsAfterMerge ?? 0;
+		const boundaryResult = await git(repoDir, "rev-parse", `HEAD~${n}`);
+		if (boundaryResult.exitCode === 0) {
+			const boundarySha = boundaryResult.stdout.trim();
+			return {
+				...classified,
+				outcome: "will-operate",
+				baseBranch: base.ref,
+				behind: base.behind,
+				ahead: n,
+				retargetFrom: boundarySha,
+				retargetTo: base.ref,
+				retargetReplayCount: n,
+				retargetAlreadyOnTarget: Math.max(0, base.ahead - n),
+				retargetReason: "branch-merged",
+			};
+		}
+	}
 
 	// Explicit retarget to a specified branch
 	if (retargetExplicit) {
@@ -671,6 +728,7 @@ async function assessRepo(
 			retargetFrom: oldBaseName,
 			retargetTo: retargetExplicit,
 			retargetWarning,
+			retargetReason: "base-merged",
 			behind: base?.behind ?? 0,
 			ahead: base?.ahead ?? 0,
 			...(replayAnalysis && {
@@ -719,6 +777,7 @@ async function assessRepo(
 			baseBranch: trueDefault,
 			retargetFrom: base.configuredRef ?? base.ref,
 			retargetTo: trueDefault,
+			retargetReason: "base-merged",
 			behind: base.behind,
 			ahead: base.ahead,
 			...(replayAnalysis && {

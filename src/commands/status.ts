@@ -228,7 +228,7 @@ async function runStatus(
 				filteredSummary.repos.map(async (repo) => {
 					const detail = await gatherVerboseDetail(repo, wsDir);
 					if (!detail) return repo;
-					return { ...repo, verbose: toJsonVerbose(detail) };
+					return { ...repo, verbose: toJsonVerbose(detail, repo.base) };
 				}),
 			);
 			output = { ...output, repos: reposWithVerbose };
@@ -428,6 +428,16 @@ async function renderStatusTable(
 			(repo.share.toPush === 0 && repo.share.toPull !== null && repo.share.toPull > 0)
 		) {
 			remoteDiffColored = cell.remoteDiff;
+		} else if (repo.base?.newCommitsAfterMerge && repo.base.newCommitsAfterMerge > 0) {
+			// Merged with new work — color only the "N to push" portion yellow
+			const pushIdx = cell.remoteDiff.lastIndexOf(", ");
+			if (pushIdx >= 0 && cell.remoteDiff.includes("to push")) {
+				const prefix = cell.remoteDiff.slice(0, pushIdx + 2);
+				const suffix = cell.remoteDiff.slice(pushIdx + 2);
+				remoteDiffColored = `${prefix}${yellow(suffix)}`;
+			} else {
+				remoteDiffColored = cell.remoteDiff;
+			}
 		} else if (flags.isUnpushed) {
 			const rebased = repo.share.rebased ?? 0;
 			const netNew = (repo.share.toPush ?? 0) - rebased;
@@ -562,9 +572,11 @@ export function plainRemoteDiff(repo: RepoStatus): string {
 	const merged = repo.base?.mergedIntoBase != null;
 	const prNumber = repo.base?.detectedPr?.number;
 	const prSuffix = prNumber ? ` (#${prNumber})` : "";
+	const newCount = repo.base?.newCommitsAfterMerge;
+	const pushSuffix = merged && newCount && newCount > 0 ? `, ${newCount} to push` : "";
 
 	if (repo.share.refMode === "gone") {
-		if (merged) return `merged${prSuffix}, gone`;
+		if (merged) return `merged${prSuffix}, gone${pushSuffix}`;
 		if (repo.base !== null && repo.base.ahead > 0) {
 			return `gone, ${repo.base.ahead} to push`;
 		}
@@ -576,7 +588,7 @@ export function plainRemoteDiff(repo: RepoStatus): string {
 		return "not pushed";
 	}
 
-	if (merged && (repo.share.toPull ?? 0) === 0) return `merged${prSuffix}`;
+	if (merged && (repo.share.toPull ?? 0) === 0) return `merged${prSuffix}${pushSuffix}`;
 	// configured or implicit — use toPush/toPull
 	const toPush = repo.share.toPush ?? 0;
 	const toPull = repo.share.toPull ?? 0;

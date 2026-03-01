@@ -4,6 +4,7 @@ export type SkipFlag =
 	| "drifted"
 	| "base-merged-into-default"
 	| "already-merged"
+	| "merged-new-work"
 	| "fetch-failed"
 	| "dirty"
 	// Push-specific

@@ -226,6 +226,11 @@ export function formatPushPlan(
 		out += `  ${dim(`hint: ${plural(behindBaseCount, "repo")} behind base — consider 'arb rebase' before pushing`)}\n`;
 	}
 
+	const mergedNewWorkCount = assessments.filter((a) => a.skipFlag === "merged-new-work").length;
+	if (mergedNewWorkCount > 0) {
+		out += `  ${yellow(`hint: ${plural(mergedNewWorkCount, "repo")} merged with new commits — run 'arb rebase' to replay onto updated base`)}\n`;
+	}
+
 	out += "\n";
 	return out;
 }
@@ -306,6 +311,14 @@ export function assessPushRepo(
 	// Remote branch was deleted (gone)
 	if (status.share.refMode === "gone") {
 		if (status.base?.mergedIntoBase != null && !options?.force) {
+			const n = status.base.newCommitsAfterMerge;
+			if (n && n > 0) {
+				return {
+					...base,
+					skipReason: `merged into ${status.base.ref} with ${n} new ${n === 1 ? "commit" : "commits"} (rebase or --force to recreate)`,
+					skipFlag: "merged-new-work",
+				};
+			}
 			return {
 				...base,
 				skipReason: `already merged into ${status.base.ref} (use --force to recreate)`,
@@ -318,6 +331,14 @@ export function assessPushRepo(
 
 	// Merged but not gone — nothing useful to push unless forced
 	if (status.base?.mergedIntoBase != null && !options?.force) {
+		const n = status.base.newCommitsAfterMerge;
+		if (n && n > 0) {
+			return {
+				...base,
+				skipReason: `merged into ${status.base.ref} with ${n} new ${n === 1 ? "commit" : "commits"} (rebase or --force)`,
+				skipFlag: "merged-new-work",
+			};
+		}
 		return { ...base, skipReason: `already merged into ${status.base.ref} (use --force)`, skipFlag: "already-merged" };
 	}
 

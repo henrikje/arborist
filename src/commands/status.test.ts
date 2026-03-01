@@ -312,6 +312,85 @@ describe("plainRemoteDiff", () => {
 		);
 		expect(text).toBe("2 rebased");
 	});
+
+	test("shows merged with new commits to push (not gone)", () => {
+		const text = plainRemoteDiff(
+			makeRepo({
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 1, toPull: 0, rebased: null },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 12,
+					behind: 1,
+					mergedIntoBase: "squash",
+					newCommitsAfterMerge: 1,
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+		);
+		expect(text).toBe("merged, 1 to push");
+	});
+
+	test("shows merged with PR and new commits to push (not gone)", () => {
+		const text = plainRemoteDiff(
+			makeRepo({
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 1, toPull: 0, rebased: null },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 12,
+					behind: 1,
+					mergedIntoBase: "squash",
+					newCommitsAfterMerge: 1,
+					baseMergedIntoDefault: null,
+					detectedPr: { number: 42, url: null },
+				},
+			}),
+		);
+		expect(text).toBe("merged (#42), 1 to push");
+	});
+
+	test("shows merged with new commits to push (gone)", () => {
+		const text = plainRemoteDiff(
+			makeRepo({
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 12,
+					behind: 1,
+					mergedIntoBase: "squash",
+					newCommitsAfterMerge: 1,
+					baseMergedIntoDefault: null,
+					detectedPr: { number: 1, url: "https://github.com/acme/repo/pull/1" },
+				},
+			}),
+		);
+		expect(text).toBe("merged (#1), gone, 1 to push");
+	});
+
+	test("shows merged without push count when no new commits", () => {
+		const text = plainRemoteDiff(
+			makeRepo({
+				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 0, rebased: null },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 0,
+					mergedIntoBase: "merge",
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+		);
+		expect(text).toBe("merged");
+	});
 });
 
 describe("plainLocal", () => {

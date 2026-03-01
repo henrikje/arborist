@@ -108,6 +108,8 @@ arb push
 arb push --force      # after rebasing (prompts for confirmation)
 ```
 
+If you add commits to a branch that was already merged (squash or regular), Arborist detects it and blocks `arb push` with a warning. Run `arb rebase` to replay only the new commits onto the updated base, then `arb push --force` and create a new PR.
+
 Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
 
 All sync commands support `--where` (`-w`) to filter which repos are included in the plan:

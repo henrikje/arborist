@@ -684,3 +684,85 @@ assert r['base']['mergedIntoBase'] == 'squash', f'expected squash, got {r[\"base
     [[ "$output" == *"repo-a"* ]]
     [[ "$output" != *"repo-b"* ]]
 }
+
+@test "push blocks after squash merge with new commit" {
+    arb create push-block-test repo-a
+    local wt="$TEST_DIR/project/push-block-test/repo-a"
+
+    # Make feature work and push
+    echo "feature content" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    cd "$TEST_DIR/project/push-block-test"
+    arb push --yes >/dev/null 2>&1
+
+    # Simulate squash merge on the bare repo (don't delete remote branch yet)
+    local bare="$TEST_DIR/origin/repo-a.git"
+    local tmp="$TEST_DIR/tmp-squash-block"
+    git clone "$bare" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && git merge --squash origin/push-block-test && git commit -m "squash merge (#99)") >/dev/null 2>&1
+    (cd "$tmp" && git push origin main) >/dev/null 2>&1
+    rm -rf "$tmp"
+
+    # Add a new commit on the feature branch (the bug fix scenario)
+    echo "fix content" > "$wt/fix.txt"
+    git -C "$wt" add fix.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "fix bug" >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/push-block-test"
+
+    # Verify status shows "to push" for merged branch with new commits
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merged"* ]]
+    [[ "$output" == *"to push"* ]]
+
+    run arb push --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merged"* ]]
+    [[ "$output" == *"new commit"* ]] || [[ "$output" == *"new commits"* ]]
+    [[ "$output" == *"rebase"* ]]
+}
+
+@test "rebase replays new commits after squash merge" {
+    arb create rebase-replay-test repo-a
+    local wt="$TEST_DIR/project/rebase-replay-test/repo-a"
+
+    # Make feature work and push
+    echo "feature content" > "$wt/feature.txt"
+    git -C "$wt" add feature.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "feature work" >/dev/null 2>&1
+    cd "$TEST_DIR/project/rebase-replay-test"
+    arb push --yes >/dev/null 2>&1
+
+    # Simulate squash merge on the bare repo
+    local bare="$TEST_DIR/origin/repo-a.git"
+    local tmp="$TEST_DIR/tmp-squash-replay"
+    git clone "$bare" "$tmp" >/dev/null 2>&1
+    (cd "$tmp" && git merge --squash origin/rebase-replay-test && git commit -m "squash merge (#99)") >/dev/null 2>&1
+    (cd "$tmp" && git push origin main) >/dev/null 2>&1
+    rm -rf "$tmp"
+
+    # Add a new commit on the feature branch
+    echo "fix content" > "$wt/fix.txt"
+    git -C "$wt" add fix.txt >/dev/null 2>&1
+    git -C "$wt" commit -m "fix bug" >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/rebase-replay-test"
+    run arb rebase --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"replay"* ]] || [[ "$output" == *"Rebased"* ]] || [[ "$output" == *"rebased"* ]]
+
+    # After rebase, the branch should have only the new commit on top of main
+    local commit_count
+    commit_count=$(git -C "$wt" log --oneline origin/main..HEAD | wc -l | tr -d ' ')
+    [ "$commit_count" -eq 1 ]
+
+    # The fix file should still be present
+    [ -f "$wt/fix.txt" ]
+
+    # Force push should now succeed
+    run arb push --force --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"pushed"* ]] || [[ "$output" == *"Pushed"* ]]
+}
