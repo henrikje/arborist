@@ -1,0 +1,1004 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`json-schema stability StatusJsonOutputSchema 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "atRiskCount": {
+      "type": "number",
+    },
+    "base": {
+      "anyOf": [
+        {
+          "type": "string",
+        },
+        {
+          "type": "null",
+        },
+      ],
+    },
+    "branch": {
+      "type": "string",
+    },
+    "lastCommit": {
+      "anyOf": [
+        {
+          "type": "string",
+        },
+        {
+          "type": "null",
+        },
+      ],
+    },
+    "rebasedOnlyCount": {
+      "type": "number",
+    },
+    "repos": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "ahead": {
+                    "type": "number",
+                  },
+                  "baseMergedIntoDefault": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "merge",
+                          "squash",
+                        ],
+                        "type": "string",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "behind": {
+                    "type": "number",
+                  },
+                  "configuredRef": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "mergedIntoBase": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "merge",
+                          "squash",
+                        ],
+                        "type": "string",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "ref": {
+                    "type": "string",
+                  },
+                  "remote": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                },
+                "required": [
+                  "remote",
+                  "ref",
+                  "configuredRef",
+                  "ahead",
+                  "behind",
+                  "mergedIntoBase",
+                  "baseMergedIntoDefault",
+                ],
+                "type": "object",
+              },
+              {
+                "type": "null",
+              },
+            ],
+          },
+          "identity": {
+            "additionalProperties": false,
+            "properties": {
+              "headMode": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "branch": {
+                        "type": "string",
+                      },
+                      "kind": {
+                        "const": "attached",
+                        "type": "string",
+                      },
+                    },
+                    "required": [
+                      "kind",
+                      "branch",
+                    ],
+                    "type": "object",
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "detached",
+                        "type": "string",
+                      },
+                    },
+                    "required": [
+                      "kind",
+                    ],
+                    "type": "object",
+                  },
+                ],
+              },
+              "shallow": {
+                "type": "boolean",
+              },
+              "worktreeKind": {
+                "enum": [
+                  "full",
+                  "linked",
+                ],
+                "type": "string",
+              },
+            },
+            "required": [
+              "worktreeKind",
+              "headMode",
+              "shallow",
+            ],
+            "type": "object",
+          },
+          "lastCommit": {
+            "anyOf": [
+              {
+                "type": "string",
+              },
+              {
+                "type": "null",
+              },
+            ],
+          },
+          "local": {
+            "additionalProperties": false,
+            "properties": {
+              "conflicts": {
+                "type": "number",
+              },
+              "modified": {
+                "type": "number",
+              },
+              "staged": {
+                "type": "number",
+              },
+              "untracked": {
+                "type": "number",
+              },
+            },
+            "required": [
+              "staged",
+              "modified",
+              "untracked",
+              "conflicts",
+            ],
+            "type": "object",
+          },
+          "name": {
+            "type": "string",
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rebase",
+                  "merge",
+                  "cherry-pick",
+                  "revert",
+                  "bisect",
+                  "am",
+                ],
+                "type": "string",
+              },
+              {
+                "type": "null",
+              },
+            ],
+          },
+          "share": {
+            "additionalProperties": false,
+            "properties": {
+              "rebased": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+              },
+              "ref": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+              },
+              "refMode": {
+                "enum": [
+                  "noRef",
+                  "implicit",
+                  "configured",
+                  "gone",
+                ],
+                "type": "string",
+              },
+              "remote": {
+                "type": "string",
+              },
+              "toPull": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+              },
+              "toPush": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+              },
+            },
+            "required": [
+              "remote",
+              "ref",
+              "refMode",
+              "toPush",
+              "toPull",
+              "rebased",
+            ],
+            "type": "object",
+          },
+          "verbose": {
+            "additionalProperties": false,
+            "properties": {
+              "aheadOfBase": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "hash": {
+                      "type": "string",
+                    },
+                    "subject": {
+                      "type": "string",
+                    },
+                  },
+                  "required": [
+                    "hash",
+                    "subject",
+                  ],
+                  "type": "object",
+                },
+                "type": "array",
+              },
+              "behindBase": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "hash": {
+                      "type": "string",
+                    },
+                    "rebaseOf": {
+                      "type": "string",
+                    },
+                    "squashOf": {
+                      "items": {
+                        "type": "string",
+                      },
+                      "type": "array",
+                    },
+                    "subject": {
+                      "type": "string",
+                    },
+                  },
+                  "required": [
+                    "hash",
+                    "subject",
+                  ],
+                  "type": "object",
+                },
+                "type": "array",
+              },
+              "staged": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "file": {
+                      "type": "string",
+                    },
+                    "type": {
+                      "enum": [
+                        "new file",
+                        "modified",
+                        "deleted",
+                        "renamed",
+                        "copied",
+                      ],
+                      "type": "string",
+                    },
+                  },
+                  "required": [
+                    "file",
+                    "type",
+                  ],
+                  "type": "object",
+                },
+                "type": "array",
+              },
+              "unpushed": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "hash": {
+                      "type": "string",
+                    },
+                    "rebased": {
+                      "type": "boolean",
+                    },
+                    "subject": {
+                      "type": "string",
+                    },
+                  },
+                  "required": [
+                    "hash",
+                    "subject",
+                    "rebased",
+                  ],
+                  "type": "object",
+                },
+                "type": "array",
+              },
+              "unstaged": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "file": {
+                      "type": "string",
+                    },
+                    "type": {
+                      "enum": [
+                        "modified",
+                        "deleted",
+                      ],
+                      "type": "string",
+                    },
+                  },
+                  "required": [
+                    "file",
+                    "type",
+                  ],
+                  "type": "object",
+                },
+                "type": "array",
+              },
+              "untracked": {
+                "items": {
+                  "type": "string",
+                },
+                "type": "array",
+              },
+            },
+            "type": "object",
+          },
+        },
+        "required": [
+          "name",
+          "identity",
+          "local",
+          "base",
+          "share",
+          "operation",
+          "lastCommit",
+        ],
+        "type": "object",
+      },
+      "type": "array",
+    },
+    "statusCounts": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "type": "number",
+          },
+          "label": {
+            "type": "string",
+          },
+        },
+        "required": [
+          "label",
+          "count",
+        ],
+        "type": "object",
+      },
+      "type": "array",
+    },
+    "statusLabels": {
+      "items": {
+        "type": "string",
+      },
+      "type": "array",
+    },
+    "total": {
+      "type": "number",
+    },
+    "workspace": {
+      "type": "string",
+    },
+  },
+  "required": [
+    "workspace",
+    "branch",
+    "base",
+    "repos",
+    "total",
+    "atRiskCount",
+    "rebasedOnlyCount",
+    "statusLabels",
+    "statusCounts",
+    "lastCommit",
+  ],
+  "type": "object",
+  "~standard": {
+    "jsonSchema": {
+      "input": [Function],
+      "output": [Function],
+    },
+    "validate": [Function],
+    "vendor": "zod",
+    "version": 1,
+  },
+}
+`;
+
+exports[`json-schema stability LogJsonOutputSchema 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "base": {
+      "anyOf": [
+        {
+          "type": "string",
+        },
+        {
+          "type": "null",
+        },
+      ],
+    },
+    "branch": {
+      "type": "string",
+    },
+    "repos": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "commits": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "hash": {
+                  "type": "string",
+                },
+                "shortHash": {
+                  "type": "string",
+                },
+                "subject": {
+                  "type": "string",
+                },
+              },
+              "required": [
+                "hash",
+                "shortHash",
+                "subject",
+              ],
+              "type": "object",
+            },
+            "type": "array",
+          },
+          "name": {
+            "type": "string",
+          },
+          "reason": {
+            "type": "string",
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "detached",
+              "drifted",
+              "no-base",
+              "fallback-base",
+            ],
+            "type": "string",
+          },
+        },
+        "required": [
+          "name",
+          "status",
+          "commits",
+        ],
+        "type": "object",
+      },
+      "type": "array",
+    },
+    "totalCommits": {
+      "type": "number",
+    },
+    "workspace": {
+      "type": "string",
+    },
+  },
+  "required": [
+    "workspace",
+    "branch",
+    "base",
+    "repos",
+    "totalCommits",
+  ],
+  "type": "object",
+  "~standard": {
+    "jsonSchema": {
+      "input": [Function],
+      "output": [Function],
+    },
+    "validate": [Function],
+    "vendor": "zod",
+    "version": 1,
+  },
+}
+`;
+
+exports[`json-schema stability DiffJsonOutputSchema 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "base": {
+      "anyOf": [
+        {
+          "type": "string",
+        },
+        {
+          "type": "null",
+        },
+      ],
+    },
+    "branch": {
+      "type": "string",
+    },
+    "repos": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "fileStat": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "deletions": {
+                  "type": "number",
+                },
+                "file": {
+                  "type": "string",
+                },
+                "insertions": {
+                  "type": "number",
+                },
+              },
+              "required": [
+                "file",
+                "insertions",
+                "deletions",
+              ],
+              "type": "object",
+            },
+            "type": "array",
+          },
+          "name": {
+            "type": "string",
+          },
+          "reason": {
+            "type": "string",
+          },
+          "stat": {
+            "additionalProperties": false,
+            "properties": {
+              "deletions": {
+                "type": "number",
+              },
+              "files": {
+                "type": "number",
+              },
+              "insertions": {
+                "type": "number",
+              },
+            },
+            "required": [
+              "files",
+              "insertions",
+              "deletions",
+            ],
+            "type": "object",
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "detached",
+              "drifted",
+              "no-base",
+              "fallback-base",
+              "clean",
+            ],
+            "type": "string",
+          },
+          "untrackedCount": {
+            "type": "number",
+          },
+        },
+        "required": [
+          "name",
+          "status",
+          "stat",
+        ],
+        "type": "object",
+      },
+      "type": "array",
+    },
+    "totalDeletions": {
+      "type": "number",
+    },
+    "totalFiles": {
+      "type": "number",
+    },
+    "totalInsertions": {
+      "type": "number",
+    },
+    "totalUntracked": {
+      "type": "number",
+    },
+    "workspace": {
+      "type": "string",
+    },
+  },
+  "required": [
+    "workspace",
+    "branch",
+    "base",
+    "repos",
+    "totalFiles",
+    "totalInsertions",
+    "totalDeletions",
+  ],
+  "type": "object",
+  "~standard": {
+    "jsonSchema": {
+      "input": [Function],
+      "output": [Function],
+    },
+    "validate": [Function],
+    "vendor": "zod",
+    "version": 1,
+  },
+}
+`;
+
+exports[`json-schema stability BranchJsonOutputSchema 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "base": {
+      "anyOf": [
+        {
+          "type": "string",
+        },
+        {
+          "type": "null",
+        },
+      ],
+    },
+    "branch": {
+      "type": "string",
+    },
+    "repos": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "anyOf": [
+              {
+                "type": "string",
+              },
+              {
+                "type": "null",
+              },
+            ],
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string",
+              },
+              {
+                "type": "null",
+              },
+            ],
+          },
+          "name": {
+            "type": "string",
+          },
+          "refMode": {
+            "enum": [
+              "noRef",
+              "implicit",
+              "configured",
+              "gone",
+            ],
+            "type": "string",
+          },
+          "share": {
+            "anyOf": [
+              {
+                "type": "string",
+              },
+              {
+                "type": "null",
+              },
+            ],
+          },
+        },
+        "required": [
+          "name",
+          "branch",
+        ],
+        "type": "object",
+      },
+      "type": "array",
+    },
+  },
+  "required": [
+    "branch",
+    "base",
+    "repos",
+  ],
+  "type": "object",
+  "~standard": {
+    "jsonSchema": {
+      "input": [Function],
+      "output": [Function],
+    },
+    "validate": [Function],
+    "vendor": "zod",
+    "version": 1,
+  },
+}
+`;
+
+exports[`json-schema stability ListJsonEntrySchema (array) 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "items": {
+    "additionalProperties": false,
+    "properties": {
+      "active": {
+        "type": "boolean",
+      },
+      "atRiskCount": {
+        "type": "number",
+      },
+      "base": {
+        "anyOf": [
+          {
+            "type": "string",
+          },
+          {
+            "type": "null",
+          },
+        ],
+      },
+      "branch": {
+        "anyOf": [
+          {
+            "type": "string",
+          },
+          {
+            "type": "null",
+          },
+        ],
+      },
+      "lastCommit": {
+        "anyOf": [
+          {
+            "type": "string",
+          },
+          {
+            "type": "null",
+          },
+        ],
+      },
+      "repoCount": {
+        "anyOf": [
+          {
+            "type": "number",
+          },
+          {
+            "type": "null",
+          },
+        ],
+      },
+      "status": {
+        "anyOf": [
+          {
+            "enum": [
+              "config-missing",
+              "empty",
+              "error",
+            ],
+            "type": "string",
+          },
+          {
+            "type": "null",
+          },
+        ],
+      },
+      "statusCounts": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "type": "number",
+            },
+            "label": {
+              "type": "string",
+            },
+          },
+          "required": [
+            "label",
+            "count",
+          ],
+          "type": "object",
+        },
+        "type": "array",
+      },
+      "statusLabels": {
+        "items": {
+          "type": "string",
+        },
+        "type": "array",
+      },
+      "workspace": {
+        "type": "string",
+      },
+    },
+    "required": [
+      "workspace",
+      "active",
+      "branch",
+      "base",
+      "repoCount",
+      "status",
+    ],
+    "type": "object",
+  },
+  "type": "array",
+  "~standard": {
+    "jsonSchema": {
+      "input": [Function],
+      "output": [Function],
+    },
+    "validate": [Function],
+    "vendor": "zod",
+    "version": 1,
+  },
+}
+`;
+
+exports[`json-schema stability RepoListJsonEntrySchema (array) 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "items": {
+    "additionalProperties": false,
+    "properties": {
+      "base": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+          },
+          "url": {
+            "type": "string",
+          },
+        },
+        "required": [
+          "name",
+          "url",
+        ],
+        "type": "object",
+      },
+      "name": {
+        "type": "string",
+      },
+      "share": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+          },
+          "url": {
+            "type": "string",
+          },
+        },
+        "required": [
+          "name",
+          "url",
+        ],
+        "type": "object",
+      },
+      "url": {
+        "type": "string",
+      },
+    },
+    "required": [
+      "name",
+      "url",
+      "share",
+      "base",
+    ],
+    "type": "object",
+  },
+  "type": "array",
+  "~standard": {
+    "jsonSchema": {
+      "input": [Function],
+      "output": [Function],
+    },
+    "validate": [Function],
+    "vendor": "zod",
+    "version": 1,
+  },
+}
+`;

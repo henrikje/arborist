@@ -27,6 +27,7 @@
 		"@commitlint/cli": "^20.4.1",
 		"@commitlint/config-conventional": "^20.4.1",
 		"@types/bun": "latest",
+		"ajv": "^8.18.0",
 		"typescript": "^5.9.3"
 	}
 }
