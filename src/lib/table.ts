@@ -12,6 +12,7 @@ export function renderTable<T>(
 	options?: {
 		marker?: (row: T) => boolean;
 		gap?: number;
+		afterRow?: (row: T, i: number) => string;
 	},
 ): string {
 	const gap = options?.gap ?? 4;
@@ -60,6 +61,10 @@ export function renderTable<T>(
 		}
 
 		out += "\n";
+
+		if (options?.afterRow) {
+			out += options.afterRow(row, i);
+		}
 	}
 
 	return out;

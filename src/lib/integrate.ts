@@ -21,11 +21,13 @@ import { GitCache } from "./git-cache";
 import { formatBranchGraph } from "./integrate-graph";
 import { confirmOrExit, runPlanFlow } from "./mutation-flow";
 import { dim, dryRunNotice, error, finishSummary, info, inlineResult, inlineStart, plural, yellow } from "./output";
-import { formatSkipLine, formatStashHint, formatUpToDateLine } from "./plan-format";
+import { type ActionPair, formatStashHint, skipAction, upToDateAction } from "./plan-format";
 import { resolveRepoSelection, workspaceRepoDirs } from "./repos";
 import type { SkipFlag } from "./skip-flags";
 import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "./status";
 import { VERBOSE_COMMIT_LIMIT, formatVerboseCommits } from "./status-verbose";
+import type { Column } from "./table";
+import { renderTable } from "./table";
 import type { ArbContext } from "./types";
 import { workspaceBranch } from "./workspace-branch";
 import { requireBranch, requireWorkspace } from "./workspace-context";
@@ -318,74 +320,43 @@ export function formatIntegratePlan(
 	verbose?: boolean,
 	graph?: boolean,
 ): string {
-	let out = "\n";
-	for (const a of assessments) {
+	// Pre-compute action pairs per assessment
+	const actions: ActionPair[] = assessments.map((a) => {
 		if (a.outcome === "will-operate") {
-			const baseRef = `${a.baseRemote}/${a.baseBranch}`;
+			return integrateAction(a, mode, branch);
+		}
+		if (a.outcome === "up-to-date") {
+			return upToDateAction();
+		}
+		return skipAction(a.skipReason ?? "", a.skipFlag);
+	});
 
-			if (a.retargetFrom) {
-				// Retarget display
-				if (a.retargetReason === "branch-merged") {
-					const n = a.retargetReplayCount ?? a.ahead;
-					out += `  ${a.repo}   rebase onto ${baseRef} (merged)`;
-					const merged = a.retargetAlreadyOnTarget ?? 0;
-					if (merged > 0) {
-						out += ` — rebase ${n} new ${n === 1 ? "commit" : "commits"}, skip ${merged} already merged`;
-					} else {
-						out += ` — rebase ${n} new ${n === 1 ? "commit" : "commits"}`;
-					}
-				} else {
-					out += `  ${a.repo}   rebase onto ${baseRef} from ${a.retargetFrom} (retarget)`;
-					// Replay breakdown
-					if (a.retargetAlreadyOnTarget != null && a.retargetAlreadyOnTarget > 0) {
-						const total = (a.retargetReplayCount ?? 0) + a.retargetAlreadyOnTarget;
-						out += ` — ${total} local, ${a.retargetAlreadyOnTarget} already on target, ${a.retargetReplayCount ?? 0} to rebase`;
-					} else if (a.retargetReplayCount != null && a.retargetReplayCount > 0) {
-						out += ` — ${a.retargetReplayCount} to rebase`;
-					}
-				}
-				if (a.retargetWarning) {
-					out += ` ${yellow(`(${a.retargetWarning})`)}`;
-				}
-				out += formatStashHint(a);
-				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
-				out += `${headStr}\n`;
-			} else {
-				const behindStr =
-					a.matchedCount && a.matchedCount > 0
-						? `${a.behind} behind (${a.matchedCount} same, ${a.behind - a.matchedCount} new)`
-						: `${a.behind} behind`;
-				const diffParts = [a.behind > 0 && behindStr, a.ahead > 0 && `${a.ahead} ahead`].filter(Boolean).join(", ");
-				const diffStr = diffParts ? ` \u2014 ${diffParts}` : "";
-				const mergeType = mode === "merge" ? (a.ahead === 0 ? " (fast-forward)" : " (three-way)") : "";
-				const action =
-					mode === "rebase" ? `rebase ${branch} onto ${baseRef}` : `merge ${baseRef} into ${branch}${mergeType}`;
-				let conflictHint = "";
-				if (a.conflictPrediction === "conflict") {
-					conflictHint = mode === "merge" ? ` ${yellow("(will conflict)")}` : ` ${yellow("(conflict likely)")}`;
-				} else if (a.conflictPrediction === "no-conflict") {
-					conflictHint = " (no conflict)";
-				} else if (a.conflictPrediction === "clean") {
-					conflictHint = mode === "merge" ? " (no conflict)" : " (conflict unlikely)";
-				}
-				const headStr = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
-				out += `  ${a.repo}   ${action}${diffStr}${conflictHint}${formatStashHint(a)}${headStr}\n`;
-			}
+	const columns: Column<RepoAssessment>[] = [
+		{ header: "REPO", value: (a) => a.repo },
+		{
+			header: "ACTION",
+			value: (_a, i) => actions[i]?.value ?? "",
+			render: (_a, i) => actions[i]?.render ?? "",
+		},
+	];
+
+	let out = "\n";
+	out += renderTable(columns, assessments, {
+		afterRow: (a, _i) => {
+			if (a.outcome !== "will-operate") return "";
 			if (graph) {
-				out += formatBranchGraph(a, branch, !!verbose);
-			} else if (verbose && a.commits && a.commits.length > 0) {
+				return formatBranchGraph(a, branch, !!verbose);
+			}
+			if (verbose && a.commits && a.commits.length > 0) {
 				const label = `Incoming from ${a.baseRemote}/${a.baseBranch}:`;
-				out += formatVerboseCommits(a.commits, a.totalCommits ?? a.commits.length, label, {
+				return formatVerboseCommits(a.commits, a.totalCommits ?? a.commits.length, label, {
 					diffStats: a.diffStats,
 					conflictCommits: a.conflictCommits,
 				});
 			}
-		} else if (a.outcome === "up-to-date") {
-			out += formatUpToDateLine(a.repo);
-		} else {
-			out += formatSkipLine(a.repo, a.skipReason ?? "", a.skipFlag);
-		}
-	}
+			return "";
+		},
+	});
 
 	// Shallow clone warnings (included in plan block so they get cleared on re-render)
 	const shallowRepos = assessments.filter((a) => a.shallow);
@@ -398,6 +369,98 @@ export function formatIntegratePlan(
 
 	out += "\n";
 	return out;
+}
+
+function integrateAction(a: RepoAssessment, mode: IntegrateMode, branch: string): ActionPair {
+	const baseRef = `${a.baseRemote}/${a.baseBranch}`;
+
+	if (a.retargetFrom) {
+		let text: string;
+		let rendered: string;
+
+		if (a.retargetReason === "branch-merged") {
+			const n = a.retargetReplayCount ?? a.ahead;
+			text = `rebase onto ${baseRef} (merged)`;
+			rendered = text;
+			const merged = a.retargetAlreadyOnTarget ?? 0;
+			if (merged > 0) {
+				const suffix = ` \u2014 rebase ${n} new ${n === 1 ? "commit" : "commits"}, skip ${merged} already merged`;
+				text += suffix;
+				rendered += suffix;
+			} else {
+				const suffix = ` \u2014 rebase ${n} new ${n === 1 ? "commit" : "commits"}`;
+				text += suffix;
+				rendered += suffix;
+			}
+		} else {
+			text = `rebase onto ${baseRef} from ${a.retargetFrom} (retarget)`;
+			rendered = text;
+			if (a.retargetAlreadyOnTarget != null && a.retargetAlreadyOnTarget > 0) {
+				const total = (a.retargetReplayCount ?? 0) + a.retargetAlreadyOnTarget;
+				const replay = ` \u2014 ${total} local, ${a.retargetAlreadyOnTarget} already on target, ${a.retargetReplayCount ?? 0} to rebase`;
+				text += replay;
+				rendered += replay;
+			} else if (a.retargetReplayCount != null && a.retargetReplayCount > 0) {
+				const replay = ` \u2014 ${a.retargetReplayCount} to rebase`;
+				text += replay;
+				rendered += replay;
+			}
+		}
+		if (a.retargetWarning) {
+			const warn = ` (${a.retargetWarning})`;
+			text += warn;
+			rendered += ` ${yellow(`(${a.retargetWarning})`)}`;
+		}
+		const stash = formatStashHint(a);
+		text += stash;
+		rendered += stash;
+		if (a.headSha) {
+			text += `  (HEAD ${a.headSha})`;
+			rendered += `  ${dim(`(HEAD ${a.headSha})`)}`;
+		}
+		return { value: text, render: rendered };
+	}
+
+	const behindStr =
+		a.matchedCount && a.matchedCount > 0
+			? `${a.behind} behind (${a.matchedCount} same, ${a.behind - a.matchedCount} new)`
+			: `${a.behind} behind`;
+	const diffParts = [a.behind > 0 && behindStr, a.ahead > 0 && `${a.ahead} ahead`].filter(Boolean).join(", ");
+	const diffStr = diffParts ? ` \u2014 ${diffParts}` : "";
+	const mergeType = mode === "merge" ? (a.ahead === 0 ? " (fast-forward)" : " (three-way)") : "";
+	const action = mode === "rebase" ? `rebase ${branch} onto ${baseRef}` : `merge ${baseRef} into ${branch}${mergeType}`;
+
+	let conflictPlain = "";
+	let conflictRendered = "";
+	if (a.conflictPrediction === "conflict") {
+		if (mode === "merge") {
+			conflictPlain = " (will conflict)";
+			conflictRendered = ` ${yellow("(will conflict)")}`;
+		} else {
+			conflictPlain = " (conflict likely)";
+			conflictRendered = ` ${yellow("(conflict likely)")}`;
+		}
+	} else if (a.conflictPrediction === "no-conflict") {
+		conflictPlain = " (no conflict)";
+		conflictRendered = " (no conflict)";
+	} else if (a.conflictPrediction === "clean") {
+		if (mode === "merge") {
+			conflictPlain = " (no conflict)";
+			conflictRendered = " (no conflict)";
+		} else {
+			conflictPlain = " (conflict unlikely)";
+			conflictRendered = " (conflict unlikely)";
+		}
+	}
+
+	const stash = formatStashHint(a);
+	const headPlain = a.headSha ? `  (HEAD ${a.headSha})` : "";
+	const headRendered = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
+
+	return {
+		value: `${action}${diffStr}${conflictPlain}${stash}${headPlain}`,
+		render: `${action}${diffStr}${conflictRendered}${stash}${headRendered}`,
+	};
 }
 
 async function predictIntegrateConflicts(assessments: RepoAssessment[], mode: IntegrateMode): Promise<void> {

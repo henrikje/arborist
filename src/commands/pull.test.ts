@@ -519,4 +519,33 @@ describe("formatPullPlan", () => {
 		);
 		expect(plan).not.toContain("Incoming from");
 	});
+
+	// ── Header & alignment tests ────────────────────────────────
+
+	test("includes REPO and ACTION column headers", () => {
+		const plan = formatPullPlan([makeAssessment()], makeRemotesMap(["repo-a", {}]));
+		expect(plan).toContain("REPO");
+		expect(plan).toContain("ACTION");
+	});
+
+	test("aligns actions across repos with different name lengths", () => {
+		const plan = formatPullPlan(
+			[
+				makeAssessment({ repo: "short", behind: 3 }),
+				makeAssessment({ repo: "much-longer-repo-name", outcome: "up-to-date" }),
+			],
+			makeRemotesMap(["short", {}], ["much-longer-repo-name", {}]),
+		);
+		const lines = plan.split("\n").filter((l) => l.trim().length > 0);
+		const dataLines = lines.slice(1);
+		// Find where the action text starts (first match of the action content)
+		const actionStarts = dataLines.map((l) => {
+			const pullIdx = l.indexOf("3 commits");
+			const upIdx = l.indexOf("up to date");
+			return pullIdx !== -1 ? pullIdx : upIdx;
+		});
+		const nonNeg = actionStarts.filter((s) => s >= 0);
+		expect(nonNeg.length).toBe(2);
+		expect(nonNeg[0]).toBe(nonNeg[1]);
+	});
 });

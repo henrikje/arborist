@@ -1,13 +1,19 @@
 import { dim, yellow } from "./output";
 import { BENIGN_SKIPS, type SkipFlag } from "./skip-flags";
 
-export function formatSkipLine(repo: string, skipReason: string, skipFlag?: SkipFlag): string {
-	const style = skipFlag && BENIGN_SKIPS.has(skipFlag) ? dim : yellow;
-	return `  ${style(`${repo}   skipped \u2014 ${skipReason}`)}\n`;
+export interface ActionPair {
+	value: string;
+	render: string;
 }
 
-export function formatUpToDateLine(repo: string): string {
-	return `  ${repo}   up to date\n`;
+export function skipAction(skipReason: string, skipFlag?: SkipFlag): ActionPair {
+	const text = `skipped \u2014 ${skipReason}`;
+	const style = skipFlag && BENIGN_SKIPS.has(skipFlag) ? dim : yellow;
+	return { value: text, render: style(text) };
+}
+
+export function upToDateAction(): ActionPair {
+	return { value: "up to date", render: "up to date" };
 }
 
 export function formatStashHint(assessment: {
