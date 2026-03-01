@@ -233,7 +233,10 @@ async function runStatus(
 
 	// JSON output
 	if (options.json) {
-		let output: StatusJsonOutput = filteredSummary;
+		let output: StatusJsonOutput = {
+			...filteredSummary,
+			statusCounts: filteredSummary.statusCounts.map(({ label, count }) => ({ label, count })),
+		};
 		if (options.verbose) {
 			const reposWithVerbose = await Promise.all(
 				filteredSummary.repos.map(async (repo) => {
@@ -242,7 +245,7 @@ async function runStatus(
 					return { ...repo, verbose: toJsonVerbose(detail) };
 				}),
 			);
-			output = { ...filteredSummary, repos: reposWithVerbose };
+			output = { ...output, repos: reposWithVerbose };
 		}
 		process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
 		return;

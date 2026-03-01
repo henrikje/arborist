@@ -94,7 +94,9 @@ describe("json-types zod validation", () => {
 			repos: [],
 			total: 0,
 			atRiskCount: 0,
+			rebasedOnlyCount: 0,
 			statusLabels: [],
+			statusCounts: [],
 			lastCommit: null,
 		};
 		expect(() => StatusJsonOutputSchema.parse(output)).not.toThrow();
