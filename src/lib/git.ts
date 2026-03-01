@@ -371,6 +371,11 @@ export async function detectBranchMerged(
 /**
  * Scan recent merge commits on the base branch to find one that references the given branch name.
  * Used to attribute regular merge commits (not squash) to a specific PR.
+ *
+ * Two strategies (single git log pass):
+ * 1. Branch-name match: subject contains the branch name (preferred, returns immediately)
+ * 2. Parentage match: afterRef appears as a non-first parent of a merge commit
+ *    (fallback for --no-ff merges with edited/generic subjects)
  */
 export async function findMergeCommitForBranch(
 	repoDir: string,
@@ -379,22 +384,43 @@ export async function findMergeCommitForBranch(
 	commitLimit = 50,
 	afterRef?: string,
 ): Promise<{ hash: string; subject: string } | null> {
+	// Resolve afterRef to a full hash for parentage comparison
+	let resolvedAfterRef: string | undefined;
+	if (afterRef) {
+		const revParse = await git(repoDir, "rev-parse", afterRef);
+		if (revParse.exitCode === 0) resolvedAfterRef = revParse.stdout.trim();
+	}
+
 	const range = afterRef ? `${afterRef}..${baseBranchRef}` : baseBranchRef;
-	const result = await git(repoDir, "log", "--merges", "--oneline", `--max-count=${commitLimit}`, range);
+	const result = await git(repoDir, "log", "--merges", "--format=%H %P%x09%s", `--max-count=${commitLimit}`, range);
 	if (result.exitCode !== 0) return null;
+
+	let parentageMatch: { hash: string; subject: string } | null = null;
 
 	for (const line of result.stdout.split("\n")) {
 		if (!line.trim()) continue;
-		const spaceIdx = line.indexOf(" ");
-		if (spaceIdx < 0) continue;
-		const hash = line.slice(0, spaceIdx);
-		const subject = line.slice(spaceIdx + 1);
-		// Match merge commits that reference this branch name
+		const tabIdx = line.indexOf("\t");
+		if (tabIdx < 0) continue;
+		const hashAndParents = line.slice(0, tabIdx).split(" ");
+		const hash = hashAndParents[0];
+		if (!hash) continue;
+		const subject = line.slice(tabIdx + 1);
+
+		// Strategy 1: branch-name match (immediate return)
 		if (subject.includes(branchName)) {
 			return { hash, subject };
 		}
+
+		// Strategy 2: parentage match (remember first hit, continue looking for name match)
+		if (resolvedAfterRef && !parentageMatch) {
+			const nonFirstParents = hashAndParents.slice(2); // skip commit hash and first parent
+			if (nonFirstParents.includes(resolvedAfterRef)) {
+				parentageMatch = { hash, subject };
+			}
+		}
 	}
-	return null;
+
+	return parentageMatch;
 }
 
 /**

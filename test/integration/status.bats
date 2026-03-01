@@ -869,14 +869,16 @@ load test_helper/common-setup
 
 # ── diverged commit matching ──────────────────────────────────────
 
-@test "arb status detects PR number from branch tip commit subject" {
+@test "arb status does not detect PR from fast-forward merge" {
+    # Fast-forward merges produce no merge commit, so parentage-based detection
+    # cannot find a merge commit. This is a known limitation (decision 0048).
     arb create my-feature repo-a
     echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
     git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feat(repos): add seeder repository (#188)" >/dev/null 2>&1
     git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
 
-    # Fast-forward merge into main (no merge commit — so merge commit search finds nothing)
+    # Fast-forward merge into main (no merge commit)
     (cd "$TEST_DIR/project/.arb/repos/repo-a" && git merge origin/my-feature --ff-only && git push) >/dev/null 2>&1
     # Delete the remote branch so status detects "gone"
     git -C "$TEST_DIR/project/.arb/repos/repo-a" push origin --delete my-feature >/dev/null 2>&1
@@ -886,14 +888,13 @@ load test_helper/common-setup
     run arb status
     [ "$status" -eq 0 ]
     [[ "$output" == *"merged"* ]]
-    [[ "$output" == *"(#188)"* ]]
 
-    # Verify JSON output includes detectedPr
+    # No PR should be detected — fast-forward merges have no merge commit
     local json_output
     json_output="$(arb status --no-fetch --json 2>/dev/null)"
-    local pr_number
-    pr_number="$(echo "$json_output" | jq '.repos[0].base.detectedPr.number')"
-    [ "$pr_number" = "188" ]
+    local detected_pr
+    detected_pr="$(echo "$json_output" | jq '.repos[0].base.detectedPr')"
+    [ "$detected_pr" = "null" ]
 }
 
 @test "arb status detects PR number from merge commit" {
@@ -920,6 +921,34 @@ load test_helper/common-setup
     local pr_number
     pr_number="$(echo "$json_output" | jq '.repos[0].base.detectedPr.number')"
     [ "$pr_number" = "42" ]
+}
+
+@test "arb status detects PR from merge commit via parentage" {
+    # The merge commit subject does NOT contain the branch name but DOES contain a PR number.
+    # Parentage-based detection finds the merge commit because HEAD is its second parent.
+    arb create my-feature repo-a
+    echo "feature" > "$TEST_DIR/project/my-feature/repo-a/feature.txt"
+    git -C "$TEST_DIR/project/my-feature/repo-a" add feature.txt >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" commit -m "feat: add feature" >/dev/null 2>&1
+    git -C "$TEST_DIR/project/my-feature/repo-a" push -u origin my-feature >/dev/null 2>&1
+
+    # Merge with --no-ff but a generic subject that does NOT contain "my-feature"
+    (cd "$TEST_DIR/project/.arb/repos/repo-a" && git merge origin/my-feature --no-ff -m "Merge pull request #77 from user/some-renamed-branch" && git push) >/dev/null 2>&1
+    git -C "$TEST_DIR/project/.arb/repos/repo-a" push origin --delete my-feature >/dev/null 2>&1
+
+    cd "$TEST_DIR/project/my-feature"
+    fetch_all_repos
+    run arb status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"merged"* ]]
+    [[ "$output" == *"(#77)"* ]]
+
+    # Verify JSON output
+    local json_output
+    json_output="$(arb status --no-fetch --json 2>/dev/null)"
+    local pr_number
+    pr_number="$(echo "$json_output" | jq '.repos[0].base.detectedPr.number')"
+    [ "$pr_number" = "77" ]
 }
 
 @test "arb status detects PR number from squash merge commit" {

@@ -44,7 +44,7 @@ export interface RepoStatus {
 		behind: number;
 		mergedIntoBase: "merge" | "squash" | null;
 		baseMergedIntoDefault: "merge" | "squash" | null;
-		detectedPr: { number: number; url: string | null } | null;
+		detectedPr: { number: number; url: string | null; mergeCommit?: string } | null;
 	} | null;
 	share: {
 		remote: string;
@@ -552,6 +552,7 @@ export async function gatherRepoStatus(
 		const shouldCheckSquash = (shareStatus !== null && shareStatus.refMode === "gone") || shareUpToDate;
 
 		// Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
+		let mergeCommitHash: string | undefined;
 		const ancestorResult = await git(repoDir, "merge-base", "--is-ancestor", "HEAD", compareRef);
 		if (ancestorResult.exitCode === 0) {
 			baseStatus.mergedIntoBase = "merge";
@@ -559,23 +560,14 @@ export async function gatherRepoStatus(
 			const mergeCommit = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, "HEAD");
 			if (mergeCommit) {
 				mergeMatchingCommit = mergeCommit;
-			} else {
-				// Fallback 1: extract PR number from the branch tip commit itself (free — single git log)
-				const headResult = await git(repoDir, "log", "-1", "--format=%h %s", "HEAD");
-				if (headResult.exitCode === 0) {
-					const line = headResult.stdout.trim();
-					const spaceIdx = line.indexOf(" ");
-					if (spaceIdx > 0) {
-						mergeMatchingCommit = { hash: line.slice(0, spaceIdx), subject: line.slice(spaceIdx + 1) };
-					}
-				}
-				// Fallback 2: find the most recent commit referencing the workspace ticket (expensive — scans history)
-				if (!mergeMatchingCommit) {
-					const ticket = detectTicketFromName(actualBranch);
-					if (ticket) {
-						const ticketCommit = await findTicketReferencedCommit(repoDir, ticket);
-						if (ticketCommit) mergeMatchingCommit = ticketCommit;
-					}
+				mergeCommitHash = mergeCommit.hash;
+			}
+			// Ticket fallback: if no merge commit found, or merge commit doesn't yield a PR number
+			if (!mergeMatchingCommit || !extractPrNumber(mergeMatchingCommit.subject)) {
+				const ticket = detectTicketFromName(actualBranch);
+				if (ticket) {
+					const ticketCommit = await findTicketReferencedCommit(repoDir, ticket);
+					if (ticketCommit) mergeMatchingCommit = ticketCommit;
 				}
 			}
 		} else if (shouldCheckSquash) {
@@ -598,7 +590,7 @@ export async function gatherRepoStatus(
 					const parsed = parseRemoteUrl(remoteUrlResult.stdout.trim());
 					if (parsed) prUrl = buildPrUrl(parsed, prNumber);
 				}
-				baseStatus.detectedPr = { number: prNumber, url: prUrl };
+				baseStatus.detectedPr = { number: prNumber, url: prUrl, mergeCommit: mergeCommitHash };
 			}
 		}
 	}

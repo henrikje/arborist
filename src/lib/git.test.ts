@@ -772,6 +772,67 @@ describe("git repo functions", () => {
 			expect(result).not.toBeNull();
 			expect(result?.subject).toContain("feature");
 		});
+
+		test("finds merge commit by parentage when subject does not contain branch name", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+			// Create feature branch with a commit
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "feature.txt"), "feature content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "feature.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "feature commit"]);
+			const featureHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+
+			// Merge with a generic subject that does NOT contain "feature"
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			Bun.spawnSync([
+				"git",
+				"-C",
+				repoDir,
+				"merge",
+				"feature",
+				"--no-ff",
+				"-m",
+				"Merge pull request #99 from user/some-branch",
+			]);
+
+			// Back on feature — parentage should match because featureHead is second parent
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+			const result = await findMergeCommitForBranch(repoDir, defaultBranch, "feature", 50, featureHead);
+			expect(result).not.toBeNull();
+			expect(result?.subject).toContain("#99");
+		});
+
+		test("branch-name match is preferred over parentage match", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+			// Create feature branch with a commit
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "feature.txt"), "feature content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "feature.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "feature commit"]);
+			const featureHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+
+			// Merge with subject that DOES contain "feature"
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			Bun.spawnSync([
+				"git",
+				"-C",
+				repoDir,
+				"merge",
+				"feature",
+				"--no-ff",
+				"-m",
+				"Merge pull request #42 from user/feature",
+			]);
+
+			// Both strategies would match — branch-name should win
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+			const result = await findMergeCommitForBranch(repoDir, defaultBranch, "feature", 50, featureHead);
+			expect(result).not.toBeNull();
+			expect(result?.subject).toContain("feature");
+			expect(result?.subject).toContain("#42");
+		});
 	});
 
 	describe("findTicketReferencedCommit", () => {

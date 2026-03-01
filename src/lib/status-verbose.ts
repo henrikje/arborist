@@ -144,9 +144,10 @@ export function formatVerboseDetail(repo: RepoStatus, verbose: VerboseDetail | u
 		const strategy = repo.base.mergedIntoBase === "squash" ? "squash" : "merge";
 		let prSuffix = "";
 		if (repo.base.detectedPr) {
+			const commitSuffix = repo.base.detectedPr.mergeCommit ? ` [${repo.base.detectedPr.mergeCommit.slice(0, 7)}]` : "";
 			prSuffix = repo.base.detectedPr.url
-				? ` — detected PR #${repo.base.detectedPr.number} (${repo.base.detectedPr.url})`
-				: ` — detected PR #${repo.base.detectedPr.number}`;
+				? ` — detected PR #${repo.base.detectedPr.number} (${repo.base.detectedPr.url})${commitSuffix}`
+				: ` — detected PR #${repo.base.detectedPr.number}${commitSuffix}`;
 		}
 		sections.push(`\n${SECTION_INDENT}Branch merged into ${ref} (${strategy})${prSuffix}\n`);
 	}
