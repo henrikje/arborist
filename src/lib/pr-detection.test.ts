@@ -22,6 +22,16 @@ describe("extractPrNumber", () => {
 		});
 	});
 
+	describe("Bitbucket merge commit", () => {
+		test("standard format", () => {
+			expect(extractPrNumber("Merged in feature (pull request #42)")).toBe(42);
+		});
+
+		test("large PR number", () => {
+			expect(extractPrNumber("Merged in bugfix/login (pull request #9876)")).toBe(9876);
+		});
+	});
+
 	describe("GitHub squash merge", () => {
 		test("standard format", () => {
 			expect(extractPrNumber("Add dark mode toggle (#42)")).toBe(42);
@@ -33,6 +43,20 @@ describe("extractPrNumber", () => {
 
 		test("conventional commit style", () => {
 			expect(extractPrNumber("feat: add dark mode (#123)")).toBe(123);
+		});
+	});
+
+	describe("GitLab squash/merge commit", () => {
+		test("standard format", () => {
+			expect(extractPrNumber("feat: add feature (!42)")).toBe(42);
+		});
+
+		test("with trailing whitespace", () => {
+			expect(extractPrNumber("Fix bug (!99)  ")).toBe(99);
+		});
+
+		test("conventional commit style", () => {
+			expect(extractPrNumber("chore: update deps (!7)")).toBe(7);
 		});
 	});
 
@@ -49,7 +73,7 @@ describe("extractPrNumber", () => {
 			expect(extractPrNumber("")).toBeNull();
 		});
 
-		test("GitLab merge format (not supported)", () => {
+		test("GitLab default merge format (not supported — no MR number in subject)", () => {
 			expect(extractPrNumber("Merge branch 'feature' into 'main'")).toBeNull();
 		});
 	});
@@ -61,6 +85,10 @@ describe("extractPrNumber", () => {
 
 		test("Azure DevOps merge takes priority over squash pattern", () => {
 			expect(extractPrNumber("Merged PR 10: Something (#20)")).toBe(10);
+		});
+
+		test("Bitbucket takes priority over trailing (#N)", () => {
+			expect(extractPrNumber("Merged in feature (pull request #10) (#20)")).toBe(10);
 		});
 	});
 });

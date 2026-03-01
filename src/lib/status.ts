@@ -576,6 +576,14 @@ export async function gatherRepoStatus(
 			if (squashResult) {
 				baseStatus.mergedIntoBase = squashResult.kind;
 				if (squashResult.matchingCommit) mergeMatchingCommit = squashResult.matchingCommit;
+				// Ticket fallback: if squash commit doesn't yield a PR number
+				if (!mergeMatchingCommit || !extractPrNumber(mergeMatchingCommit.subject)) {
+					const ticket = detectTicketFromName(actualBranch);
+					if (ticket) {
+						const ticketCommit = await findTicketReferencedCommit(repoDir, ticket);
+						if (ticketCommit) mergeMatchingCommit = ticketCommit;
+					}
+				}
 			}
 		}
 
@@ -584,10 +592,10 @@ export async function gatherRepoStatus(
 			const prNumber = extractPrNumber(mergeMatchingCommit.subject);
 			if (prNumber) {
 				// Try to construct a PR URL from the share remote URL
-				const remoteUrlResult = await git(repoDir, "remote", "get-url", shareRemote);
 				let prUrl: string | null = null;
-				if (remoteUrlResult.exitCode === 0) {
-					const parsed = parseRemoteUrl(remoteUrlResult.stdout.trim());
+				const remoteUrl = await cache.getRemoteUrl(repoPath, shareRemote);
+				if (remoteUrl) {
+					const parsed = parseRemoteUrl(remoteUrl);
 					if (parsed) prUrl = buildPrUrl(parsed, prNumber);
 				}
 				baseStatus.detectedPr = { number: prNumber, url: prUrl, mergeCommit: mergeCommitHash };
