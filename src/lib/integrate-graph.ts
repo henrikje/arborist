@@ -13,7 +13,7 @@ import { SECTION_INDENT } from "./status-verbose";
  *     * origin/main  (3 behind)
  *
  * Retarget case:
- *     * feat/xyz  HEAD  (2 commits to replay)
+ *     * feat/xyz  HEAD  (2 commits to rebase)
  *     |
  *   --x-- feat/auth  (old base, merged)
  *     :
@@ -84,11 +84,11 @@ function formatRetargetGraph(a: RepoAssessment, branch: string, baseRef: string,
 	let replayLabel: string;
 	if (a.retargetAlreadyOnTarget != null && a.retargetAlreadyOnTarget > 0) {
 		const total = (a.retargetReplayCount ?? 0) + a.retargetAlreadyOnTarget;
-		replayLabel = `${total} local, ${a.retargetAlreadyOnTarget} already on target, ${a.retargetReplayCount ?? 0} to replay`;
+		replayLabel = `${total} local, ${a.retargetAlreadyOnTarget} already on target, ${a.retargetReplayCount ?? 0} to rebase`;
 	} else if (a.retargetReplayCount != null && a.retargetReplayCount > 0) {
-		replayLabel = `${a.retargetReplayCount} to replay`;
+		replayLabel = `${a.retargetReplayCount} to rebase`;
 	} else if (a.ahead > 0) {
-		replayLabel = `${a.ahead} commits to replay`;
+		replayLabel = `${a.ahead} commits to rebase`;
 	} else {
 		replayLabel = "at cut point";
 	}

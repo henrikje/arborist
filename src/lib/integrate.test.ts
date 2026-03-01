@@ -502,7 +502,7 @@ describe("formatIntegratePlan", () => {
 			"rebase",
 			"feature",
 		);
-		expect(plan).toContain("replay onto origin/main (merged) — replay 1 new commit, skip 11 already merged");
+		expect(plan).toContain("rebase onto origin/main (merged) — rebase 1 new commit, skip 11 already merged");
 		expect(plan).not.toContain("retarget");
 	});
 
@@ -522,7 +522,7 @@ describe("formatIntegratePlan", () => {
 			"rebase",
 			"feature",
 		);
-		expect(plan).toContain("replay onto origin/main (merged) — replay 3 new commits, skip 8 already merged");
+		expect(plan).toContain("rebase onto origin/main (merged) — rebase 3 new commits, skip 8 already merged");
 	});
 
 	test("shows retarget warning", () => {
@@ -880,7 +880,7 @@ describe("formatIntegratePlan", () => {
 			"rebase",
 			"feature",
 		);
-		expect(plan).toContain("5 local, 3 already on target, 2 to replay");
+		expect(plan).toContain("5 local, 3 already on target, 2 to rebase");
 	});
 
 	test("shows simplified retarget replay when alreadyOnTarget is 0", () => {
@@ -897,7 +897,7 @@ describe("formatIntegratePlan", () => {
 			"rebase",
 			"feature",
 		);
-		expect(plan).toContain("4 to replay");
+		expect(plan).toContain("4 to rebase");
 		expect(plan).not.toContain("already on target");
 	});
 
@@ -907,7 +907,7 @@ describe("formatIntegratePlan", () => {
 			"rebase",
 			"feature",
 		);
-		expect(plan).not.toContain("to replay");
+		expect(plan).not.toContain("to rebase");
 		expect(plan).not.toContain("already on target");
 	});
 
@@ -928,7 +928,7 @@ describe("formatIntegratePlan", () => {
 			false,
 			true,
 		);
-		expect(plan).toContain("5 local, 3 already on target, 2 to replay");
+		expect(plan).toContain("5 local, 3 already on target, 2 to rebase");
 	});
 
 	test("retarget repos get retarget-style graph", () => {
