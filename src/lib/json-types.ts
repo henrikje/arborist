@@ -35,6 +35,8 @@ export const StatusJsonRepoSchema = z.object({
 			ahead: z.number(),
 			behind: z.number(),
 			mergedIntoBase: z.enum(["merge", "squash"]).nullable(),
+			newCommitsAfterMerge: z.number().optional(),
+			mergeCommitHash: z.string().optional(),
 			baseMergedIntoDefault: z.enum(["merge", "squash"]).nullable(),
 			detectedPr: z
 				.object({
@@ -57,7 +59,9 @@ export const StatusJsonRepoSchema = z.object({
 	lastCommit: z.string().nullable(),
 	verbose: z
 		.object({
-			aheadOfBase: z.array(z.object({ hash: z.string(), subject: z.string() })).optional(),
+			aheadOfBase: z
+				.array(z.object({ hash: z.string(), subject: z.string(), mergedAs: z.string().optional() }))
+				.optional(),
 			behindBase: z
 				.array(
 					z.object({

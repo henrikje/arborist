@@ -43,6 +43,8 @@ export interface RepoStatus {
 		ahead: number;
 		behind: number;
 		mergedIntoBase: "merge" | "squash" | null;
+		newCommitsAfterMerge?: number;
+		mergeCommitHash?: string;
 		baseMergedIntoDefault: "merge" | "squash" | null;
 		detectedPr: { number: number; url: string | null; mergeCommit?: string } | null;
 	} | null;
@@ -551,6 +553,14 @@ export async function gatherRepoStatus(
 			shareStatus !== null && shareStatus.toPush === 0 && shareStatus.toPull === 0 && shareStatus.refMode !== "noRef";
 		const shouldCheckSquash = (shareStatus !== null && shareStatus.refMode === "gone") || shareUpToDate;
 
+		// Prefix detection for "merged + new work" — branch was previously pushed,
+		// has new unpushed commits, and is not behind share (which would indicate a different problem).
+		const shouldCheckPrefixes =
+			shareStatus.refMode !== "noRef" &&
+			shareStatus.toPush !== null &&
+			shareStatus.toPush > 0 &&
+			(shareStatus.toPull === null || shareStatus.toPull === 0);
+
 		// Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
 		let mergeCommitHash: string | undefined;
 		const ancestorResult = await git(repoDir, "merge-base", "--is-ancestor", "HEAD", compareRef);
@@ -561,6 +571,7 @@ export async function gatherRepoStatus(
 			if (mergeCommit) {
 				mergeMatchingCommit = mergeCommit;
 				mergeCommitHash = mergeCommit.hash;
+				baseStatus.mergeCommitHash = mergeCommit.hash;
 			}
 			// Ticket fallback: if no merge commit found, or merge commit doesn't yield a PR number
 			if (!mergeMatchingCommit || !extractPrNumber(mergeMatchingCommit.subject)) {
@@ -570,12 +581,32 @@ export async function gatherRepoStatus(
 					if (ticketCommit) mergeMatchingCommit = ticketCommit;
 				}
 			}
-		} else if (shouldCheckSquash) {
-			// Phase 2: Squash merge detection via cumulative patch-id
-			const squashResult = await detectBranchMerged(repoDir, compareRef);
+		} else if (shouldCheckSquash || shouldCheckPrefixes) {
+			// Phase 2: Squash merge detection via cumulative patch-id (with prefix fallback)
+			const prefixLimit = shouldCheckPrefixes
+				? Math.min(shareStatus.toPush ?? 0, 10)
+				: baseStatus.ahead > 1
+					? Math.min(baseStatus.ahead - 1, 10)
+					: 0;
+			const squashResult = await detectBranchMerged(repoDir, compareRef, 200, "HEAD", prefixLimit);
 			if (squashResult) {
 				baseStatus.mergedIntoBase = squashResult.kind;
-				if (squashResult.matchingCommit) mergeMatchingCommit = squashResult.matchingCommit;
+				if (squashResult.newCommitsAfterMerge) {
+					baseStatus.newCommitsAfterMerge = squashResult.newCommitsAfterMerge;
+				}
+				if (squashResult.matchingCommit) {
+					mergeMatchingCommit = squashResult.matchingCommit;
+					baseStatus.mergeCommitHash = squashResult.matchingCommit.hash;
+				} else if (squashResult.kind === "merge" && squashResult.newCommitsAfterMerge) {
+					// Regular merge detected via prefix — find the merge commit for attribution
+					const n = squashResult.newCommitsAfterMerge;
+					const mc = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, `HEAD~${n}`);
+					if (mc) {
+						mergeMatchingCommit = mc;
+						mergeCommitHash = mc.hash;
+						baseStatus.mergeCommitHash = mc.hash;
+					}
+				}
 				// Ticket fallback: if squash commit doesn't yield a PR number
 				if (!mergeMatchingCommit || !extractPrNumber(mergeMatchingCommit.subject)) {
 					const ticket = detectTicketFromName(actualBranch);

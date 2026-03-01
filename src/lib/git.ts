@@ -302,19 +302,17 @@ export interface MergeDetectionResult {
 	kind: "merge" | "squash";
 	/** The commit on the base branch that represents the merge/squash. */
 	matchingCommit?: { hash: string; subject: string };
+	/** Number of new commits on top of the merged branch (0 or undefined = exact match). */
+	newCommitsAfterMerge?: number;
 }
 
-export async function detectBranchMerged(
+/** Check if a branch range matches a squash commit on the base via cumulative patch-id. */
+async function checkSquashMatch(
 	repoDir: string,
 	baseBranchRef: string,
-	commitLimit = 200,
-	branchRef = "HEAD",
+	branchRef: string,
+	commitLimit: number,
 ): Promise<MergeDetectionResult | null> {
-	// Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
-	const ancestor = await git(repoDir, "merge-base", "--is-ancestor", branchRef, baseBranchRef);
-	if (ancestor.exitCode === 0) return { kind: "merge" };
-
-	// Phase 2: Squash check — cumulative patch-id comparison
 	const mergeBaseResult = await git(repoDir, "merge-base", branchRef, baseBranchRef);
 	if (mergeBaseResult.exitCode !== 0) return null;
 	const mergeBase = mergeBaseResult.stdout.trim();
@@ -362,6 +360,45 @@ export async function detectBranchMerged(
 			const subjectResult = await git(repoDir, "log", "-1", "--format=%s", commitHash);
 			const subject = subjectResult.exitCode === 0 ? subjectResult.stdout.trim() : "";
 			return { kind: "squash", matchingCommit: { hash: commitHash, subject } };
+		}
+	}
+
+	return null;
+}
+
+export async function detectBranchMerged(
+	repoDir: string,
+	baseBranchRef: string,
+	commitLimit = 200,
+	branchRef = "HEAD",
+	prefixLimit = 0,
+): Promise<MergeDetectionResult | null> {
+	// Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
+	const ancestor = await git(repoDir, "merge-base", "--is-ancestor", branchRef, baseBranchRef);
+	if (ancestor.exitCode === 0) return { kind: "merge" };
+
+	// Phase 2: Squash check on full range
+	const squashResult = await checkSquashMatch(repoDir, baseBranchRef, branchRef, commitLimit);
+	if (squashResult) return squashResult;
+
+	// Phase 3: Prefix loop — check HEAD~1, HEAD~2, ..., HEAD~prefixLimit
+	// Detects branches that were merged but have new commits on top.
+	for (let k = 1; k <= prefixLimit; k++) {
+		const prefixRef = `${branchRef}~${k}`;
+		// Validate the prefix ref resolves
+		const verifyResult = await git(repoDir, "rev-parse", "--verify", prefixRef);
+		if (verifyResult.exitCode !== 0) break;
+
+		// Phase 1 on prefix: ancestor check
+		const prefixAncestor = await git(repoDir, "merge-base", "--is-ancestor", prefixRef, baseBranchRef);
+		if (prefixAncestor.exitCode === 0) {
+			return { kind: "merge", newCommitsAfterMerge: k };
+		}
+
+		// Phase 2 on prefix: squash check
+		const prefixSquash = await checkSquashMatch(repoDir, baseBranchRef, prefixRef, commitLimit);
+		if (prefixSquash) {
+			return { ...prefixSquash, newCommitsAfterMerge: k };
 		}
 	}
 
@@ -560,6 +597,39 @@ export async function matchDivergedCommits(repoDir: string, baseRef: string): Pr
 	}
 
 	return result;
+}
+
+/**
+ * Verify that a squash commit on the base covers exactly the already-merged local commits.
+ * Compares cumulative patch-id of local commits (excluding new ones) against the squash commit's patch-id.
+ */
+export async function verifySquashRange(
+	repoDir: string,
+	baseBranchRef: string,
+	squashHash: string,
+	newCommitsAfterMerge: number,
+): Promise<boolean> {
+	try {
+		const localRef = `HEAD~${newCommitsAfterMerge}`;
+		const mergeBaseResult = await git(repoDir, "merge-base", localRef, baseBranchRef);
+		if (mergeBaseResult.exitCode !== 0) return false;
+		const mergeBase = mergeBaseResult.stdout.trim();
+		if (!mergeBase) return false;
+
+		const [cumulativeResult, squashResult] = await Promise.all([
+			Bun.$`git -C ${repoDir} diff ${mergeBase}..${localRef} | git patch-id --stable`.quiet().nothrow(),
+			Bun.$`git -C ${repoDir} diff-tree -p ${squashHash} | git patch-id --stable`.quiet().nothrow(),
+		]);
+
+		if (cumulativeResult.exitCode !== 0 || squashResult.exitCode !== 0) return false;
+		const cumulativePatchId = cumulativeResult.text().trim().split(" ")[0];
+		const squashPatchId = squashResult.text().trim().split(" ")[0];
+		if (!cumulativePatchId || !squashPatchId) return false;
+
+		return cumulativePatchId === squashPatchId;
+	} catch {
+		return false;
+	}
 }
 
 export async function detectRebasedCommits(

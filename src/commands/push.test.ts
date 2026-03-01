@@ -160,6 +160,81 @@ describe("assessPushRepo", () => {
 		expect(a.skipFlag).toBe("already-merged");
 	});
 
+	test("uses merged-new-work skip flag when gone+merged with new commits", () => {
+		const a = assessPushRepo(
+			makeRepo({
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 3,
+					behind: 0,
+					mergedIntoBase: "squash",
+					newCommitsAfterMerge: 1,
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			SHA,
+		);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipReason).toContain("merged into main with 1 new commit");
+		expect(a.skipReason).toContain("rebase or --force");
+		expect(a.skipFlag).toBe("merged-new-work");
+	});
+
+	test("uses merged-new-work skip flag when merged-not-gone with new commits", () => {
+		const a = assessPushRepo(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 3,
+					behind: 0,
+					mergedIntoBase: "squash",
+					newCommitsAfterMerge: 2,
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			SHA,
+		);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipReason).toContain("merged into main with 2 new commits");
+		expect(a.skipReason).toContain("rebase or --force");
+		expect(a.skipFlag).toBe("merged-new-work");
+	});
+
+	test("uses already-merged skip flag for standard merged branch (no new commits)", () => {
+		const a = assessPushRepo(
+			makeRepo({
+				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 2,
+					behind: 0,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			SHA,
+		);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipFlag).toBe("already-merged");
+		expect(a.skipReason).toContain("already merged");
+	});
+
 	test("will-push noRef with commits (new branch)", () => {
 		const a = assessPushRepo(
 			makeRepo({
@@ -530,5 +605,29 @@ describe("formatPushPlan", () => {
 			true,
 		);
 		expect(plan).not.toContain("Outgoing to");
+	});
+
+	test("shows merged-new-work hint when repos have the flag", () => {
+		const plan = formatPushPlan(
+			[
+				makeAssessment({
+					outcome: "skip",
+					skipReason: "merged into main with 1 new commit (rebase or --force)",
+					skipFlag: "merged-new-work",
+				}),
+			],
+			makeRemotesMap(["repo-a", {}]),
+		);
+		expect(plan).toContain("hint:");
+		expect(plan).toContain("merged with new commits");
+		expect(plan).toContain("arb rebase");
+	});
+
+	test("no merged-new-work hint when no repos have the flag", () => {
+		const plan = formatPushPlan(
+			[makeAssessment({ outcome: "skip", skipReason: "already merged", skipFlag: "already-merged" })],
+			makeRemotesMap(["repo-a", {}]),
+		);
+		expect(plan).not.toContain("merged with new commits");
 	});
 });

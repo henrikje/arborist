@@ -125,6 +125,9 @@ exports[`json-schema stability StatusJsonOutputSchema 1`] = `
                       },
                     ],
                   },
+                  "mergeCommitHash": {
+                    "type": "string",
+                  },
                   "mergedIntoBase": {
                     "anyOf": [
                       {
@@ -138,6 +141,9 @@ exports[`json-schema stability StatusJsonOutputSchema 1`] = `
                         "type": "null",
                       },
                     ],
+                  },
+                  "newCommitsAfterMerge": {
+                    "type": "number",
                   },
                   "ref": {
                     "type": "string",
@@ -354,6 +360,9 @@ exports[`json-schema stability StatusJsonOutputSchema 1`] = `
                   "additionalProperties": false,
                   "properties": {
                     "hash": {
+                      "type": "string",
+                    },
+                    "mergedAs": {
                       "type": "string",
                     },
                     "subject": {

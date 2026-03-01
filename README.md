@@ -189,7 +189,7 @@ Before a rebase, merge, or pull runs, Arborist performs a trial three-way merge 
 
 ```
   api        rebase add-auth onto origin/main — 4 behind, 3 ahead (conflict unlikely) (autostash)
-  frontend   rebase add-auth onto origin/main — 2 behind, 1 ahead (no conflict)
+  frontend   replay 1 commit onto origin/main (was squash-merged)
   shared     up to date
 ```
 

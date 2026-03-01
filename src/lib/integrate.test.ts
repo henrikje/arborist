@@ -377,6 +377,32 @@ describe("classifyRepo", () => {
 		expect(a.outcome).toBe("up-to-date");
 		expect(a.ahead).toBe(5);
 	});
+
+	test("classifies merged-with-new-work as skip with already-merged (classifyRepo only)", () => {
+		const a = classifyRepo(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 3,
+					behind: 0,
+					mergedIntoBase: "squash",
+					newCommitsAfterMerge: 1,
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		// classifyRepo itself returns already-merged skip — assessRepo overrides to will-operate
+		expect(a.outcome).toBe("skip");
+		expect(a.skipFlag).toBe("already-merged");
+	});
 });
 
 describe("formatIntegratePlan", () => {
@@ -458,6 +484,45 @@ describe("formatIntegratePlan", () => {
 			"feature",
 		);
 		expect(plan).toContain("rebase onto origin/main from feat/old (retarget)");
+	});
+
+	test("shows branch-merged replay display with already-merged count", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					retargetFrom: "abc1234567890",
+					retargetTo: "main",
+					baseBranch: "main",
+					retargetReason: "branch-merged",
+					retargetReplayCount: 1,
+					retargetAlreadyOnTarget: 11,
+					ahead: 1,
+				}),
+			],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("replay onto origin/main (merged) — replay 1 new commit, skip 11 already merged");
+		expect(plan).not.toContain("retarget");
+	});
+
+	test("shows branch-merged replay display with multiple new commits", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					retargetFrom: "abc1234567890",
+					retargetTo: "main",
+					baseBranch: "main",
+					retargetReason: "branch-merged",
+					retargetReplayCount: 3,
+					retargetAlreadyOnTarget: 8,
+					ahead: 3,
+				}),
+			],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("replay onto origin/main (merged) — replay 3 new commits, skip 8 already merged");
 	});
 
 	test("shows retarget warning", () => {

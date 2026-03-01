@@ -539,6 +539,117 @@ describe("git repo functions", () => {
 			const result = await detectBranchMerged(repoDir, defaultBranch, 200, "feat/auth");
 			expect(result).toBeNull();
 		});
+
+		test("detects squash merge with new commits via prefix", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+			// Create feature branch with commits
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content a");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add a"]);
+			writeFileSync(join(repoDir, "b.txt"), "content b");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "b.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add b"]);
+
+			// Squash merge onto main
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			Bun.spawnSync(["git", "-C", repoDir, "merge", "--squash", "feature"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "squash: add a and b (#42)"]);
+
+			// Back on feature, add a new commit on top
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+			writeFileSync(join(repoDir, "c.txt"), "fix content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "c.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix bug"]);
+
+			// Without prefix: should return null (full range doesn't match)
+			const withoutPrefix = await detectBranchMerged(repoDir, defaultBranch, 200, "HEAD", 0);
+			expect(withoutPrefix).toBeNull();
+
+			// With prefix: should detect via HEAD~1
+			const withPrefix = await detectBranchMerged(repoDir, defaultBranch, 200, "HEAD", 5);
+			expect(withPrefix).not.toBeNull();
+			expect(withPrefix?.kind).toBe("squash");
+			expect(withPrefix?.newCommitsAfterMerge).toBe(1);
+			expect(withPrefix?.matchingCommit?.subject).toBe("squash: add a and b (#42)");
+		});
+
+		test("detects regular merge with new commits via prefix", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+			// Create feature branch with a commit
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "feature.txt"), "feature content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "feature.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "feature commit"]);
+
+			// Merge feature into main
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			Bun.spawnSync(["git", "-C", repoDir, "merge", "feature", "--no-ff", "-m", "merge feature"]);
+
+			// Back on feature, add a new commit
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+			writeFileSync(join(repoDir, "fix.txt"), "fix content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "fix.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix bug"]);
+
+			const result = await detectBranchMerged(repoDir, defaultBranch, 200, "HEAD", 5);
+			expect(result).not.toBeNull();
+			expect(result?.kind).toBe("merge");
+			expect(result?.newCommitsAfterMerge).toBe(1);
+		});
+
+		test("returns null when prefixLimit is too small", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+			// Create feature branch with a commit
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content a");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add a"]);
+
+			// Squash merge onto main
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			Bun.spawnSync(["git", "-C", repoDir, "merge", "--squash", "feature"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "squash merge"]);
+
+			// Back on feature, add 3 new commits
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+			for (let i = 0; i < 3; i++) {
+				writeFileSync(join(repoDir, `fix-${i}.txt`), `fix ${i}`);
+				Bun.spawnSync(["git", "-C", repoDir, "add", `fix-${i}.txt`]);
+				Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", `fix ${i}`]);
+			}
+
+			// prefixLimit=2 only checks HEAD~1 and HEAD~2, but match is at HEAD~3
+			const result = await detectBranchMerged(repoDir, defaultBranch, 200, "HEAD", 2);
+			expect(result).toBeNull();
+
+			// prefixLimit=3 finds it
+			const found = await detectBranchMerged(repoDir, defaultBranch, 200, "HEAD", 3);
+			expect(found).not.toBeNull();
+			expect(found?.newCommitsAfterMerge).toBe(3);
+		});
+
+		test("newCommitsAfterMerge is undefined for exact match", async () => {
+			const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+			// Create feature branch and squash-merge (no new commits after)
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content a");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add a"]);
+
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+			Bun.spawnSync(["git", "-C", repoDir, "merge", "--squash", "feature"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "squash merge"]);
+
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+			const result = await detectBranchMerged(repoDir, defaultBranch, 200, "HEAD", 5);
+			expect(result?.kind).toBe("squash");
+			expect(result?.newCommitsAfterMerge).toBeUndefined();
+		});
 	});
 
 	describe("analyzeRetargetReplay", () => {
