@@ -231,16 +231,16 @@ Templates let you capture files and have them seeded into every new workspace. C
 
 ### Know when you're done
 
-After your PR is merged, Arborist detects it — even for squash merges — and shows it clearly in `arb list`. When branch names contain ticket keys (like Jira or Linear), those appear too:
+After your PR is merged, Arborist detects it — even for squash merges — and shows it clearly in `arb list`. When your Git history references ticket keys (like Jira or Linear), those appear too:
 
 ```
   WORKSPACE           TICKET       BRANCH              REPOS    LAST COMMIT    STATUS
-  ester-208-login     ESTER-208    ester-208-login     3        3 hours        merged (#42), gone
-  ester-215-dark      ESTER-215    ester-215-dark      2        1 day          merged, gone
+  proj-208-login      PROJ-208     proj-208-login      3        3 hours        merged (#42), gone
+  proj-215-dark       PROJ-215     proj-215-dark       2        1 day          merged, gone
   new-feature                      new-feature         3        5 minutes      unpushed
 ```
 
-No guessing which branches have landed. You see "merged" with the detected PR number from the merge/squash commit, and "gone" when the remote branch was auto-deleted. Ticket keys like `ESTER-208` are detected from branch names automatically. Ready to `arb delete`.
+No guessing which branches have landed. You see "merged" with the detected PR number from the merge/squash commit, and "gone" when the remote branch was auto-deleted. Ready to `arb delete`.
 
 ### Branch from a feature branch
 

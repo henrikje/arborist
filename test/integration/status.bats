@@ -1078,14 +1078,14 @@ load test_helper/common-setup
 }
 
 @test "arb list --json includes detectedTicket from branch name" {
-    arb create ester-208-fix repo-a
+    arb create proj-208-fix repo-a
     cd "$TEST_DIR/project"
 
     local json_output
     json_output="$(arb list --no-fetch --json 2>/dev/null)"
     local ticket
-    ticket="$(echo "$json_output" | jq -r '.[] | select(.workspace == "ester-208-fix") | .detectedTicket.key')"
-    [ "$ticket" = "ESTER-208" ]
+    ticket="$(echo "$json_output" | jq -r '.[] | select(.workspace == "proj-208-fix") | .detectedTicket.key')"
+    [ "$ticket" = "PROJ-208" ]
 }
 
 @test "arb status --json includes detectedTicket from branch name" {

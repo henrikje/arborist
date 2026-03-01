@@ -10,7 +10,7 @@ pre-commit:
 post-checkout:
   commands:
     install:
-      run: bun install
+      run: test -f bun.lock && bun install || true
 
 commit-msg:
   commands:
