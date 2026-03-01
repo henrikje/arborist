@@ -97,6 +97,9 @@ exports[`json-schema stability StatusJsonOutputSchema 1`] = `
                       {
                         "additionalProperties": false,
                         "properties": {
+                          "mergeCommit": {
+                            "type": "string",
+                          },
                           "number": {
                             "type": "number",
                           },

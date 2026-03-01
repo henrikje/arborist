@@ -40,6 +40,7 @@ export const StatusJsonRepoSchema = z.object({
 				.object({
 					number: z.number(),
 					url: z.string().nullable(),
+					mergeCommit: z.string().optional(),
 				})
 				.nullable(),
 		})
