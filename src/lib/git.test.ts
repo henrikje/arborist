@@ -840,27 +840,20 @@ describe("git repo functions", () => {
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
 			writeFileSync(join(repoDir, "a.txt"), "content");
 			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
-			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: enable batching ESTER-208 (#76)"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: enable batching PROJ-208 (#76)"]);
 
-			const result = await findTicketReferencedCommit(repoDir, "ESTER-208");
+			const result = await findTicketReferencedCommit(repoDir, "PROJ-208");
 			expect(result).not.toBeNull();
-			expect(result?.subject).toContain("ESTER-208");
+			expect(result?.subject).toContain("PROJ-208");
 		});
 
 		test("finds commit with ticket in body (trailers)", async () => {
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
 			writeFileSync(join(repoDir, "a.txt"), "content");
 			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
-			Bun.spawnSync([
-				"git",
-				"-C",
-				repoDir,
-				"commit",
-				"-m",
-				"fix: enable query batching (#76)\n\nReferences: ESTER-208",
-			]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: enable query batching (#76)\n\nReferences: PROJ-208"]);
 
-			const result = await findTicketReferencedCommit(repoDir, "ESTER-208");
+			const result = await findTicketReferencedCommit(repoDir, "PROJ-208");
 			expect(result).not.toBeNull();
 			expect(result?.subject).toContain("batching");
 		});
@@ -869,13 +862,13 @@ describe("git repo functions", () => {
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
 			writeFileSync(join(repoDir, "a.txt"), "content a");
 			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
-			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "first ESTER-208 (#10)"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "first PROJ-208 (#10)"]);
 
 			writeFileSync(join(repoDir, "b.txt"), "content b");
 			Bun.spawnSync(["git", "-C", repoDir, "add", "b.txt"]);
-			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "second ESTER-208 (#20)"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "second PROJ-208 (#20)"]);
 
-			const result = await findTicketReferencedCommit(repoDir, "ESTER-208");
+			const result = await findTicketReferencedCommit(repoDir, "PROJ-208");
 			expect(result).not.toBeNull();
 			// git log returns most recent first
 			expect(result?.subject).toContain("second");
@@ -887,7 +880,7 @@ describe("git repo functions", () => {
 			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
 			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "unrelated commit (#99)"]);
 
-			const result = await findTicketReferencedCommit(repoDir, "ESTER-208");
+			const result = await findTicketReferencedCommit(repoDir, "PROJ-208");
 			expect(result).toBeNull();
 		});
 
@@ -895,9 +888,9 @@ describe("git repo functions", () => {
 			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
 			writeFileSync(join(repoDir, "a.txt"), "content");
 			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
-			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: something (#76)\n\nReferences: ester-208"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: something (#76)\n\nReferences: proj-208"]);
 
-			const result = await findTicketReferencedCommit(repoDir, "ESTER-208");
+			const result = await findTicketReferencedCommit(repoDir, "PROJ-208");
 			expect(result).not.toBeNull();
 			expect(result?.subject).toContain("something");
 		});

@@ -6,15 +6,15 @@ import { detectTicketFromCommits, detectTicketFromName } from "./ticket-detectio
 
 describe("detectTicketFromName", () => {
 	test("ticket at start of branch name", () => {
-		expect(detectTicketFromName("ester-208-fix-login")).toBe("ESTER-208");
+		expect(detectTicketFromName("proj-208-fix-login")).toBe("PROJ-208");
 	});
 
 	test("ticket after prefix", () => {
-		expect(detectTicketFromName("feat/ESTER-208-dark-mode")).toBe("ESTER-208");
+		expect(detectTicketFromName("feat/PROJ-208-dark-mode")).toBe("PROJ-208");
 	});
 
 	test("ticket as entire name", () => {
-		expect(detectTicketFromName("ESTER-208")).toBe("ESTER-208");
+		expect(detectTicketFromName("PROJ-208")).toBe("PROJ-208");
 	});
 
 	test("lowercase ticket is uppercased", () => {
@@ -34,7 +34,7 @@ describe("detectTicketFromName", () => {
 	});
 
 	test("returns first match when multiple present", () => {
-		expect(detectTicketFromName("ESTER-208-and-PROJ-42")).toBe("ESTER-208");
+		expect(detectTicketFromName("PROJ-208-and-PROJ-42")).toBe("PROJ-208");
 	});
 
 	test("no ticket returns null", () => {
@@ -62,7 +62,7 @@ describe("detectTicketFromName", () => {
 	});
 
 	test("skips PR prefix and finds subsequent ticket", () => {
-		expect(detectTicketFromName("pr-74-ester-208")).toBe("ESTER-208");
+		expect(detectTicketFromName("pr-74-proj-208")).toBe("PROJ-208");
 	});
 
 	test("PR as standalone branch returns null", () => {
@@ -88,10 +88,10 @@ describe("detectTicketFromCommits", () => {
 		Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
 		writeFileSync(join(repoDir, "a.txt"), "content");
 		Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
-		Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: resolve login ESTER-208"]);
+		Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: resolve login PROJ-208"]);
 
 		const result = await detectTicketFromCommits(repoDir, mainHead);
-		expect(result).toBe("ESTER-208");
+		expect(result).toBe("PROJ-208");
 	});
 
 	test("finds ticket from commit body", async () => {
@@ -111,7 +111,7 @@ describe("detectTicketFromCommits", () => {
 
 		writeFileSync(join(repoDir, "a.txt"), "a");
 		Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
-		Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "first ESTER-208"]);
+		Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "first PROJ-208"]);
 
 		writeFileSync(join(repoDir, "b.txt"), "b");
 		Bun.spawnSync(["git", "-C", repoDir, "add", "b.txt"]);

@@ -1,6 +1,6 @@
 import { git } from "./git";
 
-/** Regex matching Jira/Linear-style ticket keys: PROJ-123, ESTER-208, etc. */
+/** Regex matching Jira/Linear-style ticket keys: PROJ-123, ACME-208, etc. */
 const TICKET_PATTERN = /[A-Z][A-Z0-9]+-\d+/gi;
 
 /**
@@ -17,7 +17,7 @@ function isTicketCandidate(match: string): boolean {
 
 /**
  * Extract a ticket key from a branch name.
- * Looks for patterns like ESTER-208, PROJ-42, etc. (case-insensitive, returned uppercased).
+ * Looks for patterns like PROJ-208, ACME-42, etc. (case-insensitive, returned uppercased).
  * Returns the first match or null.
  */
 export function detectTicketFromName(name: string): string | null {

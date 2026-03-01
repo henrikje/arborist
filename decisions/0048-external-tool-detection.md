@@ -4,7 +4,7 @@ Date: 2026-03-01
 
 ## Context
 
-Two recurring questions when managing multiple workspaces: "What ticket is this workspace for?" and "Which PR merged this branch?" Arborist already detects merge status (via ancestor checks and patch-id squash detection from [0016](0016-patch-id-rebased-commit-detection.md)) but discards the matching commit, losing the PR number embedded in its subject. And while branch names often encode ticket keys (e.g. `ester-208-fix-login`), arb doesn't extract or display them.
+Two recurring questions when managing multiple workspaces: "What ticket is this workspace for?" and "Which PR merged this branch?" Arborist already detects merge status (via ancestor checks and patch-id squash detection from [0016](0016-patch-id-rebased-commit-detection.md)) but discards the matching commit, losing the PR number embedded in its subject. And while branch names often encode ticket keys (e.g. `proj-208-fix-login`), arb doesn't extract or display them.
 
 Both are read-only overview enrichments. The question is whether to use API calls (GitHub, Jira, Linear) or local git data.
 
