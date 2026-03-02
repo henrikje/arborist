@@ -174,6 +174,7 @@ function displayDeleteTable(assessments: WorkspaceAssessment[]): void {
 		},
 	];
 
+	process.stderr.write("\n");
 	process.stderr.write(renderTable(columns, assessments));
 	process.stderr.write("\n");
 
