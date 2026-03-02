@@ -9,10 +9,63 @@ import { GitCache } from "../lib/git-cache";
 import { printSchema } from "../lib/json-schema";
 import { type RepoListJsonEntry, RepoListJsonEntrySchema } from "../lib/json-types";
 import { confirmOrExit } from "../lib/mutation-flow";
-import { dim, dryRunNotice, error, info, inlineResult, inlineStart, plural, success, yellow } from "../lib/output";
+import { dim, dryRunNotice, error, info, inlineResult, inlineStart, plural, success } from "../lib/output";
+import { type RenderContext, render } from "../lib/render";
+import { cell } from "../lib/render-model";
+import type { OutputNode } from "../lib/render-model";
 import { findRepoUsage, listRepos, selectInteractive } from "../lib/repos";
-import { type Column, renderTable } from "../lib/table";
+import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
+
+function buildRepoListNodes(entries: RepoListJsonEntry[], verbose: boolean): OutputNode[] {
+	const rows = entries.map((e) => {
+		const notResolved = !e.share.name && !e.base.name;
+
+		let baseText: string;
+		let baseAttention: boolean;
+		if (verbose) {
+			baseText = e.base.name ? `${e.base.name} (${e.base.url})` : "(remotes not resolved)";
+			baseAttention = !e.base.name;
+		} else {
+			baseText = e.base.name || "(remotes not resolved)";
+			baseAttention = !e.base.name;
+		}
+
+		let shareText: string;
+		let shareAttention: boolean;
+		if (verbose) {
+			shareText = notResolved
+				? "(remotes not resolved)"
+				: e.share.name === e.base.name
+					? e.share.name
+					: `${e.share.name} (${e.share.url})`;
+			shareAttention = notResolved;
+		} else {
+			shareText = notResolved ? "(remotes not resolved)" : e.share.name;
+			shareAttention = notResolved;
+		}
+
+		return {
+			cells: {
+				repo: cell(e.name),
+				base: cell(baseText, baseAttention ? "attention" : "default"),
+				share: cell(shareText, shareAttention ? "attention" : "default"),
+			},
+		};
+	});
+
+	return [
+		{
+			kind: "table",
+			columns: [
+				{ header: "REPO", key: "repo" },
+				{ header: "BASE", key: "base" },
+				{ header: "SHARE", key: "share" },
+			],
+			rows,
+		},
+	];
+}
 
 export function registerRepoCommand(program: Command, getCtx: () => ArbContext): void {
 	const repo = program
@@ -169,63 +222,9 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 				return;
 			}
 
-			if (options.verbose) {
-				const basePlain = entries.map((e) =>
-					e.base.name ? `${e.base.name} (${e.base.url})` : "(remotes not resolved)",
-				);
-				const baseColored = basePlain.map((v, i) => (entries[i]?.base.name ? v : yellow(v)));
-				const sharePlain = entries.map((e) =>
-					!e.share.name && !e.base.name
-						? "(remotes not resolved)"
-						: e.share.name === e.base.name
-							? e.share.name
-							: `${e.share.name} (${e.share.url})`,
-				);
-				const shareColored = entries.map((e, i) =>
-					!e.share.name && !e.base.name ? yellow(sharePlain[i] ?? "") : (sharePlain[i] ?? ""),
-				);
-
-				const columns: Column<RepoListJsonEntry>[] = [
-					{ header: "REPO", value: (e) => e.name },
-					{
-						header: "BASE",
-						value: (_e, i) => basePlain[i] ?? "",
-						render: (_e, i) => baseColored[i] ?? "",
-					},
-					{
-						header: "SHARE",
-						value: (_e, i) => sharePlain[i] ?? "",
-						render: (_e, i) => shareColored[i] ?? "",
-					},
-				];
-				process.stdout.write(renderTable(columns, entries));
-			} else {
-				const basePlainArr = entries.map((e) => e.base.name || "(remotes not resolved)");
-				const baseColoredArr = entries.map((e, i) =>
-					e.base.name ? (basePlainArr[i] ?? "") : yellow(basePlainArr[i] ?? ""),
-				);
-				const sharePlainArr = entries.map((e) =>
-					!e.share.name && !e.base.name ? "(remotes not resolved)" : e.share.name,
-				);
-				const shareColoredArr = entries.map((e, i) =>
-					!e.share.name && !e.base.name ? yellow(sharePlainArr[i] ?? "") : (sharePlainArr[i] ?? ""),
-				);
-
-				const columns: Column<RepoListJsonEntry>[] = [
-					{ header: "REPO", value: (e) => e.name },
-					{
-						header: "BASE",
-						value: (_e, i) => basePlainArr[i] ?? "",
-						render: (_e, i) => baseColoredArr[i] ?? "",
-					},
-					{
-						header: "SHARE",
-						value: (_e, i) => sharePlainArr[i] ?? "",
-						render: (_e, i) => shareColoredArr[i] ?? "",
-					},
-				];
-				process.stdout.write(renderTable(columns, entries));
-			}
+			const nodes = buildRepoListNodes(entries, options.verbose ?? false);
+			const rCtx: RenderContext = { tty: isTTY() };
+			process.stdout.write(render(nodes, rCtx));
 		});
 
 	// ── repo remove ────────────────────────────────────────────────

@@ -4,10 +4,12 @@ import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
 import { branchExistsLocally, git, isRepoDirty, parseGitStatus } from "../lib/git";
 import { error, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
+import { render } from "../lib/render";
 import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import { isLocalDirty } from "../lib/status";
 import { readNamesFromStdin } from "../lib/stdin";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
+import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
@@ -120,7 +122,7 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 				const remainingRepos = workspaceRepoDirs(wsDir).map((d) => basename(d));
 				const wsTemplates = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir, changed);
 				const repoTemplates = await applyRepoTemplates(ctx.arbRootDir, wsDir, remainingRepos, changed);
-				displayOverlaySummary(wsTemplates, repoTemplates);
+				displayOverlaySummary(wsTemplates, repoTemplates, (nodes) => render(nodes, { tty: isTTY() }));
 			}
 
 			process.stderr.write("\n");
