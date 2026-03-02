@@ -2,6 +2,7 @@
 
 ## [0.103.0](https://github.com/henrikje/arborist/compare/v0.102.0...v0.103.0) (2026-03-02)
 
+This release improves status and push protection for merged branches with new commits, adds local PR and ticket detection, and introduces an `arb branch` command with verbose per-repo tracking details.
 
 ### Features
 
@@ -33,6 +34,7 @@
 
 ## [0.102.0](https://github.com/henrikje/arborist/compare/v0.101.0...v0.102.0) (2026-02-27)
 
+Rebase and merge plans are now even smarter, with improved conflict prediction, branch visualization, and automatic detection of already-merged branches. It also brings auto-fetch to status/list and a curl-pipe-bash installer.
 
 ### Features
 
@@ -58,6 +60,7 @@
 
 ## [0.101.0](https://github.com/henrikje/arborist/compare/v0.100.0...v0.101.0) (2026-02-26)
 
+Initial binary release.
 
 ### Features
 
