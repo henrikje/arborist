@@ -13,6 +13,7 @@ import {
 	cell,
 } from "./render-model";
 import { type WorkspaceSummary, computeFlags } from "./status";
+import { type VerboseDetail, verboseDetailToNodes } from "./status-verbose";
 import { type RelativeTimeParts, formatRelativeTimeParts } from "./time";
 
 export interface StatusViewContext {
@@ -22,6 +23,8 @@ export interface StatusViewContext {
 	conflictRepos: Set<string>;
 	/** Name of the repo the user is currently cd'd into, if any */
 	currentRepo: string | null;
+	/** When provided, verbose detail is attached as afterRow nodes on each table row */
+	verboseData?: Map<string, VerboseDetail | undefined>;
 }
 
 /** Build the declarative OutputNode[] for the status table */
@@ -49,7 +52,7 @@ export function buildStatusView(summary: WorkspaceSummary, ctx: StatusViewContex
 		const hasConflict = ctx.conflictRepos.has(repo.name);
 		const lc = lastCommitParts[i] ?? { num: "", unit: "" };
 
-		return {
+		const row: TableRow = {
 			cells: {
 				repo: cell(repo.name),
 				branch: analyzeBranch(repo, ctx.expectedBranch),
@@ -63,6 +66,19 @@ export function buildStatusView(summary: WorkspaceSummary, ctx: StatusViewContex
 			},
 			marked: repo.name === ctx.currentRepo,
 		};
+
+		if (ctx.verboseData) {
+			const detail = ctx.verboseData.get(repo.name);
+			const afterNodes = verboseDetailToNodes(repo, detail);
+			if (afterNodes.length > 0) {
+				row.afterRow = afterNodes;
+			} else if (i < repos.length - 1) {
+				// Add row separation gap even when no verbose data
+				row.afterRow = [{ kind: "gap" }];
+			}
+		}
+
+		return row;
 	});
 
 	// Build column definitions

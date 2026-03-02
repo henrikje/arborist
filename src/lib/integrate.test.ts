@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { type RepoAssessment, classifyRepo, formatIntegratePlan } from "./integrate";
+import {
+	type IntegrateActionDesc,
+	type RepoAssessment,
+	classifyRepo,
+	describeIntegrateAction,
+	formatIntegratePlan,
+	integrateActionCell,
+} from "./integrate";
 import { formatVerboseCommits } from "./status-verbose";
 import { makeRepo } from "./test-helpers";
 
@@ -1073,5 +1080,288 @@ describe("formatVerboseCommits", () => {
 		expect(out).toContain("same as xyz7890");
 		expect(out).toContain("(conflict)");
 		expect(out).toContain("file.ts");
+	});
+});
+
+// ── Semantic intermediate tests ───────────────────────────────
+
+describe("describeIntegrateAction", () => {
+	function makeAssessment(overrides: Partial<RepoAssessment> = {}): RepoAssessment {
+		return {
+			repo: "repo-a",
+			repoDir: "/tmp/repo-a",
+			outcome: "will-operate",
+			behind: 3,
+			ahead: 1,
+			baseRemote: "origin",
+			baseBranch: "main",
+			headSha: "abc1234",
+			shallow: false,
+			...overrides,
+		};
+	}
+
+	test("normal rebase", () => {
+		const desc = describeIntegrateAction(makeAssessment(), "rebase", "feature");
+		expect(desc.kind).toBe("rebase");
+		expect(desc.baseRef).toBe("origin/main");
+		expect(desc.branch).toBe("feature");
+		expect(desc.diff).toEqual({ behind: 3, ahead: 1, matchedCount: undefined });
+		expect(desc.mergeType).toBeUndefined();
+		expect(desc.headSha).toBe("abc1234");
+	});
+
+	test("normal merge with fast-forward", () => {
+		const desc = describeIntegrateAction(makeAssessment({ ahead: 0 }), "merge", "feature");
+		expect(desc.kind).toBe("merge");
+		expect(desc.mergeType).toBe("fast-forward");
+	});
+
+	test("normal merge with three-way", () => {
+		const desc = describeIntegrateAction(makeAssessment({ ahead: 2 }), "merge", "feature");
+		expect(desc.kind).toBe("merge");
+		expect(desc.mergeType).toBe("three-way");
+	});
+
+	test("conflict prediction rebase — conflict → likely", () => {
+		const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "conflict" }), "rebase", "feature");
+		expect(desc.conflictRisk).toBe("likely");
+	});
+
+	test("conflict prediction merge — conflict → will-conflict", () => {
+		const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "conflict" }), "merge", "feature");
+		expect(desc.conflictRisk).toBe("will-conflict");
+	});
+
+	test("conflict prediction rebase — clean → unlikely", () => {
+		const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "clean" }), "rebase", "feature");
+		expect(desc.conflictRisk).toBe("unlikely");
+	});
+
+	test("conflict prediction merge — clean → no-conflict", () => {
+		const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "clean" }), "merge", "feature");
+		expect(desc.conflictRisk).toBe("no-conflict");
+	});
+
+	test("conflict prediction no-conflict", () => {
+		const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "no-conflict" }), "rebase", "feature");
+		expect(desc.conflictRisk).toBe("no-conflict");
+	});
+
+	test("conflict prediction null", () => {
+		const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: null }), "rebase", "feature");
+		expect(desc.conflictRisk).toBeNull();
+	});
+
+	test("stash classification — none", () => {
+		const desc = describeIntegrateAction(makeAssessment(), "rebase", "feature");
+		expect(desc.stash).toBe("none");
+	});
+
+	test("stash classification — autostash", () => {
+		const desc = describeIntegrateAction(makeAssessment({ needsStash: true }), "rebase", "feature");
+		expect(desc.stash).toBe("autostash");
+	});
+
+	test("stash classification — pop-conflict-likely", () => {
+		const desc = describeIntegrateAction(
+			makeAssessment({ needsStash: true, stashPopConflictFiles: ["file.ts"] }),
+			"rebase",
+			"feature",
+		);
+		expect(desc.stash).toBe("pop-conflict-likely");
+	});
+
+	test("stash classification — pop-conflict-unlikely", () => {
+		const desc = describeIntegrateAction(
+			makeAssessment({ needsStash: true, stashPopConflictFiles: [] }),
+			"rebase",
+			"feature",
+		);
+		expect(desc.stash).toBe("pop-conflict-unlikely");
+	});
+
+	test("retarget-merged", () => {
+		const desc = describeIntegrateAction(
+			makeAssessment({
+				retargetFrom: "boundary-sha",
+				retargetReason: "branch-merged",
+				retargetReplayCount: 2,
+				retargetAlreadyOnTarget: 3,
+				ahead: 5,
+			}),
+			"rebase",
+			"feature",
+		);
+		expect(desc.kind).toBe("retarget-merged");
+		expect(desc.replayCount).toBe(2);
+		expect(desc.skipCount).toBe(3);
+		expect(desc.conflictRisk).toBeNull();
+	});
+
+	test("retarget-merged uses ahead as fallback replayCount", () => {
+		const desc = describeIntegrateAction(
+			makeAssessment({
+				retargetFrom: "boundary-sha",
+				retargetReason: "branch-merged",
+				ahead: 5,
+			}),
+			"rebase",
+			"feature",
+		);
+		expect(desc.replayCount).toBe(5);
+	});
+
+	test("retarget-config", () => {
+		const desc = describeIntegrateAction(
+			makeAssessment({
+				retargetFrom: "feat/old",
+				retargetTo: "main",
+				retargetReplayCount: 4,
+				retargetAlreadyOnTarget: 2,
+				retargetWarning: "base branch feat/old may not be merged",
+			}),
+			"rebase",
+			"feature",
+		);
+		expect(desc.kind).toBe("retarget-config");
+		expect(desc.retargetFrom).toBe("feat/old");
+		expect(desc.replayCount).toBe(4);
+		expect(desc.skipCount).toBe(2);
+		expect(desc.warning).toBe("base branch feat/old may not be merged");
+	});
+});
+
+describe("integrateActionCell", () => {
+	function makeDesc(overrides: Partial<IntegrateActionDesc> = {}): IntegrateActionDesc {
+		return {
+			kind: "rebase",
+			baseRef: "origin/main",
+			branch: "feature",
+			diff: { behind: 3, ahead: 1 },
+			conflictRisk: null,
+			stash: "none",
+			headSha: "abc1234",
+			...overrides,
+		};
+	}
+
+	test("normal rebase text", () => {
+		const c = integrateActionCell(makeDesc());
+		expect(c.plain).toContain("rebase feature onto origin/main");
+		expect(c.plain).toContain("3 behind, 1 ahead");
+		expect(c.plain).toContain("(HEAD abc1234)");
+	});
+
+	test("normal merge text with three-way", () => {
+		const c = integrateActionCell(makeDesc({ kind: "merge", mergeType: "three-way" }));
+		expect(c.plain).toContain("merge origin/main into feature (three-way)");
+	});
+
+	test("normal merge text with fast-forward", () => {
+		const c = integrateActionCell(
+			makeDesc({ kind: "merge", mergeType: "fast-forward", diff: { behind: 3, ahead: 0 } }),
+		);
+		expect(c.plain).toContain("merge origin/main into feature (fast-forward)");
+	});
+
+	test("matched count breakdown", () => {
+		const c = integrateActionCell(makeDesc({ diff: { behind: 5, ahead: 3, matchedCount: 3 } }));
+		expect(c.plain).toContain("5 behind (3 same, 2 new)");
+	});
+
+	test("conflict likely — attention span", () => {
+		const c = integrateActionCell(makeDesc({ conflictRisk: "likely" }));
+		expect(c.plain).toContain("(conflict likely)");
+		const conflictSpan = c.spans.find((s) => s.text.includes("conflict likely"));
+		expect(conflictSpan?.attention).toBe("attention");
+	});
+
+	test("will-conflict — attention span", () => {
+		const c = integrateActionCell(makeDesc({ kind: "merge", mergeType: "three-way", conflictRisk: "will-conflict" }));
+		expect(c.plain).toContain("(will conflict)");
+		const conflictSpan = c.spans.find((s) => s.text.includes("will conflict"));
+		expect(conflictSpan?.attention).toBe("attention");
+	});
+
+	test("no-conflict — default span", () => {
+		const c = integrateActionCell(makeDesc({ conflictRisk: "no-conflict" }));
+		expect(c.plain).toContain("(no conflict)");
+		const conflictSpan = c.spans.find((s) => s.text.includes("no conflict"));
+		expect(conflictSpan?.attention).toBe("default");
+	});
+
+	test("conflict unlikely — default span", () => {
+		const c = integrateActionCell(makeDesc({ conflictRisk: "unlikely" }));
+		expect(c.plain).toContain("(conflict unlikely)");
+		const conflictSpan = c.spans.find((s) => s.text.includes("conflict unlikely"));
+		expect(conflictSpan?.attention).toBe("default");
+	});
+
+	test("warning — attention span", () => {
+		const c = integrateActionCell(
+			makeDesc({
+				kind: "retarget-config",
+				retargetFrom: "feat/old",
+				warning: "base branch feat/old may not be merged",
+			}),
+		);
+		expect(c.plain).toContain("(base branch feat/old may not be merged)");
+		const warningSpan = c.spans.find((s) => s.text.includes("may not be merged"));
+		expect(warningSpan?.attention).toBe("attention");
+	});
+
+	test("autostash suffix", () => {
+		const c = integrateActionCell(makeDesc({ stash: "autostash" }));
+		expect(c.plain).toContain("(autostash)");
+	});
+
+	test("pop-conflict-likely — attention span", () => {
+		const c = integrateActionCell(makeDesc({ stash: "pop-conflict-likely" }));
+		expect(c.plain).toContain("stash pop conflict likely");
+		const stashSpan = c.spans.find((s) => s.text.includes("stash pop conflict likely"));
+		expect(stashSpan?.attention).toBe("attention");
+	});
+
+	test("pop-conflict-unlikely — default span", () => {
+		const c = integrateActionCell(makeDesc({ stash: "pop-conflict-unlikely" }));
+		expect(c.plain).toContain("stash pop conflict unlikely");
+		const stashSpan = c.spans.find((s) => s.text.includes("stash pop conflict unlikely"));
+		expect(stashSpan?.attention).toBe("default");
+	});
+
+	test("HEAD sha — muted span", () => {
+		const c = integrateActionCell(makeDesc());
+		const headSpan = c.spans.find((s) => s.text.includes("HEAD abc1234"));
+		expect(headSpan?.attention).toBe("muted");
+	});
+
+	test("retarget-merged text", () => {
+		const c = integrateActionCell(makeDesc({ kind: "retarget-merged", replayCount: 2, skipCount: 3 }));
+		expect(c.plain).toContain("rebase onto origin/main (merged)");
+		expect(c.plain).toContain("rebase 2 new commits, skip 3 already merged");
+	});
+
+	test("retarget-merged singular commit", () => {
+		const c = integrateActionCell(makeDesc({ kind: "retarget-merged", replayCount: 1, skipCount: 0 }));
+		expect(c.plain).toContain("rebase 1 new commit");
+		expect(c.plain).not.toContain("commits");
+		expect(c.plain).not.toContain("skip");
+	});
+
+	test("retarget-config with replay breakdown", () => {
+		const c = integrateActionCell(
+			makeDesc({ kind: "retarget-config", retargetFrom: "feat/old", replayCount: 2, skipCount: 3 }),
+		);
+		expect(c.plain).toContain("rebase onto origin/main from feat/old (retarget)");
+		expect(c.plain).toContain("5 local, 3 already on target, 2 to rebase");
+	});
+
+	test("retarget-config with only replayCount", () => {
+		const c = integrateActionCell(
+			makeDesc({ kind: "retarget-config", retargetFrom: "feat/old", replayCount: 4, skipCount: 0 }),
+		);
+		expect(c.plain).toContain("4 to rebase");
+		expect(c.plain).not.toContain("already on target");
 	});
 });
