@@ -1,17 +1,16 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { configGet } from "../lib/config";
-import { ArbError } from "../lib/errors";
-import { GitCache } from "../lib/git-cache";
-import { error, info, plural, success, warn } from "../lib/output";
+import { ArbError, configGet } from "../lib/core";
+import type { ArbContext } from "../lib/core";
+import { GitCache } from "../lib/git";
 import { render } from "../lib/render";
-import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
-import { readNamesFromStdin } from "../lib/stdin";
-import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
-import { isTTY } from "../lib/tty";
-import type { ArbContext } from "../lib/types";
-import { requireBranch, requireWorkspace } from "../lib/workspace-context";
-import { addWorktrees } from "../lib/worktrees";
+import { error, info, plural, success, warn } from "../lib/terminal";
+import { readNamesFromStdin } from "../lib/terminal";
+import { isTTY } from "../lib/terminal";
+import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/workspace";
+import { requireBranch, requireWorkspace } from "../lib/workspace";
+import { addWorktrees } from "../lib/workspace";
+import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/workspace";
 
 export function registerAttachCommand(program: Command, getCtx: () => ArbContext): void {
 	program

@@ -1,18 +1,19 @@
 import { existsSync, mkdirSync } from "node:fs";
 import input from "@inquirer/input";
 import type { Command } from "commander";
-import { writeConfig } from "../lib/config";
-import { ArbError } from "../lib/errors";
-import { validateBranchName, validateWorkspaceName } from "../lib/git";
-import { GitCache } from "../lib/git-cache";
-import { dim, error, info, plural, success, warn } from "../lib/output";
+import { ArbError, writeConfig } from "../lib/core";
+import type { ArbContext } from "../lib/core";
+import { GitCache, validateBranchName, validateWorkspaceName } from "../lib/git";
 import { render } from "../lib/render";
-import { listRepos, selectReposInteractive } from "../lib/repos";
-import { readNamesFromStdin } from "../lib/stdin";
-import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
-import { isTTY } from "../lib/tty";
-import type { ArbContext } from "../lib/types";
-import { addWorktrees } from "../lib/worktrees";
+import { dim, error, info, isTTY, plural, readNamesFromStdin, success, warn } from "../lib/terminal";
+import {
+	addWorktrees,
+	applyRepoTemplates,
+	applyWorkspaceTemplates,
+	displayOverlaySummary,
+	listRepos,
+	selectReposInteractive,
+} from "../lib/workspace";
 
 export function registerCreateCommand(program: Command, getCtx: () => ArbContext): void {
 	program

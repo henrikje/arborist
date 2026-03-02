@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { RepoRemotes } from "../lib/remotes";
-import { makeRepo } from "../lib/test-helpers";
+import type { RepoRemotes } from "../lib/git";
+import { makeRepo } from "../lib/status";
 import { type PullAssessment, assessPullRepo, formatPullPlan } from "./pull";
 
 const DIR = "/tmp/test-repo";

@@ -1,24 +1,19 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { listenForAbortKeypress } from "../lib/abort-keypress";
-import { configGet } from "../lib/config";
-import { ArbError } from "../lib/errors";
-import { git } from "../lib/git";
-import { GitCache } from "../lib/git-cache";
-import { printSchema } from "../lib/json-schema";
-import { type BranchJsonOutput, BranchJsonOutputSchema, type BranchJsonRepo } from "../lib/json-types";
-import { error, stderr } from "../lib/output";
-import { fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
-import { runPhasedRender } from "../lib/phased-render";
+import { ArbError, configGet } from "../lib/core";
+import type { ArbContext } from "../lib/core";
+import { GitCache, git } from "../lib/git";
+import { printSchema } from "../lib/json";
+import { type BranchJsonOutput, BranchJsonOutputSchema, type BranchJsonRepo } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
-import { cell } from "../lib/render-model";
-import type { OutputNode } from "../lib/render-model";
-import { workspaceRepoDirs } from "../lib/repos";
+import { cell } from "../lib/render";
+import type { OutputNode } from "../lib/render";
+import { runPhasedRender } from "../lib/render";
 import { type RepoStatus, gatherWorkspaceSummary } from "../lib/status";
-import { isTTY } from "../lib/tty";
-import type { ArbContext } from "../lib/types";
-import { workspaceBranch } from "../lib/workspace-branch";
-import { requireWorkspace } from "../lib/workspace-context";
+import { fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/sync";
+import { error, isTTY, listenForAbortKeypress, stderr } from "../lib/terminal";
+import { workspaceBranch, workspaceRepoDirs } from "../lib/workspace";
+import { requireWorkspace } from "../lib/workspace";
 import { registerBranchRenameSubcommand } from "./branch-rename";
 
 interface RepoBranch {

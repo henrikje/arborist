@@ -1,0 +1,173 @@
+import { existsSync } from "node:fs";
+import { branchExistsLocally, git, isRepoDirty, remoteBranchExists } from "../git/git";
+import { GitCache } from "../git/git-cache";
+import type { RepoRemotes } from "../git/remotes";
+import { type FetchResult, parallelFetch } from "../sync/parallel-fetch";
+import { error, inlineResult, inlineStart, warn } from "../terminal/output";
+
+export interface AddWorktreesResult {
+	created: string[];
+	skipped: string[];
+	failed: string[];
+}
+
+export async function addWorktrees(
+	name: string,
+	branch: string,
+	repos: string[],
+	reposDir: string,
+	arbRootDir: string,
+	baseBranch?: string,
+	remotesMap?: Map<string, RepoRemotes>,
+	cache?: GitCache,
+): Promise<AddWorktreesResult> {
+	const c = cache ?? new GitCache();
+	const wsDir = `${arbRootDir}/${name}`;
+	const result: AddWorktreesResult = { created: [], skipped: [], failed: [] };
+
+	// Phase 1: parallel fetch
+	const fetchResults = new Map<string, FetchResult>();
+	const reposDirsToFetch: string[] = [];
+
+	for (const repo of repos) {
+		const repoPath = `${reposDir}/${repo}`;
+		if (!existsSync(`${repoPath}/.git`)) {
+			fetchResults.set(repo, { repo, exitCode: 1, output: "" });
+			continue;
+		}
+		reposDirsToFetch.push(repoPath);
+	}
+
+	if (reposDirsToFetch.length > 0) {
+		const fetched = await parallelFetch(reposDirsToFetch, undefined, remotesMap);
+		for (const [repo, fr] of fetched) {
+			fetchResults.set(repo, fr);
+		}
+	}
+
+	// Phase 2: sequential worktree creation
+	process.stderr.write("Creating worktrees...\n");
+
+	for (const repo of repos) {
+		const repoPath = `${reposDir}/${repo}`;
+		const fr = fetchResults.get(repo);
+
+		if (!existsSync(`${repoPath}/.git`)) {
+			error(`  [${repo}] not a git repo`);
+			result.failed.push(repo);
+			continue;
+		}
+
+		if (fr && fr.exitCode !== 0) {
+			if (fr.exitCode === 124) {
+				error(`  [${repo}] fetch timed out`);
+			} else {
+				error(`  [${repo}] fetch failed`);
+			}
+			if (fr.output) {
+				for (const line of fr.output.split("\n").filter(Boolean)) {
+					error(`    ${line}`);
+				}
+			}
+			result.failed.push(repo);
+			continue;
+		}
+
+		if (existsSync(`${wsDir}/${repo}`)) {
+			warn(`  [${repo}] already exists — skipping`);
+			result.skipped.push(repo);
+			continue;
+		}
+
+		if (await isRepoDirty(repoPath)) {
+			warn(`  [${repo}] canonical repo has uncommitted changes`);
+		}
+
+		// Resolve remote names for this repo
+		const repoRemotes = remotesMap?.get(repo);
+		const baseRemote = repoRemotes?.base;
+		const shareRemote = repoRemotes?.share;
+
+		let effectiveBase: string | null;
+		if (baseBranch) {
+			const baseExists = baseRemote ? await remoteBranchExists(repoPath, baseBranch, baseRemote) : false;
+			if (baseExists) {
+				effectiveBase = baseBranch;
+			} else if (baseRemote) {
+				effectiveBase = await c.getDefaultBranch(repoPath, baseRemote);
+				if (effectiveBase) {
+					warn(`  [${repo}] base branch '${baseBranch}' not found — using '${effectiveBase}'`);
+				} else {
+					error(`  [${repo}] base branch '${baseBranch}' not found and could not determine default branch`);
+					result.failed.push(repo);
+					continue;
+				}
+			} else {
+				error(`  [${repo}] could not determine base remote`);
+				result.failed.push(repo);
+				continue;
+			}
+		} else if (baseRemote) {
+			effectiveBase = await c.getDefaultBranch(repoPath, baseRemote);
+			if (!effectiveBase) {
+				error(`  [${repo}] could not determine default branch`);
+				result.failed.push(repo);
+				continue;
+			}
+		} else {
+			error(`  [${repo}] could not determine base remote`);
+			result.failed.push(repo);
+			continue;
+		}
+
+		const branchExists = await branchExistsLocally(repoPath, branch);
+
+		// Prune stale worktrees
+		await git(repoPath, "worktree", "prune");
+
+		if (branchExists) {
+			inlineStart(repo, `attaching branch ${branch}`);
+			const wt = await git(repoPath, "worktree", "add", `${wsDir}/${repo}`, branch);
+			if (wt.exitCode !== 0) {
+				inlineResult(repo, "failed");
+				const errText = wt.stderr.trim();
+				if (errText) error(`    ${errText}`);
+				result.failed.push(repo);
+				continue;
+			}
+			inlineResult(repo, `branch ${branch} attached`);
+		} else if (shareRemote && (await remoteBranchExists(repoPath, branch, shareRemote))) {
+			const startPoint = `${shareRemote}/${branch}`;
+			inlineStart(repo, `checking out branch ${branch} from ${startPoint}`);
+			const wt = await git(repoPath, "worktree", "add", "--track", "-b", branch, `${wsDir}/${repo}`, startPoint);
+			if (wt.exitCode !== 0) {
+				inlineResult(repo, "failed");
+				const errText = wt.stderr.trim();
+				if (errText) error(`    ${errText}`);
+				result.failed.push(repo);
+				continue;
+			}
+			inlineResult(repo, `branch ${branch} checked out from ${startPoint}`);
+		} else {
+			const startPoint = baseRemote ? `${baseRemote}/${effectiveBase}` : effectiveBase;
+			inlineStart(repo, `creating branch ${branch} from ${startPoint}`);
+			// Prevent git from auto-setting tracking config (branch.autoSetupMerge) when
+			// branching from a remote ref. We rely on tracking config being absent for fresh
+			// branches and present only after `arb push -u`, so we can detect "gone" branches
+			// (pushed, merged, remote branch deleted) vs never-pushed branches.
+			const wt = await git(repoPath, "worktree", "add", "--no-track", "-b", branch, `${wsDir}/${repo}`, startPoint);
+			if (wt.exitCode !== 0) {
+				inlineResult(repo, "failed");
+				const errText = wt.stderr.trim();
+				if (errText) error(`    ${errText}`);
+				result.failed.push(repo);
+				continue;
+			}
+			inlineResult(repo, `branch ${branch} created from ${startPoint}`);
+		}
+
+		result.created.push(repo);
+	}
+
+	return result;
+}

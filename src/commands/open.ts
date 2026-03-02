@@ -1,13 +1,11 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { configGet } from "../lib/config";
-import { ArbError } from "../lib/errors";
-import { GitCache } from "../lib/git-cache";
-import { error, info } from "../lib/output";
-import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
+import { ArbError, configGet } from "../lib/core";
+import type { ArbContext } from "../lib/core";
+import { GitCache } from "../lib/git";
 import { computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
-import type { ArbContext } from "../lib/types";
-import { requireBranch, requireWorkspace } from "../lib/workspace-context";
+import { error, info } from "../lib/terminal";
+import { collectRepo, requireBranch, requireWorkspace, validateRepoNames, workspaceRepoDirs } from "../lib/workspace";
 
 export function registerOpenCommand(program: Command, getCtx: () => ArbContext): void {
 	program

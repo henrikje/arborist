@@ -1,0 +1,1367 @@
+import { describe, expect, test } from "bun:test";
+import { formatVerboseCommits } from "../render/status-verbose";
+import { makeRepo } from "../status/test-helpers";
+import {
+	type IntegrateActionDesc,
+	type RepoAssessment,
+	classifyRepo,
+	describeIntegrateAction,
+	formatIntegratePlan,
+	integrateActionCell,
+} from "./integrate";
+
+const DIR = "/tmp/test-repo";
+const SHA = "abc1234";
+
+describe("classifyRepo", () => {
+	test("up-to-date when behind base is 0", () => {
+		const a = classifyRepo(makeRepo(), DIR, "feature", [], false, SHA);
+		expect(a.outcome).toBe("up-to-date");
+		expect(a.baseBranch).toBe("main");
+	});
+
+	test("will-operate when behind base > 0", () => {
+		const a = classifyRepo(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 1,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		expect(a.outcome).toBe("will-operate");
+		expect(a.behind).toBe(3);
+		expect(a.ahead).toBe(1);
+		expect(a.baseBranch).toBe("main");
+	});
+
+	test("skips when fetch failed", () => {
+		const a = classifyRepo(makeRepo(), DIR, "feature", ["test-repo"], false, SHA);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipReason).toBe("fetch failed");
+		expect(a.skipFlag).toBe("fetch-failed");
+	});
+
+	test("skips when operation in progress", () => {
+		const a = classifyRepo(makeRepo({ operation: "rebase" }), DIR, "feature", [], false, SHA);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipReason).toBe("rebase in progress");
+		expect(a.skipFlag).toBe("operation-in-progress");
+	});
+
+	test("skips detached HEAD", () => {
+		const a = classifyRepo(
+			makeRepo({ identity: { worktreeKind: "linked", headMode: { kind: "detached" }, shallow: false } }),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipReason).toBe("HEAD is detached");
+		expect(a.skipFlag).toBe("detached-head");
+	});
+
+	test("skips drifted branch", () => {
+		const a = classifyRepo(
+			makeRepo({
+				identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
+			}),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipReason).toContain("on branch other, expected feature");
+		expect(a.skipFlag).toBe("drifted");
+	});
+
+	test("skips dirty without autostash", () => {
+		const a = classifyRepo(
+			makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipReason).toContain("uncommitted changes");
+		expect(a.skipReason).toContain("--autostash");
+		expect(a.skipFlag).toBe("dirty");
+	});
+
+	test("sets needsStash when dirty with autostash and staged files", () => {
+		const a = classifyRepo(
+			makeRepo({
+				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			true,
+			SHA,
+		);
+		expect(a.outcome).toBe("will-operate");
+		expect(a.needsStash).toBe(true);
+	});
+
+	test("sets needsStash when dirty with autostash and modified files", () => {
+		const a = classifyRepo(
+			makeRepo({
+				local: { staged: 0, modified: 3, untracked: 0, conflicts: 0 },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			true,
+			SHA,
+		);
+		expect(a.outcome).toBe("will-operate");
+		expect(a.needsStash).toBe(true);
+	});
+
+	test("does not set needsStash when only untracked files with autostash", () => {
+		const a = classifyRepo(
+			makeRepo({
+				local: { staged: 0, modified: 0, untracked: 5, conflicts: 0 },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			true,
+			SHA,
+		);
+		expect(a.outcome).toBe("will-operate");
+		expect(a.needsStash).toBeUndefined();
+	});
+
+	test("skips when no base branch", () => {
+		const a = classifyRepo(makeRepo({ base: null }), DIR, "feature", [], false, SHA);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipReason).toBe("no base branch");
+		expect(a.skipFlag).toBe("no-base-branch");
+	});
+
+	test("skips when no base remote", () => {
+		const a = classifyRepo(
+			makeRepo({
+				base: {
+					remote: null,
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 0,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipReason).toBe("no base remote");
+		expect(a.skipFlag).toBe("no-base-remote");
+	});
+
+	test("skips when branch is squash-merged into base", () => {
+		const a = classifyRepo(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 11,
+					behind: 1,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipReason).toBe("already squash-merged into main");
+		expect(a.skipFlag).toBe("already-merged");
+	});
+
+	test("skips when branch is merged into base", () => {
+		const a = classifyRepo(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: "merge",
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipReason).toBe("already merged into main");
+		expect(a.skipFlag).toBe("already-merged");
+	});
+
+	test("mergedIntoBase takes priority over baseMergedIntoDefault", () => {
+		const a = classifyRepo(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: "feat/auth",
+					ahead: 5,
+					behind: 2,
+					mergedIntoBase: "squash",
+					baseMergedIntoDefault: "merge",
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipFlag).toBe("already-merged");
+	});
+
+	test("skips when base branch merged into default", () => {
+		const a = classifyRepo(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "feat/auth",
+					configuredRef: "feat/auth",
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: "merge",
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipReason).toContain("base branch feat/auth was merged into default");
+		expect(a.skipReason).toContain("--retarget");
+		expect(a.skipFlag).toBe("base-merged-into-default");
+	});
+
+	test("baseMergedIntoDefault falls back to ref when configuredRef is null", () => {
+		const a = classifyRepo(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "develop",
+					configuredRef: null,
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: "merge",
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		expect(a.outcome).toBe("skip");
+		expect(a.skipReason).toContain("base branch develop was merged into default");
+		expect(a.skipFlag).toBe("base-merged-into-default");
+	});
+
+	test("shallow passes through", () => {
+		const a = classifyRepo(
+			makeRepo({
+				identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "feature" }, shallow: true },
+			}),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		expect(a.shallow).toBe(true);
+	});
+
+	test("headSha passes through", () => {
+		const a = classifyRepo(makeRepo(), DIR, "feature", [], false, "deadbeef");
+		expect(a.headSha).toBe("deadbeef");
+	});
+
+	test("baseRemote is set from base.remote", () => {
+		const a = classifyRepo(makeRepo(), DIR, "feature", [], false, SHA);
+		expect(a.baseRemote).toBe("origin");
+	});
+
+	test("ahead passes through for up-to-date", () => {
+		const a = classifyRepo(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 5,
+					behind: 0,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		expect(a.outcome).toBe("up-to-date");
+		expect(a.ahead).toBe(5);
+	});
+
+	test("classifies merged-with-new-work as skip with already-merged (classifyRepo only)", () => {
+		const a = classifyRepo(
+			makeRepo({
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 3,
+					behind: 0,
+					mergedIntoBase: "squash",
+					newCommitsAfterMerge: 1,
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			false,
+			SHA,
+		);
+		// classifyRepo itself returns already-merged skip — assessRepo overrides to will-operate
+		expect(a.outcome).toBe("skip");
+		expect(a.skipFlag).toBe("already-merged");
+	});
+});
+
+describe("formatIntegratePlan", () => {
+	function makeAssessment(overrides: Partial<RepoAssessment> = {}): RepoAssessment {
+		return {
+			repo: "repo-a",
+			repoDir: "/tmp/repo-a",
+			outcome: "will-operate",
+			behind: 3,
+			ahead: 1,
+			baseRemote: "origin",
+			baseBranch: "main",
+			headSha: "abc1234",
+			shallow: false,
+			...overrides,
+		};
+	}
+
+	test("shows rebase action", () => {
+		const plan = formatIntegratePlan([makeAssessment()], "rebase", "feature");
+		expect(plan).toContain("rebase feature onto origin/main");
+	});
+
+	test("shows merge action", () => {
+		const plan = formatIntegratePlan([makeAssessment()], "merge", "feature");
+		expect(plan).toContain("merge origin/main into feature");
+	});
+
+	test("shows behind/ahead counts", () => {
+		const plan = formatIntegratePlan([makeAssessment({ behind: 5, ahead: 2 })], "rebase", "feature");
+		expect(plan).toContain("5 behind");
+		expect(plan).toContain("2 ahead");
+	});
+
+	test("shows fast-forward for merge with ahead=0", () => {
+		const plan = formatIntegratePlan([makeAssessment({ ahead: 0 })], "merge", "feature");
+		expect(plan).toContain("(fast-forward)");
+	});
+
+	test("shows three-way for merge with ahead>0", () => {
+		const plan = formatIntegratePlan([makeAssessment({ ahead: 2 })], "merge", "feature");
+		expect(plan).toContain("(three-way)");
+	});
+
+	test("shows conflict likely for rebase", () => {
+		const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "conflict" })], "rebase", "feature");
+		expect(plan).toContain("conflict likely");
+	});
+
+	test("shows will conflict for merge", () => {
+		const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "conflict" })], "merge", "feature");
+		expect(plan).toContain("will conflict");
+	});
+
+	test("shows no conflict for rebase with no-conflict prediction", () => {
+		const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "no-conflict" })], "rebase", "feature");
+		expect(plan).toContain("no conflict");
+	});
+
+	test("shows no conflict for merge with no-conflict prediction", () => {
+		const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "no-conflict" })], "merge", "feature");
+		expect(plan).toContain("no conflict");
+	});
+
+	test("shows conflict unlikely for rebase", () => {
+		const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "clean" })], "rebase", "feature");
+		expect(plan).toContain("conflict unlikely");
+	});
+
+	test("shows no conflict for merge", () => {
+		const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "clean" })], "merge", "feature");
+		expect(plan).toContain("no conflict");
+	});
+
+	test("shows retarget display", () => {
+		const plan = formatIntegratePlan(
+			[makeAssessment({ retargetFrom: "feat/old", retargetTo: "main", baseBranch: "main" })],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("rebase onto origin/main from feat/old (retarget)");
+	});
+
+	test("shows branch-merged replay display with already-merged count", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					retargetFrom: "abc1234567890",
+					retargetTo: "main",
+					baseBranch: "main",
+					retargetReason: "branch-merged",
+					retargetReplayCount: 1,
+					retargetAlreadyOnTarget: 11,
+					ahead: 1,
+				}),
+			],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("rebase onto origin/main (merged) — rebase 1 new commit, skip 11 already merged");
+		expect(plan).not.toContain("retarget");
+	});
+
+	test("shows branch-merged replay display with multiple new commits", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					retargetFrom: "abc1234567890",
+					retargetTo: "main",
+					baseBranch: "main",
+					retargetReason: "branch-merged",
+					retargetReplayCount: 3,
+					retargetAlreadyOnTarget: 8,
+					ahead: 3,
+				}),
+			],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("rebase onto origin/main (merged) — rebase 3 new commits, skip 8 already merged");
+	});
+
+	test("shows retarget warning", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					retargetFrom: "feat/old",
+					retargetTo: "main",
+					baseBranch: "main",
+					retargetWarning: "base branch feat/old may not be merged",
+				}),
+			],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("base branch feat/old may not be merged");
+	});
+
+	test("shows retarget with autostash hint", () => {
+		const plan = formatIntegratePlan(
+			[makeAssessment({ retargetFrom: "feat/old", retargetTo: "main", baseBranch: "main", needsStash: true })],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("(retarget)");
+		expect(plan).toContain("(autostash)");
+	});
+
+	test("shows retarget with stash pop conflict likely", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					retargetFrom: "feat/old",
+					retargetTo: "main",
+					baseBranch: "main",
+					needsStash: true,
+					stashPopConflictFiles: ["file.ts"],
+				}),
+			],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("(retarget)");
+		expect(plan).toContain("stash pop conflict likely");
+	});
+
+	test("shows retarget with stash pop conflict unlikely", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					retargetFrom: "feat/old",
+					retargetTo: "main",
+					baseBranch: "main",
+					needsStash: true,
+					stashPopConflictFiles: [],
+				}),
+			],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("(retarget)");
+		expect(plan).toContain("stash pop conflict unlikely");
+	});
+
+	test("shows autostash hint", () => {
+		const plan = formatIntegratePlan([makeAssessment({ needsStash: true })], "rebase", "feature");
+		expect(plan).toContain("(autostash)");
+	});
+
+	test("shows stash pop conflict likely hint", () => {
+		const plan = formatIntegratePlan(
+			[makeAssessment({ needsStash: true, stashPopConflictFiles: ["file.ts"] })],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("stash pop conflict likely");
+	});
+
+	test("shows stash pop conflict unlikely hint", () => {
+		const plan = formatIntegratePlan(
+			[makeAssessment({ needsStash: true, stashPopConflictFiles: [] })],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("stash pop conflict unlikely");
+	});
+
+	test("shows up-to-date", () => {
+		const plan = formatIntegratePlan([makeAssessment({ outcome: "up-to-date" })], "rebase", "feature");
+		expect(plan).toContain("up to date");
+	});
+
+	test("shows skipped with reason", () => {
+		const plan = formatIntegratePlan(
+			[makeAssessment({ outcome: "skip", skipReason: "HEAD is detached" })],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("skipped");
+		expect(plan).toContain("HEAD is detached");
+	});
+
+	test("shows shallow clone warning", () => {
+		const plan = formatIntegratePlan([makeAssessment({ shallow: true })], "rebase", "feature");
+		expect(plan).toContain("shallow clone");
+		expect(plan).toContain("rebase may fail");
+	});
+
+	test("no shallow warning when not shallow", () => {
+		const plan = formatIntegratePlan([makeAssessment({ shallow: false })], "rebase", "feature");
+		expect(plan).not.toContain("shallow clone");
+	});
+
+	test("shows verbose commits when verbose is true", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [
+						{ shortHash: "def5678", subject: "feat: add new auth flow" },
+						{ shortHash: "890abcd", subject: "fix: handle edge case" },
+					],
+					totalCommits: 2,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).toContain("Incoming from origin/main:");
+		expect(plan).toContain("def5678");
+		expect(plan).toContain("feat: add new auth flow");
+		expect(plan).toContain("890abcd");
+		expect(plan).toContain("fix: handle edge case");
+	});
+
+	test("does not show verbose commits when verbose is false", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "def5678", subject: "feat: add new auth flow" }],
+					totalCommits: 1,
+				}),
+			],
+			"rebase",
+			"feature",
+			false,
+		);
+		expect(plan).not.toContain("Incoming from");
+		expect(plan).not.toContain("def5678");
+	});
+
+	test("shows truncation hint when totalCommits exceeds commit list", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "def5678", subject: "feat: something" }],
+					totalCommits: 30,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).toContain("... and 29 more");
+	});
+
+	test("does not show verbose commits for up-to-date repos", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					outcome: "up-to-date",
+					commits: [{ shortHash: "def5678", subject: "feat: something" }],
+					totalCommits: 1,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).not.toContain("Incoming from");
+	});
+
+	test("does not show verbose commits for skipped repos", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					outcome: "skip",
+					skipReason: "HEAD is detached",
+					commits: [{ shortHash: "def5678", subject: "feat: something" }],
+					totalCommits: 1,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).not.toContain("Incoming from");
+	});
+
+	test("shows matched count breakdown in behind string", () => {
+		const plan = formatIntegratePlan(
+			[makeAssessment({ behind: 5, ahead: 3, matchedCount: 3 })],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).toContain("5 behind (3 same, 2 new)");
+	});
+
+	test("preserves existing behind format when matchedCount is 0", () => {
+		const plan = formatIntegratePlan([makeAssessment({ behind: 5, ahead: 3, matchedCount: 0 })], "rebase", "feature");
+		expect(plan).toContain("5 behind");
+		expect(plan).not.toContain("same");
+		expect(plan).not.toContain("new)");
+	});
+
+	test("preserves existing behind format when matchedCount is undefined", () => {
+		const plan = formatIntegratePlan([makeAssessment({ behind: 5, ahead: 3 })], "rebase", "feature");
+		expect(plan).toContain("5 behind");
+		expect(plan).not.toContain("same");
+		expect(plan).not.toContain("new)");
+	});
+
+	test("shows rebaseOf annotation on verbose commits", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [
+						{ shortHash: "abc1234", subject: "feat: add auth flow", rebaseOf: "def5678" },
+						{ shortHash: "890abcd", subject: "fix: typo in readme" },
+					],
+					totalCommits: 2,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).toContain("(same as def5678)");
+		// The unannotated commit should appear without a tag
+		expect(plan).toContain("890abcd");
+		expect(plan).toContain("fix: typo in readme");
+		expect(plan).not.toContain("890abcd fix: typo in readme (same as");
+		expect(plan).not.toContain("890abcd fix: typo in readme (squash of");
+	});
+
+	test("shows squashOf annotation on verbose commits", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "fed4321", subject: "squash: combine changes", squashOf: ["aaa1111", "bbb2222"] }],
+					totalCommits: 1,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).toContain("(squash of aaa1111..bbb2222)");
+	});
+
+	// ── Graph tests ─────────────────────────────────────────────
+
+	test("shows graph for will-operate repos", () => {
+		const plan = formatIntegratePlan([makeAssessment({ mergeBaseSha: "ghi9012" })], "rebase", "feature", false, true);
+		expect(plan).toContain("merge-base");
+		expect(plan).toContain("ghi9012");
+		expect(plan).toContain("origin/main");
+	});
+
+	test("does not show graph for up-to-date repos", () => {
+		const plan = formatIntegratePlan(
+			[makeAssessment({ outcome: "up-to-date", mergeBaseSha: "ghi9012" })],
+			"rebase",
+			"feature",
+			false,
+			true,
+		);
+		expect(plan).not.toContain("merge-base");
+	});
+
+	test("does not show graph for skipped repos", () => {
+		const plan = formatIntegratePlan(
+			[makeAssessment({ outcome: "skip", skipReason: "HEAD is detached", mergeBaseSha: "ghi9012" })],
+			"rebase",
+			"feature",
+			false,
+			true,
+		);
+		expect(plan).not.toContain("merge-base");
+	});
+
+	test("graph suppresses separate verbose section when both flags are true", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					mergeBaseSha: "ghi9012",
+					commits: [{ shortHash: "def5678", subject: "feat: add new auth flow" }],
+					totalCommits: 1,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+			true,
+		);
+		// Graph should be present
+		expect(plan).toContain("merge-base");
+		// Separate "Incoming from..." section should NOT be present
+		expect(plan).not.toContain("Incoming from");
+	});
+
+	test("shows diff stats on verbose label when diffStats present", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "def5678", subject: "feat: add auth" }],
+					totalCommits: 1,
+					diffStats: { files: 47, insertions: 320, deletions: 180 },
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).toContain("47 files changed, +320, -180");
+	});
+
+	test("does not show diff stats when diffStats is undefined", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "def5678", subject: "feat: add auth" }],
+					totalCommits: 1,
+				}),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).not.toContain("files changed");
+	});
+
+	test("shows retarget replay breakdown when alreadyOnTarget > 0", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					retargetFrom: "feat/old",
+					retargetTo: "main",
+					baseBranch: "main",
+					retargetReplayCount: 2,
+					retargetAlreadyOnTarget: 3,
+				}),
+			],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("5 local, 3 already on target, 2 to rebase");
+	});
+
+	test("shows simplified retarget replay when alreadyOnTarget is 0", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					retargetFrom: "feat/old",
+					retargetTo: "main",
+					baseBranch: "main",
+					retargetReplayCount: 4,
+					retargetAlreadyOnTarget: 0,
+				}),
+			],
+			"rebase",
+			"feature",
+		);
+		expect(plan).toContain("4 to rebase");
+		expect(plan).not.toContain("already on target");
+	});
+
+	test("shows no replay info when retarget replay fields are undefined", () => {
+		const plan = formatIntegratePlan(
+			[makeAssessment({ retargetFrom: "feat/old", retargetTo: "main", baseBranch: "main" })],
+			"rebase",
+			"feature",
+		);
+		expect(plan).not.toContain("to rebase");
+		expect(plan).not.toContain("already on target");
+	});
+
+	test("retarget graph shows replay breakdown when enriched", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					retargetFrom: "feat/old",
+					retargetTo: "main",
+					baseBranch: "main",
+					mergeBaseSha: "xyz7890",
+					retargetReplayCount: 2,
+					retargetAlreadyOnTarget: 3,
+				}),
+			],
+			"rebase",
+			"feature",
+			false,
+			true,
+		);
+		expect(plan).toContain("5 local, 3 already on target, 2 to rebase");
+	});
+
+	test("retarget repos get retarget-style graph", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					retargetFrom: "feat/old",
+					retargetTo: "main",
+					baseBranch: "main",
+					mergeBaseSha: "xyz7890",
+				}),
+			],
+			"rebase",
+			"feature",
+			false,
+			true,
+		);
+		expect(plan).toContain("--x--");
+		expect(plan).toContain("feat/old");
+		expect(plan).toContain("old base, merged");
+		expect(plan).toContain("new base");
+	});
+
+	// ── Header & alignment tests ────────────────────────────────
+
+	test("includes REPO and ACTION column headers", () => {
+		const plan = formatIntegratePlan([makeAssessment()], "rebase", "feature");
+		expect(plan).toContain("REPO");
+		expect(plan).toContain("ACTION");
+	});
+
+	test("aligns actions across repos with different name lengths", () => {
+		const plan = formatIntegratePlan(
+			[makeAssessment({ repo: "short" }), makeAssessment({ repo: "much-longer-repo-name", outcome: "up-to-date" })],
+			"rebase",
+			"feature",
+		);
+		// Both action texts should start at the same column
+		const lines = plan.split("\n").filter((l) => l.trim().length > 0);
+		const actionStarts = lines
+			.slice(1)
+			.map((l) => (l.indexOf("rebase") !== -1 ? l.indexOf("rebase") : l.indexOf("up to date")));
+		// All action columns should start at the same position
+		const nonNeg = actionStarts.filter((s) => s >= 0);
+		expect(nonNeg.length).toBe(2);
+		expect(nonNeg[0]).toBe(nonNeg[1]);
+	});
+
+	test("afterRow emits verbose commits for will-operate repos", () => {
+		const plan = formatIntegratePlan(
+			[
+				makeAssessment({
+					commits: [{ shortHash: "def5678", subject: "feat: add auth" }],
+					totalCommits: 1,
+				}),
+				makeAssessment({ repo: "repo-b", outcome: "up-to-date" }),
+			],
+			"rebase",
+			"feature",
+			true,
+		);
+		expect(plan).toContain("Incoming from origin/main:");
+		expect(plan).toContain("def5678");
+	});
+});
+
+describe("formatVerboseCommits", () => {
+	test("appends diff stats to label when provided", () => {
+		const out = formatVerboseCommits(
+			[{ shortHash: "abc1234", subject: "feat: something" }],
+			1,
+			"Incoming from origin/main:",
+			{ diffStats: { files: 5, insertions: 100, deletions: 20 } },
+		);
+		expect(out).toContain("5 files changed, +100, -20");
+		expect(out).toContain("abc1234");
+	});
+
+	test("uses singular 'file' for 1 file", () => {
+		const out = formatVerboseCommits(
+			[{ shortHash: "abc1234", subject: "feat: something" }],
+			1,
+			"Incoming from origin/main:",
+			{ diffStats: { files: 1, insertions: 10, deletions: 5 } },
+		);
+		expect(out).toContain("1 file changed");
+		expect(out).not.toContain("1 files changed");
+	});
+
+	test("does not modify label when no options provided", () => {
+		const out = formatVerboseCommits(
+			[{ shortHash: "abc1234", subject: "feat: something" }],
+			1,
+			"Incoming from origin/main:",
+		);
+		expect(out).toContain("Incoming from origin/main:");
+		expect(out).not.toContain("files changed");
+	});
+
+	test("annotates conflicting commits with (conflict) and file list", () => {
+		const out = formatVerboseCommits(
+			[
+				{ shortHash: "abc1234", subject: "feat: add auth" },
+				{ shortHash: "def5678", subject: "fix: typo" },
+				{ shortHash: "ghi9012", subject: "refactor: routes" },
+			],
+			3,
+			"Incoming from origin/main:",
+			{
+				conflictCommits: [
+					{ shortHash: "abc1234", files: ["src/auth.ts", "src/middleware.ts"] },
+					{ shortHash: "ghi9012", files: ["src/routes.ts"] },
+				],
+			},
+		);
+		expect(out).toContain("abc1234");
+		expect(out).toContain("(conflict)");
+		expect(out).toContain("src/auth.ts, src/middleware.ts");
+		expect(out).toContain("ghi9012");
+		expect(out).toContain("src/routes.ts");
+		// Non-conflicting commit should not have (conflict)
+		expect(out).toContain("def5678");
+	});
+
+	test("does not annotate commits when conflictCommits is empty", () => {
+		const out = formatVerboseCommits(
+			[{ shortHash: "abc1234", subject: "feat: something" }],
+			1,
+			"Incoming from origin/main:",
+			{ conflictCommits: [] },
+		);
+		expect(out).not.toContain("conflict");
+	});
+
+	test("conflict annotation coexists with rebaseOf tag", () => {
+		const out = formatVerboseCommits(
+			[{ shortHash: "abc1234", subject: "feat: something", rebaseOf: "xyz7890" }],
+			1,
+			"Incoming from origin/main:",
+			{ conflictCommits: [{ shortHash: "abc1234", files: ["file.ts"] }] },
+		);
+		expect(out).toContain("same as xyz7890");
+		expect(out).toContain("(conflict)");
+		expect(out).toContain("file.ts");
+	});
+});
+
+// ── Semantic intermediate tests ───────────────────────────────
+
+describe("describeIntegrateAction", () => {
+	function makeAssessment(overrides: Partial<RepoAssessment> = {}): RepoAssessment {
+		return {
+			repo: "repo-a",
+			repoDir: "/tmp/repo-a",
+			outcome: "will-operate",
+			behind: 3,
+			ahead: 1,
+			baseRemote: "origin",
+			baseBranch: "main",
+			headSha: "abc1234",
+			shallow: false,
+			...overrides,
+		};
+	}
+
+	test("normal rebase", () => {
+		const desc = describeIntegrateAction(makeAssessment(), "rebase", "feature");
+		expect(desc.kind).toBe("rebase");
+		expect(desc.baseRef).toBe("origin/main");
+		expect(desc.branch).toBe("feature");
+		expect(desc.diff).toEqual({ behind: 3, ahead: 1, matchedCount: undefined });
+		expect(desc.mergeType).toBeUndefined();
+		expect(desc.headSha).toBe("abc1234");
+	});
+
+	test("normal merge with fast-forward", () => {
+		const desc = describeIntegrateAction(makeAssessment({ ahead: 0 }), "merge", "feature");
+		expect(desc.kind).toBe("merge");
+		expect(desc.mergeType).toBe("fast-forward");
+	});
+
+	test("normal merge with three-way", () => {
+		const desc = describeIntegrateAction(makeAssessment({ ahead: 2 }), "merge", "feature");
+		expect(desc.kind).toBe("merge");
+		expect(desc.mergeType).toBe("three-way");
+	});
+
+	test("conflict prediction rebase — conflict → likely", () => {
+		const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "conflict" }), "rebase", "feature");
+		expect(desc.conflictRisk).toBe("likely");
+	});
+
+	test("conflict prediction merge — conflict → will-conflict", () => {
+		const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "conflict" }), "merge", "feature");
+		expect(desc.conflictRisk).toBe("will-conflict");
+	});
+
+	test("conflict prediction rebase — clean → unlikely", () => {
+		const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "clean" }), "rebase", "feature");
+		expect(desc.conflictRisk).toBe("unlikely");
+	});
+
+	test("conflict prediction merge — clean → no-conflict", () => {
+		const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "clean" }), "merge", "feature");
+		expect(desc.conflictRisk).toBe("no-conflict");
+	});
+
+	test("conflict prediction no-conflict", () => {
+		const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "no-conflict" }), "rebase", "feature");
+		expect(desc.conflictRisk).toBe("no-conflict");
+	});
+
+	test("conflict prediction null", () => {
+		const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: null }), "rebase", "feature");
+		expect(desc.conflictRisk).toBeNull();
+	});
+
+	test("stash classification — none", () => {
+		const desc = describeIntegrateAction(makeAssessment(), "rebase", "feature");
+		expect(desc.stash).toBe("none");
+	});
+
+	test("stash classification — autostash", () => {
+		const desc = describeIntegrateAction(makeAssessment({ needsStash: true }), "rebase", "feature");
+		expect(desc.stash).toBe("autostash");
+	});
+
+	test("stash classification — pop-conflict-likely", () => {
+		const desc = describeIntegrateAction(
+			makeAssessment({ needsStash: true, stashPopConflictFiles: ["file.ts"] }),
+			"rebase",
+			"feature",
+		);
+		expect(desc.stash).toBe("pop-conflict-likely");
+	});
+
+	test("stash classification — pop-conflict-unlikely", () => {
+		const desc = describeIntegrateAction(
+			makeAssessment({ needsStash: true, stashPopConflictFiles: [] }),
+			"rebase",
+			"feature",
+		);
+		expect(desc.stash).toBe("pop-conflict-unlikely");
+	});
+
+	test("retarget-merged", () => {
+		const desc = describeIntegrateAction(
+			makeAssessment({
+				retargetFrom: "boundary-sha",
+				retargetReason: "branch-merged",
+				retargetReplayCount: 2,
+				retargetAlreadyOnTarget: 3,
+				ahead: 5,
+			}),
+			"rebase",
+			"feature",
+		);
+		expect(desc.kind).toBe("retarget-merged");
+		expect(desc.replayCount).toBe(2);
+		expect(desc.skipCount).toBe(3);
+		expect(desc.conflictRisk).toBeNull();
+	});
+
+	test("retarget-merged uses ahead as fallback replayCount", () => {
+		const desc = describeIntegrateAction(
+			makeAssessment({
+				retargetFrom: "boundary-sha",
+				retargetReason: "branch-merged",
+				ahead: 5,
+			}),
+			"rebase",
+			"feature",
+		);
+		expect(desc.replayCount).toBe(5);
+	});
+
+	test("retarget-config", () => {
+		const desc = describeIntegrateAction(
+			makeAssessment({
+				retargetFrom: "feat/old",
+				retargetTo: "main",
+				retargetReplayCount: 4,
+				retargetAlreadyOnTarget: 2,
+				retargetWarning: "base branch feat/old may not be merged",
+			}),
+			"rebase",
+			"feature",
+		);
+		expect(desc.kind).toBe("retarget-config");
+		expect(desc.retargetFrom).toBe("feat/old");
+		expect(desc.replayCount).toBe(4);
+		expect(desc.skipCount).toBe(2);
+		expect(desc.warning).toBe("base branch feat/old may not be merged");
+	});
+});
+
+describe("integrateActionCell", () => {
+	function makeDesc(overrides: Partial<IntegrateActionDesc> = {}): IntegrateActionDesc {
+		return {
+			kind: "rebase",
+			baseRef: "origin/main",
+			branch: "feature",
+			diff: { behind: 3, ahead: 1 },
+			conflictRisk: null,
+			stash: "none",
+			headSha: "abc1234",
+			...overrides,
+		};
+	}
+
+	test("normal rebase text", () => {
+		const c = integrateActionCell(makeDesc());
+		expect(c.plain).toContain("rebase feature onto origin/main");
+		expect(c.plain).toContain("3 behind, 1 ahead");
+		expect(c.plain).toContain("(HEAD abc1234)");
+	});
+
+	test("normal merge text with three-way", () => {
+		const c = integrateActionCell(makeDesc({ kind: "merge", mergeType: "three-way" }));
+		expect(c.plain).toContain("merge origin/main into feature (three-way)");
+	});
+
+	test("normal merge text with fast-forward", () => {
+		const c = integrateActionCell(
+			makeDesc({ kind: "merge", mergeType: "fast-forward", diff: { behind: 3, ahead: 0 } }),
+		);
+		expect(c.plain).toContain("merge origin/main into feature (fast-forward)");
+	});
+
+	test("matched count breakdown", () => {
+		const c = integrateActionCell(makeDesc({ diff: { behind: 5, ahead: 3, matchedCount: 3 } }));
+		expect(c.plain).toContain("5 behind (3 same, 2 new)");
+	});
+
+	test("conflict likely — attention span", () => {
+		const c = integrateActionCell(makeDesc({ conflictRisk: "likely" }));
+		expect(c.plain).toContain("(conflict likely)");
+		const conflictSpan = c.spans.find((s) => s.text.includes("conflict likely"));
+		expect(conflictSpan?.attention).toBe("attention");
+	});
+
+	test("will-conflict — attention span", () => {
+		const c = integrateActionCell(makeDesc({ kind: "merge", mergeType: "three-way", conflictRisk: "will-conflict" }));
+		expect(c.plain).toContain("(will conflict)");
+		const conflictSpan = c.spans.find((s) => s.text.includes("will conflict"));
+		expect(conflictSpan?.attention).toBe("attention");
+	});
+
+	test("no-conflict — default span", () => {
+		const c = integrateActionCell(makeDesc({ conflictRisk: "no-conflict" }));
+		expect(c.plain).toContain("(no conflict)");
+		const conflictSpan = c.spans.find((s) => s.text.includes("no conflict"));
+		expect(conflictSpan?.attention).toBe("default");
+	});
+
+	test("conflict unlikely — default span", () => {
+		const c = integrateActionCell(makeDesc({ conflictRisk: "unlikely" }));
+		expect(c.plain).toContain("(conflict unlikely)");
+		const conflictSpan = c.spans.find((s) => s.text.includes("conflict unlikely"));
+		expect(conflictSpan?.attention).toBe("default");
+	});
+
+	test("warning — attention span", () => {
+		const c = integrateActionCell(
+			makeDesc({
+				kind: "retarget-config",
+				retargetFrom: "feat/old",
+				warning: "base branch feat/old may not be merged",
+			}),
+		);
+		expect(c.plain).toContain("(base branch feat/old may not be merged)");
+		const warningSpan = c.spans.find((s) => s.text.includes("may not be merged"));
+		expect(warningSpan?.attention).toBe("attention");
+	});
+
+	test("autostash suffix", () => {
+		const c = integrateActionCell(makeDesc({ stash: "autostash" }));
+		expect(c.plain).toContain("(autostash)");
+	});
+
+	test("pop-conflict-likely — attention span", () => {
+		const c = integrateActionCell(makeDesc({ stash: "pop-conflict-likely" }));
+		expect(c.plain).toContain("stash pop conflict likely");
+		const stashSpan = c.spans.find((s) => s.text.includes("stash pop conflict likely"));
+		expect(stashSpan?.attention).toBe("attention");
+	});
+
+	test("pop-conflict-unlikely — default span", () => {
+		const c = integrateActionCell(makeDesc({ stash: "pop-conflict-unlikely" }));
+		expect(c.plain).toContain("stash pop conflict unlikely");
+		const stashSpan = c.spans.find((s) => s.text.includes("stash pop conflict unlikely"));
+		expect(stashSpan?.attention).toBe("default");
+	});
+
+	test("HEAD sha — muted span", () => {
+		const c = integrateActionCell(makeDesc());
+		const headSpan = c.spans.find((s) => s.text.includes("HEAD abc1234"));
+		expect(headSpan?.attention).toBe("muted");
+	});
+
+	test("retarget-merged text", () => {
+		const c = integrateActionCell(makeDesc({ kind: "retarget-merged", replayCount: 2, skipCount: 3 }));
+		expect(c.plain).toContain("rebase onto origin/main (merged)");
+		expect(c.plain).toContain("rebase 2 new commits, skip 3 already merged");
+	});
+
+	test("retarget-merged singular commit", () => {
+		const c = integrateActionCell(makeDesc({ kind: "retarget-merged", replayCount: 1, skipCount: 0 }));
+		expect(c.plain).toContain("rebase 1 new commit");
+		expect(c.plain).not.toContain("commits");
+		expect(c.plain).not.toContain("skip");
+	});
+
+	test("retarget-config with replay breakdown", () => {
+		const c = integrateActionCell(
+			makeDesc({ kind: "retarget-config", retargetFrom: "feat/old", replayCount: 2, skipCount: 3 }),
+		);
+		expect(c.plain).toContain("rebase onto origin/main from feat/old (retarget)");
+		expect(c.plain).toContain("5 local, 3 already on target, 2 to rebase");
+	});
+
+	test("retarget-config with only replayCount", () => {
+		const c = integrateActionCell(
+			makeDesc({ kind: "retarget-config", retargetFrom: "feat/old", replayCount: 4, skipCount: 0 }),
+		);
+		expect(c.plain).toContain("4 to rebase");
+		expect(c.plain).not.toContain("already on target");
+	});
+});

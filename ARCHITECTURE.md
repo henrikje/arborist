@@ -8,7 +8,7 @@ Technical patterns and development conventions for the Arborist codebase.
 
 ### Canonical status model
 
-`status.ts` is the single source of truth for repository state. `RepoStatus` is a 5-section model (identity, local, base, share, operation). `RepoFlags` computes independent boolean flags from that model. Named flag sets (`AT_RISK_FLAGS`, `LOSE_WORK_FLAGS`, `STALE_FLAGS`) group flags by concern. Shared functions (`computeFlags`, `isAtRisk`, `wouldLoseWork`, `flagLabels`) derive decisions and display text.
+`status/status.ts` is the single source of truth for repository state. `RepoStatus` is a 5-section model (identity, local, base, share, operation). `RepoFlags` computes independent boolean flags from that model. Named flag sets (`AT_RISK_FLAGS`, `LOSE_WORK_FLAGS`, `STALE_FLAGS`) group flags by concern. Shared functions (`computeFlags`, `isAtRisk`, `wouldLoseWork`) in `status/` derive decisions; display functions (`flagLabels`, `formatStatusCounts`, `buildStatusCountsCell`) live in `render/analysis.ts`.
 
 Every command that needs to understand repo state must work from `RepoStatus` and `RepoFlags` — never invent local representations or ad-hoc git queries. When adding a new concept, extend the model in `status.ts` so every consumer benefits:
 
@@ -20,6 +20,16 @@ Every command that needs to understand repo state must work from `RepoStatus` an
 Commands must use shared functions (`isAtRisk`, `wouldLoseWork`, `flagLabels`) rather than re-deriving conclusions from raw flags — this keeps evaluation logic centralized. `resolveWhereFilter()` handles `--dirty`/`--where` option validation and resolution; `repoMatchesWhere()` tests a `RepoFlags` against a parsed filter expression.
 
 **Remote roles terminology.** The two remote roles are `base` (integration) and `share` (sharing), defined in `RepoRemotes`. The corresponding status sections are `base` and `share` in `RepoStatus`. The user-facing column headers are `BASE` and `SHARE`. Flag labels are `behind base` and `behind share`. Note: the git remote *name* may still be `"upstream"` (a fork workflow convention), but the *role* in code is always `base`.
+
+### Import rules
+
+`src/lib/` is organized into semantic subdirectories (`core/`, `terminal/`, `git/`, `status/`, `render/`, `workspace/`, `sync/`, `json/`, `help/`). Circular dependencies between files or directories are not allowed — enforced by `bun run cycles` (madge).
+
+- **Siblings allowed**: any directory may import from any sibling directory (e.g. `render/` → `status/`).
+- **Children must not import parents**: a file must not import from its own directory's `index.ts`. When a child file needs a type defined in the barrel, extract that type into a `types.ts` leaf file in the same directory.
+- **Within `lib/`**: use direct file imports (`../status/status`) to avoid barrel-induced circular dependency issues.
+- **Command files and `src/index.ts`**: use barrel imports (`../lib/status`).
+- **Cycle fix pattern**: when a cycle is detected, identify the shared type causing it and extract it into a `types.ts` file that has no upstream imports from the cycled module.
 
 ### Shared library composition
 
@@ -43,7 +53,7 @@ A detail section is a labeled, indented block of related items appearing between
 - **Items**: 10-space indent (`ITEM_INDENT`) + one line per item.
 - **Spacing**: blank line before the header. No trailing blank line — the caller provides the final separator.
 
-`SECTION_INDENT` and `ITEM_INDENT` are defined in `status-verbose.ts`; `displayTemplateDiffs` and `displayUnknownVariables` in `templates.ts` use the same literal values.
+`SECTION_INDENT` and `ITEM_INDENT` are defined in `render/status-verbose.ts`; `displayTemplateDiffs` and `displayUnknownVariables` in `workspace/templates.ts` use the same literal values.
 
 When to use: any supplementary list (commits, files, variables, warnings) below the main table or per-repo output. When not to use: inline per-repo annotations (use the `[repo] result` line pattern) or top-level error messages (use `warn()` / `error()`).
 

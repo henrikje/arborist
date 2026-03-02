@@ -1,7 +1,7 @@
 import type { Command } from "commander";
-import { integrate } from "../lib/integrate";
-import { readNamesFromStdin } from "../lib/stdin";
-import type { ArbContext } from "../lib/types";
+import type { ArbContext } from "../lib/core";
+import { integrate } from "../lib/sync";
+import { readNamesFromStdin } from "../lib/terminal";
 
 export function registerRebaseCommand(program: Command, getCtx: () => ArbContext): void {
 	program

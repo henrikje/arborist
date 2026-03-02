@@ -1,39 +1,54 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { loadArbIgnore } from "../lib/arbignore";
-import { ArbError } from "../lib/errors";
-import { branchExistsLocally, git, remoteBranchExists, validateWorkspaceName } from "../lib/git";
-import { GitCache } from "../lib/git-cache";
-import { confirmOrExit } from "../lib/mutation-flow";
-import { dryRunNotice, error, info, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
+import {
+	ArbError,
+	type LastCommitWidths,
+	type RelativeTimeParts,
+	computeLastCommitWidths,
+	formatLastCommitCell,
+	formatRelativeTimeParts,
+	loadArbIgnore,
+} from "../lib/core";
+import type { ArbContext } from "../lib/core";
+import { GitCache, branchExistsLocally, git, remoteBranchExists, validateWorkspaceName } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
-import { EMPTY_CELL, cell } from "../lib/render-model";
-import type { Cell, OutputNode } from "../lib/render-model";
-import { listNonWorkspaces, listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
+import { EMPTY_CELL, cell } from "../lib/render";
+import type { Cell, OutputNode } from "../lib/render";
+import { formatStatusCounts } from "../lib/render";
 import {
 	LOSE_WORK_FLAGS,
 	type WorkspaceSummary,
 	computeFlags,
-	formatStatusCounts,
 	gatherWorkspaceSummary,
 	isWorkspaceSafe,
 	resolveWhereFilter,
 	workspaceMatchesWhere,
 	wouldLoseWork,
 } from "../lib/status";
-import { readNamesFromStdin } from "../lib/stdin";
-import { type TemplateDiff, diffTemplates, displayTemplateDiffs } from "../lib/templates";
+import { confirmOrExit } from "../lib/sync";
 import {
-	type LastCommitWidths,
-	type RelativeTimeParts,
-	computeLastCommitWidths,
-	formatLastCommitCell,
-	formatRelativeTimeParts,
-} from "../lib/time";
-import { isTTY } from "../lib/tty";
-import type { ArbContext } from "../lib/types";
-import { workspaceBranch } from "../lib/workspace-branch";
+	dryRunNotice,
+	error,
+	info,
+	inlineResult,
+	inlineStart,
+	isTTY,
+	plural,
+	readNamesFromStdin,
+	success,
+	warn,
+} from "../lib/terminal";
+import {
+	type TemplateDiff,
+	diffTemplates,
+	displayTemplateDiffs,
+	listNonWorkspaces,
+	listWorkspaces,
+	selectInteractive,
+	workspaceBranch,
+	workspaceRepoDirs,
+} from "../lib/workspace";
 
 function hintNonWorkspaces(arbRootDir: string): void {
 	const ignored = loadArbIgnore(arbRootDir);

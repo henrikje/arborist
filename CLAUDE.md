@@ -22,25 +22,26 @@ Run `bun install` before developing.
 
 Each command exports a `register*Command(program, getCtx)` function. The `getCtx` callback lazily resolves `ArbContext` (arb root dir, repos dir, current workspace) only when the command's action handler runs. Commands like `init` and `help` never need a valid arb root.
 
-### Core Libraries (`src/lib/`)
+### Libraries (`src/lib/`)
 
-- **`types.ts`** — `ArbContext` interface (arbRootDir, reposDir, currentWorkspace)
-- **`arb-root.ts`** — walks up the directory tree to find the `.arb/` marker and detects if cwd is inside a workspace
-- **`git.ts`** — git process spawning, branch validation, status parsing, remote detection, default branch resolution
-- **`remotes.ts`** — resolves remote roles (base/share) for fork workflows; supports `remote.pushDefault`, `upstream`+`origin` convention, and single-remote repos
-- **`status.ts`** — the canonical status model. See "Canonical status model" in ARCHITECTURE.md
-- **`integrate.ts`** — shared rebase/merge logic: assess repos, display plan, confirm, execute sequentially with conflict recovery guidance
-- **`worktrees.ts`** — two-phase worktree creation: parallel fetch then sequential worktree add, with base remote tracking setup
-- **`workspace-branch.ts`** — resolves the branch for a workspace from `.arbws/config`, with fallback inference from the first worktree
-- **`workspace-context.ts`** — `requireWorkspace()` and `requireBranch()` guards that exit early with helpful messages if context is missing
-- **`repos.ts`** — lists workspaces (dirs containing `.arbws`), canonical repos, interactive repo selection, and workspace repo enumeration
-- **`config.ts`** — INI-style config reader/writer for `.arbws/config` files (`key = value` format)
-- **`parallel-fetch.ts`** — concurrent git fetch with configurable timeout (`ARB_FETCH_TIMEOUT` env var, default 120s)
-- **`output.ts`** — TTY-aware colored output helpers; `success/info/warn/error` write to stderr, `stdout` writes to stdout, `inlineStart/inlineResult` for progress lines
-- **`tty.ts`** — TTY detection helper used by output formatting
-- **`pr-detection.ts`** — extracts PR/MR numbers from commit subjects (GitHub, Azure DevOps patterns)
-- **`remote-url.ts`** — parses git remote URLs and constructs PR URLs for GitHub, GitLab, Bitbucket, Azure DevOps
-- **`ticket-detection.ts`** — detects Jira/Linear-style ticket keys from branch names and commit messages
+Organized into semantic subdirectories. Each directory has a barrel `index.ts` re-exporting its public API.
+
+**Import rules — circular dependencies are not allowed:**
+- Sibling-to-sibling imports between directories are allowed (e.g. `render/` can import from `status/`).
+- Children must not import from parents (e.g. a file in `render/` must not import from `render/index.ts`). Share types via a `types.ts` file instead.
+- No circular dependencies between files or directories. Enforced by `bun run cycles` (madge). If a cycle is detected, extract the shared type into a `types.ts` leaf file.
+- Within `lib/`, use direct file imports (not barrels) to avoid circular dependency issues.
+- Command files and `src/index.ts` use barrel imports.
+
+- **`core/`** — Foundation: `types.ts` (ArbContext), `errors.ts` (ArbError, ArbAbort), `config.ts` (INI reader/writer), `arbignore.ts`, `time.ts` (relative time formatting)
+- **`terminal/`** — Terminal I/O: `output.ts` (ANSI colors, logging, progress), `tty.ts` (TTY detection), `debug.ts`, `stdin.ts`, `abort-keypress.ts`
+- **`git/`** — Git operations: `git.ts` (process spawning, branch/status/remote ops), `git-cache.ts` (request-scoped promise coalescing), `remotes.ts` (remote role resolution), `remote-url.ts` (URL parsing, PR URL construction)
+- **`status/`** — Canonical status model: `status.ts` (RepoStatus, RepoFlags, gathering, filtering — see ARCHITECTURE.md), `skip-flags.ts`, `pr-detection.ts`, `ticket-detection.ts`, `test-helpers.ts` (makeRepo fixtures)
+- **`render/`** — Declarative render model: `model.ts` (Cell, Span, Attention, OutputNode types, cell helpers — zero lib imports), `analysis.ts` (analyze* functions, buildStatusCountsCell, formatStatusCounts, flagLabels), `render.ts` (OutputNode[] → ANSI string), `status-view.ts`, `status-verbose.ts`, `conflict-report.ts`, `repo-header.ts`, `plan-format.ts`, `integrate-graph.ts`, `phased-render.ts`
+- **`workspace/`** — Workspace management: `arb-root.ts` (.arb/ marker detection), `repos.ts` (repo listing, selection), `worktrees.ts`, `branch.ts` (workspace branch detection), `context.ts` (requireWorkspace/requireBranch guards), `clean.ts`, `templates.ts`
+- **`sync/`** — Synchronization: `integrate.ts` (shared rebase/merge logic), `parallel-fetch.ts` (concurrent fetch with timeout), `mutation-flow.ts` (confirmation prompts, phased render integration)
+- **`json/`** — JSON output: `json-types.ts` (Zod schemas), `json-schema.ts`
+- **`help/`** — Help topics
 
 ### Testing
 
@@ -54,7 +55,7 @@ Each command exports a `register*Command(program, getCtx)` function. The `getCtx
 - Conventional commits enforced via commitlint
 - Use `PROJ-xxx` as the example ticket key prefix in documentation and examples. Use `ACME-xxx` when a second distinct prefix is needed
 - Strict TypeScript with `noUncheckedIndexedAccess`
-- Uses the `git()` helper from `src/lib/git.ts` for git process spawning. Use `Bun.$` directly only for piped commands and `git clone` (which has no `-C` flag)
+- Uses the `git()` helper from `src/lib/git/git.ts` for git process spawning. Use `Bun.$` directly only for piped commands and `git clone` (which has no `-C` flag)
 
 ## Commands
 
@@ -63,14 +64,15 @@ Each command exports a `register*Command(program, getCtx)` function. The `getCtx
 | `bun run dev -- <args>` | Run CLI locally (passes args to arb) |
 | `bun run build` | Build single executable to `dist/arb` |
 | `bun test` | Run all unit tests |
-| `bun test src/lib/git.test.ts` | Run a single test file |
+| `bun test src/lib/git/git.test.ts` | Run a single test file |
 | `bun run test:integration` | Build and run BATS integration tests |
 | `bun run build && bats test/integration/status.bats` | Run a single integration test file |
 | `bun run build && bats test/integration/sync.bats --filter "push skips"` | Run a single integration test by name |
 | `bun run lint` | Check with Biome (formatting + linting) |
 | `bun run lint:fix` | Auto-fix lint/format issues |
 | `bun run typecheck` | TypeScript type checking |
-| `bun run check` | Run all checks (lint, typecheck, unit tests, integration tests) |
+| `bun run cycles` | Check for circular dependencies (madge) |
+| `bun run check` | Run all checks (lint, typecheck, cycles, unit tests, integration tests) |
 
 Always use these Bun scripts instead of running commands directly.
 

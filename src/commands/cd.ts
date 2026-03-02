@@ -2,10 +2,10 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import select from "@inquirer/select";
 import type { Command } from "commander";
-import { ArbError } from "../lib/errors";
-import { error, info } from "../lib/output";
-import { listWorkspaces, workspaceRepoDirs } from "../lib/repos";
-import type { ArbContext } from "../lib/types";
+import { ArbError } from "../lib/core";
+import type { ArbContext } from "../lib/core";
+import { error, info } from "../lib/terminal";
+import { listWorkspaces, workspaceRepoDirs } from "../lib/workspace";
 
 export function registerCdCommand(program: Command, getCtx: () => ArbContext): void {
 	program

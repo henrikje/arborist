@@ -2,20 +2,29 @@ import { existsSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Command } from "commander";
 import { z } from "zod";
-import { debugGit, isDebug } from "../lib/debug";
-import { ArbError } from "../lib/errors";
-import { git } from "../lib/git";
-import { GitCache } from "../lib/git-cache";
-import { printSchema } from "../lib/json-schema";
-import { type RepoListJsonEntry, RepoListJsonEntrySchema } from "../lib/json-types";
-import { confirmOrExit } from "../lib/mutation-flow";
-import { dim, dryRunNotice, error, info, inlineResult, inlineStart, plural, success } from "../lib/output";
+import { ArbError } from "../lib/core";
+import type { ArbContext } from "../lib/core";
+import { GitCache, git } from "../lib/git";
+import { printSchema } from "../lib/json";
+import { type RepoListJsonEntry, RepoListJsonEntrySchema } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
-import { cell } from "../lib/render-model";
-import type { OutputNode } from "../lib/render-model";
-import { findRepoUsage, listRepos, selectInteractive } from "../lib/repos";
-import { isTTY } from "../lib/tty";
-import type { ArbContext } from "../lib/types";
+import { cell } from "../lib/render";
+import type { OutputNode } from "../lib/render";
+import { confirmOrExit } from "../lib/sync";
+import {
+	debugGit,
+	dim,
+	dryRunNotice,
+	error,
+	info,
+	inlineResult,
+	inlineStart,
+	isDebug,
+	isTTY,
+	plural,
+	success,
+} from "../lib/terminal";
+import { findRepoUsage, listRepos, selectInteractive } from "../lib/workspace";
 
 function buildRepoListNodes(entries: RepoListJsonEntry[], verbose: boolean): OutputNode[] {
 	const rows = entries.map((e) => {

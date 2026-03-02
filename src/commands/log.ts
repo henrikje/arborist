@@ -1,15 +1,12 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError } from "../lib/errors";
-import { getCommitsBetweenFull, git } from "../lib/git";
-import { GitCache } from "../lib/git-cache";
-import { printSchema } from "../lib/json-schema";
-import { type LogJsonOutput, LogJsonOutputSchema, type LogJsonRepo } from "../lib/json-types";
-import { error, plural, stdout, success } from "../lib/output";
-import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
+import { ArbError } from "../lib/core";
+import type { ArbContext } from "../lib/core";
+import { GitCache, getCommitsBetweenFull, git } from "../lib/git";
+import { printSchema } from "../lib/json";
+import { type LogJsonOutput, LogJsonOutputSchema, type LogJsonRepo } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
-import { buildRepoSkipHeader, repoHeaderNode } from "../lib/repo-header";
-import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
+import { buildRepoSkipHeader, repoHeaderNode } from "../lib/render";
 import {
 	type RepoStatus,
 	baseRef,
@@ -18,10 +15,9 @@ import {
 	repoMatchesWhere,
 	resolveWhereFilter,
 } from "../lib/status";
-import { readNamesFromStdin } from "../lib/stdin";
-import { isTTY } from "../lib/tty";
-import type { ArbContext } from "../lib/types";
-import { requireBranch, requireWorkspace } from "../lib/workspace-context";
+import { parallelFetch, reportFetchFailures } from "../lib/sync";
+import { error, isTTY, plural, readNamesFromStdin, stdout, success } from "../lib/terminal";
+import { requireBranch, requireWorkspace, resolveRepoSelection, workspaceRepoDirs } from "../lib/workspace";
 
 interface LogCommit {
 	shortHash: string;
