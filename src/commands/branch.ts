@@ -18,6 +18,7 @@ import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
 import { requireWorkspace } from "../lib/workspace-context";
+import { registerBranchRenameSubcommand } from "./branch-rename";
 
 interface RepoBranch {
 	name: string;
@@ -33,15 +34,20 @@ interface VerboseRow {
 }
 
 export function registerBranchCommand(program: Command, getCtx: () => ArbContext): void {
-	program
+	const branch = program
 		.command("branch")
+		.summary("Inspect and rename the workspace branch")
+		.description("Inspect or rename the workspace branch. When invoked without a subcommand, defaults to 'show'.");
+
+	branch
+		.command("show", { isDefault: true })
 		.option("-q, --quiet", "Output just the branch name")
 		.option("-v, --verbose", "Show per-repo branch and remote tracking detail")
 		.option("--fetch", "Fetch remotes before displaying (default in verbose mode)")
 		.option("-N, --no-fetch", "Skip fetching")
 		.option("--json", "Output structured JSON")
 		.option("--schema", "Print JSON Schema for this command's --json output and exit")
-		.summary("Show the workspace branch")
+		.summary("Show the workspace branch (default)")
 		.description(
 			"Show the workspace branch, base branch (if configured), and any per-repo deviations. Use --verbose to show a per-repo table with branch and remote tracking info (fetches by default; use -N to skip). Press Escape during the fetch to cancel and use stale data. Use --quiet to output just the branch name (useful for scripting). Use --json for machine-readable output.\n\nSee 'arb help scripting' for output modes and piping.",
 		)
@@ -60,6 +66,8 @@ export function registerBranchCommand(program: Command, getCtx: () => ArbContext
 				await runBranch(ctx, options);
 			},
 		);
+
+	registerBranchRenameSubcommand(branch, getCtx);
 }
 
 async function runBranch(

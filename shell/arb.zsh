@@ -31,6 +31,17 @@ arb() {
         return
     fi
 
+    if [[ "$1" == "branch" && "$2" == "rename" ]]; then
+        # Pass help flags through without capturing
+        case " ${*:3} " in
+            *" --help "*|*" -h "*) command arb branch rename "${@:3}"; return ;;
+        esac
+        local _arb_dir
+        _arb_dir="$(command arb branch rename "${@:3}")" || return
+        [[ -n "$_arb_dir" ]] && cd "$_arb_dir"
+        return
+    fi
+
     command arb "$@"
 }
 
@@ -144,12 +155,11 @@ _arb() {
                 'attach:Attach repos to the workspace'
                 'detach:Detach repos from the workspace'
                 'status:Show workspace status'
-                'branch:Show the workspace branch'
+                'branch:Inspect and rename the workspace branch'
                 'pull:Pull the feature branch from the share remote'
                 'push:Push the feature branch to the share remote'
                 'rebase:Rebase feature branches onto the base branch'
                 'merge:Merge the base branch into feature branches'
-                'rebranch:Rename the workspace branch across all repos'
                 'log:Show feature branch commits across repos'
                 'diff:Show feature branch diff across repos'
                 'exec:Run a command in each worktree'
@@ -329,13 +339,50 @@ _arb() {
                         '*:repo:($repo_names)'
                     ;;
                 branch)
-                    _arguments \
-                        '(-q --quiet --json --schema -v --verbose)'{-q,--quiet}'[Output just the branch name]' \
-                        '(-v --verbose -q --quiet --schema)'{-v,--verbose}'[Show per-repo branch and remote tracking detail]' \
-                        '(-N --fetch --no-fetch)--fetch[Fetch remotes before displaying]' \
-                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching (default)]' \
-                        '(--json -q --quiet --schema)--json[Output structured JSON]' \
-                        '(--schema --json -q --quiet -v --verbose)--schema[Print JSON Schema for --json output]'
+                    shift words; (( CURRENT-- ))
+                    if (( CURRENT == 1 )); then
+                        local -a branch_subcmds=(
+                            'show:Show the workspace branch (default)'
+                            'rename:Rename the workspace branch across all repos'
+                        )
+                        _describe 'branch command' branch_subcmds
+                        # Also offer show-options since show is the default
+                        _arguments \
+                            '(-q --quiet --json --schema -v --verbose)'{-q,--quiet}'[Output just the branch name]' \
+                            '(-v --verbose -q --quiet --schema)'{-v,--verbose}'[Show per-repo branch and remote tracking detail]' \
+                            '(-N --fetch --no-fetch)--fetch[Fetch remotes before displaying]' \
+                            '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching (default)]' \
+                            '(--json -q --quiet --schema)--json[Output structured JSON]' \
+                            '(--schema --json -q --quiet -v --verbose)--schema[Print JSON Schema for --json output]'
+                    else
+                        case "${words[1]}" in
+                            show)
+                                shift words; (( CURRENT-- ))
+                                _arguments \
+                                    '(-q --quiet --json --schema -v --verbose)'{-q,--quiet}'[Output just the branch name]' \
+                                    '(-v --verbose -q --quiet --schema)'{-v,--verbose}'[Show per-repo branch and remote tracking detail]' \
+                                    '(-N --fetch --no-fetch)--fetch[Fetch remotes before displaying]' \
+                                    '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching (default)]' \
+                                    '(--json -q --quiet --schema)--json[Output structured JSON]' \
+                                    '(--schema --json -q --quiet -v --verbose)--schema[Print JSON Schema for --json output]'
+                                ;;
+                            rename)
+                                shift words; (( CURRENT-- ))
+                                _arguments \
+                                    '--continue[Resume an in-progress rename]' \
+                                    '--abort[Roll back an in-progress rename]' \
+                                    '(-r --delete-remote)'{-r,--delete-remote}'[Delete old branch on remote after rename]' \
+                                    '(-N --fetch --no-fetch)--fetch[Fetch before rename (default)]' \
+                                    '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-rename remote fetch]' \
+                                    '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                                    '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                                    '--include-in-progress[Rename repos even if they have an in-progress git operation]' \
+                                    '--workspace-name[Rename the workspace directory]:name:' \
+                                    '--keep-workspace-name[Do not rename the workspace directory]' \
+                                    '1:new-name:'
+                                ;;
+                        esac
+                    fi
                     ;;
                 exec)
                     _arguments \
@@ -398,18 +445,6 @@ _arb() {
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($repo_names)'
                     ;;
-                rebranch)
-                    _arguments \
-                        '--continue[Resume an in-progress rebranch]' \
-                        '--abort[Roll back an in-progress rebranch]' \
-                        '--delete-remote-old[Delete old branch on remote after rename]' \
-                        '(-N --fetch --no-fetch)--fetch[Fetch before rebranch (default)]' \
-                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-rename remote fetch]' \
-                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
-                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
-                        '--include-in-progress[Rename repos even if they have an in-progress git operation]' \
-                        '1:new-branch:'
-                    ;;
                 log)
                     _arguments \
                         '(-N --fetch --no-fetch)--fetch[Fetch before showing log]' \
@@ -450,12 +485,11 @@ _arb() {
                         'attach:Attach repos to the workspace'
                         'detach:Detach repos from the workspace'
                         'status:Show workspace status'
-                        'branch:Show the workspace branch'
+                        'branch:Inspect and rename the workspace branch'
                         'pull:Pull the feature branch from the share remote'
                         'push:Push the feature branch to the share remote'
                         'rebase:Rebase feature branches onto the base branch'
                         'merge:Merge the base branch into feature branches'
-                        'rebranch:Rename the workspace branch across all repos'
                         'log:Show feature branch commits across repos'
                         'diff:Show feature branch diff across repos'
                         'exec:Run a command in each worktree'

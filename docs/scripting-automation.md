@@ -2,7 +2,7 @@
 
 ## Non-interactive mode
 
-Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, `merge`, `rebranch`, `delete`, and `clean`. Without this flag, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
+Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, `merge`, `branch rename`, `delete`, and `clean`. Without this flag, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
 
 ```bash
 arb rebase --yes && arb push --force --yes
@@ -17,7 +17,7 @@ arb push --dry-run        # see what would be pushed
 arb push --yes            # looks good — go ahead
 ```
 
-This is especially useful in scripted or AI-driven workflows where you want to inspect the plan before committing to it. The flag works on `push`, `pull`, `rebase`, `merge`, `rebranch`, `delete`, and `clean`.
+This is especially useful in scripted or AI-driven workflows where you want to inspect the plan before committing to it. The flag works on `push`, `pull`, `rebase`, `merge`, `branch rename`, `delete`, and `clean`.
 
 ## Filtering
 

@@ -88,12 +88,12 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
 	// ── repo list ───────────────────────────────────────────────────
 
 	repo
-		.command("list")
+		.command("list", { isDefault: true })
 		.option("-q, --quiet", "Output one repo name per line")
 		.option("-v, --verbose", "Show remote URLs alongside names")
 		.option("--json", "Output structured JSON")
 		.option("--schema", "Print JSON Schema for this command's --json output and exit")
-		.summary("List cloned repos")
+		.summary("List cloned repos (default)")
 		.description(
 			"List all repositories that have been cloned into .arb/repos/. Shows resolved SHARE and BASE remote names for each repo. Use --verbose to include remote URLs alongside names. Use --quiet for plain enumeration (one name per line). Use --json for machine-readable output.",
 		)

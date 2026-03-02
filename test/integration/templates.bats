@@ -331,6 +331,12 @@ load test_helper/common-setup
 
 # ── template ─────────────────────────────────────────────────────
 
+@test "arb template defaults to arb template list" {
+    run arb template
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"No templates defined"* ]]
+}
+
 @test "arb template list shows no templates when none defined" {
     run arb template list
     [ "$status" -eq 0 ]

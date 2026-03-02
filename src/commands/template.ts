@@ -190,8 +190,8 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 	// ── template list ────────────────────────────────────────────────
 
 	template
-		.command("list")
-		.summary("List all defined templates")
+		.command("list", { isDefault: true })
+		.summary("List all defined templates (default)")
 		.description(
 			"Show all template files in .arb/templates/ as a columnar table. When run inside a workspace, adds a STATUS column showing drift annotations: template (uses .arbtemplate rendering), conflict (both plain and .arbtemplate exist), modified (workspace copy differs), or deleted (workspace copy removed).",
 		)

@@ -166,6 +166,57 @@ load test_helper/common-setup
     [[ "$output" == *"Cannot combine"* ]]
 }
 
+# ── explicit show subcommand ──────────────────────────────────────
+
+@test "arb branch show outputs same as arb branch" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb branch
+    local branch_output="$output"
+    run arb branch show
+    [ "$status" -eq 0 ]
+    [ "$output" = "$branch_output" ]
+}
+
+@test "arb branch show -q outputs just the branch name" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb branch show -q
+    [ "$status" -eq 0 ]
+    [ "$output" = "my-feature" ]
+}
+
+@test "arb branch show --json outputs valid JSON" {
+    arb create my-feature repo-a
+    cd "$TEST_DIR/project/my-feature"
+    run arb branch show --json
+    [ "$status" -eq 0 ]
+    echo "$output" | jq -e '.branch == "my-feature"'
+}
+
+@test "arb branch show --verbose shows per-repo table" {
+    arb create my-feature repo-a repo-b
+    cd "$TEST_DIR/project/my-feature"
+    run arb branch show --verbose
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"REPO"* ]]
+    [[ "$output" == *"BRANCH"* ]]
+}
+
+@test "arb branch show --schema outputs JSON Schema" {
+    cd "$BATS_TMPDIR"
+    run arb branch show --schema
+    [ "$status" -eq 0 ]
+    echo "$output" | jq -e '."$schema"'
+}
+
+@test "arb branch --help shows show subcommand" {
+    cd "$TEST_DIR/project"
+    run arb branch --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"show"* ]]
+}
+
 # ── error handling ────────────────────────────────────────────────
 
 @test "arb branch outside a workspace errors" {

@@ -73,7 +73,7 @@ Tell the user *what happened*, not just *that it happened*. Use descriptive per-
 
 ### Command groups for subsystems
 
-When multiple operations manage the same `.arb/` subsystem (repos, templates), group them under a singular noun (`repo`, `template`) with subcommands. The parent command shows help when invoked without a subcommand.
+When multiple operations manage the same `.arb/` subsystem (repos, templates), group them under a singular noun (`repo`, `template`) with subcommands. Each command group designates a read-only subcommand as the default — the subcommand that runs when the group name is invoked bare. The default is always an inspection subcommand (`list` or `show`), never a mutation.
 
 ### Fetch behavior
 
@@ -99,7 +99,7 @@ When repos are the command's primary target, they are positional arguments (`arb
 
 ### Status-based filtering: `--where` and `--dirty`
 
-`--where` (`-w`) filters repos by `RepoFlags`. Supported on every command that gathers workspace status: `status`, `diff`, `log`, `exec`, `open`, `list`, `delete`, `push`, `pull`, `rebase`, `merge`. Commands that don't gather status (e.g. `attach`, `create`, `rebranch`) do not get `--where`.
+`--where` (`-w`) filters repos by `RepoFlags`. Supported on every command that gathers workspace status: `status`, `diff`, `log`, `exec`, `open`, `list`, `delete`, `push`, `pull`, `rebase`, `merge`. Commands that don't gather status (e.g. `attach`, `create`, `branch rename`) do not get `--where`.
 
 `--dirty` (`-d`) is a shorthand for `--where dirty`, mutually exclusive with `--where`. Only offered where "dirty" is a natural filter: `status`, `diff`, `log`, `exec`, `open`, `list`. Omitted from sync commands and `delete`.
 
