@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.103.0](https://github.com/henrikje/arborist/compare/v0.102.0...v0.103.0) (2026-03-02)
+
+
+### Features
+
+* add --where status filter to push, pull, rebase, and merge ([23479f5](https://github.com/henrikje/arborist/commit/23479f5680820c61764933d790658f6124502609))
+* add `arb branch` command and remove branch header from status ([8bce263](https://github.com/henrikje/arborist/commit/8bce2633a54ba26abf488192c36ffcf75f0a1571))
+* add escape-to-cancel for background fetch in dashboard commands ([369bbe9](https://github.com/henrikje/arborist/commit/369bbe9b6b48294a13189cc32a4477a67c2782f9))
+* add help topics for remotes, stacked, templates, and scripting ([1f361ea](https://github.com/henrikje/arborist/commit/1f361ea78499b1b59c96b41c0837cc7271d1cc05))
+* add verbose mode to arb branch with per-repo tracking detail ([659374a](https://github.com/henrikje/arborist/commit/659374a23ec09a19cf8c896bc738e70e22051f97))
+* add zod schemas and --schema flag for JSON output contracts ([bb20147](https://github.com/henrikje/arborist/commit/bb201472577b37917faf537885835bd4df99f082))
+* align plan output columns for push, pull, rebase, and merge ([36bad54](https://github.com/henrikje/arborist/commit/36bad5424bf20b7d11c713e45872880ba452de41))
+* detect merge commits by parentage when subject lacks branch name ([b201b3d](https://github.com/henrikje/arborist/commit/b201b3def26126b419937122a815e29af17dc804))
+* detect PRs and tickets from local git data ([6782e63](https://github.com/henrikje/arborist/commit/6782e63cc7d9b8bef3627bbb9975957f41efed0e))
+* extract --where help into dedicated `arb help where` topic ([1cd0842](https://github.com/henrikje/arborist/commit/1cd08422db438049391d3982a154e1fcd8219cd7))
+* improve status and push protection for merged branches with new commits ([3d473cc](https://github.com/henrikje/arborist/commit/3d473cc7c8b702991f1f2634b265868c8e1337a7))
+* replace -F/--fetch short option with -N/--no-fetch ([ee3f845](https://github.com/henrikje/arborist/commit/ee3f8458b832ffaffbc67a545468e10b57396bbf))
+
+
+### Bug Fixes
+
+* add leading blank line before table in delete and clean commands ([7cb756c](https://github.com/henrikje/arborist/commit/7cb756c8887c124b0766045f5a4ef75cc940f558))
+* improve PR detection coverage and squash path parity ([08bf6df](https://github.com/henrikje/arborist/commit/08bf6df489b0c749c1df23a12d73a6b3ab38cb57))
+* reject unknown repos in detach command ([7bb90d8](https://github.com/henrikje/arborist/commit/7bb90d86d70a064225271e8b5bcf221be100e1b6))
+
+
+### Performance Improvements
+
+* deduplicate git subprocess spawns with request-scoped GitCache ([6e35784](https://github.com/henrikje/arborist/commit/6e35784f15ff8855cb7c51b8a4d9d756acf202d7))
+* only fetch workspace repos in arb list ([bb91a80](https://github.com/henrikje/arborist/commit/bb91a80ce873100deff86400b27b6345e03ffd44))
+
 ## [0.102.0](https://github.com/henrikje/arborist/compare/v0.101.0...v0.102.0) (2026-02-27)
 
 
