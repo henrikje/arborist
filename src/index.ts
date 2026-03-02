@@ -20,7 +20,6 @@ import { registerPathCommand } from "./commands/path";
 import { registerPullCommand } from "./commands/pull";
 import { registerPushCommand } from "./commands/push";
 import { registerRebaseCommand } from "./commands/rebase";
-import { registerRebranchCommand } from "./commands/rebranch";
 import { registerRepoCommand } from "./commands/repo";
 import { registerStatusCommand } from "./commands/status";
 import { registerTemplateCommand } from "./commands/template";
@@ -51,7 +50,7 @@ const COMMAND_GROUPS = [
 	{
 		title: "Synchronization Commands:",
 		description: "  Synchronize workspace branches with remotes and base branches.",
-		commands: ["pull", "push", "rebase", "rebranch", "merge"],
+		commands: ["pull", "push", "rebase", "merge"],
 	},
 	{
 		title: "Execution Commands:",
@@ -225,7 +224,6 @@ registerBranchCommand(program, getCtx);
 registerPullCommand(program, getCtx);
 registerPushCommand(program, getCtx);
 registerRebaseCommand(program, getCtx);
-registerRebranchCommand(program, getCtx);
 registerMergeCommand(program, getCtx);
 registerExecCommand(program, getCtx);
 registerLogCommand(program, getCtx);

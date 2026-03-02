@@ -31,6 +31,17 @@ arb() {
         return
     fi
 
+    if [[ "$1" == "branch" && "$2" == "rename" ]]; then
+        # Pass help flags through without capturing
+        case " ${*:3} " in
+            *" --help "*|*" -h "*) command arb branch rename "${@:3}"; return ;;
+        esac
+        local _arb_dir
+        _arb_dir="$(command arb branch rename "${@:3}")" || return
+        [[ -n "$_arb_dir" ]] && cd "$_arb_dir"
+        return
+    fi
+
     command arb "$@"
 }
 
@@ -362,16 +373,41 @@ __arb_complete_status() {
 }
 
 __arb_complete_branch() {
-    local cur="$1"
-    COMPREPLY=($(compgen -W "-q --quiet -v --verbose --fetch -N --no-fetch --json --schema" -- "$cur"))
-}
-
-__arb_complete_rebranch() {
     local base_dir="$1" cur="$2"
-    if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--continue --abort --delete-remote-old --fetch -N --no-fetch -n --dry-run -y --yes --include-in-progress" -- "$cur"))
+    local sub_pos=0 i
+
+    # Find the branch subcommand position
+    for ((i=0; i<${#COMP_WORDS[@]}; i++)); do
+        if [[ "${COMP_WORDS[i]}" == "branch" ]]; then
+            sub_pos=$((i+1))
+            break
+        fi
+    done
+
+    local show_opts="-q --quiet -v --verbose --fetch -N --no-fetch --json --schema"
+    local rename_opts="--continue --abort -r --delete-remote --fetch -N --no-fetch -n --dry-run -y --yes --include-in-progress --workspace-name --keep-workspace-name"
+
+    if ((COMP_CWORD == sub_pos)); then
+        # Complete subcommand name or show-options (since show is the default)
+        COMPREPLY=($(compgen -W "show rename $show_opts" -- "$cur"))
         return
     fi
+
+    local sub="${COMP_WORDS[sub_pos]}"
+    case "$sub" in
+        show)
+            COMPREPLY=($(compgen -W "$show_opts" -- "$cur"))
+            ;;
+        rename)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "$rename_opts" -- "$cur"))
+            fi
+            ;;
+        *)
+            # Default (bare options route to show)
+            COMPREPLY=($(compgen -W "$show_opts" -- "$cur"))
+            ;;
+    esac
 }
 
 __arb_complete_log() {
@@ -554,7 +590,7 @@ __arb_complete_template() {
 __arb_complete_help() {
     local base_dir="$1" cur="$2"
     local topics="where remotes stacked templates scripting"
-    local commands="init repo create delete clean list path cd attach detach status branch pull push rebase merge rebranch log diff exec open template"
+    local commands="init repo create delete clean list path cd attach detach status branch pull push rebase merge log diff exec open template"
     COMPREPLY=($(compgen -W "$topics $commands" -- "$cur"))
 }
 
@@ -580,7 +616,7 @@ _arb() {
 
     # Completing the subcommand itself
     if ((COMP_CWORD <= cmd_pos)); then
-        local commands="init repo create delete clean list path cd attach detach status branch pull push rebase merge rebranch log diff exec open template help"
+        local commands="init repo create delete clean list path cd attach detach status branch pull push rebase merge log diff exec open template help"
         # Also complete global flags
         if [[ "$cur" == -* ]]; then
             COMPREPLY=($(compgen -W "-C -h --help -v --version --debug" -- "$cur"))
@@ -604,12 +640,11 @@ _arb() {
         attach)   __arb_complete_attach "$base_dir" "$cur" ;;
         detach)   __arb_complete_detach "$base_dir" "$cur" ;;
         status)   __arb_complete_status "$base_dir" "$cur" ;;
-        branch)   __arb_complete_branch "$cur" ;;
+        branch)   __arb_complete_branch "$base_dir" "$cur" ;;
         pull)     __arb_complete_pull "$base_dir" "$cur" ;;
         push)     __arb_complete_push "$base_dir" "$cur" ;;
         rebase)   __arb_complete_rebase "$base_dir" "$cur" ;;
         merge)    __arb_complete_merge "$base_dir" "$cur" ;;
-        rebranch) __arb_complete_rebranch "$base_dir" "$cur" ;;
         log)      __arb_complete_log "$base_dir" "$cur" ;;
         diff)     __arb_complete_diff "$base_dir" "$cur" ;;
         exec)     __arb_complete_exec "$base_dir" "$cur" ;;

@@ -29,6 +29,24 @@ load test_helper/common-setup
     [[ "$output" == *"Commands:"* ]]
 }
 
+# ── repo default (bare invocation defaults to list) ─────────────
+
+@test "arb repo defaults to arb repo list" {
+    run arb repo
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"repo-a"* ]]
+    [[ "$output" == *"repo-b"* ]]
+}
+
+@test "arb repo --quiet defaults to arb repo list --quiet" {
+    run arb repo --quiet
+    [ "$status" -eq 0 ]
+    run arb repo list --quiet
+    local explicit_output="$output"
+    run arb repo --quiet
+    [ "$output" = "$explicit_output" ]
+}
+
 # ── repo list ────────────────────────────────────────────────────
 
 @test "arb repo list lists cloned repo names" {

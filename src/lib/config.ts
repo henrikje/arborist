@@ -16,10 +16,10 @@ export function writeConfig(
 	configFile: string,
 	branch: string,
 	base?: string | null,
-	rebranchFrom?: string | null,
+	branchRenameFrom?: string | null,
 ): void {
 	let content = `branch = ${branch}\n`;
 	if (base) content += `base = ${base}\n`;
-	if (rebranchFrom) content += `rebranch_from = ${rebranchFrom}\n`;
+	if (branchRenameFrom) content += `branch_rename_from = ${branchRenameFrom}\n`;
 	writeFileSync(configFile, content);
 }
