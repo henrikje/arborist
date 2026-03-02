@@ -1,31 +1,46 @@
-import { dim, yellow } from "./output";
+import { type Cell, cell, suffix } from "./render-model";
 import { BENIGN_SKIPS, type SkipFlag } from "./skip-flags";
 
-export interface ActionPair {
-	value: string;
-	render: string;
-}
-
-export function skipAction(skipReason: string, skipFlag?: SkipFlag): ActionPair {
+export function skipCell(skipReason: string, skipFlag?: SkipFlag): Cell {
 	const text = `skipped \u2014 ${skipReason}`;
-	const style = skipFlag && BENIGN_SKIPS.has(skipFlag) ? dim : yellow;
-	return { value: text, render: style(text) };
+	const benign = skipFlag != null && BENIGN_SKIPS.has(skipFlag);
+	return cell(text, benign ? "muted" : "attention");
 }
 
-export function upToDateAction(): ActionPair {
-	return { value: "up to date", render: "up to date" };
+export function upToDateCell(): Cell {
+	return cell("up to date");
 }
 
-export function formatStashHint(assessment: {
+export function stashHintCell(assessment: {
 	needsStash?: boolean;
 	stashPopConflictFiles?: string[] | null;
-}): string {
-	if (!assessment.needsStash) return "";
+}): Cell | null {
+	if (!assessment.needsStash) return null;
 	if (assessment.stashPopConflictFiles && assessment.stashPopConflictFiles.length > 0) {
-		return ` ${yellow("(autostash, stash pop conflict likely)")}`;
+		return cell(" (autostash, stash pop conflict likely)", "attention");
 	}
 	if (assessment.stashPopConflictFiles) {
-		return " (autostash, stash pop conflict unlikely)";
+		return cell(" (autostash, stash pop conflict unlikely)");
 	}
-	return " (autostash)";
+	return cell(" (autostash)");
+}
+
+export function headShaCell(sha: string): Cell {
+	return cell(`  (HEAD ${sha})`, "muted");
+}
+
+/** Append stash hint and HEAD sha suffix to a base cell */
+export function withSuffixes(
+	base: Cell,
+	assessment: { needsStash?: boolean; stashPopConflictFiles?: string[] | null; headSha?: string },
+): Cell {
+	let result = base;
+	const stash = stashHintCell(assessment);
+	if (stash) {
+		result = suffix(result, stash.plain, stash.spans[0]?.attention ?? "default");
+	}
+	if (assessment.headSha) {
+		result = suffix(result, `  (HEAD ${assessment.headSha})`, "muted");
+	}
+	return result;
 }

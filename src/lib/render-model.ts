@@ -60,7 +60,15 @@ export const EMPTY_CELL: Cell = { plain: "", spans: [] };
 
 // ── Output Nodes ──
 
-export type OutputNode = TableNode | MessageNode | SectionNode | SummaryNode | HintNode | RepoHeaderNode | GapNode;
+export type OutputNode =
+	| TableNode
+	| MessageNode
+	| SectionNode
+	| SummaryNode
+	| HintNode
+	| RepoHeaderNode
+	| GapNode
+	| RawTextNode;
 
 export interface TableNode {
 	kind: "table";
@@ -114,6 +122,12 @@ export interface RepoHeaderNode {
 
 export interface GapNode {
 	kind: "gap";
+}
+
+/** Pre-rendered text passed through without modification (temporary bridge for graph output) */
+export interface RawTextNode {
+	kind: "rawText";
+	text: string;
 }
 
 // ── Cell-Level Analysis Helpers ──

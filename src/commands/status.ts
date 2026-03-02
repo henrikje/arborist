@@ -20,7 +20,7 @@ import {
 	repoMatchesWhere,
 	resolveWhereFilter,
 } from "../lib/status";
-import { formatVerboseDetail, gatherVerboseDetail, toJsonVerbose } from "../lib/status-verbose";
+import { type VerboseDetail, gatherVerboseDetail, toJsonVerbose } from "../lib/status-verbose";
 import { buildStatusView } from "../lib/status-view";
 import { readNamesFromStdin } from "../lib/stdin";
 import { isTTY } from "../lib/tty";
@@ -238,7 +238,7 @@ async function renderStatusTable(
 
 	// Predict conflicts for diverged repos (both ahead and behind base)
 	const conflictRepos = new Set<string>();
-	await Promise.all(
+	const conflictPromise = Promise.all(
 		repos
 			.filter((r) => r.base !== null && r.base.ahead > 0 && r.base.behind > 0)
 			.map(async (r) => {
@@ -252,6 +252,21 @@ async function renderStatusTable(
 				}
 			}),
 	);
+
+	// Gather verbose detail in parallel (when verbose mode is on)
+	let verboseData: Map<string, VerboseDetail | undefined> | undefined;
+	if (options.verbose) {
+		const verbosePromise = Promise.all(
+			repos.map(async (repo) => {
+				const detail = await gatherVerboseDetail(repo, wsDir);
+				return [repo.name, detail] as const;
+			}),
+		);
+		const [, verboseEntries] = await Promise.all([conflictPromise, verbosePromise]);
+		verboseData = new Map(verboseEntries);
+	} else {
+		await conflictPromise;
+	}
 
 	// Detect current repo from cwd
 	const cwd = resolve(process.cwd());
@@ -269,6 +284,7 @@ async function renderStatusTable(
 		expectedBranch: filteredSummary.branch,
 		conflictRepos,
 		currentRepo,
+		verboseData,
 	});
 
 	// Resolve render context
@@ -278,29 +294,6 @@ async function renderStatusTable(
 		tty: isTTY(),
 		terminalWidth: termCols > 0 ? termCols : undefined,
 	};
-
-	// Verbose detail (stays imperative for Phase 1 — migrates to afterRow in Phase 2)
-	if (options.verbose) {
-		// Split rendered table by newline to interleave verbose detail after each data row.
-		// Assumes render() output is: header line, then one line per data row, with trailing \n.
-		// This coupling is a known Phase 1 trade-off; Phase 2 moves verbose into afterRow.
-		const tableOutput = render(nodes, renderCtx);
-		const lines = tableOutput.split("\n");
-		let output = `${lines[0]}\n`;
-		for (let i = 0; i < repos.length; i++) {
-			const repo = repos[i];
-			if (!repo) continue;
-			const rowLine = lines[i + 1];
-			if (rowLine !== undefined) output += `${rowLine}\n`;
-
-			const verbose = await gatherVerboseDetail(repo, wsDir);
-			output += formatVerboseDetail(repo, verbose);
-			if (i < repos.length - 1) {
-				output += "\n";
-			}
-		}
-		return output;
-	}
 
 	return render(nodes, renderCtx);
 }

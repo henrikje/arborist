@@ -14,26 +14,18 @@ import {
 } from "../lib/git";
 import { GitCache } from "../lib/git-cache";
 import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
-import {
-	dim,
-	dryRunNotice,
-	error,
-	finishSummary,
-	info,
-	inlineResult,
-	inlineStart,
-	plural,
-	yellow,
-} from "../lib/output";
-import { type ActionPair, formatStashHint, skipAction, upToDateAction } from "../lib/plan-format";
+import { dryRunNotice, error, finishSummary, info, inlineResult, inlineStart, plural, yellow } from "../lib/output";
+import { skipCell, upToDateCell } from "../lib/plan-format";
 import type { RepoRemotes } from "../lib/remotes";
+import { type RenderContext, render } from "../lib/render";
+import type { Cell, OutputNode } from "../lib/render-model";
+import { cell, spans, suffix } from "../lib/render-model";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import type { SkipFlag } from "../lib/skip-flags";
 import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
-import { VERBOSE_COMMIT_LIMIT, formatVerboseCommits } from "../lib/status-verbose";
+import { VERBOSE_COMMIT_LIMIT, verboseCommitsToNodes } from "../lib/status-verbose";
 import { readNamesFromStdin } from "../lib/stdin";
-import type { Column } from "../lib/table";
-import { renderTable } from "../lib/table";
+import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
@@ -347,71 +339,107 @@ export function formatPullPlan(
 	remotesMap: Map<string, RepoRemotes>,
 	verbose?: boolean,
 ): string {
-	// Pre-compute action pairs per assessment
-	const actions: ActionPair[] = assessments.map((a) => {
-		if (a.outcome === "will-pull") {
-			return pullAction(a, remotesMap);
-		}
-		if (a.outcome === "up-to-date") {
-			return upToDateAction();
-		}
-		return skipAction(a.skipReason ?? "", a.skipFlag);
-	});
-
-	const columns: Column<PullAssessment>[] = [
-		{ header: "REPO", value: (a) => a.repo },
-		{
-			header: "ACTION",
-			value: (_a, i) => actions[i]?.value ?? "",
-			render: (_a, i) => actions[i]?.render ?? "",
-		},
-	];
-
-	let out = "\n";
-	out += renderTable(columns, assessments, {
-		afterRow: (a, _i) => {
-			if (verbose && a.outcome === "will-pull" && a.commits && a.commits.length > 0) {
-				const remotes = remotesMap.get(a.repo);
-				const shareRemote = remotes?.share ?? "origin";
-				const label = `Incoming from ${shareRemote}:`;
-				return formatVerboseCommits(a.commits, a.totalCommits ?? a.commits.length, label, {
-					diffStats: a.diffStats,
-					conflictCommits: a.conflictCommits,
-				});
-			}
-			return "";
-		},
-	});
-	out += "\n";
-	return out;
+	const nodes = buildPullPlanNodes(assessments, remotesMap, verbose);
+	const envCols = Number(process.env.COLUMNS);
+	const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
+	const ctx: RenderContext = { tty: isTTY(), terminalWidth: termCols > 0 ? termCols : undefined };
+	return render(nodes, ctx);
 }
 
-function pullAction(a: PullAssessment, remotesMap: Map<string, RepoRemotes>): ActionPair {
-	const remotes = remotesMap.get(a.repo);
-	const forkSuffix = remotes && remotes.base !== remotes.share ? ` \u2190 ${remotes.share}` : "";
-	const headPlain = a.headSha ? `  (HEAD ${a.headSha})` : "";
-	const headRendered = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
+export function buildPullPlanNodes(
+	assessments: PullAssessment[],
+	remotesMap: Map<string, RepoRemotes>,
+	verbose?: boolean,
+): OutputNode[] {
+	const nodes: OutputNode[] = [{ kind: "gap" }];
 
-	let conflictPlain = "";
-	let conflictRendered = "";
-	if (a.conflictPrediction === "conflict") {
-		conflictPlain = ", conflict likely";
-		conflictRendered = `, ${yellow("conflict likely")}`;
-	} else if (a.conflictPrediction === "no-conflict") {
-		conflictPlain = ", no conflict";
-		conflictRendered = ", no conflict";
-	} else if (a.conflictPrediction === "clean") {
-		conflictPlain = ", conflict unlikely";
-		conflictRendered = ", conflict unlikely";
-	}
+	const rows = assessments.map((a) => {
+		let actionCell: Cell;
+		if (a.outcome === "will-pull") {
+			actionCell = pullActionCell(a, remotesMap);
+		} else if (a.outcome === "up-to-date") {
+			actionCell = upToDateCell();
+		} else {
+			actionCell = skipCell(a.skipReason ?? "", a.skipFlag);
+		}
+
+		let afterRow: OutputNode[] | undefined;
+		if (verbose && a.outcome === "will-pull" && a.commits && a.commits.length > 0) {
+			const remotes = remotesMap.get(a.repo);
+			const shareRemote = remotes?.share ?? "origin";
+			const label = `Incoming from ${shareRemote}:`;
+			afterRow = verboseCommitsToNodes(a.commits, a.totalCommits ?? a.commits.length, label, {
+				diffStats: a.diffStats,
+				conflictCommits: a.conflictCommits,
+			});
+		}
+
+		return {
+			cells: { repo: cell(a.repo), action: actionCell },
+			afterRow,
+		};
+	});
+
+	nodes.push({
+		kind: "table",
+		columns: [
+			{ header: "REPO", key: "repo" },
+			{ header: "ACTION", key: "action" },
+		],
+		rows,
+	});
+
+	nodes.push({ kind: "gap" });
+	return nodes;
+}
+
+export function pullActionCell(a: PullAssessment, remotesMap: Map<string, RepoRemotes>): Cell {
+	const remotes = remotesMap.get(a.repo);
+	const forkText = remotes && remotes.base !== remotes.share ? ` \u2190 ${remotes.share}` : "";
 
 	const rebasedHint = a.rebased > 0 ? `, ${a.rebased} rebased` : "";
-	const stash = formatStashHint(a);
 	const mergeType = a.pullMode === "merge" ? (a.toPush === 0 ? ", fast-forward" : ", three-way") : "";
 
-	const text = `${plural(a.behind, "commit")} to pull (${a.pullMode}${mergeType}${rebasedHint}${conflictPlain})${stash}${forkSuffix}${headPlain}`;
-	const rendered = `${plural(a.behind, "commit")} to pull (${a.pullMode}${mergeType}${rebasedHint}${conflictRendered})${stash}${forkSuffix}${headRendered}`;
-	return { value: text, render: rendered };
+	let conflictText = "";
+	let conflictIsAttention = false;
+	if (a.conflictPrediction === "conflict") {
+		conflictText = ", conflict likely";
+		conflictIsAttention = true;
+	} else if (a.conflictPrediction === "no-conflict") {
+		conflictText = ", no conflict";
+	} else if (a.conflictPrediction === "clean") {
+		conflictText = ", conflict unlikely";
+	}
+
+	let result: Cell;
+	if (conflictIsAttention) {
+		result = spans(
+			{ text: `${plural(a.behind, "commit")} to pull (${a.pullMode}${mergeType}${rebasedHint}`, attention: "default" },
+			{ text: conflictText, attention: "attention" },
+			{ text: ")", attention: "default" },
+		);
+	} else {
+		result = cell(`${plural(a.behind, "commit")} to pull (${a.pullMode}${mergeType}${rebasedHint}${conflictText})`);
+	}
+
+	// Stash hint
+	if (a.needsStash) {
+		if (a.stashPopConflictFiles && a.stashPopConflictFiles.length > 0) {
+			result = suffix(result, " (autostash, stash pop conflict likely)", "attention");
+		} else if (a.stashPopConflictFiles) {
+			result = suffix(result, " (autostash, stash pop conflict unlikely)");
+		} else {
+			result = suffix(result, " (autostash)");
+		}
+	}
+
+	// Fork suffix
+	if (forkText) result = suffix(result, forkText);
+
+	// HEAD sha
+	if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
+
+	return result;
 }
 
 async function predictPullConflicts(

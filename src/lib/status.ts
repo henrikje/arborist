@@ -21,6 +21,8 @@ import { error, yellow } from "./output";
 import { extractPrNumber } from "./pr-detection";
 import { buildPrUrl, parseRemoteUrl } from "./remote-url";
 import type { RepoRemotes } from "./remotes";
+import type { Cell } from "./render-model";
+import { cell, join } from "./render-model";
 import { workspaceRepoDirs } from "./repos";
 import { detectTicketFromCommits, detectTicketFromName } from "./ticket-detection";
 import { latestCommitDate } from "./time";
@@ -223,6 +225,24 @@ export function formatStatusCounts(
 			return [yellowKeys.has(key) ? yellow(label) : label];
 		})
 		.join(", ");
+}
+
+export function buildStatusCountsCell(
+	statusCounts: WorkspaceSummary["statusCounts"],
+	rebasedOnlyCount = 0,
+	atRiskKeys: Set<keyof RepoFlags> = AT_RISK_FLAGS,
+): Cell {
+	const parts: Cell[] = statusCounts.flatMap(({ label, key, count }) => {
+		if (key === "isUnpushed" && rebasedOnlyCount > 0) {
+			const genuine = count - rebasedOnlyCount;
+			const cells: Cell[] = [];
+			if (genuine > 0) cells.push(cell(label, "attention"));
+			cells.push(cell("rebased"));
+			return cells;
+		}
+		return [cell(label, atRiskKeys.has(key) ? "attention" : "default")];
+	});
+	return join(parts);
 }
 
 export function wouldLoseWork(flags: RepoFlags): boolean {

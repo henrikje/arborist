@@ -5,16 +5,18 @@ import { ArbError } from "../lib/errors";
 import { getCommitsBetweenFull, getShortHead, git } from "../lib/git";
 import { GitCache } from "../lib/git-cache";
 import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
-import { dim, dryRunNotice, finishSummary, info, inlineResult, inlineStart, plural, red, yellow } from "../lib/output";
-import { type ActionPair, skipAction, upToDateAction } from "../lib/plan-format";
+import { dryRunNotice, finishSummary, info, inlineResult, inlineStart, plural, red } from "../lib/output";
+import { skipCell, upToDateCell } from "../lib/plan-format";
 import type { RepoRemotes } from "../lib/remotes";
+import { type RenderContext, render } from "../lib/render";
+import type { Cell, OutputNode } from "../lib/render-model";
+import { cell, suffix } from "../lib/render-model";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import type { SkipFlag } from "../lib/skip-flags";
 import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
-import { VERBOSE_COMMIT_LIMIT, formatVerboseCommits } from "../lib/status-verbose";
+import { VERBOSE_COMMIT_LIMIT, verboseCommitsToNodes } from "../lib/status-verbose";
 import { readNamesFromStdin } from "../lib/stdin";
-import type { Column } from "../lib/table";
-import { renderTable } from "../lib/table";
+import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
@@ -188,85 +190,117 @@ export function formatPushPlan(
 	remotesMap: Map<string, RepoRemotes>,
 	verbose?: boolean,
 ): string {
-	// Pre-compute action pairs per assessment
-	const actions: ActionPair[] = assessments.map((a) => {
+	const nodes = buildPushPlanNodes(assessments, remotesMap, verbose);
+	const envCols = Number(process.env.COLUMNS);
+	const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
+	const ctx: RenderContext = { tty: isTTY(), terminalWidth: termCols > 0 ? termCols : undefined };
+	return render(nodes, ctx);
+}
+
+export function buildPushPlanNodes(
+	assessments: PushAssessment[],
+	remotesMap: Map<string, RepoRemotes>,
+	verbose?: boolean,
+): OutputNode[] {
+	const nodes: OutputNode[] = [{ kind: "gap" }];
+
+	const rows = assessments.map((a) => {
+		let actionCell: Cell;
 		if (a.outcome === "will-push" || a.outcome === "will-force-push") {
-			return pushAction(a, remotesMap);
+			actionCell = pushActionCell(a, remotesMap);
+		} else if (a.outcome === "up-to-date") {
+			actionCell = upToDateCell();
+		} else {
+			actionCell = skipCell(a.skipReason ?? "", a.skipFlag);
 		}
-		if (a.outcome === "up-to-date") {
-			return upToDateAction();
+
+		let afterRow: OutputNode[] | undefined;
+		if (
+			verbose &&
+			(a.outcome === "will-push" || a.outcome === "will-force-push") &&
+			a.commits &&
+			a.commits.length > 0
+		) {
+			const label = `Outgoing to ${a.shareRemote}:`;
+			afterRow = verboseCommitsToNodes(a.commits, a.totalCommits ?? a.commits.length, label);
 		}
-		return skipAction(a.skipReason ?? "", a.skipFlag);
+
+		return {
+			cells: { repo: cell(a.repo), action: actionCell },
+			afterRow,
+		};
 	});
 
-	const columns: Column<PushAssessment>[] = [
-		{ header: "REPO", value: (a) => a.repo },
-		{
-			header: "ACTION",
-			value: (_a, i) => actions[i]?.value ?? "",
-			render: (_a, i) => actions[i]?.render ?? "",
-		},
-	];
-
-	let out = "\n";
-	out += renderTable(columns, assessments, {
-		afterRow: (a, _i) => {
-			if (
-				verbose &&
-				(a.outcome === "will-push" || a.outcome === "will-force-push") &&
-				a.commits &&
-				a.commits.length > 0
-			) {
-				const label = `Outgoing to ${a.shareRemote}:`;
-				return formatVerboseCommits(a.commits, a.totalCommits ?? a.commits.length, label);
-			}
-			return "";
-		},
+	nodes.push({
+		kind: "table",
+		columns: [
+			{ header: "REPO", key: "repo" },
+			{ header: "ACTION", key: "action" },
+		],
+		rows,
 	});
 
 	const behindBaseCount = assessments.filter(
 		(a) => (a.outcome === "will-push" || a.outcome === "will-force-push") && a.behindBase > 0,
 	).length;
 	if (behindBaseCount > 0) {
-		out += `  ${dim(`hint: ${plural(behindBaseCount, "repo")} behind base — consider 'arb rebase' before pushing`)}\n`;
+		nodes.push({
+			kind: "hint",
+			cell: cell(
+				`  hint: ${plural(behindBaseCount, "repo")} behind base — consider 'arb rebase' before pushing`,
+				"muted",
+			),
+		});
 	}
 
 	const mergedNewWorkCount = assessments.filter((a) => a.skipFlag === "merged-new-work").length;
 	if (mergedNewWorkCount > 0) {
-		out += `  ${yellow(`hint: ${plural(mergedNewWorkCount, "repo")} merged with new commits — run 'arb rebase' to replay onto updated base`)}\n`;
+		nodes.push({
+			kind: "hint",
+			cell: cell(
+				`  hint: ${plural(mergedNewWorkCount, "repo")} merged with new commits — run 'arb rebase' to replay onto updated base`,
+				"attention",
+			),
+		});
 	}
 
-	out += "\n";
-	return out;
+	nodes.push({ kind: "gap" });
+	return nodes;
 }
 
-function pushAction(a: PushAssessment, remotesMap: Map<string, RepoRemotes>): ActionPair {
+export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRemotes>): Cell {
 	const remotes = remotesMap.get(a.repo);
-	const forkSuffix = remotes && remotes.base !== remotes.share ? ` → ${a.shareRemote}` : "";
-	const headPlain = a.headSha ? `  (HEAD ${a.headSha})` : "";
-	const headRendered = a.headSha ? `  ${dim(`(HEAD ${a.headSha})`)}` : "";
-	const behindBasePlain = a.behindBase > 0 ? ` (${a.behindBase} behind base)` : "";
-	const behindBaseRendered = a.behindBase > 0 ? ` ${yellow(`(${a.behindBase} behind base)`)}` : "";
+	const forkText = remotes && remotes.base !== remotes.share ? ` → ${a.shareRemote}` : "";
 
 	if (a.outcome === "will-push") {
 		const newBranchSuffix = a.recreate ? " (recreate)" : a.newBranch ? " (new branch)" : "";
-		const text = `${plural(a.ahead, "commit")} to push${newBranchSuffix}${behindBasePlain}${forkSuffix}${headPlain}`;
-		const rendered = `${plural(a.ahead, "commit")} to push${newBranchSuffix}${behindBaseRendered}${forkSuffix}${headRendered}`;
-		return { value: text, render: rendered };
+		let base = cell(`${plural(a.ahead, "commit")} to push${newBranchSuffix}`);
+		if (a.behindBase > 0) {
+			base = suffix(base, ` (${a.behindBase} behind base)`, "attention");
+		}
+		if (forkText) base = suffix(base, forkText);
+		if (a.headSha) base = suffix(base, `  (HEAD ${a.headSha})`, "muted");
+		return base;
 	}
 
 	// will-force-push
 	if (a.rebased > 0) {
 		const newCount = a.ahead - a.rebased;
 		const desc = newCount > 0 ? `${newCount} new + ${a.rebased} rebased` : `${a.rebased} rebased`;
-		const text = `${desc} to push (force)${behindBasePlain}${headPlain}`;
-		const rendered = `${desc} to push (force)${behindBaseRendered}${headRendered}`;
-		return { value: text, render: rendered };
+		let base = cell(`${desc} to push (force)`);
+		if (a.behindBase > 0) {
+			base = suffix(base, ` (${a.behindBase} behind base)`, "attention");
+		}
+		if (a.headSha) base = suffix(base, `  (HEAD ${a.headSha})`, "muted");
+		return base;
 	}
 
-	const text = `${plural(a.ahead, "commit")} to push (force \u2014 ${a.behind} behind ${a.shareRemote})${behindBasePlain}${headPlain}`;
-	const rendered = `${plural(a.ahead, "commit")} to push (force \u2014 ${a.behind} behind ${a.shareRemote})${behindBaseRendered}${headRendered}`;
-	return { value: text, render: rendered };
+	let base = cell(`${plural(a.ahead, "commit")} to push (force \u2014 ${a.behind} behind ${a.shareRemote})`);
+	if (a.behindBase > 0) {
+		base = suffix(base, ` (${a.behindBase} behind base)`, "attention");
+	}
+	if (a.headSha) base = suffix(base, `  (HEAD ${a.headSha})`, "muted");
+	return base;
 }
 
 async function gatherPushVerboseCommits(

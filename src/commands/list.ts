@@ -8,25 +8,22 @@ import { ArbError } from "../lib/errors";
 import { GitCache } from "../lib/git-cache";
 import { printSchema } from "../lib/json-schema";
 import { type ListJsonEntry, ListJsonEntrySchema } from "../lib/json-types";
-import { clearScanProgress, dim, error, info, scanProgress, stripAnsi, yellow } from "../lib/output";
+import { clearScanProgress, dim, error, info, scanProgress } from "../lib/output";
 import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { runPhasedRender } from "../lib/phased-render";
+import { type RenderContext, render } from "../lib/render";
+import type { Cell, OutputNode } from "../lib/render-model";
+import { EMPTY_CELL, cell } from "../lib/render-model";
 import { listWorkspaces, workspaceRepoDirs } from "../lib/repos";
 import {
 	type WorkspaceSummary,
-	formatStatusCounts,
+	buildStatusCountsCell,
 	gatherWorkspaceSummary,
 	resolveWhereFilter,
 	workspaceMatchesWhere,
 } from "../lib/status";
-import { type Column, renderTable } from "../lib/table";
 import { detectTicketFromName } from "../lib/ticket-detection";
-import {
-	type RelativeTimeParts,
-	computeLastCommitWidths,
-	formatLastCommitCell,
-	formatRelativeTimeParts,
-} from "../lib/time";
+import { type RelativeTimeParts, formatRelativeTimeParts } from "../lib/time";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
@@ -36,28 +33,17 @@ interface ListRow {
 	marker: boolean;
 	branch: string;
 	base: string;
-	baseFellBack: boolean;
+	baseCell: Cell;
 	ticket: string;
 	repos: string;
-	statusColored: string;
+	statusCell: Cell;
 	lastCommit: string | null;
 	special: "config-missing" | "empty" | null;
-}
-
-interface ListColumnWidths {
-	maxName: number;
-	maxBranch: number;
-	maxBase: number;
-	maxTicket: number;
-	maxRepos: number;
-	hasAnyBase: boolean;
-	hasAnyTicket: boolean;
 }
 
 interface ListMetadata {
 	rows: ListRow[];
 	toScan: { index: number; wsDir: string }[];
-	cols: ListColumnWidths;
 }
 
 export function registerListCommand(program: Command, getCtx: () => ArbContext): void {
@@ -226,7 +212,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 
 				if (!showStatus) {
 					if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames);
-					process.stdout.write(formatListTable(metadata.rows, metadata.cols, false));
+					process.stdout.write(formatListTable(metadata.rows, false));
 					return;
 				}
 
@@ -234,7 +220,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				const canPhase = tty && metadata.toScan.length > 0;
 
 				if (canPhase && shouldFetch) {
-					// 3-phase: placeholder → stale + fetching → fresh
+					// 3-phase: placeholder + fetching → placeholder + scanning → fresh
 					const fetchDirs = repoNames.map((r) => `${ctx.reposDir}/${r}`);
 					const remotesMap = await cache.resolveRemotesMap(repoNames, ctx.reposDir);
 					const { signal: abortSignal, cleanup: abortCleanup } = listenForAbortKeypress();
@@ -246,33 +232,36 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					const state: {
 						fetchResults?: Map<string, FetchResult>;
 						aborted?: boolean;
-						staleTable?: string;
 					} = {};
+					const placeholder = formatListTable(metadata.rows, true);
 
 					try {
 						await runPhasedRender([
-							{ render: () => formatListTable(metadata.rows, metadata.cols, true) },
 							{
-								render: async () => {
-									const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache);
-									state.staleTable = formatListTable(statusRows, metadata.cols, true);
-									return state.staleTable + fetchSuffix(fetchDirs.length, { abortable: true });
-								},
+								render: () => placeholder + fetchSuffix(fetchDirs.length, { abortable: true }),
 							},
 							{
 								render: async () => {
 									if (abortSignal.aborted) {
 										state.aborted = true;
-										return state.staleTable as string;
+										return placeholder;
 									}
 									state.fetchResults = await fetchPromise;
 									if (abortSignal.aborted) {
 										state.aborted = true;
-										return state.staleTable as string;
+										return placeholder;
 									}
 									cache.invalidateAfterFetch();
-									const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache);
-									return formatListTable(statusRows, metadata.cols, true);
+									return placeholder + dim("Scanning...");
+								},
+							},
+							{
+								render: async () => {
+									if (state.aborted) return placeholder;
+									const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
+										silent: true,
+									});
+									return formatListTable(statusRows, true);
 								},
 								write: (o) => process.stdout.write(o),
 							},
@@ -284,13 +273,15 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 						reportFetchFailures(repoNames, state.fetchResults as Map<string, FetchResult>);
 					}
 				} else if (canPhase) {
-					// 2-phase: placeholder → status
+					// 2-phase: placeholder + scanning → fresh
 					await runPhasedRender([
-						{ render: () => formatListTable(metadata.rows, metadata.cols, true) },
+						{ render: () => formatListTable(metadata.rows, true) + dim("Scanning...") },
 						{
 							render: async () => {
-								const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache);
-								return formatListTable(statusRows, metadata.cols, true);
+								const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
+									silent: true,
+								});
+								return formatListTable(statusRows, true);
 							},
 							write: (o) => process.stdout.write(o),
 						},
@@ -299,7 +290,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 					// Non-phased (non-TTY or nothing to scan)
 					if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames);
 					const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache);
-					process.stdout.write(formatListTable(statusRows, metadata.cols, true));
+					process.stdout.write(formatListTable(statusRows, true));
 				}
 			},
 		);
@@ -310,18 +301,10 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 async function gatherListMetadata(ctx: ArbContext, workspaces: string[]): Promise<ListMetadata> {
 	const rows: ListRow[] = [];
 	const toScan: { index: number; wsDir: string }[] = [];
-	let maxName = 0;
-	let maxBranch = 0;
-	let maxBase = 0;
-	let maxTicket = 0;
-	let maxRepos = 0;
-	let hasAnyBase = false;
-	let hasAnyTicket = false;
 
 	for (const name of workspaces) {
 		const wsDir = `${ctx.arbRootDir}/${name}`;
 		const marker = name === ctx.currentWorkspace;
-		if (name.length > maxName) maxName = name.length;
 
 		const configMissing = !existsSync(`${wsDir}/.arbws/config`);
 
@@ -331,10 +314,10 @@ async function gatherListMetadata(ctx: ArbContext, workspaces: string[]): Promis
 				marker,
 				branch: "",
 				base: "",
-				baseFellBack: false,
+				baseCell: EMPTY_CELL,
 				ticket: "",
 				repos: "",
-				statusColored: yellow("(config missing)"),
+				statusCell: cell("(config missing)", "attention"),
 				lastCommit: null,
 				special: "config-missing",
 			});
@@ -349,60 +332,39 @@ async function gatherListMetadata(ctx: ArbContext, workspaces: string[]): Promis
 
 		// Detect ticket from branch name (cheap, no git call)
 		const ticket = detectTicketFromName(branch) ?? "";
-		if (ticket) hasAnyTicket = true;
-		if (ticket.length > maxTicket) maxTicket = ticket.length;
-
-		if (branch.length > maxBranch) maxBranch = branch.length;
-		if (base.length > maxBase) maxBase = base.length;
-		if (base) hasAnyBase = true;
 
 		if (repoDirs.length === 0) {
-			const reposText = "0";
-			if (reposText.length > maxRepos) maxRepos = reposText.length;
 			rows.push({
 				name,
 				marker,
 				branch,
 				base,
-				baseFellBack: false,
+				baseCell: cell(base),
 				ticket,
-				repos: reposText,
-				statusColored: yellow("(empty)"),
+				repos: "0",
+				statusCell: cell("(empty)", "attention"),
 				lastCommit: null,
 				special: "empty",
 			});
 			continue;
 		}
 
-		const reposText = `${repoDirs.length}`;
-		if (reposText.length > maxRepos) maxRepos = reposText.length;
-
 		rows.push({
 			name,
 			marker,
 			branch,
 			base,
-			baseFellBack: false,
+			baseCell: cell(base),
 			ticket,
-			repos: reposText,
-			statusColored: dim("..."),
+			repos: `${repoDirs.length}`,
+			statusCell: cell("...", "muted"),
 			lastCommit: null,
 			special: null,
 		});
 		toScan.push({ index: rows.length - 1, wsDir });
 	}
 
-	if (maxName < 9) maxName = 9;
-	if (maxBranch < 6) maxBranch = 6;
-	if (hasAnyBase && maxBase < 4) maxBase = 4;
-	if (hasAnyTicket && maxTicket < 6) maxTicket = 6;
-	if (maxRepos < 5) maxRepos = 5;
-
-	return {
-		rows,
-		toScan,
-		cols: { maxName, maxBranch, maxBase, maxTicket, maxRepos, hasAnyBase, hasAnyTicket },
-	};
+	return { rows, toScan };
 }
 
 // ── Status gathering ──
@@ -412,6 +374,7 @@ async function gatherListStatus(
 	ctx: ArbContext,
 	whereFilter: string | undefined,
 	cache: GitCache,
+	options?: { silent?: boolean },
 ): Promise<ListRow[]> {
 	const rows = metadata.rows.map((r) => ({ ...r }));
 	const summaryByIndex = new Map<number, WorkspaceSummary>();
@@ -419,19 +382,18 @@ async function gatherListStatus(
 	let totalRepos = 0;
 	let scannedRepos = 0;
 
+	const progressCallback = options?.silent
+		? undefined
+		: (scanned: number, total: number) => {
+				if (scanned === 1) totalRepos += total;
+				scannedRepos++;
+				scanProgress(scannedRepos, totalRepos);
+			};
+
 	const results = await Promise.all(
 		metadata.toScan.map(async (entry) => {
 			try {
-				const summary = await gatherWorkspaceSummary(
-					entry.wsDir,
-					ctx.reposDir,
-					(scanned, total) => {
-						if (scanned === 1) totalRepos += total;
-						scannedRepos++;
-						scanProgress(scannedRepos, totalRepos);
-					},
-					cache,
-				);
+				const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir, progressCallback, cache);
 				return { index: entry.index, summary };
 			} catch {
 				return { index: entry.index, summary: null };
@@ -444,7 +406,7 @@ async function gatherListStatus(
 	for (const { index, summary } of results) {
 		if (!summary) {
 			const row = rows[index];
-			if (row) row.statusColored = yellow("(remotes not resolved)");
+			if (row) row.statusCell = cell("(remotes not resolved)", "attention");
 			continue;
 		}
 		summaryByIndex.set(index, summary);
@@ -470,74 +432,67 @@ function lastCommitParts(row: ListRow): RelativeTimeParts {
 	return formatRelativeTimeParts(row.lastCommit);
 }
 
-function formatListTable(displayRows: ListRow[], cols: ListColumnWidths, showStatus: boolean): string {
-	const lcWidths = computeLastCommitWidths(displayRows.map(lastCommitParts));
-
-	const statusPlain: string[] = displayRows.map((row) => stripAnsi(row.statusColored));
-
-	// Recompute hasAnyTicket from current rows (may have changed after status gathering)
+export function buildListTableNodes(displayRows: ListRow[], showStatus: boolean): OutputNode[] {
 	const hasAnyTicket = displayRows.some((row) => row.ticket.length > 0);
-	let maxTicket = cols.maxTicket;
-	if (hasAnyTicket) {
+	const hasAnyBase = displayRows.some((row) => row.base.length > 0);
+
+	// Compute max number width for right-aligning within the LAST COMMIT column
+	let maxNumWidth = 0;
+	if (showStatus) {
 		for (const row of displayRows) {
-			if (row.ticket.length > maxTicket) maxTicket = row.ticket.length;
+			const parts = lastCommitParts(row);
+			if (parts.num.length > maxNumWidth) maxNumWidth = parts.num.length;
 		}
-		if (maxTicket < 6) maxTicket = 6;
 	}
 
-	const columns: Column<ListRow>[] = [
-		{
-			header: "WORKSPACE",
-			value: (row) => row.name,
-		},
+	const columns = [
+		{ header: "WORKSPACE", key: "workspace" },
+		{ header: "TICKET", key: "ticket", show: hasAnyTicket },
+		{ header: "BRANCH", key: "branch" },
+		{ header: "BASE", key: "base", show: hasAnyBase },
+		{ header: "REPOS", key: "repos" },
+		...(showStatus
+			? [
+					{ header: "LAST COMMIT", key: "lastCommit" },
+					{ header: "STATUS", key: "status" },
+				]
+			: []),
 	];
 
-	if (hasAnyTicket) {
-		columns.push({
-			header: "TICKET",
-			value: (row) => (row.special === "config-missing" ? " ".repeat(maxTicket) : row.ticket),
-		});
-	}
+	const rows = displayRows.map((row) => {
+		const parts = lastCommitParts(row);
+		let lastCommitCell: Cell;
+		if (parts.num && parts.unit) {
+			lastCommitCell = cell(`${parts.num.padStart(maxNumWidth)} ${parts.unit}`);
+		} else if (row.special === null) {
+			lastCommitCell = cell("...", "muted");
+		} else {
+			lastCommitCell = EMPTY_CELL;
+		}
 
-	columns.push({
-		header: "BRANCH",
-		value: (row) => (row.special === "config-missing" ? " ".repeat(cols.maxBranch) : row.branch),
+		return {
+			cells: {
+				workspace: cell(row.name),
+				ticket: cell(row.ticket),
+				branch: row.special === "config-missing" ? EMPTY_CELL : cell(row.branch),
+				base: row.baseCell,
+				repos: row.special === "config-missing" ? EMPTY_CELL : cell(row.repos),
+				lastCommit: lastCommitCell,
+				status: row.statusCell,
+			},
+			marked: row.marker,
+		};
 	});
 
-	if (cols.hasAnyBase) {
-		columns.push({
-			header: "BASE",
-			value: (row) => (row.special === "config-missing" ? " ".repeat(cols.maxBase) : row.base),
-			render: (row) => {
-				if (row.special === "config-missing") return " ".repeat(cols.maxBase);
-				return row.baseFellBack ? yellow(row.base) : row.base;
-			},
-		});
-	}
+	return [{ kind: "table" as const, columns, rows }];
+}
 
-	columns.push({
-		header: "REPOS",
-		value: (row) => (row.special === "config-missing" ? " ".repeat(cols.maxRepos) : row.repos),
-	});
-
-	if (showStatus) {
-		columns.push({
-			header: "LAST COMMIT",
-			value: (row) => {
-				const parts = lastCommitParts(row);
-				if (parts.num || parts.unit) return formatLastCommitCell(parts, lcWidths, true);
-				if (row.special === null) return "...".padEnd(lcWidths.total);
-				return " ".repeat(lcWidths.total);
-			},
-		});
-		columns.push({
-			header: "STATUS",
-			value: (_row, i) => statusPlain[i] ?? "",
-			render: (row) => row.statusColored,
-		});
-	}
-
-	return renderTable(columns, displayRows, { marker: (row) => row.marker });
+function formatListTable(displayRows: ListRow[], showStatus: boolean): string {
+	const nodes = buildListTableNodes(displayRows, showStatus);
+	const envCols = Number(process.env.COLUMNS);
+	const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
+	const ctx: RenderContext = { tty: isTTY(), terminalWidth: termCols > 0 ? termCols : undefined };
+	return render(nodes, ctx);
 }
 
 // ── Helpers ──
@@ -563,12 +518,15 @@ async function blockingFetchRepos(ctx: ArbContext, cache: GitCache, repoNames: s
 
 function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
 	if (summary.statusCounts.length === 0) {
-		row.statusColored = "no issues";
+		row.statusCell = cell("no issues");
 	} else {
-		row.statusColored = formatStatusCounts(summary.statusCounts, summary.rebasedOnlyCount);
+		row.statusCell = buildStatusCountsCell(summary.statusCounts, summary.rebasedOnlyCount);
 	}
 	row.lastCommit = summary.lastCommit;
-	row.baseFellBack = summary.repos.some((r) => r.base?.configuredRef != null);
+	const baseFellBack = summary.repos.some((r) => r.base?.configuredRef != null);
+	if (baseFellBack) {
+		row.baseCell = cell(row.base, "attention");
+	}
 	// Update ticket from summary if it detected one from commits and branch didn't have one
 	if (!row.ticket && summary.detectedTicket) {
 		row.ticket = summary.detectedTicket.key;

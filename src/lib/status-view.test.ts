@@ -165,4 +165,40 @@ describe("buildStatusView", () => {
 		const table = nodes[0] as TableNode;
 		expect(table.rows).toHaveLength(3);
 	});
+
+	test("verbose data attaches afterRow to rows", () => {
+		const repos = [makeRepo({ name: "frontend" }), makeRepo({ name: "backend" })];
+		const verboseData = new Map([
+			[
+				"frontend",
+				{
+					unpushed: [{ hash: "aaa", shortHash: "aaa1234", subject: "commit 1", rebased: false }],
+				},
+			],
+			["backend", undefined],
+		]);
+		const nodes = buildStatusView(makeSummary({ repos, total: 2 }), defaultCtx({ verboseData }));
+		const table = nodes[0] as TableNode;
+		// frontend has verbose → afterRow with section nodes
+		expect(table.rows[0]?.afterRow).toBeDefined();
+		expect(table.rows[0]?.afterRow?.some((n) => n.kind === "section")).toBe(true);
+		// backend has no verbose but is not last → afterRow with gap separator
+		expect(table.rows[1]?.afterRow).toBeUndefined();
+	});
+
+	test("verbose data adds gap separator for non-last rows without verbose", () => {
+		const repos = [makeRepo({ name: "a" }), makeRepo({ name: "b" }), makeRepo({ name: "c" })];
+		const verboseData = new Map<string, undefined>([
+			["a", undefined],
+			["b", undefined],
+			["c", undefined],
+		]);
+		const nodes = buildStatusView(makeSummary({ repos, total: 3 }), defaultCtx({ verboseData }));
+		const table = nodes[0] as TableNode;
+		// First two rows get gap separator
+		expect(table.rows[0]?.afterRow).toEqual([{ kind: "gap" }]);
+		expect(table.rows[1]?.afterRow).toEqual([{ kind: "gap" }]);
+		// Last row has no afterRow
+		expect(table.rows[2]?.afterRow).toBeUndefined();
+	});
 });

@@ -4,6 +4,7 @@ import type {
 	HintNode,
 	MessageNode,
 	OutputNode,
+	RawTextNode,
 	RepoHeaderNode,
 	SectionNode,
 	SummaryNode,
@@ -16,8 +17,8 @@ import type {
 
 /** Gap between top-level columns / column groups */
 const GROUP_GAP = 4;
-/** Gap between sub-columns within a column group */
-const SUB_GAP = 2;
+/** Default gap between sub-columns within a column group */
+const DEFAULT_SUB_GAP = 2;
 
 // ── ANSI Helpers ──
 
@@ -93,6 +94,9 @@ export function render(nodes: OutputNode[], ctx: RenderContext): string {
 				break;
 			case "gap":
 				out += renderGapNode(node);
+				break;
+			case "rawText":
+				out += renderRawTextNode(node);
 				break;
 		}
 	}
@@ -193,7 +197,7 @@ function resolveColumns(defs: TableColumnDef[], rows: TableRow[]): ResolvedColum
 		for (let i = firstIdx; i < resolved.length; i++) {
 			const r = resolved[i] as ResolvedColumn;
 			if (r.groupName !== groupName) continue;
-			if (subColCount > 0) groupContentWidth += SUB_GAP;
+			if (subColCount > 0) groupContentWidth += DEFAULT_SUB_GAP;
 			groupContentWidth += r.width;
 			subColCount++;
 			lastIdx = i;
@@ -230,7 +234,7 @@ function renderTableHeader(resolved: ResolvedColumn[], ctx: RenderContext): stri
 			let subCount = 0;
 			for (const r of resolved) {
 				if (r.groupName === col.groupName) {
-					if (subCount > 0) groupWidth += SUB_GAP;
+					if (subCount > 0) groupWidth += DEFAULT_SUB_GAP;
 					groupWidth += r.width;
 					subCount++;
 				}
@@ -266,7 +270,7 @@ function renderTableRow(row: TableRow, resolved: ResolvedColumn[], ctx: RenderCo
 		// Determine gap before this column
 		if (!isFirst) {
 			if (col.isSubColumn && !col.isFirstInGroup) {
-				out += " ".repeat(SUB_GAP);
+				out += " ".repeat(DEFAULT_SUB_GAP);
 			} else {
 				out += " ".repeat(GROUP_GAP);
 			}
@@ -328,7 +332,7 @@ function applyTruncation(resolved: ResolvedColumn[], rows: TableRow[], terminalW
 				if (!isFirst) totalWidth += GROUP_GAP;
 				isFirst = false;
 			} else {
-				totalWidth += SUB_GAP;
+				totalWidth += DEFAULT_SUB_GAP;
 			}
 		} else {
 			if (!isFirst) totalWidth += GROUP_GAP;
@@ -378,7 +382,7 @@ function renderMessageNode(node: MessageNode, ctx: RenderContext): string {
 function renderSectionNode(node: SectionNode, ctx: RenderContext): string {
 	let out = `      ${renderCell(node.header, ctx)}\n`;
 	for (const item of node.items) {
-		out += `        ${renderCell(item, ctx)}\n`;
+		out += `          ${renderCell(item, ctx)}\n`;
 	}
 	return out;
 }
@@ -407,4 +411,8 @@ function renderRepoHeaderNode(node: RepoHeaderNode, ctx: RenderContext): string 
 
 function renderGapNode(_node: GapNode): string {
 	return "\n";
+}
+
+function renderRawTextNode(node: RawTextNode): string {
+	return node.text;
 }

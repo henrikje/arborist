@@ -135,7 +135,7 @@ describe("render table", () => {
 		// Header should show group name "BASE", not individual headers
 		expect(lines[0]).toContain("BASE");
 
-		// Sub-columns should be separated by 2 spaces (SUB_GAP)
+		// Sub-columns should be separated by 2 spaces (default SUB_GAP)
 		expect(lines[1]).toContain("origin/main  2 ahead");
 	});
 
@@ -203,6 +203,20 @@ describe("render section", () => {
 		expect(lines[0]).toContain("Behind base:");
 		expect(lines[1]).toContain("abc123 fix bug");
 		expect(lines[2]).toContain("def456 add feature");
+	});
+
+	test("uses 6-space indent for header and 10-space indent for items", () => {
+		const section: SectionNode = {
+			kind: "section",
+			header: cell("Header:"),
+			items: [cell("item1"), cell("item2")],
+		};
+
+		const result = render([section], NO_TTY);
+		const lines = result.split("\n");
+		expect(lines[0]).toBe("      Header:");
+		expect(lines[1]).toBe("          item1");
+		expect(lines[2]).toBe("          item2");
 	});
 });
 
