@@ -1,9 +1,9 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { configGet } from "../lib/config";
-import { buildConflictReport, buildStashPopFailureReport } from "../lib/conflict-report";
-import { ArbError } from "../lib/errors";
+import { ArbError, configGet } from "../lib/core";
+import type { ArbContext } from "../lib/core";
 import {
+	GitCache,
 	getCommitsBetweenFull,
 	getDiffShortstat,
 	getShortHead,
@@ -12,22 +12,27 @@ import {
 	predictRebaseConflictCommits,
 	predictStashPopConflict,
 } from "../lib/git";
-import { GitCache } from "../lib/git-cache";
-import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
-import { dryRunNotice, error, finishSummary, info, inlineResult, inlineStart, plural, yellow } from "../lib/output";
-import { skipCell, upToDateCell } from "../lib/plan-format";
-import type { RepoRemotes } from "../lib/remotes";
-import { type RenderContext, render } from "../lib/render";
-import type { Cell, OutputNode } from "../lib/render-model";
-import { cell, spans, suffix } from "../lib/render-model";
-import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
-import type { SkipFlag } from "../lib/skip-flags";
+import type { RepoRemotes } from "../lib/git";
+import { type RenderContext, finishSummary, render } from "../lib/render";
+import type { Cell, OutputNode } from "../lib/render";
+import { buildConflictReport, buildStashPopFailureReport, skipCell, upToDateCell } from "../lib/render";
+import { VERBOSE_COMMIT_LIMIT, verboseCommitsToNodes } from "../lib/render";
+import { cell, spans, suffix } from "../lib/render";
+import type { SkipFlag } from "../lib/status";
 import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
-import { VERBOSE_COMMIT_LIMIT, verboseCommitsToNodes } from "../lib/status-verbose";
-import { readNamesFromStdin } from "../lib/stdin";
-import { isTTY } from "../lib/tty";
-import type { ArbContext } from "../lib/types";
-import { requireBranch, requireWorkspace } from "../lib/workspace-context";
+import { confirmOrExit, runPlanFlow } from "../lib/sync";
+import {
+	dryRunNotice,
+	error,
+	info,
+	inlineResult,
+	inlineStart,
+	isTTY,
+	plural,
+	readNamesFromStdin,
+	yellow,
+} from "../lib/terminal";
+import { requireBranch, requireWorkspace, resolveRepoSelection, workspaceRepoDirs } from "../lib/workspace";
 
 export interface PullAssessment {
 	repo: string;

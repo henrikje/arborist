@@ -10,7 +10,8 @@
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"typecheck": "tsc --noEmit",
-		"check": "bun run lint && bun run typecheck && bun run test && bun run test:integration",
+		"cycles": "madge --circular --extensions ts src/",
+		"check": "bun run lint && bun run typecheck && bun run cycles && bun run test && bun run test:integration",
 		"build:release": "bun run scripts/build-release.ts"
 	},
 	"dependencies": {
@@ -28,6 +29,7 @@
 		"@commitlint/config-conventional": "^20.4.1",
 		"@types/bun": "latest",
 		"ajv": "^8.18.0",
+		"madge": "^8.0.0",
 		"typescript": "^5.9.3"
 	}
 }

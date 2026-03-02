@@ -1,6 +1,6 @@
 import type { Command } from "commander";
-import { findTopic } from "../lib/help-topics";
-import { error } from "../lib/output";
+import { findTopic } from "../lib/help";
+import { error } from "../lib/terminal";
 
 export function registerHelpCommand(program: Command): void {
 	// Disable Commander's built-in help command so we can handle topics

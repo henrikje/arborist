@@ -1,9 +1,10 @@
 import { existsSync, renameSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { configGet, writeConfig } from "../lib/config";
-import { ArbError } from "../lib/errors";
+import { ArbError, configGet, writeConfig } from "../lib/core";
+import type { ArbContext } from "../lib/core";
 import {
+	GitCache,
 	branchExistsLocally,
 	detectOperation,
 	git,
@@ -11,28 +12,25 @@ import {
 	validateBranchName,
 	validateWorkspaceName,
 } from "../lib/git";
-import { GitCache } from "../lib/git-cache";
-import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
+import { type RenderContext, finishSummary, render } from "../lib/render";
+import type { Cell, OutputNode } from "../lib/render";
+import { cell, suffix } from "../lib/render";
+import { confirmOrExit, runPlanFlow } from "../lib/sync";
 import {
 	dryRunNotice,
 	error,
-	finishSummary,
 	info,
 	inlineResult,
 	inlineStart,
+	isTTY,
 	plural,
 	red,
 	success,
 	warn,
 	yellow,
-} from "../lib/output";
-import { type RenderContext, render } from "../lib/render";
-import { cell, suffix } from "../lib/render-model";
-import type { Cell, OutputNode } from "../lib/render-model";
-import { workspaceRepoDirs } from "../lib/repos";
-import { isTTY } from "../lib/tty";
-import type { ArbContext } from "../lib/types";
-import { requireWorkspace } from "../lib/workspace-context";
+} from "../lib/terminal";
+import { workspaceRepoDirs } from "../lib/workspace";
+import { requireWorkspace } from "../lib/workspace";
 
 type RenameOutcome = "will-rename" | "already-on-new" | "skip-missing" | "skip-drifted" | "skip-in-progress";
 

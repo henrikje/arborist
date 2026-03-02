@@ -2,31 +2,25 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { z } from "zod";
-import { listenForAbortKeypress } from "../lib/abort-keypress";
-import { configGet } from "../lib/config";
-import { ArbError } from "../lib/errors";
-import { GitCache } from "../lib/git-cache";
-import { printSchema } from "../lib/json-schema";
-import { type ListJsonEntry, ListJsonEntrySchema } from "../lib/json-types";
-import { clearScanProgress, dim, error, info, scanProgress } from "../lib/output";
-import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
-import { runPhasedRender } from "../lib/phased-render";
-import { type RenderContext, render } from "../lib/render";
-import type { Cell, OutputNode } from "../lib/render-model";
-import { EMPTY_CELL, cell } from "../lib/render-model";
-import { listWorkspaces, workspaceRepoDirs } from "../lib/repos";
+import { ArbError, type RelativeTimeParts, configGet, formatRelativeTimeParts } from "../lib/core";
+import type { ArbContext } from "../lib/core";
+import { GitCache } from "../lib/git";
+import { printSchema } from "../lib/json";
+import { type ListJsonEntry, ListJsonEntrySchema } from "../lib/json";
+import { type RenderContext, render, runPhasedRender } from "../lib/render";
+import type { Cell, OutputNode } from "../lib/render";
+import { EMPTY_CELL, cell } from "../lib/render";
+import { buildStatusCountsCell } from "../lib/render";
 import {
 	type WorkspaceSummary,
-	buildStatusCountsCell,
 	gatherWorkspaceSummary,
 	resolveWhereFilter,
 	workspaceMatchesWhere,
 } from "../lib/status";
-import { detectTicketFromName } from "../lib/ticket-detection";
-import { type RelativeTimeParts, formatRelativeTimeParts } from "../lib/time";
-import { isTTY } from "../lib/tty";
-import type { ArbContext } from "../lib/types";
-import { workspaceBranch } from "../lib/workspace-branch";
+import { detectTicketFromName } from "../lib/status";
+import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/sync";
+import { clearScanProgress, dim, error, info, isTTY, listenForAbortKeypress, scanProgress } from "../lib/terminal";
+import { listWorkspaces, workspaceBranch, workspaceRepoDirs } from "../lib/workspace";
 
 interface ListRow {
 	name: string;

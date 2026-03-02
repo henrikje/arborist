@@ -1,10 +1,10 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError } from "../lib/errors";
-import { error } from "../lib/output";
-import { workspaceRepoDirs } from "../lib/repos";
-import type { ArbContext } from "../lib/types";
+import { ArbError } from "../lib/core";
+import type { ArbContext } from "../lib/core";
+import { error } from "../lib/terminal";
+import { workspaceRepoDirs } from "../lib/workspace";
 
 export function registerPathCommand(program: Command, getCtx: () => ArbContext): void {
 	program

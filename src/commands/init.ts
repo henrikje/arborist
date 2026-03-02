@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Command } from "commander";
-import { detectArbRoot } from "../lib/arb-root";
-import { ArbError } from "../lib/errors";
-import { dim, error, info, success } from "../lib/output";
+import { ArbError } from "../lib/core";
+import { dim, error, info, success } from "../lib/terminal";
+import { detectArbRoot } from "../lib/workspace";
 
 export function registerInitCommand(program: Command): void {
 	program

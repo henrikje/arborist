@@ -1,24 +1,18 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { configGet } from "../lib/config";
-import { ArbError } from "../lib/errors";
-import { getCommitsBetweenFull, getShortHead, git } from "../lib/git";
-import { GitCache } from "../lib/git-cache";
-import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
-import { dryRunNotice, finishSummary, info, inlineResult, inlineStart, plural, red } from "../lib/output";
-import { skipCell, upToDateCell } from "../lib/plan-format";
-import type { RepoRemotes } from "../lib/remotes";
-import { type RenderContext, render } from "../lib/render";
-import type { Cell, OutputNode } from "../lib/render-model";
-import { cell, suffix } from "../lib/render-model";
-import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
-import type { SkipFlag } from "../lib/skip-flags";
+import { ArbError, configGet } from "../lib/core";
+import type { ArbContext } from "../lib/core";
+import { GitCache, getCommitsBetweenFull, getShortHead, git } from "../lib/git";
+import type { RepoRemotes } from "../lib/git";
+import { type RenderContext, finishSummary, render } from "../lib/render";
+import type { Cell, OutputNode } from "../lib/render";
+import { VERBOSE_COMMIT_LIMIT, skipCell, upToDateCell, verboseCommitsToNodes } from "../lib/render";
+import { cell, suffix } from "../lib/render";
+import type { SkipFlag } from "../lib/status";
 import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
-import { VERBOSE_COMMIT_LIMIT, verboseCommitsToNodes } from "../lib/status-verbose";
-import { readNamesFromStdin } from "../lib/stdin";
-import { isTTY } from "../lib/tty";
-import type { ArbContext } from "../lib/types";
-import { requireBranch, requireWorkspace } from "../lib/workspace-context";
+import { confirmOrExit, runPlanFlow } from "../lib/sync";
+import { dryRunNotice, info, inlineResult, inlineStart, isTTY, plural, readNamesFromStdin, red } from "../lib/terminal";
+import { requireBranch, requireWorkspace, resolveRepoSelection, workspaceRepoDirs } from "../lib/workspace";
 
 export interface PushAssessment {
 	repo: string;

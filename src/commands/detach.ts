@@ -1,17 +1,22 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError } from "../lib/errors";
+import { ArbError } from "../lib/core";
+import type { ArbContext } from "../lib/core";
 import { branchExistsLocally, git, isRepoDirty, parseGitStatus } from "../lib/git";
-import { error, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
 import { render } from "../lib/render";
-import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import { isLocalDirty } from "../lib/status";
-import { readNamesFromStdin } from "../lib/stdin";
-import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
-import { isTTY } from "../lib/tty";
-import type { ArbContext } from "../lib/types";
-import { requireBranch, requireWorkspace } from "../lib/workspace-context";
+import { error, inlineResult, inlineStart, isTTY, plural, readNamesFromStdin, success, warn } from "../lib/terminal";
+import {
+	applyRepoTemplates,
+	applyWorkspaceTemplates,
+	displayOverlaySummary,
+	listRepos,
+	requireBranch,
+	requireWorkspace,
+	selectInteractive,
+	workspaceRepoDirs,
+} from "../lib/workspace";
 
 export function registerDetachCommand(program: Command, getCtx: () => ArbContext): void {
 	program

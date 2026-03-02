@@ -1,16 +1,13 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { configGet } from "../lib/config";
-import { ArbError } from "../lib/errors";
-import { GitCache } from "../lib/git-cache";
-import { error, plural, success } from "../lib/output";
+import { ArbError, configGet } from "../lib/core";
+import type { ArbContext } from "../lib/core";
+import { GitCache } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
-import { repoHeaderNode } from "../lib/repo-header";
-import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
+import { repoHeaderNode } from "../lib/render";
 import { computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
-import { isTTY } from "../lib/tty";
-import type { ArbContext } from "../lib/types";
-import { requireBranch, requireWorkspace } from "../lib/workspace-context";
+import { error, isTTY, plural, success } from "../lib/terminal";
+import { collectRepo, requireBranch, requireWorkspace, validateRepoNames, workspaceRepoDirs } from "../lib/workspace";
 
 export function registerExecCommand(program: Command, getCtx: () => ArbContext): void {
 	program

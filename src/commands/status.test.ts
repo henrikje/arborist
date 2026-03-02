@@ -9,9 +9,9 @@ import {
 	plainBaseDiff,
 	plainLocal,
 	plainRemoteDiff,
-} from "../lib/render-model";
+} from "../lib/render";
 import { computeFlags } from "../lib/status";
-import { makeRepo } from "../lib/test-helpers";
+import { makeRepo } from "../lib/status";
 
 describe("plainBaseDiff", () => {
 	test("shows equal when no ahead/behind", () => {

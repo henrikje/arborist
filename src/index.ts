@@ -23,12 +23,12 @@ import { registerRebaseCommand } from "./commands/rebase";
 import { registerRepoCommand } from "./commands/repo";
 import { registerStatusCommand } from "./commands/status";
 import { registerTemplateCommand } from "./commands/template";
-import { detectArbRoot, detectWorkspace } from "./lib/arb-root";
-import { debugLog, enableDebug, getGitCallCount, isDebug } from "./lib/debug";
-import { ArbAbort, ArbError } from "./lib/errors";
-import { allTopics } from "./lib/help-topics";
-import { bold, dim, error, info } from "./lib/output";
-import type { ArbContext } from "./lib/types";
+import { ArbAbort, ArbError } from "./lib/core";
+import type { ArbContext } from "./lib/core";
+import { allTopics } from "./lib/help";
+import { bold, dim, error, info } from "./lib/terminal";
+import { debugLog, enableDebug, getGitCallCount, isDebug } from "./lib/terminal";
+import { detectArbRoot, detectWorkspace } from "./lib/workspace";
 import { ARB_VERSION } from "./version";
 
 const COMMAND_GROUPS = [

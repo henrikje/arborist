@@ -1,16 +1,12 @@
 import { basename, resolve } from "node:path";
 import type { Command } from "commander";
-import { listenForAbortKeypress } from "../lib/abort-keypress";
-import { ArbError } from "../lib/errors";
-import { predictMergeConflict } from "../lib/git";
-import { GitCache } from "../lib/git-cache";
-import { printSchema } from "../lib/json-schema";
-import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json-types";
-import { clearScanProgress, error, scanProgress, stderr } from "../lib/output";
-import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
-import { runPhasedRender } from "../lib/phased-render";
-import { type RenderContext, render } from "../lib/render";
-import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
+import { ArbError } from "../lib/core";
+import type { ArbContext } from "../lib/core";
+import { GitCache, predictMergeConflict } from "../lib/git";
+import { printSchema } from "../lib/json";
+import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
+import { type RenderContext, render, runPhasedRender } from "../lib/render";
+import { type VerboseDetail, buildStatusView, gatherVerboseDetail, toJsonVerbose } from "../lib/render";
 import {
 	type WorkspaceSummary,
 	baseRef,
@@ -20,12 +16,17 @@ import {
 	repoMatchesWhere,
 	resolveWhereFilter,
 } from "../lib/status";
-import { type VerboseDetail, gatherVerboseDetail, toJsonVerbose } from "../lib/status-verbose";
-import { buildStatusView } from "../lib/status-view";
-import { readNamesFromStdin } from "../lib/stdin";
-import { isTTY } from "../lib/tty";
-import type { ArbContext } from "../lib/types";
-import { requireWorkspace } from "../lib/workspace-context";
+import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/sync";
+import {
+	clearScanProgress,
+	error,
+	isTTY,
+	listenForAbortKeypress,
+	readNamesFromStdin,
+	scanProgress,
+	stderr,
+} from "../lib/terminal";
+import { requireWorkspace, resolveRepoSelection, workspaceRepoDirs } from "../lib/workspace";
 
 export function registerStatusCommand(program: Command, getCtx: () => ArbContext): void {
 	program

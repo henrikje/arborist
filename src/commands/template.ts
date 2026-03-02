@@ -11,13 +11,13 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import type { Command } from "commander";
-import { ArbError } from "../lib/errors";
-import { GitCache } from "../lib/git-cache";
-import { error, finishSummary, info, plural, warn, yellow } from "../lib/output";
-import { type RenderContext, render } from "../lib/render";
-import { cell, join as joinCells } from "../lib/render-model";
-import type { Cell, OutputNode } from "../lib/render-model";
-import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
+import { ArbError } from "../lib/core";
+import type { ArbContext } from "../lib/core";
+import { GitCache } from "../lib/git";
+import { type RenderContext, finishSummary, render } from "../lib/render";
+import { cell, join as joinCells } from "../lib/render";
+import type { Cell, OutputNode } from "../lib/render";
+import { error, info, isTTY, plural, warn, yellow } from "../lib/terminal";
 import {
 	ARBTEMPLATE_EXT,
 	type ConflictInfo,
@@ -32,6 +32,7 @@ import {
 	checkAllTemplateVariables,
 	checkUnknownVariables,
 	checkWorkspaceTemplateRepoWarnings,
+	collectRepo,
 	detectScopeFromPath,
 	diffTemplates,
 	displayRepoDirectoryWarnings,
@@ -41,13 +42,13 @@ import {
 	forceApplyWorkspaceTemplates,
 	listTemplates,
 	renderTemplate,
+	requireWorkspace,
 	templateFilePath,
+	validateRepoNames,
 	workspaceFilePath,
+	workspaceRepoDirs,
 	workspaceRepoList,
-} from "../lib/templates";
-import { isTTY } from "../lib/tty";
-import type { ArbContext } from "../lib/types";
-import { requireWorkspace } from "../lib/workspace-context";
+} from "../lib/workspace";
 
 function buildTemplateListNodes(
 	templates: TemplateEntry[],

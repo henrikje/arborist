@@ -2,19 +2,16 @@ import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
-import { loadArbIgnore } from "../lib/arbignore";
-import { findOrphanedBranches, findStaleWorktrees, pruneWorktrees } from "../lib/clean";
-import { ArbAbort, ArbError } from "../lib/errors";
-import { git } from "../lib/git";
-import { GitCache } from "../lib/git-cache";
-import { dryRunNotice, error, info, plural, skipConfirmNotice, success, yellow } from "../lib/output";
+import { ArbAbort, ArbError, loadArbIgnore } from "../lib/core";
+import type { ArbContext } from "../lib/core";
+import { GitCache, git } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
-import { cell } from "../lib/render-model";
-import type { OutputNode } from "../lib/render-model";
-import { listNonWorkspaces, listWorkspaces, selectInteractive } from "../lib/repos";
-import { isTTY } from "../lib/tty";
-import type { ArbContext } from "../lib/types";
-import { workspaceBranch } from "../lib/workspace-branch";
+import { cell } from "../lib/render";
+import type { OutputNode } from "../lib/render";
+import { dryRunNotice, error, info, isTTY, plural, skipConfirmNotice, success, yellow } from "../lib/terminal";
+import { findOrphanedBranches, findStaleWorktrees, pruneWorktrees } from "../lib/workspace";
+import { listNonWorkspaces, listWorkspaces, selectInteractive } from "../lib/workspace";
+import { workspaceBranch } from "../lib/workspace";
 
 function describeContents(dirPath: string): string {
 	const entries = readdirSync(dirPath);
