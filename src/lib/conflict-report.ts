@@ -1,4 +1,5 @@
-import { dim } from "./output";
+import { cell } from "./render-model";
+import type { OutputNode } from "./render-model";
 
 export interface ConflictEntry {
 	repo: string;
@@ -7,29 +8,52 @@ export interface ConflictEntry {
 	subcommand: "rebase" | "merge";
 }
 
-export function reportConflicts(entries: ConflictEntry[]): void {
-	if (entries.length === 0) return;
-	process.stderr.write(`\n  ${entries.length} repo(s) have conflicts:\n`);
+export function buildConflictReport(entries: ConflictEntry[]): OutputNode[] {
+	if (entries.length === 0) return [];
+	const nodes: OutputNode[] = [
+		{ kind: "gap" },
+		{ kind: "message", level: "default", text: `${entries.length} repo(s) have conflicts:` },
+	];
 	for (const e of entries) {
-		process.stderr.write(`\n    ${e.repo}\n`);
 		const combined = `${e.stdout}\n${e.stderr}`;
-		for (const line of combined.split("\n").filter((l) => l.startsWith("CONFLICT"))) {
-			process.stderr.write(`      ${dim(line)}\n`);
-		}
-		process.stderr.write(`      cd ${e.repo}\n`);
-		process.stderr.write(`      # fix conflicts, then: git ${e.subcommand} --continue\n`);
-		process.stderr.write(`      # or to undo: git ${e.subcommand} --abort\n`);
+		const conflictLines = combined.split("\n").filter((l) => l.startsWith("CONFLICT"));
+		nodes.push(
+			{ kind: "gap" },
+			{
+				kind: "section",
+				header: cell(e.repo),
+				items: [
+					...conflictLines.map((line) => cell(line, "muted")),
+					cell(`cd ${e.repo}`),
+					cell(`# fix conflicts, then: git ${e.subcommand} --continue`),
+					cell(`# or to undo: git ${e.subcommand} --abort`),
+				],
+			},
+		);
 	}
+	return nodes;
 }
 
-export function reportStashPopFailures(repos: { repo: string }[], verb: string): void {
-	if (repos.length === 0) return;
-	process.stderr.write(`\n  ${repos.length} repo(s) need manual stash application:\n`);
+export function buildStashPopFailureReport(repos: { repo: string }[], verb: string): OutputNode[] {
+	if (repos.length === 0) return [];
+	const nodes: OutputNode[] = [
+		{ kind: "gap" },
+		{ kind: "message", level: "default", text: `${repos.length} repo(s) need manual stash application:` },
+	];
 	for (const r of repos) {
-		process.stderr.write(`\n    ${r.repo}\n`);
-		process.stderr.write(`      ${verb} succeeded, but stash pop conflicted.\n`);
-		process.stderr.write(`      cd ${r.repo}\n`);
-		process.stderr.write("      git stash pop    # re-apply and resolve conflicts\n");
-		process.stderr.write("      # or: git stash show  # inspect stashed changes\n");
+		nodes.push(
+			{ kind: "gap" },
+			{
+				kind: "section",
+				header: cell(r.repo),
+				items: [
+					cell(`${verb} succeeded, but stash pop conflicted.`),
+					cell(`cd ${r.repo}`),
+					cell("git stash pop    # re-apply and resolve conflicts"),
+					cell("# or: git stash show  # inspect stashed changes"),
+				],
+			},
+		);
 	}
+	return nodes;
 }

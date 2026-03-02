@@ -7,7 +7,8 @@ import { printSchema } from "../lib/json-schema";
 import { type DiffJsonFileStat, type DiffJsonOutput, DiffJsonOutputSchema, type DiffJsonRepo } from "../lib/json-types";
 import { error, plural, stdout, success } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
-import { writeRepoHeader, writeRepoSkipHeader } from "../lib/repo-header";
+import { type RenderContext, render } from "../lib/render";
+import { buildRepoSkipHeader, repoHeaderNode } from "../lib/repo-header";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import {
 	type RepoStatus,
@@ -185,6 +186,7 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
 	let totalInsertions = 0;
 	let totalDeletions = 0;
 	let totalUntracked = 0;
+	const ctx: RenderContext = { tty: isTTY() };
 
 	for (let i = 0; i < repos.length; i++) {
 		const repo = repos[i];
@@ -193,7 +195,11 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
 		const repoDir = `${wsDir}/${repo.name}`;
 		const flags = computeFlags(repo, branch);
 
-		if (writeRepoSkipHeader(repo, branch, flags, i >= repos.length - 1)) continue;
+		const skipNodes = buildRepoSkipHeader(repo, branch, flags, i >= repos.length - 1);
+		if (skipNodes) {
+			process.stderr.write(render(skipNodes, ctx));
+			continue;
+		}
 
 		// Resolve the merge-base ref (single ref: compares merge-base to working tree)
 		const target = await resolveDiffTarget(repoDir, repo);
@@ -223,7 +229,7 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
 		}
 
 		// Header
-		writeRepoHeader(repo.name, note || undefined);
+		process.stderr.write(render([repoHeaderNode(repo.name, note || undefined)], ctx));
 
 		// Let git render the diff
 		const diffArgs = stat

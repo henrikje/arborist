@@ -7,7 +7,8 @@ import { printSchema } from "../lib/json-schema";
 import { type LogJsonOutput, LogJsonOutputSchema, type LogJsonRepo } from "../lib/json-types";
 import { error, plural, stdout, success } from "../lib/output";
 import { parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
-import { writeRepoHeader, writeRepoSkipHeader } from "../lib/repo-header";
+import { type RenderContext, render } from "../lib/render";
+import { buildRepoSkipHeader, repoHeaderNode } from "../lib/repo-header";
 import { resolveRepoSelection, workspaceRepoDirs } from "../lib/repos";
 import {
 	type RepoStatus,
@@ -139,6 +140,7 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 
 async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, maxCount?: number): Promise<void> {
 	let totalCommits = 0;
+	const ctx: RenderContext = { tty: isTTY() };
 
 	for (let i = 0; i < repos.length; i++) {
 		const repo = repos[i];
@@ -147,7 +149,11 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, max
 		const repoDir = `${wsDir}/${repo.name}`;
 		const flags = computeFlags(repo, branch);
 
-		if (writeRepoSkipHeader(repo, branch, flags, i >= repos.length - 1)) continue;
+		const skipNodes = buildRepoSkipHeader(repo, branch, flags, i >= repos.length - 1);
+		if (skipNodes) {
+			process.stderr.write(render(skipNodes, ctx));
+			continue;
+		}
 
 		// Build git log args
 		const gitArgs: string[] = [];
@@ -173,7 +179,7 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, max
 		}
 
 		// Header
-		writeRepoHeader(repo.name, note || undefined);
+		process.stderr.write(render([repoHeaderNode(repo.name, note || undefined)], ctx));
 
 		// Let git render the commits
 		const result = await git(repoDir, "log", "--oneline", "--no-decorate", "--color=always", ...gitArgs);

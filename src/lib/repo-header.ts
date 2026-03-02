@@ -1,43 +1,47 @@
-import { bold, boldLine, dim, yellow } from "./output";
+import { cell } from "./render-model";
+import type { OutputNode, RepoHeaderNode } from "./render-model";
 import type { RepoFlags, RepoStatus } from "./status";
 
 /**
- * Check for detached/drifted skip conditions and write skip header if applicable.
- * Returns true if the repo was skipped (caller should `continue`).
+ * Build a RepoHeaderNode with an optional note (dimmed by default).
  */
-export function writeRepoSkipHeader(repo: RepoStatus, branch: string, flags: RepoFlags, isLast: boolean): boolean {
+export function repoHeaderNode(name: string, note?: string): RepoHeaderNode {
+	return {
+		kind: "repoHeader",
+		name,
+		note: note ? cell(note, "muted") : undefined,
+	};
+}
+
+/**
+ * Check for detached/drifted skip conditions and return skip header nodes.
+ * Returns null if the repo was not skipped (caller should continue to render the repo).
+ * Includes a trailing GapNode when `isLast` is false.
+ */
+export function buildRepoSkipHeader(
+	repo: RepoStatus,
+	branch: string,
+	flags: RepoFlags,
+	isLast: boolean,
+): OutputNode[] | null {
+	let skipNote: string | undefined;
+
 	if (flags.isDetached) {
-		process.stderr.write(`${bold(`==> ${repo.name} <==`)} ${yellow("detached \u2014 skipping")}\n`);
-		if (!isLast) process.stderr.write("\n");
-		return true;
-	}
-
-	if (flags.isDrifted && repo.identity.headMode.kind === "attached") {
+		skipNote = "detached \u2014 skipping";
+	} else if (flags.isDrifted && repo.identity.headMode.kind === "attached") {
 		const actual = repo.identity.headMode.branch;
-		process.stderr.write(
-			`${bold(`==> ${repo.name} <==`)} ${yellow(`on ${actual}, expected ${branch} \u2014 skipping`)}\n`,
-		);
-		if (!isLast) process.stderr.write("\n");
-		return true;
+		skipNote = `on ${actual}, expected ${branch} \u2014 skipping`;
 	}
 
-	return false;
-}
+	if (!skipNote) return null;
 
-/**
- * Write the `==> name <==` header with an optional dim note.
- */
-export function writeRepoHeader(name: string, note?: string): void {
-	if (note) {
-		process.stderr.write(`${bold(`==> ${name} <==`)} ${dim(note)}\n`);
-	} else {
-		boldLine(`==> ${name} <==`);
-	}
-}
-
-/**
- * Write a simple repo section header (no skip checks, no note).
- */
-export function writeRepoHeaderSimple(name: string): void {
-	boldLine(`==> ${name} <==`);
+	const nodes: OutputNode[] = [
+		{
+			kind: "repoHeader",
+			name: repo.name,
+			note: cell(skipNote, "attention"),
+		},
+	];
+	if (!isLast) nodes.push({ kind: "gap" });
+	return nodes;
 }

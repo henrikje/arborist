@@ -1,4 +1,7 @@
 import { ArbError } from "./errors";
+import { render } from "./render";
+import { cell } from "./render-model";
+import type { SummaryNode } from "./render-model";
 import { isTTY } from "./tty";
 
 const RED = "\x1b[0;31m";
@@ -100,12 +103,15 @@ export function stripAnsi(s: string): string {
 }
 
 export function finishSummary(parts: string[], hasErrors: boolean): void {
-	const msg = parts.join(", ");
+	const node: SummaryNode = {
+		kind: "summary",
+		parts: parts.map((p) => cell(p)),
+		hasErrors,
+	};
+	process.stderr.write(render([node], { tty: isTTY() }));
 	if (hasErrors) {
-		warn(msg);
-		throw new ArbError(msg);
+		throw new ArbError(parts.join(", "));
 	}
-	success(msg);
 }
 
 export function scanProgress(scanned: number, total: number): void {
