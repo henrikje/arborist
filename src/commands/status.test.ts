@@ -1,6 +1,17 @@
 import { describe, expect, test } from "bun:test";
+import {
+	analyzeBaseDiff,
+	analyzeBaseName,
+	analyzeBranch,
+	analyzeLocal,
+	analyzeRemoteDiff,
+	analyzeRemoteName,
+	plainBaseDiff,
+	plainLocal,
+	plainRemoteDiff,
+} from "../lib/render-model";
+import { computeFlags } from "../lib/status";
 import { makeRepo } from "../lib/test-helpers";
-import { plainBaseDiff, plainCells, plainLocal, plainRemoteDiff } from "./status";
 
 describe("plainBaseDiff", () => {
 	test("shows equal when no ahead/behind", () => {
@@ -443,71 +454,72 @@ describe("plainLocal", () => {
 	});
 });
 
-describe("plainCells", () => {
+describe("cell analysis (replaces plainCells)", () => {
+	const branch = "feature";
+
 	test("basic repo returns expected cells", () => {
-		const cells = plainCells(makeRepo());
-		expect(cells.repo).toBe("test-repo");
-		expect(cells.branch).toBe("feature");
-		expect(cells.baseName).toBe("origin/main");
-		expect(cells.baseDiff).toBe("equal");
-		expect(cells.remoteName).toBe("origin/feature");
-		expect(cells.remoteDiff).toBe("up to date");
-		expect(cells.local).toBe("clean");
+		const repo = makeRepo();
+		const flags = computeFlags(repo, branch);
+		expect(repo.name).toBe("test-repo");
+		expect(analyzeBranch(repo, branch).plain).toBe("feature");
+		expect(analyzeBaseName(repo, flags).plain).toBe("origin/main");
+		expect(analyzeBaseDiff(repo, flags, false).plain).toBe("equal");
+		expect(analyzeRemoteName(repo, flags).plain).toBe("origin/feature");
+		expect(analyzeRemoteDiff(repo, flags).plain).toBe("up to date");
+		expect(analyzeLocal(repo).plain).toBe("clean");
 	});
 
 	test("detached HEAD", () => {
-		const cells = plainCells(
-			makeRepo({
-				identity: { worktreeKind: "linked", headMode: { kind: "detached" }, shallow: false },
-			}),
-		);
-		expect(cells.branch).toBe("(detached)");
-		expect(cells.baseDiff).toBe("");
-		expect(cells.remoteName).toBe("detached");
-		expect(cells.remoteDiff).toBe("");
+		const repo = makeRepo({
+			identity: { worktreeKind: "linked", headMode: { kind: "detached" }, shallow: false },
+		});
+		const flags = computeFlags(repo, branch);
+		expect(analyzeBranch(repo, branch).plain).toBe("(detached)");
+		expect(analyzeBaseDiff(repo, flags, false).plain).toBe("");
+		expect(analyzeRemoteName(repo, flags).plain).toBe("detached");
+		expect(analyzeRemoteDiff(repo, flags).plain).toBe("");
 	});
 
 	test("configured base shows configuredRef in baseName", () => {
-		const cells = plainCells(
-			makeRepo({
-				base: {
-					remote: "origin",
-					ref: "main",
-					configuredRef: "feat/old",
-					ahead: 0,
-					behind: 0,
-					mergedIntoBase: null,
-					baseMergedIntoDefault: null,
-					detectedPr: null,
-				},
-			}),
-		);
-		expect(cells.baseName).toBe("origin/feat/old");
-		expect(cells.baseDiff).toBe("not found");
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: "feat/old",
+				ahead: 0,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+		});
+		const flags = computeFlags(repo, branch);
+		expect(analyzeBaseName(repo, flags).plain).toBe("origin/feat/old");
+		expect(analyzeBaseDiff(repo, flags, false).plain).toBe("not found");
 	});
 
 	test("configured base with baseMergedIntoDefault shows base merged", () => {
-		const cells = plainCells(
-			makeRepo({
-				base: {
-					remote: "origin",
-					ref: "main",
-					configuredRef: "feat/old",
-					ahead: 0,
-					behind: 0,
-					mergedIntoBase: null,
-					baseMergedIntoDefault: "merge",
-					detectedPr: null,
-				},
-			}),
-		);
-		expect(cells.baseName).toBe("origin/feat/old");
-		expect(cells.baseDiff).toBe("base merged");
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: "feat/old",
+				ahead: 0,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: "merge",
+				detectedPr: null,
+			},
+		});
+		const flags = computeFlags(repo, branch);
+		expect(analyzeBaseName(repo, flags).plain).toBe("origin/feat/old");
+		expect(analyzeBaseDiff(repo, flags, false).plain).toBe("base merged");
 	});
 
 	test("no base branch", () => {
-		const cells = plainCells(makeRepo({ base: null }));
-		expect(cells.baseName).toBe("");
-		expect(cells.baseDiff).toBe("");
+		const repo = makeRepo({ base: null });
+		const flags = computeFlags(repo, branch);
+		expect(analyzeBaseName(repo, flags).plain).toBe("");
+		expect(analyzeBaseDiff(repo, flags, false).plain).toBe("");
 	});
 });
