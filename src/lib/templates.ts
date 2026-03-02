@@ -2,7 +2,9 @@ import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSy
 import { basename, dirname, join, relative } from "node:path";
 import { Liquid } from "liquidjs";
 import { GitCache } from "./git-cache";
-import { info, plural, warn, yellow } from "./output";
+import { info, plural, warn } from "./output";
+import { cell } from "./render-model";
+import type { OutputNode } from "./render-model";
 import { listRepos, workspaceRepoDirs } from "./repos";
 
 export const ARBTEMPLATE_EXT = ".arbtemplate";
@@ -98,15 +100,16 @@ export function checkUnknownVariables(content: string, ctx: TemplateContext): st
 	return unknowns;
 }
 
-export function displayUnknownVariables(
-	unknowns: UnknownVariable[],
-	write: (text: string) => void = (t) => process.stderr.write(t),
-): void {
-	if (unknowns.length === 0) return;
-	write(`\n      ${yellow("Unknown template variables")}:\n`);
-	for (const { varName, filePath } of unknowns) {
-		write(`          '${varName}' in ${filePath}\n`);
-	}
+export function displayUnknownVariables(unknowns: UnknownVariable[]): OutputNode[] {
+	if (unknowns.length === 0) return [];
+	return [
+		{ kind: "gap" },
+		{
+			kind: "section",
+			header: cell("Unknown template variables", "attention"),
+			items: unknowns.map(({ varName, filePath }) => cell(`'${varName}' in ${filePath}`)),
+		},
+	];
 }
 
 function collectUnknownVariables(content: string, ctx: TemplateContext, filePath: string): UnknownVariable[] {
@@ -817,43 +820,50 @@ export async function forceApplyRepoTemplates(
 	return result;
 }
 
-export function displayTemplateDiffs(
-	templateDiffs: TemplateDiff[],
-	write: (text: string) => void,
-	suffix?: string,
-): void {
-	if (templateDiffs.length === 0) return;
+export function displayTemplateDiffs(templateDiffs: TemplateDiff[], suffix?: string): OutputNode[] {
+	if (templateDiffs.length === 0) return [];
+	const nodes: OutputNode[] = [];
 	const modified = templateDiffs.filter((d) => d.kind === "modified");
 	const deleted = templateDiffs.filter((d) => d.kind === "deleted");
 	if (modified.length > 0) {
-		write(`      ${yellow(`Template files modified${suffix ?? ""}`)}:\n`);
-		for (const diff of modified) {
-			const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
-			write(`          ${prefix}${diff.relPath}\n`);
-		}
-		write("\n");
+		nodes.push({
+			kind: "section",
+			header: cell(`Template files modified${suffix ?? ""}`, "attention"),
+			items: modified.map((diff) => {
+				const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
+				return cell(`${prefix}${diff.relPath}`);
+			}),
+		});
+		nodes.push({ kind: "gap" });
 	}
 	if (deleted.length > 0) {
-		write(`      ${yellow(`Template files deleted${suffix ?? ""}`)}:\n`);
-		for (const diff of deleted) {
-			const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
-			write(`          ${prefix}${diff.relPath}\n`);
-		}
-		write("\n");
+		nodes.push({
+			kind: "section",
+			header: cell(`Template files deleted${suffix ?? ""}`, "attention"),
+			items: deleted.map((diff) => {
+				const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
+				return cell(`${prefix}${diff.relPath}`);
+			}),
+		});
+		nodes.push({ kind: "gap" });
 	}
+	return nodes;
 }
 
-export function displayTemplateConflicts(
-	conflicts: ConflictInfo[],
-	write: (text: string) => void = (t) => process.stderr.write(t),
-): void {
-	if (conflicts.length === 0) return;
-	write(`\n      ${yellow("Conflicting templates (both plain and .arbtemplate versions exist)")}:\n`);
-	for (const c of conflicts) {
-		const tplDir = c.scope === "workspace" ? ".arb/templates/workspace" : `.arb/templates/repos/${c.repo}`;
-		const arbtplName = `${basename(c.relPath)}${ARBTEMPLATE_EXT}`;
-		write(`          remove either ${tplDir}/${c.relPath} or ${arbtplName}\n`);
-	}
+export function displayTemplateConflicts(conflicts: ConflictInfo[]): OutputNode[] {
+	if (conflicts.length === 0) return [];
+	return [
+		{ kind: "gap" },
+		{
+			kind: "section",
+			header: cell("Conflicting templates (both plain and .arbtemplate versions exist)", "attention"),
+			items: conflicts.map((c) => {
+				const tplDir = c.scope === "workspace" ? ".arb/templates/workspace" : `.arb/templates/repos/${c.repo}`;
+				const arbtplName = `${basename(c.relPath)}${ARBTEMPLATE_EXT}`;
+				return cell(`remove either ${tplDir}/${c.relPath} or ${arbtplName}`);
+			}),
+		},
+	];
 }
 
 export function templateFilePath(
@@ -903,26 +913,36 @@ export function checkWorkspaceTemplateRepoWarnings(arbRootDir: string): string[]
 	return warnings;
 }
 
-export function displayRepoDirectoryWarnings(
-	warnings: string[],
-	write: (text: string) => void = (t) => process.stderr.write(t),
-): void {
-	if (warnings.length === 0) return;
-	write(`\n      ${yellow("Workspace templates target repo directories")}:\n`);
-	for (const dir of warnings) {
-		write(`          '${dir}/' — use .arb/templates/repos/${dir}/ for repo-scoped templates\n`);
-	}
+export function displayRepoDirectoryWarnings(warnings: string[]): OutputNode[] {
+	if (warnings.length === 0) return [];
+	return [
+		{ kind: "gap" },
+		{
+			kind: "section",
+			header: cell("Workspace templates target repo directories", "attention"),
+			items: warnings.map((dir) => cell(`'${dir}/' — use .arb/templates/repos/${dir}/ for repo-scoped templates`)),
+		},
+	];
 }
 
-export function displayOverlaySummary(wsResult: OverlayResult, repoResult: OverlayResult): void {
+export function displayOverlaySummary(
+	wsResult: OverlayResult,
+	repoResult: OverlayResult,
+	renderFn: (nodes: OutputNode[]) => string,
+): void {
 	const totalSeeded = wsResult.seeded.length + repoResult.seeded.length;
 	const totalRegenerated = wsResult.regenerated.length + repoResult.regenerated.length;
 	if (totalSeeded > 0) info(`Seeded ${plural(totalSeeded, "template file")}`);
 	if (totalRegenerated > 0) info(`Regenerated ${plural(totalRegenerated, "template file")}`);
-	displayTemplateConflicts([...wsResult.conflicts, ...repoResult.conflicts]);
+	const nodes: OutputNode[] = [...displayTemplateConflicts([...wsResult.conflicts, ...repoResult.conflicts])];
 	for (const f of [...wsResult.failed, ...repoResult.failed]) {
 		warn(`Failed to copy template ${f.path}: ${f.error}`);
 	}
-	displayUnknownVariables([...wsResult.unknownVariables, ...repoResult.unknownVariables]);
-	displayRepoDirectoryWarnings(wsResult.repoDirectoryWarnings);
+	nodes.push(
+		...displayUnknownVariables([...wsResult.unknownVariables, ...repoResult.unknownVariables]),
+		...displayRepoDirectoryWarnings(wsResult.repoDirectoryWarnings),
+	);
+	if (nodes.length > 0) {
+		process.stderr.write(renderFn(nodes));
+	}
 }

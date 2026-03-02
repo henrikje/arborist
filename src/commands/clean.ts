@@ -8,8 +8,10 @@ import { ArbAbort, ArbError } from "../lib/errors";
 import { git } from "../lib/git";
 import { GitCache } from "../lib/git-cache";
 import { dryRunNotice, error, info, plural, skipConfirmNotice, success, yellow } from "../lib/output";
+import { type RenderContext, render } from "../lib/render";
+import { cell } from "../lib/render-model";
+import type { OutputNode } from "../lib/render-model";
 import { listNonWorkspaces, listWorkspaces, selectInteractive } from "../lib/repos";
-import { renderTable } from "../lib/table";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
@@ -24,6 +26,25 @@ function describeContents(dirPath: string): string {
 		return `only ${entry}${isDir ? "/" : ""}`;
 	}
 	return `${entries.length} items`;
+}
+
+function buildCleanTableNodes(dirs: string[], descriptions: string[]): OutputNode[] {
+	const rows = dirs.map((name, i) => ({
+		cells: {
+			directory: cell(name),
+			contents: cell(descriptions[i] ?? ""),
+		},
+	}));
+	return [
+		{
+			kind: "table",
+			columns: [
+				{ header: "DIRECTORY", key: "directory" },
+				{ header: "CONTENTS", key: "contents" },
+			],
+			rows,
+		},
+	];
 }
 
 export function registerCleanCommand(program: Command, getCtx: () => ArbContext): void {
@@ -98,19 +119,9 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 			if (hasDirs) {
 				// Build table
 				const descriptions: string[] = targetDirs.map((name) => describeContents(join(ctx.arbRootDir, name)));
-
-				const tableRows = targetDirs.map((name, i) => ({ name, contents: descriptions[i] ?? "" }));
-				process.stderr.write("\n");
-				process.stderr.write(
-					renderTable(
-						[
-							{ header: "DIRECTORY", value: (r) => r.name },
-							{ header: "CONTENTS", value: (r) => r.contents },
-						],
-						tableRows,
-					),
-				);
-				process.stderr.write("\n");
+				const nodes = buildCleanTableNodes(targetDirs, descriptions);
+				const rCtx: RenderContext = { tty: isTTY() };
+				process.stderr.write(`\n${render(nodes, rCtx)}\n`);
 
 				if (ignoredCount > 0 && nameArgs.length === 0) {
 					info(`  ${plural(ignoredCount, "directory", "directories")} excluded by .arbignore`);

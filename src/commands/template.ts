@@ -14,8 +14,10 @@ import type { Command } from "commander";
 import { ArbError } from "../lib/errors";
 import { GitCache } from "../lib/git-cache";
 import { error, finishSummary, info, plural, warn, yellow } from "../lib/output";
+import { type RenderContext, render } from "../lib/render";
+import { cell, join as joinCells } from "../lib/render-model";
+import type { Cell, OutputNode } from "../lib/render-model";
 import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
-import { type Column, renderTable } from "../lib/table";
 import {
 	ARBTEMPLATE_EXT,
 	type ConflictInfo,
@@ -43,8 +45,51 @@ import {
 	workspaceFilePath,
 	workspaceRepoList,
 } from "../lib/templates";
+import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireWorkspace } from "../lib/workspace-context";
+
+function buildTemplateListNodes(
+	templates: TemplateEntry[],
+	diffMap: Map<string, "modified" | "deleted">,
+	repoWarningDirs: Set<string>,
+	conflictsOut: TemplateEntry[],
+): OutputNode[] {
+	const rows = templates.map((t) => {
+		const key = `${t.scope}:${t.repo ?? ""}:${t.relPath}`;
+		const diffKind = diffMap.get(key);
+
+		const statusParts: Cell[] = [];
+		if (t.isTemplate) statusParts.push(cell("template"));
+		if (t.conflict) statusParts.push(cell("conflict", "attention"));
+		if (diffKind === "modified") statusParts.push(cell("modified", "attention"));
+		if (diffKind === "deleted") statusParts.push(cell("deleted", "attention"));
+		if (t.scope === "workspace" && repoWarningDirs.has(t.relPath.split("/")[0] ?? "")) {
+			statusParts.push(cell("misplaced", "attention"));
+		}
+		if (t.conflict) conflictsOut.push(t);
+
+		return {
+			cells: {
+				scope: cell(t.scope === "workspace" ? "workspace" : (t.repo ?? "")),
+				path: cell(t.relPath),
+				status: joinCells(statusParts, " "),
+			},
+		};
+	});
+
+	return [
+		{
+			kind: "table",
+			columns: [
+				{ header: "SCOPE", key: "scope" },
+				{ header: "PATH", key: "path" },
+				{ header: "STATUS", key: "status" },
+			],
+			rows,
+		},
+	];
+}
 
 export function registerTemplateCommand(program: Command, getCtx: () => ArbContext): void {
 	const template = program
@@ -223,58 +268,22 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
 				diffMap.set(`${d.scope}:${d.repo ?? ""}:${d.relPath}`, d.kind);
 			}
 
-			// Build status strings (may contain color codes)
+			// Build status cells
 			const repoWarningDirs = new Set(checkWorkspaceTemplateRepoWarnings(ctx.arbRootDir));
-			const statusPlain: string[] = [];
-			const statusColored: string[] = [];
 			const conflicts: TemplateEntry[] = [];
 
-			for (const t of templates) {
-				const key = `${t.scope}:${t.repo ?? ""}:${t.relPath}`;
-				const diffKind = diffMap.get(key);
+			const nodes = buildTemplateListNodes(templates, diffMap, repoWarningDirs, conflicts);
+			const rCtx: RenderContext = { tty: isTTY() };
+			process.stdout.write(render(nodes, rCtx));
 
-				const plainParts: string[] = [];
-				const coloredParts: string[] = [];
-				if (t.isTemplate) {
-					plainParts.push("template");
-					coloredParts.push("template");
-				}
-				if (t.conflict) {
-					plainParts.push("conflict");
-					coloredParts.push(yellow("conflict"));
-				}
-				if (diffKind === "modified") {
-					plainParts.push("modified");
-					coloredParts.push(yellow("modified"));
-				}
-				if (diffKind === "deleted") {
-					plainParts.push("deleted");
-					coloredParts.push(yellow("deleted"));
-				}
-				if (t.scope === "workspace" && repoWarningDirs.has(t.relPath.split("/")[0] ?? "")) {
-					plainParts.push("misplaced");
-					coloredParts.push(yellow("misplaced"));
-				}
-				statusPlain.push(plainParts.join(" "));
-				statusColored.push(coloredParts.join(" "));
-				if (t.conflict) conflicts.push(t);
-			}
-
-			const columns: Column<TemplateEntry>[] = [
-				{ header: "SCOPE", value: (t) => (t.scope === "workspace" ? "workspace" : (t.repo ?? "")) },
-				{ header: "PATH", value: (t) => t.relPath },
-				{
-					header: "STATUS",
-					value: (_t, i) => statusPlain[i] ?? "",
-					render: (_t, i) => statusColored[i] ?? "",
-				},
+			const helperNodes = [
+				...displayTemplateConflicts(conflicts),
+				...displayUnknownVariables(unknowns),
+				...displayRepoDirectoryWarnings([...repoWarningDirs]),
 			];
-
-			process.stdout.write(renderTable(columns, templates));
-
-			displayTemplateConflicts(conflicts);
-			displayUnknownVariables(unknowns);
-			displayRepoDirectoryWarnings([...repoWarningDirs]);
+			if (helperNodes.length > 0) {
+				process.stderr.write(render(helperNodes, { tty: isTTY() }));
+			}
 		});
 
 	// ── template diff ────────────────────────────────────────────────
@@ -538,9 +547,14 @@ async function applyDefaultMode(
 		}
 	}
 
-	displayTemplateConflicts(allConflicts);
-	displayUnknownVariables(allUnknowns);
-	displayRepoDirectoryWarnings(repoDirectoryWarnings);
+	const helperNodes = [
+		...displayTemplateConflicts(allConflicts),
+		...displayUnknownVariables(allUnknowns),
+		...displayRepoDirectoryWarnings(repoDirectoryWarnings),
+	];
+	if (helperNodes.length > 0) {
+		process.stderr.write(render(helperNodes, { tty: isTTY() }));
+	}
 
 	process.stderr.write("\n");
 	const parts: string[] = [];
@@ -619,9 +633,14 @@ async function applyForceMode(
 		}
 	}
 
-	displayTemplateConflicts(allConflicts);
-	displayUnknownVariables(allUnknowns);
-	displayRepoDirectoryWarnings(repoDirectoryWarnings);
+	const forceHelperNodes = [
+		...displayTemplateConflicts(allConflicts),
+		...displayUnknownVariables(allUnknowns),
+		...displayRepoDirectoryWarnings(repoDirectoryWarnings),
+	];
+	if (forceHelperNodes.length > 0) {
+		process.stderr.write(render(forceHelperNodes, { tty: isTTY() }));
+	}
 	process.stderr.write("\n");
 	const parts: string[] = [];
 	if (totalSeeded > 0) parts.push(`Seeded ${plural(totalSeeded, "template file")}`);

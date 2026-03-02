@@ -14,7 +14,6 @@ import {
 import { GitCache } from "../lib/git-cache";
 import { confirmOrExit, runPlanFlow } from "../lib/mutation-flow";
 import {
-	dim,
 	dryRunNotice,
 	error,
 	finishSummary,
@@ -27,8 +26,11 @@ import {
 	warn,
 	yellow,
 } from "../lib/output";
+import { type RenderContext, render } from "../lib/render";
+import { cell, suffix } from "../lib/render-model";
+import type { Cell, OutputNode } from "../lib/render-model";
 import { workspaceRepoDirs } from "../lib/repos";
-import { type Column, renderTable } from "../lib/table";
+import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireWorkspace } from "../lib/workspace-context";
 
@@ -163,6 +165,102 @@ async function assessRepo(
 	};
 }
 
+function buildRenamePlanNodes(
+	assessments: RepoAssessment[],
+	oldBranch: string,
+	newBranch: string,
+	deleteRemote: boolean,
+	newWorkspaceName: string | null,
+): OutputNode[] {
+	const hasAnyRemote = assessments.some((a) => a.shareRemote !== null);
+
+	const nodes: OutputNode[] = [];
+
+	// Leading text
+	nodes.push({ kind: "gap" });
+	nodes.push({ kind: "message", level: "default", text: `Renaming branch '${oldBranch}' to '${newBranch}'` });
+	if (newWorkspaceName) {
+		nodes.push({
+			kind: "hint",
+			cell: suffix(
+				cell(`  Renaming workspace to '${newWorkspaceName}' `),
+				"(add --keep-workspace-name to skip)",
+				"muted",
+			),
+		});
+	}
+	nodes.push({ kind: "gap" });
+
+	// Table
+	const rows = assessments.map((a) => {
+		let localCell: Cell;
+		let remoteCell: Cell;
+
+		switch (a.outcome) {
+			case "will-rename": {
+				localCell = cell(`rename ${oldBranch} to ${newBranch}`);
+				if (a.shareRemote) {
+					if (a.newRemoteExists) {
+						remoteCell = cell(`${a.shareRemote}/${newBranch} already exists (may conflict)`, "attention");
+					} else if (a.oldRemoteExists && deleteRemote) {
+						remoteCell = cell(`delete ${a.shareRemote}/${oldBranch}`);
+					} else if (a.oldRemoteExists) {
+						remoteCell = suffix(
+							cell(`leave ${a.shareRemote}/${oldBranch} in place `),
+							"(add --delete-remote to delete)",
+							"muted",
+						);
+					} else {
+						remoteCell = cell("no remote branch");
+					}
+				} else {
+					remoteCell = cell("no remote branch");
+				}
+				break;
+			}
+			case "already-on-new":
+				localCell = cell("already renamed", "attention");
+				remoteCell = cell("no remote branch");
+				break;
+			case "skip-missing":
+				localCell = cell("skip — branch not found", "attention");
+				remoteCell = cell("no remote branch");
+				break;
+			case "skip-drifted":
+				localCell = cell(`skip — on branch ${a.currentBranch ?? "?"}, expected ${oldBranch}`, "attention");
+				remoteCell = cell("no remote branch");
+				break;
+			case "skip-in-progress":
+				localCell = cell(`skip — ${a.operationType} in progress (use --include-in-progress)`, "attention");
+				remoteCell = cell("no remote branch");
+				break;
+			default:
+				localCell = cell("unknown");
+				remoteCell = cell("no remote branch");
+		}
+
+		return {
+			cells: {
+				repo: cell(a.repo),
+				local: localCell,
+				remote: remoteCell,
+			},
+		};
+	});
+
+	nodes.push({
+		kind: "table",
+		columns: [
+			{ header: "REPO", key: "repo" },
+			{ header: "LOCAL", key: "local" },
+			{ header: "REMOTE", key: "remote", show: hasAnyRemote },
+		],
+		rows,
+	});
+
+	return nodes;
+}
+
 function formatPlan(
 	assessments: RepoAssessment[],
 	oldBranch: string,
@@ -171,128 +269,49 @@ function formatPlan(
 	newWorkspaceName: string | null,
 	fetchingNotice?: string,
 ): string {
-	const hasAnyRemote = assessments.some((a) => a.shareRemote !== null);
-
-	// Compute plain and colored display per assessment
-	const displays = assessments.map((a) => {
-		let plainAction: string;
-		let coloredAction: string;
-		let remoteNote = "";
-
-		switch (a.outcome) {
-			case "will-rename":
-				plainAction = `rename ${oldBranch} to ${newBranch}`;
-				coloredAction = plainAction;
-				if (a.shareRemote) {
-					if (a.newRemoteExists) {
-						remoteNote = yellow(`${a.shareRemote}/${newBranch} already exists (may conflict)`);
-					} else if (a.oldRemoteExists && deleteRemote) {
-						remoteNote = `delete ${a.shareRemote}/${oldBranch}`;
-					} else if (a.oldRemoteExists) {
-						remoteNote = `leave ${a.shareRemote}/${oldBranch} in place ${dim("(add --delete-remote to delete)")}`;
-					}
-				}
-				break;
-			case "already-on-new":
-				plainAction = "already renamed";
-				coloredAction = yellow(plainAction);
-				break;
-			case "skip-missing":
-				plainAction = "skip — branch not found";
-				coloredAction = yellow(plainAction);
-				break;
-			case "skip-drifted":
-				plainAction = `skip — on branch ${a.currentBranch ?? "?"}, expected ${oldBranch}`;
-				coloredAction = yellow(plainAction);
-				break;
-			case "skip-in-progress":
-				plainAction = `skip — ${a.operationType} in progress (use --include-in-progress)`;
-				coloredAction = yellow(plainAction);
-				break;
-			default:
-				plainAction = "unknown";
-				coloredAction = plainAction;
-		}
-
-		return { plainAction, coloredAction, remoteNote };
-	});
-
-	let out = `\n  Renaming branch '${oldBranch}' to '${newBranch}'\n`;
-
-	if (newWorkspaceName) {
-		out += `  Renaming workspace to '${newWorkspaceName}' ${dim("(add --keep-workspace-name to skip)")}\n`;
-	}
-
-	out += "\n";
-
-	const columns: Column<RepoAssessment>[] = [
-		{ header: "REPO", value: (a) => a.repo },
-		{
-			header: "LOCAL",
-			value: (_a, i) => displays[i]?.plainAction ?? "",
-			render: (_a, i) => displays[i]?.coloredAction ?? "",
-		},
-	];
-	if (hasAnyRemote) {
-		columns.push({
-			header: "REMOTE",
-			value: (_a, i) => displays[i]?.remoteNote || "no remote branch",
-			render: (_a, i) => displays[i]?.remoteNote || "no remote branch",
-		});
-	}
-
-	out += renderTable(columns, assessments, { gap: 3 });
-
+	const nodes = buildRenamePlanNodes(assessments, oldBranch, newBranch, deleteRemote, newWorkspaceName);
+	const rCtx: RenderContext = { tty: isTTY() };
+	let out = render(nodes, rCtx);
 	if (fetchingNotice) {
 		out += fetchingNotice;
 	}
-
 	out += "\n";
 	return out;
 }
 
 function formatAbortPlan(assessments: AbortAssessment[], oldBranch: string, newBranch: string): string {
-	const plainActions = assessments.map((a) => {
-		switch (a.outcome) {
-			case "roll-back":
-				return `rename ${newBranch} to ${oldBranch}`;
-			case "already-reverted":
-				return `already on ${oldBranch}`;
-			case "skip-unknown":
-				return `skip — on branch ${a.currentBranch ?? "?"}, expected ${newBranch}`;
-			default:
-				return "unknown";
-		}
-	});
-	const coloredActions = assessments.map((a, i) => {
-		switch (a.outcome) {
-			case "roll-back":
-				return plainActions[i] ?? "";
-			case "already-reverted":
-				return dim(plainActions[i] ?? "");
-			case "skip-unknown":
-				return yellow(plainActions[i] ?? "");
-			default:
-				return plainActions[i] ?? "";
-		}
-	});
+	const nodes: OutputNode[] = [
+		{ kind: "gap" },
+		{ kind: "message", level: "default", text: `Rolling back rename: '${newBranch}' to '${oldBranch}'` },
+		{ kind: "gap" },
+		{
+			kind: "table",
+			columns: [
+				{ header: "REPO", key: "repo" },
+				{ header: "LOCAL", key: "local" },
+			],
+			rows: assessments.map((a) => {
+				let localCell: Cell;
+				switch (a.outcome) {
+					case "roll-back":
+						localCell = cell(`rename ${newBranch} to ${oldBranch}`);
+						break;
+					case "already-reverted":
+						localCell = cell(`already on ${oldBranch}`, "muted");
+						break;
+					case "skip-unknown":
+						localCell = cell(`skip — on branch ${a.currentBranch ?? "?"}, expected ${newBranch}`, "attention");
+						break;
+					default:
+						localCell = cell("unknown");
+				}
+				return { cells: { repo: cell(a.repo), local: localCell } };
+			}),
+		},
+	];
 
-	let out = `\n  Rolling back rename: '${newBranch}' to '${oldBranch}'\n\n`;
-	out += renderTable<AbortAssessment>(
-		[
-			{ header: "REPO", value: (a) => a.repo },
-			{
-				header: "LOCAL",
-				value: (_a, i) => plainActions[i] ?? "",
-				render: (_a, i) => coloredActions[i] ?? "",
-			},
-		],
-		assessments,
-		{ gap: 3 },
-	);
-
-	out += "\n";
-	return out;
+	const rCtx: RenderContext = { tty: isTTY() };
+	return `${render(nodes, rCtx)}\n`;
 }
 
 function renameWorkspace(

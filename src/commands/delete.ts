@@ -6,7 +6,10 @@ import { ArbError } from "../lib/errors";
 import { branchExistsLocally, git, remoteBranchExists, validateWorkspaceName } from "../lib/git";
 import { GitCache } from "../lib/git-cache";
 import { confirmOrExit } from "../lib/mutation-flow";
-import { dryRunNotice, error, info, inlineResult, inlineStart, plural, success, warn, yellow } from "../lib/output";
+import { dryRunNotice, error, info, inlineResult, inlineStart, plural, success, warn } from "../lib/output";
+import { type RenderContext, render } from "../lib/render";
+import { EMPTY_CELL, cell } from "../lib/render-model";
+import type { Cell, OutputNode } from "../lib/render-model";
 import { listNonWorkspaces, listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import {
 	LOSE_WORK_FLAGS,
@@ -20,7 +23,6 @@ import {
 	wouldLoseWork,
 } from "../lib/status";
 import { readNamesFromStdin } from "../lib/stdin";
-import { type Column, renderTable } from "../lib/table";
 import { type TemplateDiff, diffTemplates, displayTemplateDiffs } from "../lib/templates";
 import {
 	type LastCommitWidths,
@@ -138,51 +140,70 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 	};
 }
 
-function displayDeleteTable(assessments: WorkspaceAssessment[]): void {
-	// Last commit column
+function buildDeleteTableNodes(assessments: WorkspaceAssessment[]): OutputNode[] {
+	// Last commit column — compute widths for right-alignment
 	const allTimeParts: RelativeTimeParts[] = assessments.map((a) =>
 		a.summary.lastCommit ? formatRelativeTimeParts(a.summary.lastCommit) : { num: "", unit: "" },
 	);
 	const lcWidths: LastCommitWidths = computeLastCommitWidths(allTimeParts);
 
-	// Status text (plain for width, colored for display)
-	const statusPlain: string[] = assessments.map((a) => {
-		if (a.summary.repos.length === 0 && a.summary.total > 0) return "(remotes not resolved)";
-		if (a.summary.statusCounts.length === 0) return "no issues";
-		return formatStatusCounts(a.summary.statusCounts, a.summary.rebasedOnlyCount, LOSE_WORK_FLAGS);
-	});
-	const statusColored: string[] = assessments.map((a, i) => {
-		if (a.summary.repos.length === 0 && a.summary.total > 0) return yellow("(remotes not resolved)");
-		return statusPlain[i] ?? "";
+	const rows = assessments.map((a, i) => {
+		// Last commit cell
+		const parts = allTimeParts[i];
+		let lastCommitCell: Cell;
+		if (!parts || (!parts.num && !parts.unit)) {
+			lastCommitCell = EMPTY_CELL;
+		} else {
+			lastCommitCell = cell(formatLastCommitCell(parts, lcWidths, true));
+		}
+
+		// Status cell
+		let statusCell: Cell;
+		if (a.summary.repos.length === 0 && a.summary.total > 0) {
+			statusCell = cell("(remotes not resolved)", "attention");
+		} else if (a.summary.statusCounts.length === 0) {
+			statusCell = cell("no issues");
+		} else {
+			statusCell = cell(formatStatusCounts(a.summary.statusCounts, a.summary.rebasedOnlyCount, LOSE_WORK_FLAGS));
+		}
+
+		return {
+			cells: {
+				workspace: cell(a.name),
+				lastCommit: lastCommitCell,
+				repos: cell(`${a.summary.total}`),
+				status: statusCell,
+			},
+		};
 	});
 
-	const columns: Column<WorkspaceAssessment>[] = [
-		{ header: "WORKSPACE", value: (a) => a.name },
+	return [
 		{
-			header: "LAST COMMIT",
-			value: (_a, i) => {
-				const parts = allTimeParts[i];
-				if (!parts || (!parts.num && !parts.unit)) return " ".repeat(lcWidths.total);
-				return formatLastCommitCell(parts, lcWidths, true);
-			},
-		},
-		{ header: "REPOS", value: (a) => `${a.summary.total}` },
-		{
-			header: "STATUS",
-			value: (_a, i) => statusPlain[i] ?? "",
-			render: (_a, i) => statusColored[i] ?? "",
+			kind: "table",
+			columns: [
+				{ header: "WORKSPACE", key: "workspace" },
+				{ header: "LAST COMMIT", key: "lastCommit" },
+				{ header: "REPOS", key: "repos" },
+				{ header: "STATUS", key: "status" },
+			],
+			rows,
 		},
 	];
+}
 
-	process.stderr.write("\n");
-	process.stderr.write(renderTable(columns, assessments));
-	process.stderr.write("\n");
+function displayDeleteTable(assessments: WorkspaceAssessment[]): void {
+	const rCtx: RenderContext = { tty: isTTY() };
+	const nodes = buildDeleteTableNodes(assessments);
+	process.stderr.write(`\n${render(nodes, rCtx)}\n`);
 
 	// Template diffs below the table
 	const multiWs = assessments.length > 1;
 	for (const a of assessments) {
 		const suffix = multiWs ? ` (${a.name})` : "";
-		displayTemplateDiffs(a.templateDiffs, (text) => process.stderr.write(text), suffix);
+		const diffNodes = displayTemplateDiffs(a.templateDiffs, suffix);
+		if (diffNodes.length > 0) {
+			process.stderr.write(render(diffNodes, rCtx));
+		}
 	}
 
 	// At-risk warnings

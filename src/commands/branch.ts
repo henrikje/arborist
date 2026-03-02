@@ -7,13 +7,14 @@ import { git } from "../lib/git";
 import { GitCache } from "../lib/git-cache";
 import { printSchema } from "../lib/json-schema";
 import { type BranchJsonOutput, BranchJsonOutputSchema, type BranchJsonRepo } from "../lib/json-types";
-import { dim, error, stderr, yellow } from "../lib/output";
+import { error, stderr } from "../lib/output";
 import { fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/parallel-fetch";
 import { runPhasedRender } from "../lib/phased-render";
+import { type RenderContext, render } from "../lib/render";
+import { cell } from "../lib/render-model";
+import type { OutputNode } from "../lib/render-model";
 import { workspaceRepoDirs } from "../lib/repos";
 import { type RepoStatus, gatherWorkspaceSummary } from "../lib/status";
-import { ITEM_INDENT, SECTION_INDENT } from "../lib/status-verbose";
-import { type Column, renderTable } from "../lib/table";
 import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { workspaceBranch } from "../lib/workspace-branch";
@@ -31,6 +32,89 @@ interface VerboseRow {
 	base: string;
 	share: string;
 	branchNoteworthy: boolean;
+}
+
+function buildBranchSummaryNodes(branch: string, base: string | null, repos: RepoBranch[]): OutputNode[] {
+	const baseDisplay = base ?? "(default branch)";
+	const nodes: OutputNode[] = [
+		{
+			kind: "table",
+			columns: [
+				{ header: "BRANCH", key: "branch" },
+				{ header: "BASE", key: "base" },
+			],
+			rows: [
+				{
+					cells: {
+						branch: cell(branch),
+						base: cell(baseDisplay, base ? "default" : "muted"),
+					},
+				},
+			],
+		},
+	];
+
+	// Per-repo deviations
+	const deviations = repos.filter((r) => r.branch !== branch);
+	if (deviations.length > 0) {
+		nodes.push(
+			{ kind: "gap" },
+			{
+				kind: "section",
+				header: cell("Repos on a different branch:", "attention"),
+				items: deviations.map((r) => {
+					const label = r.branch === null ? "(detached)" : r.branch;
+					return cell(`${r.name}    ${label}`);
+				}),
+			},
+		);
+	}
+
+	return nodes;
+}
+
+function buildVerboseNodes(repos: RepoStatus[], branch: string, base: string | null): OutputNode[] {
+	const baseDisplay = base ?? "(default branch)";
+	const nodes: OutputNode[] = [
+		{
+			kind: "table",
+			columns: [
+				{ header: "BRANCH", key: "branch" },
+				{ header: "BASE", key: "base" },
+			],
+			rows: [
+				{
+					cells: {
+						branch: cell(branch),
+						base: cell(baseDisplay, base ? "default" : "muted"),
+					},
+				},
+			],
+		},
+		{ kind: "gap" },
+	];
+
+	// Per-repo table
+	const verboseRows = buildVerboseRows(repos, branch);
+	nodes.push({
+		kind: "table",
+		columns: [
+			{ header: "REPO", key: "repo" },
+			{ header: "BRANCH", key: "branch" },
+			{ header: "BASE", key: "base" },
+			{ header: "SHARE", key: "share" },
+		],
+		rows: verboseRows.map((row) => ({
+			cells: {
+				repo: cell(row.name),
+				branch: cell(row.branch, row.branchNoteworthy ? "attention" : "default"),
+				base: cell(row.base),
+				share: cell(row.share),
+			},
+		})),
+	});
+
+	return nodes;
 }
 
 export function registerBranchCommand(program: Command, getCtx: () => ArbContext): void {
@@ -122,31 +206,9 @@ async function runBranch(
 	}
 
 	// Default table output
-	const baseDisplay = base ?? "(default branch)";
-
-	interface SummaryRow {
-		branch: string;
-		base: string;
-	}
-
-	const summaryColumns: Column<SummaryRow>[] = [
-		{ header: "BRANCH", value: (row) => row.branch },
-		{ header: "BASE", value: (row) => row.base, render: (row) => (base ? row.base : dim(row.base)) },
-	];
-
-	let output = renderTable(summaryColumns, [{ branch, base: baseDisplay }]);
-
-	// Per-repo deviations
-	const deviations = repos.filter((r) => r.branch !== branch);
-	if (deviations.length > 0) {
-		output += `\n${SECTION_INDENT}${yellow("Repos on a different branch:")}\n`;
-		for (const r of deviations) {
-			const label = r.branch === null ? "(detached)" : r.branch;
-			output += `${ITEM_INDENT}${r.name}    ${label}\n`;
-		}
-	}
-
-	process.stdout.write(output);
+	const nodes = buildBranchSummaryNodes(branch, base, repos);
+	const rCtx: RenderContext = { tty: isTTY() };
+	process.stdout.write(render(nodes, rCtx));
 }
 
 // ── Verbose mode ──────────────────────────────────────────────────
@@ -181,7 +243,7 @@ async function runVerboseBranch(
 				{
 					render: async () => {
 						const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
-						state.staleOutput = renderVerboseOutput(summary.repos, branch, base);
+						state.staleOutput = formatVerboseOutput(summary.repos, branch, base);
 						return state.staleOutput + fetchSuffix(repoNames.length, { abortable: true });
 					},
 					write: stderr,
@@ -199,7 +261,7 @@ async function runVerboseBranch(
 						}
 						cache.invalidateAfterFetch();
 						const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
-						return renderVerboseOutput(summary.repos, branch, base);
+						return formatVerboseOutput(summary.repos, branch, base);
 					},
 					write: (output) => process.stdout.write(output),
 				},
@@ -229,7 +291,7 @@ async function runVerboseBranch(
 		return;
 	}
 
-	process.stdout.write(renderVerboseOutput(summary.repos, branch, base));
+	process.stdout.write(formatVerboseOutput(summary.repos, branch, base));
 }
 
 function buildVerboseRows(repos: RepoStatus[], branch: string): VerboseRow[] {
@@ -268,48 +330,10 @@ function buildVerboseRows(repos: RepoStatus[], branch: string): VerboseRow[] {
 	});
 }
 
-function renderVerboseOutput(repos: RepoStatus[], branch: string, base: string | null): string {
-	// Workspace-level header (same as default mode)
-	const baseDisplay = base ?? "(default branch)";
-
-	interface SummaryRow {
-		branch: string;
-		base: string;
-	}
-
-	const summaryColumns: Column<SummaryRow>[] = [
-		{ header: "BRANCH", value: (row) => row.branch },
-		{ header: "BASE", value: (row) => row.base, render: (row) => (base ? row.base : dim(row.base)) },
-	];
-
-	let out = renderTable(summaryColumns, [{ branch, base: baseDisplay }]);
-	out += "\n";
-
-	// Per-repo table
-	const rows = buildVerboseRows(repos, branch);
-
-	const columns: Column<VerboseRow>[] = [
-		{
-			header: "REPO",
-			value: (row) => row.name,
-		},
-		{
-			header: "BRANCH",
-			value: (row) => row.branch,
-			render: (row) => (row.branchNoteworthy ? yellow(row.branch) : row.branch),
-		},
-		{
-			header: "BASE",
-			value: (row) => row.base,
-		},
-		{
-			header: "SHARE",
-			value: (row) => row.share,
-		},
-	];
-
-	out += renderTable(columns, rows);
-	return out;
+function formatVerboseOutput(repos: RepoStatus[], branch: string, base: string | null): string {
+	const nodes = buildVerboseNodes(repos, branch, base);
+	const rCtx: RenderContext = { tty: isTTY() };
+	return render(nodes, rCtx);
 }
 
 function formatVerboseJson(repos: RepoStatus[], branch: string, base: string | null): string {

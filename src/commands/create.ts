@@ -6,9 +6,11 @@ import { ArbError } from "../lib/errors";
 import { validateBranchName, validateWorkspaceName } from "../lib/git";
 import { GitCache } from "../lib/git-cache";
 import { dim, error, info, plural, success, warn } from "../lib/output";
+import { render } from "../lib/render";
 import { listRepos, selectReposInteractive } from "../lib/repos";
 import { readNamesFromStdin } from "../lib/stdin";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
+import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { addWorktrees } from "../lib/worktrees";
 
@@ -148,7 +150,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 
 				const wsTemplates = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir, undefined, cache);
 				const repoTemplates = await applyRepoTemplates(ctx.arbRootDir, wsDir, result.created, undefined, cache);
-				displayOverlaySummary(wsTemplates, repoTemplates);
+				displayOverlaySummary(wsTemplates, repoTemplates, (nodes) => render(nodes, { tty: isTTY() }));
 
 				process.stderr.write("\n");
 				const branchSuffix = branch === name.toLowerCase() ? "" : ` on branch ${branch}`;

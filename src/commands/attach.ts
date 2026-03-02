@@ -4,9 +4,11 @@ import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
 import { GitCache } from "../lib/git-cache";
 import { error, info, plural, success, warn } from "../lib/output";
+import { render } from "../lib/render";
 import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/repos";
 import { readNamesFromStdin } from "../lib/stdin";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
+import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 import { addWorktrees } from "../lib/worktrees";
@@ -79,7 +81,7 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
 			const wsRepoNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
 			const repoTemplates = await applyRepoTemplates(ctx.arbRootDir, wsDir, wsRepoNames, changed, cache);
 			const wsTemplates = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir, changed, cache);
-			displayOverlaySummary(wsTemplates, repoTemplates);
+			displayOverlaySummary(wsTemplates, repoTemplates, (nodes) => render(nodes, { tty: isTTY() }));
 
 			process.stderr.write("\n");
 			if (result.failed.length === 0 && result.skipped.length === 0) {
