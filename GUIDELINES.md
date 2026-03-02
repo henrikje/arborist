@@ -119,6 +119,12 @@ Recovery depends on whether failures are independent or systemic.
 
 **Unexpected failures** (push): often systemic (auth, server errors). Arb stops at first failure, prints git's error output, and tells the user to investigate and re-run.
 
+### Table spacing convention
+
+**Plan commands** (state-changing: `rebase`, `merge`, `push`, `pull`, `delete`, `rebranch`, `clean`): blank line before and after the table. The blank lines separate the plan from fetch output above and the confirmation prompt below.
+
+**Overview commands** (read-only: `status`, `list`, `branch`, `repo list`, `template list`): no surrounding blank lines. The table is the entire output; extra padding wastes screen real estate.
+
 ### Documentation: help is reference, README is tutorial
 
 `--help` is the authoritative reference — every option, argument, and behavioral detail. Keep descriptions concise but complete. The README walks through workflows and explains the mental model, linking to `arb help <command>` for details.

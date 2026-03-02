@@ -100,6 +100,7 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 				const descriptions: string[] = targetDirs.map((name) => describeContents(join(ctx.arbRootDir, name)));
 
 				const tableRows = targetDirs.map((name, i) => ({ name, contents: descriptions[i] ?? "" }));
+				process.stderr.write("\n");
 				process.stderr.write(
 					renderTable(
 						[
