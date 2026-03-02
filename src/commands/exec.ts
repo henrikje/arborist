@@ -4,9 +4,11 @@ import { configGet } from "../lib/config";
 import { ArbError } from "../lib/errors";
 import { GitCache } from "../lib/git-cache";
 import { error, plural, success } from "../lib/output";
-import { writeRepoHeaderSimple } from "../lib/repo-header";
+import { type RenderContext, render } from "../lib/render";
+import { repoHeaderNode } from "../lib/repo-header";
 import { collectRepo, validateRepoNames, workspaceRepoDirs } from "../lib/repos";
 import { computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
+import { isTTY } from "../lib/tty";
 import type { ArbContext } from "../lib/types";
 import { requireBranch, requireWorkspace } from "../lib/workspace-context";
 
@@ -68,6 +70,7 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 				);
 			}
 
+			const renderCtx: RenderContext = { tty: isTTY() };
 			for (const repoDir of repoDirs) {
 				const repo = basename(repoDir);
 
@@ -76,7 +79,7 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
 					continue;
 				}
 
-				writeRepoHeaderSimple(repo);
+				process.stderr.write(render([repoHeaderNode(repo)], renderCtx));
 				const proc = Bun.spawn(args, {
 					cwd: repoDir,
 					stdout: "inherit",

@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { configGet } from "../lib/config";
-import { reportConflicts, reportStashPopFailures } from "../lib/conflict-report";
+import { buildConflictReport, buildStashPopFailureReport } from "../lib/conflict-report";
 import { ArbError } from "../lib/errors";
 import {
 	getCommitsBetweenFull,
@@ -219,7 +219,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				}
 
 				// Consolidated conflict report
-				reportConflicts(
+				const conflictNodes = buildConflictReport(
 					conflicted.map((c) => ({
 						repo: c.assessment.repo,
 						stdout: c.stdout,
@@ -229,7 +229,11 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				);
 
 				// Stash pop failure report
-				reportStashPopFailures(stashPopFailed, "Pull");
+				const stashNodes = buildStashPopFailureReport(stashPopFailed, "Pull");
+
+				const reportCtx = { tty: isTTY() };
+				if (conflictNodes.length > 0) process.stderr.write(render(conflictNodes, reportCtx));
+				if (stashNodes.length > 0) process.stderr.write(render(stashNodes, reportCtx));
 
 				// Phase 5: summary
 				process.stderr.write("\n");

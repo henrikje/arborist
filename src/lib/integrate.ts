@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import { configGet, writeConfig } from "./config";
-import { reportConflicts, reportStashPopFailures } from "./conflict-report";
+import { buildConflictReport, buildStashPopFailureReport } from "./conflict-report";
 import { ArbError } from "./errors";
 import {
 	analyzeRetargetReplay,
@@ -264,7 +264,7 @@ export async function integrate(
 
 	// Consolidated conflict report
 	const subcommand = mode === "rebase" ? ("rebase" as const) : ("merge" as const);
-	reportConflicts(
+	const conflictNodes = buildConflictReport(
 		conflicted.map((c) => ({
 			repo: c.assessment.repo,
 			stdout: c.stdout,
@@ -274,7 +274,11 @@ export async function integrate(
 	);
 
 	// Stash pop failure report
-	reportStashPopFailures(stashPopFailed, mode === "rebase" ? "Rebase" : "Merge");
+	const stashNodes = buildStashPopFailureReport(stashPopFailed, mode === "rebase" ? "Rebase" : "Merge");
+
+	const reportCtx = { tty: isTTY() };
+	if (conflictNodes.length > 0) process.stderr.write(render(conflictNodes, reportCtx));
+	if (stashNodes.length > 0) process.stderr.write(render(stashNodes, reportCtx));
 
 	// Update config after successful retarget (skip branch-merged replays — base doesn't change)
 	const retargetAssessments = willOperate.filter((a) => a.retargetTo && a.retargetReason !== "branch-merged");
