@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.104.0](https://github.com/henrikje/arborist/compare/v0.103.0...v0.104.0) (2026-03-02)
+
+
+### Features
+
+* move rebranch into branch group as rename subcommand ([3a22498](https://github.com/henrikje/arborist/commit/3a22498b26200c0a08d6fdad36fbafc4f04a2d82))
+
 ## [0.103.0](https://github.com/henrikje/arborist/compare/v0.102.0...v0.103.0) (2026-03-02)
 
 This release improves status and push protection for merged branches with new commits, adds local PR and ticket detection, and introduces an `arb branch` command with verbose per-repo tracking details.
