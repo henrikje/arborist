@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import * as tty from "../terminal/tty";
 import { fetchSuffix, getFetchFailedRepos, reportFetchFailures } from "./parallel-fetch";
 
 describe("reportFetchFailures", () => {
@@ -51,12 +52,23 @@ describe("fetchSuffix", () => {
 		expect(result).toContain("Fetching 1 repo...");
 	});
 
-	// Note: abortable hint only appears when both isTTY() and process.stdin.isTTY are true.
-	// In test environment stdin is not a TTY, so the hint is not included even with abortable: true.
-	test("does not include hint when stdin is not a TTY", () => {
+	test("does not include hint when not in TTY mode", () => {
+		const spy = spyOn(tty, "isTTY").mockReturnValue(false);
 		const result = fetchSuffix(3, { abortable: true });
 		expect(result).toContain("Fetching 3 repos...");
 		expect(result).not.toContain("<Esc to cancel>");
+		spy.mockRestore();
+	});
+
+	test("includes hint when abortable and in TTY mode with TTY stdin", () => {
+		const spy = spyOn(tty, "isTTY").mockReturnValue(true);
+		const saved = process.stdin.isTTY;
+		process.stdin.isTTY = true;
+		const result = fetchSuffix(3, { abortable: true });
+		expect(result).toContain("Fetching 3 repos...");
+		expect(result).toContain("<Esc to cancel>");
+		process.stdin.isTTY = saved;
+		spy.mockRestore();
 	});
 });
 
