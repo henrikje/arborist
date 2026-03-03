@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { fetchSuffix, reportFetchFailures } from "./parallel-fetch";
+import { fetchSuffix, getFetchFailedRepos, reportFetchFailures } from "./parallel-fetch";
 
 describe("reportFetchFailures", () => {
 	test("returns empty array when all succeed", () => {
@@ -57,5 +57,37 @@ describe("fetchSuffix", () => {
 		const result = fetchSuffix(3, { abortable: true });
 		expect(result).toContain("Fetching 3 repos...");
 		expect(result).not.toContain("<Esc to cancel>");
+	});
+});
+
+describe("getFetchFailedRepos", () => {
+	test("returns empty array when all succeed", () => {
+		const results = new Map([
+			["repo-a", { exitCode: 0, output: "" }],
+			["repo-b", { exitCode: 0, output: "" }],
+		]);
+		expect(getFetchFailedRepos(["repo-a", "repo-b"], results)).toEqual([]);
+	});
+
+	test("returns repos with non-zero exitCode", () => {
+		const results = new Map([
+			["repo-a", { exitCode: 0, output: "" }],
+			["repo-b", { exitCode: 1, output: "error" }],
+			["repo-c", { exitCode: 128, output: "fatal" }],
+		]);
+		expect(getFetchFailedRepos(["repo-a", "repo-b", "repo-c"], results)).toEqual(["repo-b", "repo-c"]);
+	});
+
+	test("treats repos missing from results as failed", () => {
+		const results = new Map([["repo-a", { exitCode: 0, output: "" }]]);
+		expect(getFetchFailedRepos(["repo-a", "repo-b"], results)).toEqual(["repo-b"]);
+	});
+
+	test("handles mixed success, failure, and missing", () => {
+		const results = new Map([
+			["repo-a", { exitCode: 0, output: "" }],
+			["repo-b", { exitCode: 1, output: "error" }],
+		]);
+		expect(getFetchFailedRepos(["repo-a", "repo-b", "repo-c"], results)).toEqual(["repo-b", "repo-c"]);
 	});
 });

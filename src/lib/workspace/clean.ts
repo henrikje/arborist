@@ -4,6 +4,17 @@ import { detectBranchMerged, git } from "../git/git";
 import type { GitCache } from "../git/git-cache";
 import { listRepos } from "./repos";
 
+/** Parse `git worktree list --porcelain` stdout into an array of worktree paths. */
+export function parseWorktreeList(stdout: string): string[] {
+	const paths: string[] = [];
+	for (const line of stdout.split("\n")) {
+		if (line.startsWith("worktree ")) {
+			paths.push(line.slice("worktree ".length));
+		}
+	}
+	return paths;
+}
+
 export async function findStaleWorktrees(reposDir: string): Promise<string[]> {
 	const repos = listRepos(reposDir);
 	const stale: string[] = [];
@@ -11,16 +22,13 @@ export async function findStaleWorktrees(reposDir: string): Promise<string[]> {
 		const repoDir = join(reposDir, repo);
 		const result = await git(repoDir, "worktree", "list", "--porcelain");
 		if (result.exitCode !== 0) continue;
-		// Parse porcelain output: each worktree block starts with "worktree <path>"
-		for (const line of result.stdout.split("\n")) {
-			if (line.startsWith("worktree ")) {
-				const wtPath = line.slice("worktree ".length);
-				// The first entry is the main worktree (the canonical repo itself) — skip it
-				if (wtPath === repoDir) continue;
-				if (!existsSync(wtPath)) {
-					stale.push(repo);
-					break;
-				}
+		const paths = parseWorktreeList(result.stdout);
+		for (const wtPath of paths) {
+			// The first entry is the main worktree (the canonical repo itself) — skip it
+			if (wtPath === repoDir) continue;
+			if (!existsSync(wtPath)) {
+				stale.push(repo);
+				break;
 			}
 		}
 	}

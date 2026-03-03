@@ -276,6 +276,70 @@ export function repoMatchesWhere(flags: RepoFlags, where: string): boolean {
 	});
 }
 
+// ── Pure Helpers (extracted for testability) ──
+
+/** Parse `git rev-list --left-right --count` stdout into two numbers. */
+export function parseLeftRight(stdout: string): { left: number; right: number } {
+	const parts = stdout.trim().split(/\s+/);
+	return {
+		left: Number.parseInt(parts[0] ?? "0", 10),
+		right: Number.parseInt(parts[1] ?? "0", 10),
+	};
+}
+
+/** Determine whether merge detection should run for a repo. */
+export function shouldRunMergeDetection(
+	baseStatus: RepoStatus["base"],
+	shareStatus: RepoStatus["share"],
+	detached: boolean,
+	actualBranch: string,
+): boolean {
+	if (baseStatus === null || detached) return false;
+	const hasWork = baseStatus.ahead > 0 || baseStatus.behind > 0;
+	const isGone = shareStatus.refMode === "gone";
+	const isOnBaseBranch = actualBranch === baseStatus.ref;
+	const skipForNeverPushed = baseStatus.ahead === 0 && shareStatus.refMode === "noRef";
+	return (hasWork || isGone) && !isOnBaseBranch && !skipForNeverPushed;
+}
+
+/** Compute which merge detection strategies to use. */
+export function computeMergeDetectionStrategy(
+	baseStatus: NonNullable<RepoStatus["base"]>,
+	shareStatus: RepoStatus["share"],
+): { shouldCheckSquash: boolean; shouldCheckPrefixes: boolean; prefixLimit: number } {
+	const shareUpToDate = shareStatus.toPush === 0 && shareStatus.toPull === 0 && shareStatus.refMode !== "noRef";
+	const shouldCheckSquash = shareStatus.refMode === "gone" || shareUpToDate;
+
+	const shouldCheckPrefixes =
+		shareStatus.refMode !== "noRef" &&
+		shareStatus.toPush !== null &&
+		shareStatus.toPush > 0 &&
+		(shareStatus.toPull === null || shareStatus.toPull === 0);
+
+	let prefixLimit: number;
+	if (shouldCheckPrefixes) {
+		prefixLimit = Math.min(shareStatus.toPush ?? 0, 10);
+	} else {
+		prefixLimit = baseStatus.ahead > 1 ? Math.min(baseStatus.ahead - 1, 10) : 0;
+	}
+
+	return { shouldCheckSquash, shouldCheckPrefixes, prefixLimit };
+}
+
+/** Pick the most common ticket key from a frequency map. */
+export function pickMostCommonTicket(ticketCounts: Map<string, number>): string | null {
+	if (ticketCounts.size === 0) return null;
+	let best: string | null = null;
+	let bestCount = 0;
+	for (const [key, count] of ticketCounts) {
+		if (count > bestCount) {
+			best = key;
+			bestCount = count;
+		}
+	}
+	return best;
+}
+
 export function workspaceMatchesWhere(repos: RepoStatus[], branch: string, where: string): boolean {
 	return repos.some((repo) => {
 		const flags = computeFlags(repo, branch);
@@ -411,9 +475,7 @@ export async function gatherRepoStatus(
 			const compareRef = baseRemote ? `${baseRemote}/${defaultBranch}` : defaultBranch;
 			const lr = await git(repoDir, "rev-list", "--left-right", "--count", `${compareRef}...HEAD`);
 			if (lr.exitCode === 0) {
-				const parts = lr.stdout.trim().split(/\s+/);
-				const behind = Number.parseInt(parts[0] ?? "0", 10);
-				const ahead = Number.parseInt(parts[1] ?? "0", 10);
+				const { left: behind, right: ahead } = parseLeftRight(lr.stdout);
 				baseStatus = {
 					remote: baseRemote ?? null,
 					ref: defaultBranch,
@@ -441,9 +503,9 @@ export async function gatherRepoStatus(
 			let toPush: number | null = null;
 			let toPull: number | null = null;
 			if (pushLr.exitCode === 0) {
-				const parts = pushLr.stdout.trim().split(/\s+/);
-				toPull = Number.parseInt(parts[0] ?? "0", 10);
-				toPush = Number.parseInt(parts[1] ?? "0", 10);
+				const { left, right } = parseLeftRight(pushLr.stdout);
+				toPull = left;
+				toPush = right;
 			}
 			let rebased: number | null = null;
 			if (toPush !== null && toPush > 0 && toPull !== null && toPull > 0) {
@@ -465,9 +527,9 @@ export async function gatherRepoStatus(
 			let toPush: number | null = null;
 			let toPull: number | null = null;
 			if (pushLr.exitCode === 0) {
-				const parts = pushLr.stdout.trim().split(/\s+/);
-				toPull = Number.parseInt(parts[0] ?? "0", 10);
-				toPush = Number.parseInt(parts[1] ?? "0", 10);
+				const { left, right } = parseLeftRight(pushLr.stdout);
+				toPull = left;
+				toPush = right;
 			}
 			let rebased: number | null = null;
 			if (toPush !== null && toPush > 0 && toPull !== null && toPull > 0) {
@@ -515,24 +577,13 @@ export async function gatherRepoStatus(
 	// trivially pass (HEAD is always an ancestor of a ref ahead of it with no diverging commits).
 	// Ancestor check is cheap (single git command), always run when eligible.
 	// Squash check is more expensive — only run when branch is gone OR share is up to date.
-	const hasWork = baseStatus !== null && (baseStatus.ahead > 0 || baseStatus.behind > 0);
-	const isGone = shareStatus.refMode === "gone";
-	const isOnBaseBranch = actualBranch === baseStatus?.ref;
-	const skipForNeverPushed = baseStatus !== null && baseStatus.ahead === 0 && shareStatus.refMode === "noRef";
 	let mergeMatchingCommit: { hash: string; subject: string } | undefined;
-	if (baseStatus !== null && !detached && (hasWork || isGone) && !isOnBaseBranch && !skipForNeverPushed) {
+	if (shouldRunMergeDetection(baseStatus, shareStatus, detached, actualBranch) && baseStatus !== null) {
 		const compareRef = baseRemote ? `${baseRemote}/${baseStatus.ref}` : baseStatus.ref;
-		const shareUpToDate =
-			shareStatus !== null && shareStatus.toPush === 0 && shareStatus.toPull === 0 && shareStatus.refMode !== "noRef";
-		const shouldCheckSquash = (shareStatus !== null && shareStatus.refMode === "gone") || shareUpToDate;
-
-		// Prefix detection for "merged + new work" — branch was previously pushed,
-		// has new unpushed commits, and is not behind share (which would indicate a different problem).
-		const shouldCheckPrefixes =
-			shareStatus.refMode !== "noRef" &&
-			shareStatus.toPush !== null &&
-			shareStatus.toPush > 0 &&
-			(shareStatus.toPull === null || shareStatus.toPull === 0);
+		const { shouldCheckSquash, shouldCheckPrefixes, prefixLimit } = computeMergeDetectionStrategy(
+			baseStatus,
+			shareStatus,
+		);
 
 		// Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
 		let mergeCommitHash: string | undefined;
@@ -556,11 +607,6 @@ export async function gatherRepoStatus(
 			}
 		} else if (shouldCheckSquash || shouldCheckPrefixes) {
 			// Phase 2: Squash merge detection via cumulative patch-id (with prefix fallback)
-			const prefixLimit = shouldCheckPrefixes
-				? Math.min(shareStatus.toPush ?? 0, 10)
-				: baseStatus.ahead > 1
-					? Math.min(baseStatus.ahead - 1, 10)
-					: 0;
 			const squashResult = await detectBranchMerged(repoDir, compareRef, 200, "HEAD", prefixLimit);
 			if (squashResult) {
 				baseStatus.mergedIntoBase = squashResult.kind;
@@ -699,17 +745,8 @@ export async function gatherWorkspaceSummary(
 				if (ticket) ticketCounts.set(ticket, (ticketCounts.get(ticket) ?? 0) + 1);
 			}),
 		);
-		if (ticketCounts.size > 0) {
-			let best: string | null = null;
-			let bestCount = 0;
-			for (const [key, count] of ticketCounts) {
-				if (count > bestCount) {
-					best = key;
-					bestCount = count;
-				}
-			}
-			if (best) detectedTicket = { key: best };
-		}
+		const best = pickMostCommonTicket(ticketCounts);
+		if (best) detectedTicket = { key: best };
 	}
 
 	return {

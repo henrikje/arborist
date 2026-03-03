@@ -410,6 +410,31 @@ describe("classifyRepo", () => {
 		expect(a.outcome).toBe("skip");
 		expect(a.skipFlag).toBe("already-merged");
 	});
+
+	test("does not set needsStash when only conflicts with autostash", () => {
+		const a = classifyRepo(
+			makeRepo({
+				local: { staged: 0, modified: 0, untracked: 0, conflicts: 2 },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 0,
+					behind: 3,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
+			}),
+			DIR,
+			"feature",
+			[],
+			true,
+			SHA,
+		);
+		expect(a.outcome).toBe("will-operate");
+		expect(a.needsStash).toBeUndefined();
+	});
 });
 
 describe("formatIntegratePlan", () => {
@@ -1230,6 +1255,11 @@ describe("describeIntegrateAction", () => {
 		expect(desc.skipCount).toBe(2);
 		expect(desc.warning).toBe("base branch feat/old may not be merged");
 	});
+
+	test("matchedCount passes through in diff", () => {
+		const desc = describeIntegrateAction(makeAssessment({ matchedCount: 5 }), "rebase", "feature");
+		expect(desc.diff?.matchedCount).toBe(5);
+	});
 });
 
 describe("integrateActionCell", () => {
@@ -1363,5 +1393,11 @@ describe("integrateActionCell", () => {
 		);
 		expect(c.plain).toContain("4 to rebase");
 		expect(c.plain).not.toContain("already on target");
+	});
+
+	test("no HEAD suffix when headSha is undefined", () => {
+		const c = integrateActionCell(makeDesc({ headSha: undefined }));
+		expect(c.plain).not.toContain("HEAD");
+		expect(c.spans.every((s) => !s.text.includes("HEAD"))).toBe(true);
 	});
 });
