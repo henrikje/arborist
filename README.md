@@ -94,10 +94,21 @@ arb repo clone https://github.com/example/shared.git
 Standing in the newly initialized Arborist root, we are ready to create a workspace for the dark mode feature we will work on.
 
 ```bash
-arb create add-dark-mode frontend backend
+arb create add-dark-mode
 ```
 
-We specify the repos `frontend` and `backend` to be part of the new workspace. Not every feature touches every repo — picking just the ones you need keeps the workspace focused. Both repos will be checked out on the `add-dark-mode` branch. With the shell extension installed, Arborist automatically `cd` into the new workspace.
+Without repo arguments, Arborist prompts you to pick which repos to include. Not every feature touches every repo — picking just the ones you need keeps the workspace focused.
+
+```
+? Select repos to include
+  ◉ backend
+❯ ◉ frontend
+  ◯ shared
+
+↑↓ navigate • space select • a all • i invert • ⏎ submit
+```
+
+Both selected repos will be checked out on the `add-dark-mode` branch. With the shell extension installed, Arborist automatically `cd` into the new workspace.
 
 ```bash
 # You're in ~/my-project/add-dark-mode
