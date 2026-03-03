@@ -1,14 +1,14 @@
 import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
-import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
-import { ArbAbort, ArbError, loadArbIgnore } from "../lib/core";
+import { ArbError, loadArbIgnore } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, assertMinimumGitVersion, git } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
-import { dryRunNotice, error, info, isTTY, plural, skipConfirmNotice, success, yellow } from "../lib/terminal";
+import { confirmOrExit } from "../lib/sync";
+import { dryRunNotice, error, info, isTTY, plural, success, yellow } from "../lib/terminal";
 import { findOrphanedBranches, findStaleWorktrees, pruneWorktrees } from "../lib/workspace";
 import { listNonWorkspaces, listWorkspaces, selectInteractive } from "../lib/workspace";
 import { workspaceBranch } from "../lib/workspace";
@@ -179,41 +179,26 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 			const hasOrphansToDelete = orphansToDelete.length > 0;
 
 			// ── Confirm ──────────────────────────────────────────────
-			if (!skipPrompts) {
-				if (!isTTY() || !process.stdin.isTTY) {
-					error("Not a terminal. Use --yes to skip confirmation.");
-					throw new ArbError("Not a terminal. Use --yes to skip confirmation.");
-				}
+			const parts: string[] = [];
+			if (selectedDirs.length > 0) parts.push(`remove ${plural(selectedDirs.length, "directory", "directories")}`);
+			if (hasStale) parts.push(`prune ${plural(staleWorktreeRepos.length, "stale worktree ref")}`);
+			if (hasOrphansToDelete)
+				parts.push(`delete ${plural(orphansToDelete.length, "orphaned branch", "orphaned branches")}`);
 
-				const parts: string[] = [];
-				if (selectedDirs.length > 0) parts.push(`remove ${plural(selectedDirs.length, "directory", "directories")}`);
-				if (hasStale) parts.push(`prune ${plural(staleWorktreeRepos.length, "stale worktree ref")}`);
-				if (hasOrphansToDelete)
-					parts.push(`delete ${plural(orphansToDelete.length, "orphaned branch", "orphaned branches")}`);
-
-				if (parts.length === 0) {
-					if (unmergedOrphans.length > 0 && !forceOrphans) {
-						info(
-							`${plural(unmergedOrphans.length, "unmerged orphaned branch", "unmerged orphaned branches")} skipped (use --force to delete)`,
-						);
-					}
-					info("Nothing to do.");
-					return;
+			if (parts.length === 0) {
+				if (unmergedOrphans.length > 0 && !forceOrphans) {
+					info(
+						`${plural(unmergedOrphans.length, "unmerged orphaned branch", "unmerged orphaned branches")} skipped (use --force to delete)`,
+					);
 				}
-
-				const shouldProceed = await confirm(
-					{
-						message: `${parts.join(" and ")}?`,
-						default: false,
-					},
-					{ output: process.stderr },
-				);
-				if (!shouldProceed) {
-					throw new ArbAbort();
-				}
-			} else {
-				skipConfirmNotice("--yes");
+				info("Nothing to do.");
+				return;
 			}
+
+			await confirmOrExit({
+				yes: skipPrompts,
+				message: `${parts.join(" and ")}?`,
+			});
 
 			// ── Execute ──────────────────────────────────────────────
 			for (const name of selectedDirs) {

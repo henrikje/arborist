@@ -89,7 +89,7 @@ export async function confirmOrExit(options: {
 		const ok = await confirm(
 			{
 				message: options.message,
-				default: false,
+				default: true,
 			},
 			{ output: process.stderr },
 		);
