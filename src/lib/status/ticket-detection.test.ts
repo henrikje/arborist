@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -71,111 +71,116 @@ describe("detectTicketFromName", () => {
 });
 
 describe("detectTicketFromCommits", () => {
-	let repoDir: string;
-
-	beforeEach(() => {
-		repoDir = mkdtempSync(join(tmpdir(), "ticket-commits-test-"));
+	function withRepo(fn: (repoDir: string) => Promise<void>): Promise<void> {
+		const repoDir = mkdtempSync(join(tmpdir(), "ticket-commits-test-"));
 		Bun.spawnSync(["git", "init", repoDir]);
 		Bun.spawnSync(["git", "-C", repoDir, "commit", "--allow-empty", "-m", "init"]);
-	});
+		return fn(repoDir).finally(() => {
+			rmSync(repoDir, { recursive: true, force: true });
+		});
+	}
 
-	afterEach(() => {
-		rmSync(repoDir, { recursive: true, force: true });
-	});
+	test("finds ticket from commit subject", () =>
+		withRepo(async (repoDir) => {
+			const mainHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: resolve login PROJ-208"]);
 
-	test("finds ticket from commit subject", async () => {
-		const mainHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
-		Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
-		writeFileSync(join(repoDir, "a.txt"), "content");
-		Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
-		Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: resolve login PROJ-208"]);
+			const result = await detectTicketFromCommits(repoDir, mainHead);
+			expect(result).toBe("PROJ-208");
+		}));
 
-		const result = await detectTicketFromCommits(repoDir, mainHead);
-		expect(result).toBe("PROJ-208");
-	});
+	test("finds ticket from commit body", () =>
+		withRepo(async (repoDir) => {
+			const mainHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: resolve login\n\nReferences: PROJ-42"]);
 
-	test("finds ticket from commit body", async () => {
-		const mainHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
-		Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
-		writeFileSync(join(repoDir, "a.txt"), "content");
-		Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
-		Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: resolve login\n\nReferences: PROJ-42"]);
+			const result = await detectTicketFromCommits(repoDir, mainHead);
+			expect(result).toBe("PROJ-42");
+		}));
 
-		const result = await detectTicketFromCommits(repoDir, mainHead);
-		expect(result).toBe("PROJ-42");
-	});
+	test("returns most frequent ticket when multiple present", () =>
+		withRepo(async (repoDir) => {
+			const mainHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
 
-	test("returns most frequent ticket when multiple present", async () => {
-		const mainHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
-		Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "a");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "first PROJ-208"]);
 
-		writeFileSync(join(repoDir, "a.txt"), "a");
-		Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
-		Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "first PROJ-208"]);
+			writeFileSync(join(repoDir, "b.txt"), "b");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "b.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "second PROJ-99"]);
 
-		writeFileSync(join(repoDir, "b.txt"), "b");
-		Bun.spawnSync(["git", "-C", repoDir, "add", "b.txt"]);
-		Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "second PROJ-99"]);
+			writeFileSync(join(repoDir, "c.txt"), "c");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "c.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "third PROJ-99"]);
 
-		writeFileSync(join(repoDir, "c.txt"), "c");
-		Bun.spawnSync(["git", "-C", repoDir, "add", "c.txt"]);
-		Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "third PROJ-99"]);
+			const result = await detectTicketFromCommits(repoDir, mainHead);
+			expect(result).toBe("PROJ-99");
+		}));
 
-		const result = await detectTicketFromCommits(repoDir, mainHead);
-		expect(result).toBe("PROJ-99");
-	});
+	test("returns null when no tickets in commits", () =>
+		withRepo(async (repoDir) => {
+			const mainHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: resolve login crash"]);
 
-	test("returns null when no tickets in commits", async () => {
-		const mainHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
-		Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
-		writeFileSync(join(repoDir, "a.txt"), "content");
-		Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
-		Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: resolve login crash"]);
+			const result = await detectTicketFromCommits(repoDir, mainHead);
+			expect(result).toBeNull();
+		}));
 
-		const result = await detectTicketFromCommits(repoDir, mainHead);
-		expect(result).toBeNull();
-	});
+	test("returns null for empty range", () =>
+		withRepo(async (repoDir) => {
+			const result = await detectTicketFromCommits(repoDir, "HEAD");
+			expect(result).toBeNull();
+		}));
 
-	test("returns null for empty range", async () => {
-		const result = await detectTicketFromCommits(repoDir, "HEAD");
-		expect(result).toBeNull();
-	});
+	test("uppercases lowercase tickets", () =>
+		withRepo(async (repoDir) => {
+			const mainHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: something proj-42"]);
 
-	test("uppercases lowercase tickets", async () => {
-		const mainHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
-		Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
-		writeFileSync(join(repoDir, "a.txt"), "content");
-		Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
-		Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix: something proj-42"]);
+			const result = await detectTicketFromCommits(repoDir, mainHead);
+			expect(result).toBe("PROJ-42");
+		}));
 
-		const result = await detectTicketFromCommits(repoDir, mainHead);
-		expect(result).toBe("PROJ-42");
-	});
+	test("ignores PR-prefixed references in commit messages", () =>
+		withRepo(async (repoDir) => {
+			const mainHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "content");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "Merge PR-74 into main"]);
 
-	test("ignores PR-prefixed references in commit messages", async () => {
-		const mainHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
-		Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
-		writeFileSync(join(repoDir, "a.txt"), "content");
-		Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
-		Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "Merge PR-74 into main"]);
+			const result = await detectTicketFromCommits(repoDir, mainHead);
+			expect(result).toBeNull();
+		}));
 
-		const result = await detectTicketFromCommits(repoDir, mainHead);
-		expect(result).toBeNull();
-	});
+	test("skips MR prefix and counts real tickets", () =>
+		withRepo(async (repoDir) => {
+			const mainHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+			Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
 
-	test("skips MR prefix and counts real tickets", async () => {
-		const mainHead = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
-		Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+			writeFileSync(join(repoDir, "a.txt"), "a");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix MR-1 and PROJ-42"]);
 
-		writeFileSync(join(repoDir, "a.txt"), "a");
-		Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
-		Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "fix MR-1 and PROJ-42"]);
+			writeFileSync(join(repoDir, "b.txt"), "b");
+			Bun.spawnSync(["git", "-C", repoDir, "add", "b.txt"]);
+			Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "more work on PROJ-42"]);
 
-		writeFileSync(join(repoDir, "b.txt"), "b");
-		Bun.spawnSync(["git", "-C", repoDir, "add", "b.txt"]);
-		Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "more work on PROJ-42"]);
-
-		const result = await detectTicketFromCommits(repoDir, mainHead);
-		expect(result).toBe("PROJ-42");
-	});
+			const result = await detectTicketFromCommits(repoDir, mainHead);
+			expect(result).toBe("PROJ-42");
+		}));
 });
