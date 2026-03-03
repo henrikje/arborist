@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, configGet } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, git } from "../lib/git";
+import { GitCache, assertMinimumGitVersion, git } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type BranchJsonOutput, BranchJsonOutputSchema, type BranchJsonRepo } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
@@ -179,7 +179,7 @@ async function runBranch(
 	const repoDirs = workspaceRepoDirs(wsDir);
 	const repos: RepoBranch[] = await Promise.all(
 		repoDirs.map(async (dir) => {
-			const result = await git(dir, "branch", "--show-current");
+			const result = await git(dir, "symbolic-ref", "--short", "HEAD");
 			const repoBranch = result.exitCode === 0 ? result.stdout.trim() || null : null;
 			return { name: basename(dir), branch: repoBranch };
 		}),
@@ -216,6 +216,7 @@ async function runVerboseBranch(
 	options: { json?: boolean; fetch?: boolean },
 ): Promise<void> {
 	const cache = new GitCache();
+	await assertMinimumGitVersion(cache);
 	const repoDirs = workspaceRepoDirs(wsDir);
 
 	if (options.fetch !== false && !options.json && isTTY()) {

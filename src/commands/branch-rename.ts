@@ -5,6 +5,7 @@ import { ArbError, configGet, writeConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import {
 	GitCache,
+	assertMinimumGitVersion,
 	branchExistsLocally,
 	detectOperation,
 	git,
@@ -91,7 +92,7 @@ async function assessRepo(
 	}
 
 	// Get current HEAD branch
-	const headResult = await git(repoDir, "branch", "--show-current");
+	const headResult = await git(repoDir, "symbolic-ref", "--short", "HEAD");
 	const currentBranch = headResult.exitCode === 0 ? headResult.stdout.trim() || null : null;
 
 	// Check if already on new branch
@@ -371,6 +372,18 @@ async function runRename(
 
 	// Resolve remotes for all repos (canonical repos share remote config with worktrees)
 	const cache = new GitCache();
+	await assertMinimumGitVersion(cache);
+
+	// Workspace directory rename requires worktree repair (git 2.30+) — fail before any mutations
+	if (newWorkspaceName) {
+		const version = await cache.getGitVersion();
+		if (version.major < 2 || (version.major === 2 && version.minor < 30)) {
+			const msg = `Renaming the workspace directory requires Git 2.30+ (you have ${version.major}.${version.minor}.${version.patch}). Use --keep-workspace-name to rename branches without renaming the workspace.`;
+			error(msg);
+			throw new ArbError(msg);
+		}
+	}
+
 	const fullRemotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
 
 	const fetchDirs = workspaceRepoDirs(wsDir);
@@ -484,6 +497,7 @@ async function runRename(
 	}
 
 	// Workspace rename — after all per-repo operations complete
+	// (git 2.30+ already verified at the top of runRename)
 	let renamedWorkspace = false;
 	if (newWorkspaceName) {
 		renamedWorkspace = renameWorkspace(ctx, wsDir, workspace, newWorkspaceName, repos);
@@ -534,7 +548,7 @@ async function runAbort(
 	const assessments: AbortAssessment[] = await Promise.all(
 		repoDirs.map(async (repoDir): Promise<AbortAssessment> => {
 			const repo = basename(repoDir);
-			const headResult = await git(repoDir, "branch", "--show-current");
+			const headResult = await git(repoDir, "symbolic-ref", "--short", "HEAD");
 			const currentBranch = headResult.exitCode === 0 ? headResult.stdout.trim() || null : null;
 
 			if (currentBranch === newBranch) {
@@ -745,6 +759,13 @@ export function registerBranchRenameSubcommand(parent: Command, getCtx: () => Ar
 						if (options.workspaceName) {
 							const newWorkspaceName = resolveWorkspaceRename(ctx, workspace, oldBranch, newBranch, options);
 							if (newWorkspaceName) {
+								const versionCache = new GitCache();
+								const version = await versionCache.getGitVersion();
+								if (version.major < 2 || (version.major === 2 && version.minor < 30)) {
+									const msg = `Renaming the workspace directory requires Git 2.30+ (you have ${version.major}.${version.minor}.${version.patch}). Use --keep-workspace-name to rename branches without renaming the workspace.`;
+									error(msg);
+									throw new ArbError(msg);
+								}
 								const repoDirs = workspaceRepoDirs(wsDir);
 								const repos = repoDirs.map((d) => basename(d));
 								if (renameWorkspace(ctx, wsDir, workspace, newWorkspaceName, repos)) {

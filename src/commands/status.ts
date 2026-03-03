@@ -2,7 +2,7 @@ import { basename, resolve } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, predictMergeConflict } from "../lib/git";
+import { GitCache, assertMinimumGitVersion, predictMergeConflict } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
 import { type RenderContext, render, runPhasedRender } from "../lib/render";
@@ -85,6 +85,7 @@ async function runStatus(
 ): Promise<void> {
 	const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
 	const cache = new GitCache();
+	await assertMinimumGitVersion(cache);
 
 	const where = resolveWhereFilter(options);
 

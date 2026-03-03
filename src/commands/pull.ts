@@ -4,6 +4,7 @@ import { ArbError, configGet } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import {
 	GitCache,
+	assertMinimumGitVersion,
 	getCommitsBetweenFull,
 	getDiffShortstat,
 	getShortHead,
@@ -104,6 +105,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				const selectedRepos = resolveRepoSelection(wsDir, repoNames);
 				const selectedSet = new Set(selectedRepos);
 				const cache = new GitCache();
+				await assertMinimumGitVersion(cache);
 				const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
 				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 

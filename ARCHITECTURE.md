@@ -83,6 +83,20 @@ All repos must have valid, resolvable git remotes. `resolveRemotesMap()` resolve
 
 Commands create a `GitCache` instance and pass it to status and template functions. The cache stores Promises so concurrent callers coalesce onto the same in-flight git process. After a fetch, call `cache.invalidateAfterFetch()`. Low-level functions (`getRemoteNames`, `resolveRemotes`, `getRemoteUrl`, `getDefaultBranch`) should only be imported in `git-cache.ts` and test files. See `decisions/0044-request-scoped-git-cache.md`.
 
+### Minimum Git version: 2.17
+
+Arborist requires Git 2.17 or later, enforced by `assertMinimumGitVersion()` at the start of every command that creates a `GitCache`. The 2.17 floor is set by `worktree add --no-track` and `worktree remove`, which are fundamental to workspace creation and deletion.
+
+New code must only use git features available in 2.17+. Features from newer versions require both:
+1. **Version gating** — check `cache.getGitVersion()` and degrade gracefully or skip.
+2. **Strong justification** — the feature must provide significant value that cannot be achieved with 2.17 primitives.
+
+Current exceptions:
+- **`worktree repair`** (2.30) — gated in `branch-rename.ts`; workspace directory rename is refused on older git with a warning.
+- **`merge-tree --write-tree`** (2.38) — gated in `git.ts`; conflict prediction silently returns null.
+
+When adding a new git feature above 2.17, document it in this list and write a decision record.
+
 ### In-progress state for partially-completing commands
 
 Commands that can fail partway through sequential multi-repo execution carry explicit in-progress state in `.arbws/config`. This enables `--continue` (resume) and `--abort` (roll back), modeled after git's own rebase/merge-in-progress pattern. See `decisions/0025-rebranch-migration-state.md`.

@@ -1,4 +1,4 @@
-import { getDefaultBranch as _getDefaultBranch } from "./git";
+import { type GitVersion, getDefaultBranch as _getDefaultBranch, git, parseGitVersion } from "./git";
 import {
 	type RepoRemotes,
 	getRemoteNames as _getRemoteNames,
@@ -35,6 +35,7 @@ export class GitCache {
 	private resolvedRemotesCache = new Map<string, Promise<RepoRemotes>>();
 	private defaultBranchCache = new Map<string, Promise<string | null>>();
 	private remoteUrlCache = new Map<string, Promise<string | null>>();
+	private gitVersionCache: Promise<GitVersion> | null = null;
 	private deps: GitCacheDeps;
 
 	constructor(deps?: GitCacheDeps) {
@@ -77,6 +78,19 @@ export class GitCache {
 			this.remoteUrlCache.set(key, cached);
 		}
 		return cached;
+	}
+
+	getGitVersion(): Promise<GitVersion> {
+		if (!this.gitVersionCache) {
+			this.gitVersionCache = git(".", "--version").then((result) => {
+				const version = parseGitVersion(result.stdout);
+				if (!version) {
+					throw new Error(`Failed to parse git version from: ${result.stdout.trim()}`);
+				}
+				return version;
+			});
+		}
+		return this.gitVersionCache;
 	}
 
 	/** Clear caches that may change after a fetch (default branch may update). */

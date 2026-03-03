@@ -40,7 +40,7 @@ Arborist's synchronization commands handle this across all repos at once.
 
 ## Install
 
-Arborist requires Git and works on macOS, Linux, or Windows using WSL.
+Arborist requires Git 2.17+ and works on macOS, Linux, or Windows using WSL.
 
 **Quick install**:
 ```

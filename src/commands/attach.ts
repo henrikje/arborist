@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, configGet } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache } from "../lib/git";
+import { GitCache, assertMinimumGitVersion } from "../lib/git";
 import { render } from "../lib/render";
 import { error, info, plural, success, warn } from "../lib/terminal";
 import { readNamesFromStdin } from "../lib/terminal";
@@ -64,6 +64,7 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
 			const base = configGet(`${wsDir}/.arbws/config`, "base") ?? undefined;
 
 			const cache = new GitCache();
+			await assertMinimumGitVersion(cache);
 			const remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
 			const result = await addWorktrees(
 				workspace,

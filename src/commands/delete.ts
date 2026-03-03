@@ -11,7 +11,14 @@ import {
 	loadArbIgnore,
 } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, branchExistsLocally, git, remoteBranchExists, validateWorkspaceName } from "../lib/git";
+import {
+	GitCache,
+	assertMinimumGitVersion,
+	branchExistsLocally,
+	git,
+	remoteBranchExists,
+	validateWorkspaceName,
+} from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { EMPTY_CELL, cell } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -109,6 +116,7 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 	// if we can't determine the state, treat the workspace as at-risk.
 	let summary: WorkspaceSummary;
 	const cache = new GitCache();
+	await assertMinimumGitVersion(cache);
 	try {
 		summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
 	} catch (e) {
