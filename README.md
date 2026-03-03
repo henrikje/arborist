@@ -273,7 +273,7 @@ arb template add .env
 # from now on, every new workspace gets api/.env automatically
 ```
 
-Templates let you capture files and have them seeded into every new workspace. Common uses include `.env` files, IDE settings, and AI agent config. Templates live in `.arb/templates/` and are version-controllable.
+Templates let you capture files and have them seeded into every new workspace. Common uses include `.env` files, IDE settings, and AI agent config. Templates live in `.arb/templates/` and are version-controllable. See [Template examples](docs/templates.md#examples) for ready-to-use starting points.
 
 ### Discover more with `--help`
 
