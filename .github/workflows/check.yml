@@ -1,31 +1,77 @@
-name: Check
+name: CI
 
 on:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  check:
+  static-analysis:
+    name: Static analysis
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - name: Validate commit messages
+        run: bunx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }}
+      - name: Lint
+        run: bun run lint
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Check circular dependencies
+        run: bun run cycles
 
-      - name: Install BATS
-        run: |
-          git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats-core
-          sudo /tmp/bats-core/install.sh /usr/local
-
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
       - name: Configure git
         run: |
           git config --global user.name "CI"
           git config --global user.email "ci@localhost"
-
       - run: bun install
+      - name: Unit tests
+        run: bun run test
 
-      - name: Validate commit messages
-        run: bunx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }}
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+      - name: Configure git
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@localhost"
+      - run: bun install
+      - name: Build
+        run: bun run build
+      - name: Integration tests
+        run: bun test test/integration/ --concurrent --timeout 30000
 
-      - run: bun run check
+  integration-git217:
+    name: Integration tests (git 2.17)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: test/docker/
+          file: test/docker/git217.Dockerfile
+          tags: arb-git217:latest
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Integration tests (git 2.17)
+        run: docker run --rm -v "$PWD":/app -w /app arb-git217

@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TestEnv } from "./helpers/env";
-import { arb, cleanupTestEnv, git, write } from "./helpers/env";
+import { arb, cleanupTestEnv, git, initBareRepo, write } from "./helpers/env";
 
 // ── Walkthrough-specific helpers ─────────────────────────────────
 
@@ -25,7 +25,7 @@ async function createWalkthroughEnv(): Promise<TestEnv> {
 		const bareDir = join(originDir, `${name}.git`);
 		const tmpClone = join(testDir, `tmp-${name}`);
 
-		await git(testDir, ["init", "--bare", bareDir, "-b", "main"]);
+		await initBareRepo(testDir, bareDir, "main");
 		await git(testDir, ["clone", bareDir, tmpClone]);
 
 		await write(join(tmpClone, "package.json"), JSON.stringify({ name, version: "1.0.0" }, null, 2));
@@ -105,7 +105,7 @@ test("README walkthrough: init → clone → feature → interrupt → rebase �
 		expect(existsSync(join(env.projectDir, "add-dark-mode/backend"))).toBe(true);
 		expect(existsSync(join(env.projectDir, "add-dark-mode/shared"))).toBe(false);
 		const darkModeBranch = (
-			await git(join(env.projectDir, "add-dark-mode/frontend"), ["branch", "--show-current"])
+			await git(join(env.projectDir, "add-dark-mode/frontend"), ["rev-parse", "--abbrev-ref", "HEAD"])
 		).trim();
 		expect(darkModeBranch).toBe("add-dark-mode");
 
