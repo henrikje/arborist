@@ -2,7 +2,7 @@
 
 **Arborist** lets you work on multiple features across several repositories in parallel, without juggling branches, breaking your flow, or losing changes.
 
-Based on [Git worktrees](https://git-scm.com/docs/git-worktree), Arborist complements standard Git with structured workspaces and cross-repo coordination.
+Based on [Git worktrees](https://git-scm.com/docs/git-worktree), Arborist complements standard Git with structured workspaces and cross-repo coordination. If your project spans multiple repos — microservices, a frontend/backend split, shared libraries — Arborist keeps them in sync.
 
 > **arborist** (noun) _ˈär-bə-rist_ — a specialist in the care and maintenance of trees
 
@@ -40,7 +40,7 @@ Arborist's synchronization commands handle this across all repos at once.
 
 ## Install
 
-Arborist requires Git and works on macOS and Linux.
+Arborist requires Git and works on macOS, Linux, or Windows using WSL.
 
 **Quick install**:
 ```
@@ -51,7 +51,7 @@ curl -fsSL https://raw.githubusercontent.com/henrikje/arborist/main/install.sh |
 ```
 brew install henrikje/tap/arb
 ```
-On Linux, make sure you have Homebrew's [requirements](https://docs.brew.sh/Homebrew-on-Linux#requirements) installed to avoid "cannot be installed" errors.
+On Linux, install [Homebrew's requirements](https://docs.brew.sh/Homebrew-on-Linux#requirements) to avoid "cannot be installed" errors.
 
 **From source** (requires [Bun](https://bun.sh)):
 ```
@@ -68,32 +68,54 @@ cd arborist
 mkdir ~/my-project
 cd ~/my-project
 arb init
+```
+
+```
+Initialized arb root
+  ~/my-project
+
+Next steps:
+  arb repo clone <url>  Clone repos into the project
+  arb create <name>     Create a workspace
+```
+
+`arb init` creates the top-level directory that holds all your workspaces.
+
+Next, we will clone the repositories we want to work with. They will be stored in `.arb/repos`.
+
+```bash
 arb repo clone https://github.com/example/frontend.git
 arb repo clone https://github.com/example/backend.git
 arb repo clone https://github.com/example/shared.git
 ```
 
-`arb init` creates the top-level directory that holds all your workspaces. The three `repo clone` commands store canonical clones in `.arb/repos`.
-
 ### Start a feature
+
+Standing in the newly initialized Arborist root, we are ready to create a workspace for the dark mode feature we will work on.
 
 ```bash
 arb create add-dark-mode frontend backend
 ```
 
-You use `arb create` to create a workspace `add-dark-mode` and will work on repos `frontend` and `backend` as part of it. Not every feature touches every repo — picking just the ones you need keeps the workspace focused. Both repos will be checked out on the `add-dark-mode` branch.
+We specify the repos `frontend` and `backend` to be part of the new workspace. Not every feature touches every repo — picking just the ones you need keeps the workspace focused. Both repos will be checked out on the `add-dark-mode` branch. With the shell extension installed, Arborist automatically `cd` into the new workspace.
 
 ```bash
+# You're in ~/my-project/add-dark-mode
 cd frontend
 # hack hack hack
 git commit -am "Add dark mode toggle to navbar"
 ```
 
-You get to work using your regular tools.
+Frontend is done. On to the backend:
+
+```bash
+cd ../backend
+# hack hack hack
+```
 
 ### Handle an interrupt
 
-Then a bug report comes in: logins are crashing! You need to fix it now, but your dark mode work is mid-flight. No problem — create a second workspace:
+Then a bug report comes in: logins are crashing! You need to fix it now, but your backend work is mid-flight. No time to commit. No problem, you create a second workspace:
 
 ```bash
 arb create fix-login-crash frontend
@@ -103,13 +125,14 @@ Both workspaces now exist side by side. `arb list` shows the full picture:
 
 ```
   WORKSPACE         BRANCH            REPOS    LAST COMMIT    STATUS
-* fix-login-crash   fix-login-crash   1        just now       no issues
-  add-dark-mode     add-dark-mode     2        2 minutes      unpushed
+* fix-login-crash   fix-login-crash   1        1 day          no issues
+  add-dark-mode     add-dark-mode     2        2 minutes      dirty, unpushed
 ```
 
 Fix the bug, push, and clean up:
 
 ```bash
+# You're in ~/my-project/fix-login-crash
 cd frontend
 # hack hack hack
 git commit -am "Fix null pointer in login flow"
@@ -122,8 +145,8 @@ arb delete fix-login-crash
 The hotfix is shipped. Pick up where you left off:
 
 ```bash
-arb cd add-dark-mode/backend
-# hack hack hack
+arb cd add-dark-mode/backend # arb cd works from anywhere inside the Arborist root
+# finish backend work
 git commit -am "Add dark mode API endpoint"
 ```
 
@@ -202,12 +225,11 @@ If a rebase or merge does hit a conflict, Arborist continues with the remaining 
 ```bash
 arb list --where at-risk                 # workspaces that need attention
 arb delete --where gone                  # clean up after merged PRs
-arb status --where dirty,unpushed        # OR — repos matching either
-arb status --where dirty+unpushed        # AND — repos matching both
-arb list --where ^merged                 # ^ negates — exclude merged workspaces
+arb status --where dirty,unpushed        # repos matching either
+arb push --where unpushed+^behind-base   # push only repos that won't need a rebase
 ```
 
-Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, drifted, and more — plus their positive counterparts like clean, pushed, synced-base, and safe. The `--where` flag (`-w` for short) lets you filter by any combination, and works across `status`, `list`, `exec`, `open`, `diff`, `log`, `delete`, `push`, `pull`, `rebase`, and `merge`, so you can find what needs attention or confirm what's good. Prefix any term with `^` to negate it (e.g. `^shallow`). Use `--dirty` as a shorthand for `--where dirty`.
+Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, drifted, and more. The `--where` flag (`-w` for short) lets you filter by any combination, and works across most commands. Use `--dirty` as a shorthand for `--where dirty`.
 
 ### Run commands across repos
 
@@ -219,6 +241,19 @@ arb open code
 
 `arb exec` runs any command in each repo, using the repo directory as working directory. `arb open` does the same but passes all repo paths as arguments — useful for editors like VS Code or IntelliJ. Combine with `--dirty` or `--where` to narrow the scope.
 
+### Know when you're done
+
+After your PR is merged, Arborist detects it — even for squash merges — and shows it clearly in `arb list`. Ticket keys (like Jira or Linear) and PR numbers are detected automatically from branch names and commit messages — no configuration needed:
+
+```
+  WORKSPACE           TICKET       BRANCH              REPOS    LAST COMMIT    STATUS
+  proj-208-login      PROJ-208     proj-208-login      3        3 hours        merged (#42), gone
+  proj-215-dark       PROJ-215     proj-215-dark       2        1 day          merged, gone
+  new-feature                      new-feature         3        5 minutes      unpushed
+```
+
+No guessing which branches have landed. You see "merged" with the detected PR number from the merge/squash commit, and "gone" when the remote branch was deleted. Ready to `arb delete`.
+
 ### Seed files into new workspaces
 
 ```bash
@@ -229,18 +264,16 @@ arb template add .env
 
 Templates let you capture files and have them seeded into every new workspace. Common uses include `.env` files, IDE settings, and AI agent config. Templates live in `.arb/templates/` and are version-controllable.
 
-### Know when you're done
+### Discover more with `--help`
 
-After your PR is merged, Arborist detects it — even for squash merges — and shows it clearly in `arb list`. When your Git history references ticket keys (like Jira or Linear), those appear too:
-
-```
-  WORKSPACE           TICKET       BRANCH              REPOS    LAST COMMIT    STATUS
-  proj-208-login      PROJ-208     proj-208-login      3        3 hours        merged (#42), gone
-  proj-215-dark       PROJ-215     proj-215-dark       2        1 day          merged, gone
-  new-feature                      new-feature         3        5 minutes      unpushed
+```bash
+arb --help              # list all commands
+arb create --help       # detailed usage for a specific command
 ```
 
-No guessing which branches have landed. You see "merged" with the detected PR number from the merge/squash commit, and "gone" when the remote branch was auto-deleted. Ready to `arb delete`.
+Every command supports `--help`. If you're unsure what flags are available or how a command works, `--help` is the fastest way to find out.
+
+## Advanced use cases
 
 ### Branch from a feature branch
 
@@ -269,15 +302,6 @@ arb list --quiet | xargs ...  # one workspace name per line
 ```
 
 All state-changing commands support `--dry-run` to preview the plan and `--yes` to skip confirmation prompts. `status`, `branch`, `list`, `log`, `diff`, and `repo list` support `--json` for structured output and `--quiet` for one name per line — useful for feeding into other commands. Exit codes are meaningful: 0 for success, 1 for issues, 130 for user abort. Human-facing output goes to stderr, machine-parseable data to stdout — so piping works naturally.
-
-### Discover more with `--help`
-
-```bash
-arb --help              # list all commands
-arb create --help       # detailed usage for a specific command
-```
-
-Every command supports `--help`. If you're unsure what flags are available or how a command works, `--help` is the fastest way to find out.
 
 ## Further reading
 
