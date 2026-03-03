@@ -2,7 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { arb, deleteWorkspaceConfig, fetchAllRepos, git, withEnv, write } from "./helpers/env";
+import {
+	arb,
+	deleteWorkspaceConfig,
+	fetchAllRepos,
+	git,
+	gitBelow238,
+	initBareRepo,
+	withEnv,
+	write,
+} from "./helpers/env";
 
 const ARB_BIN = resolve(join(import.meta.dir, "../../dist/arb"));
 
@@ -126,7 +135,7 @@ describe("status", () => {
 
 	test("default branch detection with master", () =>
 		withEnv(async (env) => {
-			await git(env.testDir, ["init", "--bare", join(env.originDir, "repo-master.git"), "-b", "master"]);
+			await initBareRepo(env.testDir, join(env.originDir, "repo-master.git"), "master");
 			await git(env.testDir, [
 				"clone",
 				join(env.originDir, "repo-master.git"),
@@ -434,7 +443,7 @@ describe("missing config recovery", () => {
 			expect(result.exitCode).toBe(0);
 			expect(existsSync(join(env.projectDir, "my-feature/repo-b"))).toBe(true);
 			// Verify repo-b is on the inferred branch
-			const branch = (await git(join(env.projectDir, "my-feature/repo-b"), ["branch", "--show-current"])).trim();
+			const branch = (await git(join(env.projectDir, "my-feature/repo-b"), ["symbolic-ref", "--short", "HEAD"])).trim();
 			expect(branch).toBe("my-feature");
 		}));
 
@@ -491,7 +500,7 @@ describe("missing config recovery", () => {
 
 // ── status conflict prediction ───────────────────────────────────
 
-describe("status conflict prediction", () => {
+describe.skipIf(gitBelow238)("status conflict prediction", () => {
 	test("arb status shows diverged with overlapping changes (conflict path)", () =>
 		withEnv(async (env) => {
 			await arb(env, ["create", "my-feature", "repo-a"]);

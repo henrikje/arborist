@@ -68,6 +68,7 @@ Organized into semantic subdirectories. Each directory has a barrel `index.ts` r
 | `bun run test:integration` | Build and run Bun integration tests |
 | `bun run build && bun test test/integration/sync.test.ts` | Run a single integration test file |
 | `bun run test:integration:bats` | Build and run legacy BATS integration tests |
+| `bun run test:integration:git217` | Build Docker image with git 2.17 and run integration tests |
 | `bun run lint` | Check with Biome (formatting + linting) |
 | `bun run lint:fix` | Auto-fix lint/format issues |
 | `bun run typecheck` | TypeScript type checking |

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { arb, git, withEnv, write } from "./helpers/env";
+import { arb, git, initBareRepo, withEnv, write } from "./helpers/env";
 
 // ── version & help ───────────────────────────────────────────────
 
@@ -251,7 +251,7 @@ describe("repo clone", () => {
 
 	test("arb repo clone derives name from URL", () =>
 		withEnv(async (env) => {
-			await git(env.testDir, ["init", "--bare", join(env.originDir, "derived-name.git"), "-b", "main"]);
+			await initBareRepo(env.testDir, join(env.originDir, "derived-name.git"), "main");
 			const result = await arb(env, ["repo", "clone", join(env.originDir, "derived-name.git")]);
 			expect(result.exitCode).toBe(0);
 			expect(existsSync(join(env.projectDir, ".arb/repos/derived-name/.git"))).toBe(true);
@@ -272,7 +272,7 @@ describe("repo clone", () => {
 			const createResult = await arb(env, ["create", "main-ws", "--branch", "main", "main-test"]);
 			expect(createResult.exitCode).toBe(0);
 			expect(existsSync(join(env.projectDir, "main-ws/main-test"))).toBe(true);
-			const branch = (await git(join(env.projectDir, "main-ws/main-test"), ["branch", "--show-current"])).trim();
+			const branch = (await git(join(env.projectDir, "main-ws/main-test"), ["symbolic-ref", "--short", "HEAD"])).trim();
 			expect(branch).toBe("main");
 		}));
 

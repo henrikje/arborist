@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { arb, git, withEnv } from "./helpers/env";
+import { arb, git, gitBelow230, withEnv } from "./helpers/env";
 
 // ── basic rename ──────────────────────────────────────────────────
 
@@ -20,8 +20,12 @@ describe("basic rename", () => {
 			// branch_rename_from cleared on success
 			expect(config).not.toContain("branch_rename_from");
 			// Both repos on new branch
-			const branchA = (await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "--show-current"])).trim();
-			const branchB = (await git(join(env.projectDir, "my-feature/repo-b"), ["branch", "--show-current"])).trim();
+			const branchA = (
+				await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
+			const branchB = (
+				await git(join(env.projectDir, "my-feature/repo-b"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
 			expect(branchA).toBe("feat/new-name");
 			expect(branchB).toBe("feat/new-name");
 		}));
@@ -108,7 +112,9 @@ describe("dry-run", () => {
 			const config = await readFile(join(env.projectDir, "my-feature/.arbws/config"), "utf8");
 			expect(config).toContain("branch = my-feature");
 			// Branch not renamed
-			const branchA = (await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "--show-current"])).trim();
+			const branchA = (
+				await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
 			expect(branchA).toBe("my-feature");
 		}));
 });
@@ -126,8 +132,12 @@ describe("already-on-new", () => {
 			});
 			expect(result.exitCode).toBe(0);
 			// repo-b should be renamed, repo-a was already there
-			const branchA = (await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "--show-current"])).trim();
-			const branchB = (await git(join(env.projectDir, "my-feature/repo-b"), ["branch", "--show-current"])).trim();
+			const branchA = (
+				await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
+			const branchB = (
+				await git(join(env.projectDir, "my-feature/repo-b"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
 			expect(branchA).toBe("feat/new-name");
 			expect(branchB).toBe("feat/new-name");
 			expect(result.output).toContain("already renamed");
@@ -148,7 +158,9 @@ describe("skip-missing", () => {
 			});
 			expect(result.exitCode).toBe(0);
 			// repo-a renamed, repo-b skipped
-			const branchA = (await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "--show-current"])).trim();
+			const branchA = (
+				await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
 			expect(branchA).toBe("feat/new-name");
 			expect(result.output).toContain("skip");
 		}));
@@ -174,8 +186,10 @@ describe("skip-in-progress", () => {
 			});
 			expect(result.exitCode).toBe(0);
 			// repo-a skipped, repo-b renamed
-			const branchA = (await git(wtA, ["branch", "--show-current"])).trim();
-			const branchB = (await git(join(env.projectDir, "my-feature/repo-b"), ["branch", "--show-current"])).trim();
+			const branchA = (await git(wtA, ["symbolic-ref", "--short", "HEAD"])).trim();
+			const branchB = (
+				await git(join(env.projectDir, "my-feature/repo-b"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
 			expect(branchA).toBe("my-feature");
 			expect(branchB).toBe("feat/new-name");
 			expect(result.output).toContain("in progress");
@@ -202,8 +216,10 @@ describe("skip-in-progress", () => {
 			);
 			expect(result.exitCode).toBe(0);
 			// Both repos renamed despite in-progress op in repo-a
-			const branchA = (await git(wtA, ["branch", "--show-current"])).trim();
-			const branchB = (await git(join(env.projectDir, "my-feature/repo-b"), ["branch", "--show-current"])).trim();
+			const branchA = (await git(wtA, ["symbolic-ref", "--short", "HEAD"])).trim();
+			const branchB = (
+				await git(join(env.projectDir, "my-feature/repo-b"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
 			expect(branchA).toBe("feat/new-name");
 			expect(branchB).toBe("feat/new-name");
 			const { rm } = await import("node:fs/promises");
@@ -230,8 +246,12 @@ describe("migration state", () => {
 			});
 			expect(result.exitCode).toBe(0);
 			// Both repos now on new branch
-			const branchA = (await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "--show-current"])).trim();
-			const branchB = (await git(join(env.projectDir, "my-feature/repo-b"), ["branch", "--show-current"])).trim();
+			const branchA = (
+				await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
+			const branchB = (
+				await git(join(env.projectDir, "my-feature/repo-b"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
 			expect(branchA).toBe("feat/new-name");
 			expect(branchB).toBe("feat/new-name");
 			// Migration state cleared
@@ -254,8 +274,12 @@ describe("migration state", () => {
 			});
 			expect(result.exitCode).toBe(0);
 			// repo-a rolled back, repo-b unchanged (already on old)
-			const branchA = (await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "--show-current"])).trim();
-			const branchB = (await git(join(env.projectDir, "my-feature/repo-b"), ["branch", "--show-current"])).trim();
+			const branchA = (
+				await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
+			const branchB = (
+				await git(join(env.projectDir, "my-feature/repo-b"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
 			expect(branchA).toBe("my-feature");
 			expect(branchB).toBe("my-feature");
 			// Config restored
@@ -315,7 +339,9 @@ describe("migration state", () => {
 				cwd: join(env.projectDir, "my-feature"),
 			});
 			expect(result.exitCode).toBe(0);
-			const branchB = (await git(join(env.projectDir, "my-feature/repo-b"), ["branch", "--show-current"])).trim();
+			const branchB = (
+				await git(join(env.projectDir, "my-feature/repo-b"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
 			expect(branchB).toBe("feat/new-name");
 		}));
 });
@@ -338,7 +364,9 @@ describe("--abort dry-run", () => {
 			expect(result.exitCode).toBe(0);
 			expect(result.output).toContain("Dry run");
 			// Nothing changed
-			const branchA = (await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "--show-current"])).trim();
+			const branchA = (
+				await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
 			expect(branchA).toBe("feat/new-name");
 			const config = await readFile(join(env.projectDir, "my-feature/.arbws/config"), "utf8");
 			expect(config).toContain("branch_rename_from");
@@ -368,7 +396,9 @@ describe("remote", () => {
 			await verifyProc.exited;
 			expect(await verifyProc.exited).not.toBe(0);
 			// Local branch renamed
-			const branchA = (await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "--show-current"])).trim();
+			const branchA = (
+				await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
 			expect(branchA).toBe("feat/new-name");
 		}));
 
@@ -389,7 +419,7 @@ describe("remote", () => {
 
 // ── workspace rename ─────────────────────────────────────────────
 
-describe("workspace rename", () => {
+describe.skipIf(gitBelow230)("workspace rename", () => {
 	test("arb branch rename auto-renames workspace when names match", () =>
 		withEnv(async (env) => {
 			await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
@@ -404,8 +434,12 @@ describe("workspace rename", () => {
 			const config = await readFile(join(env.projectDir, "short-name/.arbws/config"), "utf8");
 			expect(config).toContain("branch = short-name");
 			// Repos on new branch
-			const branchA = (await git(join(env.projectDir, "short-name/repo-a"), ["branch", "--show-current"])).trim();
-			const branchB = (await git(join(env.projectDir, "short-name/repo-b"), ["branch", "--show-current"])).trim();
+			const branchA = (
+				await git(join(env.projectDir, "short-name/repo-a"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
+			const branchB = (
+				await git(join(env.projectDir, "short-name/repo-b"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
 			expect(branchA).toBe("short-name");
 			expect(branchB).toBe("short-name");
 			// Stdout contains new path
@@ -440,7 +474,9 @@ describe("workspace rename", () => {
 			expect(existsSync(join(env.projectDir, "my-feature"))).toBe(true);
 			expect(existsSync(join(env.projectDir, "short-name"))).toBe(false);
 			// Branch still renamed
-			const branchA = (await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "--show-current"])).trim();
+			const branchA = (
+				await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
+			).trim();
 			expect(branchA).toBe("short-name");
 		}));
 
@@ -459,7 +495,7 @@ describe("workspace rename", () => {
 			expect(existsSync(join(env.projectDir, "feat-new"))).toBe(true);
 			expect(existsSync(join(env.projectDir, "my-feature"))).toBe(false);
 			// Branch renamed
-			const branchA = (await git(join(env.projectDir, "feat-new/repo-a"), ["branch", "--show-current"])).trim();
+			const branchA = (await git(join(env.projectDir, "feat-new/repo-a"), ["symbolic-ref", "--short", "HEAD"])).trim();
 			expect(branchA).toBe("feat/new");
 			// Stdout contains new path
 			expect(result.output).toContain(join(env.projectDir, "feat-new"));
@@ -530,7 +566,7 @@ describe("workspace rename", () => {
 			expect(existsSync(join(env.projectDir, "my-ws"))).toBe(true);
 			expect(existsSync(join(env.projectDir, "short-name"))).toBe(false);
 			// Branch still renamed
-			const branchA = (await git(join(env.projectDir, "my-ws/repo-a"), ["branch", "--show-current"])).trim();
+			const branchA = (await git(join(env.projectDir, "my-ws/repo-a"), ["symbolic-ref", "--short", "HEAD"])).trim();
 			expect(branchA).toBe("short-name");
 		}));
 
@@ -582,7 +618,7 @@ describe("workspace rename", () => {
 			expect(existsSync(join(env.projectDir, "new-ws"))).toBe(true);
 			expect(existsSync(join(env.projectDir, "my-feature"))).toBe(false);
 			// Branch unchanged
-			const branchA = (await git(join(env.projectDir, "new-ws/repo-a"), ["branch", "--show-current"])).trim();
+			const branchA = (await git(join(env.projectDir, "new-ws/repo-a"), ["symbolic-ref", "--short", "HEAD"])).trim();
 			expect(branchA).toBe("my-feature");
 			// Stdout contains new path
 			expect(result.output).toContain(join(env.projectDir, "new-ws"));

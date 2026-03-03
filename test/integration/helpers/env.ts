@@ -15,6 +15,33 @@ import { join, resolve } from "node:path";
 
 const ARB_BIN = resolve(join(import.meta.dir, "../../../dist/arb"));
 
+// ── Git version detection ────────────────────────────────────────
+
+interface GitVersion {
+	major: number;
+	minor: number;
+	patch: number;
+}
+
+async function detectGitVersion(): Promise<GitVersion> {
+	const proc = Bun.spawn(["git", "--version"], { stdout: "pipe", stderr: "pipe" });
+	const stdout = await new Response(proc.stdout).text();
+	await proc.exited;
+	const match = stdout.match(/git version (\d+)\.(\d+)\.(\d+)/);
+	if (!match?.[1] || !match[2] || !match[3]) {
+		throw new Error(`Could not parse git version from: ${stdout.trim()}`);
+	}
+	return {
+		major: Number.parseInt(match[1], 10),
+		minor: Number.parseInt(match[2], 10),
+		patch: Number.parseInt(match[3], 10),
+	};
+}
+
+export const gitVersion = await detectGitVersion();
+export const gitBelow230 = gitVersion.major < 2 || (gitVersion.major === 2 && gitVersion.minor < 30);
+export const gitBelow238 = gitVersion.major < 2 || (gitVersion.major === 2 && gitVersion.minor < 38);
+
 // ── Types ────────────────────────────────────────────────────────
 
 export interface TestEnv {
@@ -55,6 +82,21 @@ export async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 /**
+ * Initialize a bare repo with a specific default branch.
+ *
+ * `git init --bare -b <branch>` requires git 2.28+. This helper uses
+ * plumbing commands to seed the branch with an empty commit so that
+ * clones see the correct default branch on any git version.
+ */
+export async function initBareRepo(cwd: string, path: string, branch: string): Promise<void> {
+	await git(cwd, ["init", "--bare", path]);
+	await git(path, ["symbolic-ref", "HEAD", `refs/heads/${branch}`]);
+	const tree = (await git(path, ["hash-object", "-w", "-t", "tree", "/dev/null"])).trim();
+	const commit = (await git(path, ["commit-tree", tree, "-m", "init (bootstrap)"])).trim();
+	await git(path, ["update-ref", `refs/heads/${branch}`, commit]);
+}
+
+/**
  * Run an arb command and capture output. Does NOT throw on non-zero exit
  * (like BATS `run`). Check `result.exitCode` in assertions.
  */
@@ -91,7 +133,7 @@ export async function createTestEnv(): Promise<TestEnv> {
 
 	// Create bare origin repos and clone into .arb/repos/
 	for (const name of ["repo-a", "repo-b"]) {
-		await git(testDir, ["init", "--bare", join(originDir, `${name}.git`), "-b", "main"]);
+		await initBareRepo(testDir, join(originDir, `${name}.git`), "main");
 		await git(testDir, ["clone", join(originDir, `${name}.git`), join(projectDir, `.arb/repos/${name}`)]);
 		const repoDir = join(projectDir, `.arb/repos/${name}`);
 		await git(repoDir, ["commit", "--allow-empty", "-m", "init"]);
@@ -116,7 +158,7 @@ export async function setupForkRepo(env: TestEnv, name: string): Promise<void> {
 
 	// Create upstream bare repo with initial commit
 	await mkdir(join(env.testDir, "upstream"), { recursive: true });
-	await git(env.testDir, ["init", "--bare", upstreamDir, "-b", "main"]);
+	await initBareRepo(env.testDir, upstreamDir, "main");
 	const tmpClone = join(env.testDir, `tmp-${name}`);
 	await git(env.testDir, ["clone", upstreamDir, tmpClone]);
 	await git(tmpClone, ["commit", "--allow-empty", "-m", "init"]);

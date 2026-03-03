@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { chmod, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { arb, git, withEnv, write } from "./helpers/env";
+import { arb, git, initBareRepo, withEnv, write } from "./helpers/env";
 
 // ── exec ─────────────────────────────────────────────────────────
 
@@ -313,8 +313,8 @@ describe("remoteless repo validation", () => {
 	test("arb create with ambiguous remotes errors with actionable message", () =>
 		withEnv(async (env) => {
 			// Create a repo with two non-conventional remotes and no pushDefault
-			await git(env.testDir, ["init", "--bare", join(env.originDir, "ambig.git"), "-b", "main"]);
-			await git(env.testDir, ["init", "--bare", join(env.testDir, "fork/ambig.git"), "-b", "main"]);
+			await initBareRepo(env.testDir, join(env.originDir, "ambig.git"), "main");
+			await initBareRepo(env.testDir, join(env.testDir, "fork/ambig.git"), "main");
 			await git(env.testDir, ["clone", join(env.originDir, "ambig.git"), join(env.projectDir, ".arb/repos/ambig")]);
 			await git(join(env.projectDir, ".arb/repos/ambig"), ["commit", "--allow-empty", "-m", "init"]);
 			await git(join(env.projectDir, ".arb/repos/ambig"), ["push"]);
