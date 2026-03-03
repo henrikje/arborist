@@ -77,6 +77,10 @@ Organized into semantic subdirectories. Each directory has a barrel `index.ts` r
 
 Always use these Bun scripts instead of running commands directly.
 
+## PR Guidelines
+
+- Never include a "References:" ticket line or any ticket/issue references in PR descriptions.
+
 ## Post-Change Checklist
 
 After each change, check whether the following need updating:
