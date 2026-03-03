@@ -303,6 +303,18 @@ arb list --quiet | xargs ...  # one workspace name per line
 
 All state-changing commands support `--dry-run` to preview the plan and `--yes` to skip confirmation prompts. `status`, `branch`, `list`, `log`, `diff`, and `repo list` support `--json` for structured output and `--quiet` for one name per line — useful for feeding into other commands. Exit codes are meaningful: 0 for success, 1 for issues, 130 for user abort. Human-facing output goes to stderr, machine-parseable data to stdout — so piping works naturally.
 
+## Alternatives
+
+There are several ways to approach multi-repo development:
+
+- **Raw `git worktree` + scripts** — Flexible and lightweight, but you must build your own cross-repo status, safety checks, and coordination.
+- **Multiple clones per feature** — Simple, but duplicates repos and makes it harder to see overall state.
+- **Submodules / meta-repos** — Centralize checkouts, but add Git complexity and don’t inherently solve parallel feature isolation.
+- **Repo orchestration tools (`repo`, `west`, etc.)** — Good for syncing large trees, less focused on feature-branch workflows.
+- **Monorepo** — Removes the coordination problem entirely, but may mix projects with different lifecycles, and restructuring is not always an option.
+
+Arborist is for teams that want to keep repositories independent while adding a thin, Git-native coordination layer for safe, parallel, multi-repo feature work.
+
 ## Further reading
 
 To learn more about Arborist, check out the following resources:
