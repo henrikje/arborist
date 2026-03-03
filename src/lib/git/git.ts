@@ -1,5 +1,7 @@
 import { existsSync, statSync } from "node:fs";
+import { ArbError } from "../core/errors";
 import { debugGit, isDebug } from "../terminal/debug";
+import { error } from "../terminal/output";
 
 export type GitOperation = "rebase" | "merge" | "cherry-pick" | "revert" | "bisect" | "am" | null;
 
@@ -114,7 +116,7 @@ export async function checkBranchMatch(
 	repoDir: string,
 	expected: string,
 ): Promise<{ matches: boolean; actual: string }> {
-	const result = await git(repoDir, "branch", "--show-current");
+	const result = await git(repoDir, "symbolic-ref", "--short", "HEAD");
 	const actual = result.exitCode === 0 ? result.stdout.trim() : "?";
 	return { matches: actual === expected, actual };
 }
@@ -764,4 +766,33 @@ export function parseDiffShortstat(output: string): { files: number; insertions:
 		insertions: ins ? Number.parseInt(ins[1] ?? "0", 10) : 0,
 		deletions: del ? Number.parseInt(del[1] ?? "0", 10) : 0,
 	};
+}
+
+export interface GitVersion {
+	major: number;
+	minor: number;
+	patch: number;
+}
+
+export function parseGitVersion(output: string): GitVersion | null {
+	const match = output.match(/git version (\d+)\.(\d+)\.(\d+)/);
+	if (!match) return null;
+	const major = match[1];
+	const minor = match[2];
+	const patch = match[3];
+	if (!major || !minor || !patch) return null;
+	return {
+		major: Number.parseInt(major, 10),
+		minor: Number.parseInt(minor, 10),
+		patch: Number.parseInt(patch, 10),
+	};
+}
+
+export async function assertMinimumGitVersion(cache: { getGitVersion(): Promise<GitVersion> }): Promise<void> {
+	const version = await cache.getGitVersion();
+	if (version.major < 2 || (version.major === 2 && version.minor < 17)) {
+		const msg = `Arborist requires Git 2.17 or later (you have ${version.major}.${version.minor}.${version.patch}).`;
+		error(msg);
+		throw new ArbError(msg);
+	}
 }

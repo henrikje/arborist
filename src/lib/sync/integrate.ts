@@ -17,6 +17,7 @@ import {
 	predictStashPopConflict,
 	remoteBranchExists,
 } from "../git/git";
+import { assertMinimumGitVersion } from "../git/git";
 import { GitCache } from "../git/git-cache";
 import { buildConflictReport, buildStashPopFailureReport } from "../render/conflict-report";
 import { formatBranchGraph } from "../render/integrate-graph";
@@ -84,6 +85,7 @@ export async function integrate(
 
 	// Resolve remotes for all repos
 	const cache = new GitCache();
+	await assertMinimumGitVersion(cache);
 	const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
 
 	// Phase 2: fetch

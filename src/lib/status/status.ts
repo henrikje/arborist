@@ -432,7 +432,7 @@ export async function gatherRepoStatus(
 
 	// Parallel group: branch, porcelain status, shallow check, git-dir for operations
 	const [branchResult, local, shallow, gitDirResult] = await Promise.all([
-		git(repoDir, "branch", "--show-current"),
+		git(repoDir, "symbolic-ref", "--short", "HEAD"),
 		parseGitStatus(repoDir),
 		isShallowRepo(repoDir),
 		detectOperation(repoDir),

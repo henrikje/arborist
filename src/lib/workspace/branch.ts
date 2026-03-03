@@ -24,7 +24,7 @@ export async function workspaceBranch(wsDir: string): Promise<WorkspaceBranchRes
 	const repoDirs = workspaceRepoDirs(wsDir);
 	const firstRepoDir = repoDirs[0];
 	if (firstRepoDir) {
-		const result = await git(firstRepoDir, "branch", "--show-current");
+		const result = await git(firstRepoDir, "symbolic-ref", "--short", "HEAD");
 		if (result.exitCode === 0) {
 			const branch = result.stdout.trim();
 			if (branch) {

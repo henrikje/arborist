@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, getCommitsBetweenFull, git } from "../lib/git";
+import { GitCache, assertMinimumGitVersion, getCommitsBetweenFull, git } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type LogJsonOutput, LogJsonOutputSchema, type LogJsonRepo } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
@@ -82,6 +82,7 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 				}
 				const selectedRepos = resolveRepoSelection(wsDir, repoNames);
 				const cache = new GitCache();
+				await assertMinimumGitVersion(cache);
 
 				if (options.fetch) {
 					const allFetchDirs = workspaceRepoDirs(wsDir);

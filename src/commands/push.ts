@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, configGet } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, getCommitsBetweenFull, getShortHead, git } from "../lib/git";
+import { GitCache, assertMinimumGitVersion, getCommitsBetweenFull, getShortHead, git } from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -71,6 +71,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 				}
 				const selectedRepos = resolveRepoSelection(wsDir, repoNames);
 				const cache = new GitCache();
+				await assertMinimumGitVersion(cache);
 				const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
 				const configBase = configGet(`${wsDir}/.arbws/config`, "base");
 

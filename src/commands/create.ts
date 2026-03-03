@@ -3,7 +3,7 @@ import input from "@inquirer/input";
 import type { Command } from "commander";
 import { ArbError, writeConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, validateBranchName, validateWorkspaceName } from "../lib/git";
+import { GitCache, assertMinimumGitVersion, validateBranchName, validateWorkspaceName } from "../lib/git";
 import { render } from "../lib/render";
 import { dim, error, info, isTTY, plural, readNamesFromStdin, success, warn } from "../lib/terminal";
 import {
@@ -143,6 +143,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				writeConfig(`${wsDir}/.arbws/config`, branch, base);
 
 				const cache = new GitCache();
+				await assertMinimumGitVersion(cache);
 				let result = { created: [] as string[], skipped: [] as string[], failed: [] as string[] };
 				if (repos.length > 0) {
 					const remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);

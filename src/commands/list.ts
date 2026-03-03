@@ -4,7 +4,7 @@ import type { Command } from "commander";
 import { z } from "zod";
 import { ArbError, type RelativeTimeParts, configGet, formatRelativeTimeParts } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache } from "../lib/git";
+import { GitCache, assertMinimumGitVersion } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type ListJsonEntry, ListJsonEntrySchema } from "../lib/json";
 import { type RenderContext, render, runPhasedRender } from "../lib/render";
@@ -75,6 +75,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
 				}
 				const ctx = getCtx();
 				const cache = new GitCache();
+				await assertMinimumGitVersion(cache);
 
 				// Conflict checks
 				if (options.quiet && options.json) {

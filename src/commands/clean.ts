@@ -4,7 +4,7 @@ import confirm from "@inquirer/confirm";
 import type { Command } from "commander";
 import { ArbAbort, ArbError, loadArbIgnore } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, git } from "../lib/git";
+import { GitCache, assertMinimumGitVersion, git } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
@@ -100,6 +100,7 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 				if (wb) workspaceBranches.add(wb.branch);
 			}
 			const cache = new GitCache();
+			await assertMinimumGitVersion(cache);
 			const orphanedBranches = await findOrphanedBranches(ctx.reposDir, workspaceBranches, cache);
 
 			// ── Check if there's anything to do ──────────────────────
