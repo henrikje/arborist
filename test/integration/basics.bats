@@ -80,11 +80,11 @@ load test_helper/common-setup
     [[ "$output" == *"origin/repo-b.git"* ]]
 }
 
-@test "arb repo list outside arb root fails" {
+@test "arb repo list outside project fails" {
     cd /tmp
     run arb repo list
     [ "$status" -ne 0 ]
-    [[ "$output" == *"Not inside an arb root"* ]]
+    [[ "$output" == *"Not inside a project"* ]]
 }
 
 # ── help ──────────────────────────────────────────────────────────
@@ -161,11 +161,11 @@ load test_helper/common-setup
     [[ "$output" == *"unknown command"* ]]
 }
 
-@test "commands outside arb root fail with helpful message" {
+@test "commands outside project fail with helpful message" {
     cd /tmp
     run arb list
     [ "$status" -ne 0 ]
-    [[ "$output" == *"Not inside an arb root"* ]]
+    [[ "$output" == *"Not inside a project"* ]]
 }
 
 # ── init ─────────────────────────────────────────────────────────
@@ -194,13 +194,13 @@ load test_helper/common-setup
     cd "$TEST_DIR/project/ws-init-test/repo-a"
     run arb init
     [ "$status" -ne 0 ]
-    [[ "$output" == *"inside existing arb root"* ]]
+    [[ "$output" == *"inside an existing project"* ]]
 }
 
-@test "arb init with path inside arb root fails" {
+@test "arb init with path inside project fails" {
     run arb init "$TEST_DIR/project/some-subdir"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"inside existing arb root"* ]]
+    [[ "$output" == *"inside an existing project"* ]]
 }
 
 # ── repo clone ───────────────────────────────────────────────────

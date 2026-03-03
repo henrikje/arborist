@@ -46,10 +46,10 @@ arb cd                        # interactive repo picker (when inside a workspace
 
 If the name doesn't match a repo, it falls back to workspace resolution. You can always use the explicit `workspace/repo` syntax to be unambiguous.
 
-`arb path` prints the absolute path to the arb root, a workspace, or a repo — useful in scripts and shell pipelines. It follows the same scope-aware resolution as `arb cd`:
+`arb path` prints the absolute path to the project root, a workspace, or a repo — useful in scripts and shell pipelines. It follows the same scope-aware resolution as `arb cd`:
 
 ```bash
-arb path                       # /home/you/my-project (the arb root)
+arb path                       # /home/you/my-project (the project root)
 arb path fix-login             # /home/you/my-project/fix-login
 arb path fix-login/frontend    # /home/you/my-project/fix-login/frontend
 arb path frontend              # /home/you/my-project/fix-login/frontend (when inside fix-login)
@@ -87,7 +87,7 @@ This shows the status of each repo and walks you through deletion. If there are 
 
 ## List repos
 
-To see which repositories have been cloned into the arb root:
+To see which repositories have been cloned into the project:
 
 ```bash
 arb repo list

@@ -79,10 +79,10 @@ test("README walkthrough: init → clone → feature → interrupt → rebase �
 		// ── Phase 1: Setup ───────────────────────────────────────
 
 		// Step 1: arb init creates project root
-		// README: "Initialized arb root"
+		// README: "Initialized project"
 		const initResult = await arb(env, ["init"]);
 		expect(initResult.exitCode).toBe(0);
-		expect(initResult.output).toContain("Initialized arb root");
+		expect(initResult.output).toContain("Initialized project");
 		expect(existsSync(join(env.projectDir, ".arb/repos"))).toBe(true);
 
 		// Step 2: clone frontend, backend, shared

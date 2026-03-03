@@ -180,7 +180,7 @@ Files ending with `.arbtemplate` are rendered with [LiquidJS](https://liquidjs.c
 
 | Variable | Value | Scope |
 |---|---|---|
-| `{{ root.path }}` | Absolute path to the arb root | all |
+| `{{ project.path }}` | Absolute path to the project root | all |
 | `{{ workspace.name }}` | Workspace directory name | all |
 | `{{ workspace.path }}` | Absolute path to the workspace | all |
 | `{{ workspace.repos }}` | Array of repo objects (each has `name`, `path`, `baseRemote`, `shareRemote`) | all |

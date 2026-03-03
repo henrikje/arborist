@@ -14,14 +14,14 @@ load test_helper/common-setup
     [[ "$output" == *"exit 0"* ]]
 }
 
-@test "arb --debug logs arb root" {
+@test "arb --debug logs project root" {
     run arb create debug-root-ws -a
     [ "$status" -eq 0 ]
     cd "$TEST_DIR/project/debug-root-ws/repo-a"
     run arb --debug status --no-fetch
     [ "$status" -eq 0 ]
     [[ "$output" == *"[debug]"* ]]
-    [[ "$output" == *"arb root:"* ]]
+    [[ "$output" == *"project:"* ]]
 }
 
 @test "arb --debug logs workspace" {

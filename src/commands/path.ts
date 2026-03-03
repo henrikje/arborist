@@ -9,9 +9,9 @@ import { workspaceRepoDirs } from "../lib/workspace";
 export function registerPathCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("path [name]")
-		.summary("Print a path (arb root, workspace, or repo)")
+		.summary("Print a path (project root, workspace, or repo)")
 		.description(
-			'Print the absolute path to the arb root, a workspace, or a repo within a workspace. When run from inside a workspace, names are resolved as repos first (e.g. "arb path backend" prints the backend repo path). Use "workspace/repo" to be explicit.',
+			'Print the absolute path to the project root, a workspace, or a repo within a workspace. When run from inside a workspace, names are resolved as repos first (e.g. "arb path backend" prints the backend repo path). Use "workspace/repo" to be explicit.',
 		)
 		.action((input?: string) => {
 			const ctx = getCtx();

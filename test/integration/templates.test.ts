@@ -900,7 +900,7 @@ describe(".arbtemplate LiquidJS rendering", () => {
 			await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
 			await writeFile(
 				join(env.projectDir, ".arb/templates/workspace/config.json.arbtemplate"),
-				"{{ workspace.name }}:{{ workspace.path }}:{{ root.path }}",
+				"{{ workspace.name }}:{{ workspace.path }}:{{ project.path }}",
 			);
 
 			await arb(env, ["create", "tpl-sub-ws", "repo-a"]);

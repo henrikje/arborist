@@ -25,7 +25,7 @@ export const templatesTopic: HelpTopic = {
 		out("  being written. The extension is stripped at the destination.");
 		out("");
 		out(dim("  Available variables:"));
-		out(`    ${dim("root.path")}                Arb root directory`);
+		out(`    ${dim("project.path")}             Project root directory`);
 		out(`    ${dim("workspace.name")}           Workspace name`);
 		out(`    ${dim("workspace.path")}           Workspace directory`);
 		out(`    ${dim("workspace.repos[]")}        Array of repo objects`);

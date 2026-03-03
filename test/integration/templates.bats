@@ -779,7 +779,7 @@ load test_helper/common-setup
 
 @test "arb create applies .arbtemplate with workspace variables" {
     mkdir -p "$TEST_DIR/project/.arb/templates/workspace"
-    printf '{{ workspace.name }}:{{ workspace.path }}:{{ root.path }}' \
+    printf '{{ workspace.name }}:{{ workspace.path }}:{{ project.path }}' \
         > "$TEST_DIR/project/.arb/templates/workspace/config.json.arbtemplate"
 
     arb create tpl-sub-ws repo-a

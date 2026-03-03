@@ -32,7 +32,7 @@ describe("--debug flag", () => {
 			expect(result.output).toContain("exit 0");
 		}));
 
-	test("arb --debug logs arb root", () =>
+	test("arb --debug logs project root", () =>
 		withEnv(async (env) => {
 			const createResult = await arb(env, ["create", "debug-root-ws", "-a"]);
 			expect(createResult.exitCode).toBe(0);
@@ -41,7 +41,7 @@ describe("--debug flag", () => {
 			});
 			expect(result.exitCode).toBe(0);
 			expect(result.output).toContain("[debug]");
-			expect(result.output).toContain("arb root:");
+			expect(result.output).toContain("project:");
 		}));
 
 	test("arb --debug logs workspace", () =>
