@@ -45,8 +45,8 @@ Organized into semantic subdirectories. Each directory has a barrel `index.ts` r
 
 ### Testing
 
-- **Unit tests**: Bun's native test runner, files colocated as `*.test.ts`. For code testable without spawning git processes or filesystem operations.
-- **Integration tests**: BATS framework in `test/integration/*.bats`, tests the compiled binary end-to-end. Split into domain-based files with shared helpers in `test/integration/test_helper/common-setup.bash`.
+- **Unit tests**: Bun's native test runner, files colocated as `*.test.ts` under `src/`. For code testable without spawning git processes or filesystem operations.
+- **Integration tests**: Bun test files in `test/integration/*.test.ts`, tests the compiled binary end-to-end. Shared helpers in `test/integration/helpers/env.ts` provide `createTestEnv()`, `arb()`, `git()`, and BATS-equivalent fixtures. Legacy BATS tests (`.bats` files) remain during migration.
 - **Playground scripts**: `test/playground/` contains setup scripts for self-contained arb playgrounds. Run `test/playground/setup-walkthrough.sh` or `test/playground/setup-stacked.sh` for a ready-to-explore environment.
 
 ### Code Style
@@ -63,11 +63,11 @@ Organized into semantic subdirectories. Each directory has a barrel `index.ts` r
 |---------|---------|
 | `bun run dev -- <args>` | Run CLI locally (passes args to arb) |
 | `bun run build` | Build single executable to `dist/arb` |
-| `bun test` | Run all unit tests |
-| `bun test src/lib/git/git.test.ts` | Run a single test file |
-| `bun run test:integration` | Build and run BATS integration tests |
-| `bun run build && bats test/integration/status.bats` | Run a single integration test file |
-| `bun run build && bats test/integration/sync.bats --filter "push skips"` | Run a single integration test by name |
+| `bun run test` | Run all unit tests (src/) |
+| `bun test src/lib/git/git.test.ts` | Run a single unit test file |
+| `bun run test:integration` | Build and run Bun integration tests |
+| `bun run build && bun test test/integration/sync.test.ts` | Run a single integration test file |
+| `bun run test:integration:bats` | Build and run legacy BATS integration tests |
 | `bun run lint` | Check with Biome (formatting + linting) |
 | `bun run lint:fix` | Auto-fix lint/format issues |
 | `bun run typecheck` | TypeScript type checking |
