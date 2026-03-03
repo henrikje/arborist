@@ -400,7 +400,7 @@ describe("path", () => {
 			expect(result.output.trim()).toBe(join(env.projectDir, "my-feature"));
 		}));
 
-	test("arb path with no argument returns arb root from workspace", () =>
+	test("arb path with no argument returns project root from workspace", () =>
 		withEnv(async (env) => {
 			await arb(env, ["create", "my-feature", "repo-a"]);
 			const result = await arb(env, ["path"], { cwd: join(env.projectDir, "my-feature/repo-a") });
@@ -414,7 +414,7 @@ describe("path", () => {
 			expect(result.output.trim()).toBe(join(env.projectDir, "my-feature/repo-a"));
 		}));
 
-	test("arb path with no argument outside workspace returns arb root", () =>
+	test("arb path with no argument outside workspace returns project root", () =>
 		withEnv(async (env) => {
 			const result = await arb(env, ["path"]);
 			expect(result.exitCode).toBe(0);
@@ -557,7 +557,7 @@ describe("cd scope-aware", () => {
 			expect(result.output).toContain("or a workspace");
 		}));
 
-	test("arb cd behavior unchanged when at arb root", () =>
+	test("arb cd behavior unchanged when at project root", () =>
 		withEnv(async (env) => {
 			await arb(env, ["create", "my-feature", "repo-a"]);
 			const result = await arb(env, ["cd", "my-feature"], { cwd: env.projectDir });
@@ -622,7 +622,7 @@ describe("-C / --chdir", () => {
 			expect(result.output).toContain("no such directory");
 		}));
 
-	test("arb -C with init creates arb root in target directory", () =>
+	test("arb -C with init creates project in target directory", () =>
 		withEnv(async (env) => {
 			await mkdir(join(env.testDir, "new-root"), { recursive: true });
 			const result = await arb(env, ["-C", join(env.testDir, "new-root"), "init"], { cwd: "/tmp" });

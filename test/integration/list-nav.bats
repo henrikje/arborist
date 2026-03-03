@@ -390,7 +390,7 @@ assert data == []
     [ "$output" = "$TEST_DIR/project/my-feature" ]
 }
 
-@test "arb path with no argument returns arb root from workspace" {
+@test "arb path with no argument returns project root from workspace" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project/my-feature/repo-a"
     run arb path
@@ -403,7 +403,7 @@ assert data == []
     [ "$output" = "$TEST_DIR/project/my-feature/repo-a" ]
 }
 
-@test "arb path with no argument outside workspace returns arb root" {
+@test "arb path with no argument outside workspace returns project root" {
     run arb path
     [ "$status" -eq 0 ]
     [ "$output" = "$TEST_DIR/project" ]
@@ -535,7 +535,7 @@ assert data == []
     [[ "$output" == *"or a workspace"* ]]
 }
 
-@test "arb cd behavior unchanged when at arb root" {
+@test "arb cd behavior unchanged when at project root" {
     arb create my-feature repo-a
     cd "$TEST_DIR/project"
     run arb cd my-feature
@@ -595,7 +595,7 @@ assert data == []
     [[ "$output" == *"no such directory"* ]]
 }
 
-@test "arb -C with init creates arb root in target directory" {
+@test "arb -C with init creates project in target directory" {
     mkdir "$TEST_DIR/new-root"
     cd /tmp
     run arb -C "$TEST_DIR/new-root" init

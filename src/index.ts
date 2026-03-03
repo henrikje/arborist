@@ -34,7 +34,7 @@ import { ARB_VERSION } from "./version";
 const COMMAND_GROUPS = [
 	{
 		title: "Setup Commands:",
-		description: "  Set up the arb root and clone repos.",
+		description: "  Set up the project and clone repos.",
 		commands: ["init", "repo", "template", "help"],
 	},
 	{
@@ -153,8 +153,8 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
 function getCtx(): ArbContext {
 	const arbRootDir = detectArbRoot();
 	if (!arbRootDir) {
-		error("Not inside an arb root. Run 'arb init' to set one up.");
-		throw new ArbError("Not inside an arb root. Run 'arb init' to set one up.");
+		error("Not inside a project. Run 'arb init' to set one up.");
+		throw new ArbError("Not inside a project. Run 'arb init' to set one up.");
 	}
 	return {
 		arbRootDir,
@@ -199,7 +199,7 @@ program.hook("preAction", () => {
 
 	if (isDebug()) {
 		const arbRoot = detectArbRoot();
-		debugLog(`arb root: ${arbRoot ?? "(not found)"}`);
+		debugLog(`project: ${arbRoot ?? "(not found)"}`);
 		if (arbRoot) {
 			const ws = detectWorkspace(arbRoot);
 			debugLog(`workspace: ${ws ?? "(none)"}`);

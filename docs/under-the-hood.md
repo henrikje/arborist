@@ -1,6 +1,6 @@
 # How it works
 
-Arb uses marker directories and Git worktrees — no database, no daemon, no config outside the arb root.
+Arb uses marker directories and Git worktrees — no database, no daemon, no config outside the project root.
 
 `arb init` creates an `.arb/` marker at the root. Every other command finds its context by walking up from the current directory.
 

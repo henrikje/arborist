@@ -48,7 +48,7 @@ function toTemplateData(ctx: TemplateContext): Record<string, unknown> {
 			})
 		: undefined;
 	return {
-		root: { path: ctx.rootPath },
+		project: { path: ctx.rootPath },
 		workspace: {
 			name: ctx.workspaceName,
 			path: ctx.workspacePath,
@@ -63,7 +63,7 @@ export function renderTemplate(content: string, ctx: TemplateContext): string {
 }
 
 function knownVariablePaths(ctx: TemplateContext): Set<string> {
-	const paths = new Set(["root.path", "workspace.name", "workspace.path", "workspace.repos"]);
+	const paths = new Set(["project.path", "workspace.name", "workspace.path", "workspace.repos"]);
 	if (ctx.repoName) {
 		paths.add("repo.name");
 		paths.add("repo.path");

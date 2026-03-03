@@ -71,7 +71,7 @@ arb init
 ```
 
 ```
-Initialized arb root
+Initialized project
   ~/my-project
 
 Next steps:
@@ -79,7 +79,7 @@ Next steps:
   arb create <name>     Create a workspace
 ```
 
-`arb init` creates the top-level directory that holds all your workspaces.
+`arb init` marks the current directory as an Arborist project to hold your workspaces.
 
 Next, we will clone the repositories we want to work with. They will be stored in `.arb/repos`.
 
@@ -91,7 +91,7 @@ arb repo clone https://github.com/example/shared.git
 
 ### Start a feature
 
-Standing in the newly initialized Arborist root, we are ready to create a workspace for the dark mode feature we will work on.
+Standing in the newly initialized project, we are ready to create a workspace for the dark mode feature we will work on.
 
 ```bash
 arb create add-dark-mode
@@ -156,7 +156,7 @@ arb delete fix-login-crash
 The hotfix is shipped. Pick up where you left off:
 
 ```bash
-arb cd add-dark-mode/backend # arb cd works from anywhere inside the Arborist root
+arb cd add-dark-mode/backend # arb cd works from anywhere inside the project
 # finish backend work
 git commit -am "Add dark mode API endpoint"
 ```

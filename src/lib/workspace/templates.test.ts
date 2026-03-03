@@ -546,9 +546,9 @@ describe("templates", () => {
 				workspaceName: "feat-login",
 				workspacePath: "/projects/myapp/feat-login",
 			};
-			const input = "root={{ root.path }} ws={{ workspace.name }} path={{ workspace.path }}";
+			const input = "project={{ project.path }} ws={{ workspace.name }} path={{ workspace.path }}";
 			const result = renderTemplate(input, ctx);
-			expect(result).toBe("root=/projects/myapp ws=feat-login path=/projects/myapp/feat-login");
+			expect(result).toBe("project=/projects/myapp ws=feat-login path=/projects/myapp/feat-login");
 		});
 
 		test("replaces repo variables when provided", () => {
@@ -1274,7 +1274,7 @@ describe("templates", () => {
 
 		test("valid workspace variables return empty result", () => {
 			const content =
-				"{{ workspace.name }} {{ workspace.path }} {{ root.path }} {% for r in workspace.repos %}{{ r.name }}{% endfor %}";
+				"{{ workspace.name }} {{ workspace.path }} {{ project.path }} {% for r in workspace.repos %}{{ r.name }}{% endfor %}";
 			expect(checkUnknownVariables(content, wsCtx)).toEqual([]);
 		});
 

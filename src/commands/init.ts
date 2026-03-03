@@ -8,9 +8,9 @@ import { detectArbRoot } from "../lib/workspace";
 export function registerInitCommand(program: Command): void {
 	program
 		.command("init [path]")
-		.summary("Initialize a new arb root")
+		.summary("Initialize a new project")
 		.description(
-			"Create the .arb/ marker directory and scaffolding that arb needs. The current directory (or the given path) becomes the arb root — canonical repos go in .arb/repos/, and workspaces are created as top-level directories.",
+			"Create the .arb/ marker directory and scaffolding that arb needs. The current directory (or the given path) becomes the project root — canonical repos go in .arb/repos/, and workspaces are created as top-level directories.",
 		)
 		.action((path?: string) => {
 			let target = path ?? process.cwd();
@@ -27,14 +27,14 @@ export function registerInitCommand(program: Command): void {
 
 			const existingRoot = detectArbRoot(target);
 			if (existingRoot) {
-				error(`Cannot init inside existing arb root: ${existingRoot}`);
-				throw new ArbError(`Cannot init inside existing arb root: ${existingRoot}`);
+				error(`Cannot init inside an existing project: ${existingRoot}`);
+				throw new ArbError(`Cannot init inside an existing project: ${existingRoot}`);
 			}
 
 			mkdirSync(`${target}/.arb/repos`, { recursive: true });
 			writeFileSync(`${target}/.arb/.gitignore`, "repos/\n");
 
-			success("Initialized arb root");
+			success("Initialized project");
 			info(`  ${dim(target)}`);
 			info("");
 			info("Next steps:");

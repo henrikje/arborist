@@ -36,7 +36,7 @@ There is no `arb commit` — you commit in each repo individually.
 The commands below run from inside a workspace or repo. You can also target a workspace from anywhere using `-C`:
 
 ```bash
-arb -C ~/my-project status                    # run from the arb root
+arb -C ~/my-project status                    # run from the project root
 arb -C ~/my-project/fix-login status          # target a specific workspace
 ```
 

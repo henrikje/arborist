@@ -96,11 +96,11 @@ describe("repo list", () => {
 			expect(result.output).toContain("origin/repo-b.git");
 		}));
 
-	test("arb repo list outside arb root fails", () =>
+	test("arb repo list outside project fails", () =>
 		withEnv(async (env) => {
 			const result = await arb(env, ["repo", "list"], { cwd: "/tmp" });
 			expect(result.exitCode).not.toBe(0);
-			expect(result.output).toContain("Not inside an arb root");
+			expect(result.output).toContain("Not inside a project");
 		}));
 });
 
@@ -190,11 +190,11 @@ describe("help", () => {
 			expect(result.output).toContain("unknown command");
 		}));
 
-	test("commands outside arb root fail with helpful message", () =>
+	test("commands outside project fail with helpful message", () =>
 		withEnv(async (env) => {
 			const result = await arb(env, ["list"], { cwd: "/tmp" });
 			expect(result.exitCode).not.toBe(0);
-			expect(result.output).toContain("Not inside an arb root");
+			expect(result.output).toContain("Not inside a project");
 		}));
 });
 
@@ -228,14 +228,14 @@ describe("init", () => {
 				cwd: join(env.projectDir, "ws-init-test/repo-a"),
 			});
 			expect(result.exitCode).not.toBe(0);
-			expect(result.output).toContain("inside existing arb root");
+			expect(result.output).toContain("inside an existing project");
 		}));
 
-	test("arb init with path inside arb root fails", () =>
+	test("arb init with path inside project fails", () =>
 		withEnv(async (env) => {
 			const result = await arb(env, ["init", join(env.projectDir, "some-subdir")]);
 			expect(result.exitCode).not.toBe(0);
-			expect(result.output).toContain("inside existing arb root");
+			expect(result.output).toContain("inside an existing project");
 		}));
 });
 
