@@ -1,0 +1,16 @@
+name: Integration (git 2.17)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -f test/docker/git217.Dockerfile -t arb-git217 test/docker/
+
+      - name: Run integration tests
+        run: docker run --rm -v "$PWD":/app -w /app arb-git217

@@ -80,7 +80,7 @@ describe("--base option (stacked PRs)", () => {
 			expect(result.output).toContain("base branch 'feat/auth' not found");
 			expect(existsSync(join(env.projectDir, "stacked/repo-a"))).toBe(true);
 			expect(existsSync(join(env.projectDir, "stacked/repo-b"))).toBe(true);
-			const branch = (await git(join(env.projectDir, "stacked/repo-a"), ["branch", "--show-current"])).trim();
+			const branch = (await git(join(env.projectDir, "stacked/repo-a"), ["symbolic-ref", "--short", "HEAD"])).trim();
 			expect(branch).toBe("feat/auth-ui");
 		}));
 
@@ -101,7 +101,7 @@ describe("--base option (stacked PRs)", () => {
 			expect(result.exitCode).toBe(0);
 			expect(result.output).toContain("base branch 'feat/base' not found");
 			expect(existsSync(join(env.projectDir, "stacked/repo-b"))).toBe(true);
-			const branch = (await git(join(env.projectDir, "stacked/repo-b"), ["branch", "--show-current"])).trim();
+			const branch = (await git(join(env.projectDir, "stacked/repo-b"), ["symbolic-ref", "--short", "HEAD"])).trim();
 			expect(branch).toBe("feat/stacked");
 		}));
 });

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { arb, git, setupForkRepo, withEnv, write } from "./helpers/env";
+import { arb, git, initBareRepo, setupForkRepo, withEnv, write } from "./helpers/env";
 
 // ── fork workflow (multiple remotes) ─────────────────────────────
 
@@ -10,7 +10,7 @@ describe("fork workflow (multiple remotes)", () => {
 	test("arb repo clone --upstream sets up fork layout", () =>
 		withEnv(async (env) => {
 			await mkdir(join(env.testDir, "upstream"), { recursive: true });
-			await git(env.testDir, ["init", "--bare", join(env.testDir, "upstream/clone-fork.git"), "-b", "main"]);
+			await initBareRepo(env.testDir, join(env.testDir, "upstream/clone-fork.git"), "main");
 			const tmpClone = join(env.testDir, "tmp-clone-fork");
 			await git(env.testDir, ["clone", join(env.testDir, "upstream/clone-fork.git"), tmpClone]);
 			await git(tmpClone, ["commit", "--allow-empty", "-m", "init"]);
@@ -173,7 +173,7 @@ describe("fork workflow (multiple remotes)", () => {
 			const forkDir = join(env.testDir, "fork/conv-test.git");
 
 			await mkdir(join(env.testDir, "upstream"), { recursive: true });
-			await git(env.testDir, ["init", "--bare", upstreamDir, "-b", "main"]);
+			await initBareRepo(env.testDir, upstreamDir, "main");
 			const tmpClone = join(env.testDir, "tmp-conv");
 			await git(env.testDir, ["clone", upstreamDir, tmpClone]);
 			await git(tmpClone, ["commit", "--allow-empty", "-m", "init"]);
@@ -203,7 +203,7 @@ describe("fork workflow (multiple remotes)", () => {
 			const forkDir = join(env.testDir, "fork/custom-names.git");
 
 			await mkdir(join(env.testDir, "upstream"), { recursive: true });
-			await git(env.testDir, ["init", "--bare", canonicalDir, "-b", "main"]);
+			await initBareRepo(env.testDir, canonicalDir, "main");
 			const tmpClone = join(env.testDir, "tmp-custom");
 			await git(env.testDir, ["clone", canonicalDir, tmpClone]);
 			await git(tmpClone, ["commit", "--allow-empty", "-m", "init"]);
@@ -271,7 +271,7 @@ describe("fork workflow (multiple remotes)", () => {
 			const bareC = join(env.testDir, "staging/ambig.git");
 
 			await mkdir(join(env.testDir, "upstream"), { recursive: true });
-			await git(env.testDir, ["init", "--bare", bareA, "-b", "main"]);
+			await initBareRepo(env.testDir, bareA, "main");
 			const tmpClone = join(env.testDir, "tmp-ambig");
 			await git(env.testDir, ["clone", bareA, tmpClone]);
 			await git(tmpClone, ["commit", "--allow-empty", "-m", "init"]);
@@ -333,7 +333,7 @@ describe("fork workflow (multiple remotes)", () => {
 			const upstreamB = join(env.testDir, "upstream/repo-b-fork.git");
 			const forkB = join(env.testDir, "fork/repo-b-fork.git");
 
-			await git(env.testDir, ["init", "--bare", upstreamB, "-b", "main"]);
+			await initBareRepo(env.testDir, upstreamB, "main");
 			const tmpClone = join(env.testDir, "tmp-repo-b-fork");
 			await git(env.testDir, ["clone", upstreamB, tmpClone]);
 			await write(join(tmpClone, "file.txt"), "upstream content");
@@ -368,7 +368,7 @@ describe("fork workflow (multiple remotes)", () => {
 	test("fork: repo clone --upstream fails gracefully with bad upstream URL", () =>
 		withEnv(async (env) => {
 			await mkdir(join(env.testDir, "fork"), { recursive: true });
-			await git(env.testDir, ["init", "--bare", join(env.testDir, "fork/bad-upstream.git"), "-b", "main"]);
+			await initBareRepo(env.testDir, join(env.testDir, "fork/bad-upstream.git"), "main");
 			const tmpClone = join(env.testDir, "tmp-bad-upstream");
 			await git(env.testDir, ["clone", join(env.testDir, "fork/bad-upstream.git"), tmpClone]);
 			await git(tmpClone, ["commit", "--allow-empty", "-m", "init"]);

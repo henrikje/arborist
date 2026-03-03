@@ -75,7 +75,7 @@ describe("create", () => {
 
 			await arb(env, ["create", "reuse-ws", "--branch", "reuse-me", "repo-a"]);
 			expect(existsSync(join(env.projectDir, "reuse-ws/repo-a/marker.txt"))).toBe(true);
-			const branch = (await git(join(env.projectDir, "reuse-ws/repo-a"), ["branch", "--show-current"])).trim();
+			const branch = (await git(join(env.projectDir, "reuse-ws/repo-a"), ["symbolic-ref", "--short", "HEAD"])).trim();
 			expect(branch).toBe("reuse-me");
 		}));
 
@@ -93,7 +93,7 @@ describe("create", () => {
 			await arb(env, ["create", "remote-ws", "--branch", "remote-only", "repo-a"]);
 
 			expect(existsSync(join(env.projectDir, "remote-ws/repo-a/remote-marker.txt"))).toBe(true);
-			const branch = (await git(join(env.projectDir, "remote-ws/repo-a"), ["branch", "--show-current"])).trim();
+			const branch = (await git(join(env.projectDir, "remote-ws/repo-a"), ["symbolic-ref", "--short", "HEAD"])).trim();
 			expect(branch).toBe("remote-only");
 			const trackingRemote = (
 				await git(join(env.projectDir, "remote-ws/repo-a"), ["config", "branch.remote-only.remote"])
@@ -215,7 +215,7 @@ describe("attach", () => {
 			await arb(env, ["create", "my-feature", "--branch", "feat/custom", "repo-b"]);
 			await arb(env, ["attach", "repo-a"], { cwd: join(env.projectDir, "my-feature") });
 			expect(existsSync(join(env.projectDir, "my-feature/repo-a"))).toBe(true);
-			const branch = (await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "--show-current"])).trim();
+			const branch = (await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])).trim();
 			expect(branch).toBe("feat/custom");
 		}));
 
