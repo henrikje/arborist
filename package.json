@@ -5,8 +5,9 @@
 	"scripts": {
 		"dev": "bun run src/index.ts --",
 		"build": "bun run scripts/set-version.ts && bun build src/index.ts --compile --outfile dist/arb && git checkout src/version.ts",
-		"test": "bun test",
-		"test:integration": "bun run build && bats --jobs $(getconf _NPROCESSORS_ONLN) test/integration/",
+		"test": "bun test src/",
+		"test:integration": "bun run build && bun test test/integration/ --concurrent --timeout 30000",
+		"test:integration:bats": "bun run build && bats --jobs $(getconf _NPROCESSORS_ONLN) test/integration/",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"typecheck": "tsc --noEmit",
