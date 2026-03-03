@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { type TestEnv, arb, withEnv } from "./helpers/env";
 
 const SHELL_FILE = resolve(join(import.meta.dir, "../../shell/arb.bash"));
+const DIST_DIR = resolve(join(import.meta.dir, "../../dist"));
 
 /** Run a bash command that sources the shell integration file. */
 async function bash(env: TestEnv, script: string): Promise<{ exitCode: number; output: string; lines: string[] }> {
@@ -10,7 +11,7 @@ async function bash(env: TestEnv, script: string): Promise<{ exitCode: number; o
 		cwd: env.projectDir,
 		stdout: "pipe",
 		stderr: "pipe",
-		env: { ...process.env, NO_COLOR: "1" },
+		env: { ...process.env, NO_COLOR: "1", PATH: `${DIST_DIR}:${process.env.PATH}` },
 	});
 	const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
 	const exitCode = await proc.exited;
