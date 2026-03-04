@@ -113,7 +113,7 @@ export function plainRemoteDiff(repo: RepoStatus): string {
 			const baseLabel = repo.base?.ref ?? "base";
 			if (fromBase > 0) parts.push(`${fromBase} from ${baseLabel}`);
 			if (rebased > 0) parts.push(`${rebased} rebased`);
-			if (newCount > 0) parts.push(`${newCount} to push`);
+			if (newCount > 0) parts.push(`${newCount} new`);
 		} else {
 			// Fallback: no base info, use two-way behavior
 			const newPush = Math.max(0, toPush - rebased);

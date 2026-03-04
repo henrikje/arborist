@@ -322,7 +322,7 @@ describe("plainRemoteDiff", () => {
 				},
 			}),
 		);
-		expect(text).toBe("2 rebased, 1 to push");
+		expect(text).toBe("2 rebased, 1 new");
 	});
 
 	test("shows rebased-only when all pushes are rebased", () => {

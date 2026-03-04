@@ -575,7 +575,7 @@ describe("plainRemoteDiff", () => {
 			},
 		});
 		// fromBase = 7-4 = 3, rebased = 2, newCount = 4-2 = 2, newPull = 3-2 = 1
-		expect(plainRemoteDiff(repo)).toBe("3 from main, 2 rebased, 2 to push, 1 to pull");
+		expect(plainRemoteDiff(repo)).toBe("3 from main, 2 rebased, 2 new, 1 to pull");
 	});
 
 	test("simple push count", () => {
@@ -678,7 +678,7 @@ describe("plainRemoteDiff", () => {
 			},
 		});
 		// fromBase = 5-5 = 0, rebased = 2, newCount = 5-2 = 3
-		expect(plainRemoteDiff(repo)).toBe("2 rebased, 3 to push");
+		expect(plainRemoteDiff(repo)).toBe("2 rebased, 3 new");
 	});
 
 	test("base null fallback uses two-way split", () => {
