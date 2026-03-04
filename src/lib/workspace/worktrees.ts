@@ -1,9 +1,11 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { branchExistsLocally, git, isRepoDirty, remoteBranchExists } from "../git/git";
 import { GitCache } from "../git/git-cache";
 import type { RepoRemotes } from "../git/remotes";
 import { type FetchResult, parallelFetch } from "../sync/parallel-fetch";
 import { error, inlineResult, inlineStart, warn } from "../terminal/output";
+import { parseWorktreeList } from "./clean";
 
 export interface AddWorktreesResult {
 	created: string[];
@@ -74,9 +76,14 @@ export async function addWorktrees(
 		}
 
 		if (existsSync(`${wsDir}/${repo}`)) {
-			warn(`  [${repo}] already exists — skipping`);
-			result.skipped.push(repo);
-			continue;
+			if (isWorktreeRefValid(join(wsDir, repo))) {
+				warn(`  [${repo}] already exists — skipping`);
+				result.skipped.push(repo);
+				continue;
+			}
+			// Stale worktree reference — remove and recreate below
+			warn(`  [${repo}] stale worktree reference — recreating`);
+			rmSync(`${wsDir}/${repo}`, { recursive: true });
 		}
 
 		if (await isRepoDirty(repoPath)) {
@@ -122,8 +129,13 @@ export async function addWorktrees(
 
 		const branchExists = await branchExistsLocally(repoPath, branch);
 
-		// Prune stale worktrees
-		await git(repoPath, "worktree", "prune");
+		// Prune only stale worktree entries that target this workspace, to avoid
+		// destroying entries belonging to other workspaces whose directories may be
+		// temporarily missing (e.g. deleted by an agent). A blanket `git worktree prune`
+		// would remove ALL stale entries, allowing git to reuse their names for new
+		// entries — leaving orphaned `.git` files in other workspaces pointing to the
+		// wrong worktree.
+		await pruneWorktreeEntriesForDir(repoPath, wsDir);
 
 		if (branchExists) {
 			inlineStart(repo, `attaching branch ${branch}`);
@@ -170,4 +182,51 @@ export async function addWorktrees(
 	}
 
 	return result;
+}
+
+/**
+ * Check if a worktree directory's `.git` file points to a valid worktree entry
+ * that points back to this directory. Returns false if:
+ * - The `.git` file is missing or malformed
+ * - The worktree entry it references doesn't exist
+ * - The worktree entry's back-reference (`gitdir` file) doesn't match
+ */
+function isWorktreeRefValid(repoDir: string): boolean {
+	const gitPath = join(repoDir, ".git");
+	try {
+		const content = readFileSync(gitPath, "utf-8").trim();
+		if (!content.startsWith("gitdir: ")) return false;
+		const gitdirPath = content.slice("gitdir: ".length);
+
+		// Check that the worktree entry exists and points back to us
+		const backRefPath = join(gitdirPath, "gitdir");
+		const backRef = readFileSync(backRefPath, "utf-8").trim();
+		return backRef === gitPath;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Prune only stale worktree entries whose target paths fall inside `targetDir`.
+ * Unlike `git worktree prune` (which removes ALL stale entries globally), this
+ * limits pruning to entries belonging to a specific workspace directory. This
+ * prevents accidentally destroying entries for other workspaces whose directories
+ * may be temporarily missing.
+ */
+async function pruneWorktreeEntriesForDir(repoPath: string, targetDir: string): Promise<void> {
+	const listResult = await git(repoPath, "worktree", "list", "--porcelain");
+	if (listResult.exitCode !== 0) return;
+
+	const paths = parseWorktreeList(listResult.stdout);
+	for (const wtPath of paths) {
+		// Skip the main worktree (the canonical repo itself)
+		if (wtPath === repoPath) continue;
+		// Only consider entries targeting this workspace directory
+		if (!wtPath.startsWith(`${targetDir}/`)) continue;
+		// If the target still exists on disk, it's not stale
+		if (existsSync(wtPath)) continue;
+		// Stale entry for this workspace — remove it
+		await git(repoPath, "worktree", "remove", "--force", wtPath);
+	}
 }

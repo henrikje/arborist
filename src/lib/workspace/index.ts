@@ -1,6 +1,7 @@
 export { detectArbRoot, detectWorkspace } from "./arb-root";
 export { type WorkspaceBranchResult, workspaceBranch } from "./branch";
 export {
+	detectSharedWorktreeEntries,
 	findOrphanedBranches,
 	findStaleWorktrees,
 	pruneWorktrees,
