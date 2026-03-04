@@ -31,6 +31,16 @@ arb() {
         return
     fi
 
+    if [[ "$1" == "delete" ]]; then
+        case " ${*:2} " in
+            *" --help "*|*" -h "*) command arb delete "${@:2}"; return ;;
+        esac
+        local _arb_dir
+        _arb_dir="$(command arb delete "${@:2}")" || return
+        [[ -n "$_arb_dir" ]] && cd "$_arb_dir"
+        return
+    fi
+
     if [[ "$1" == "branch" && "$2" == "rename" ]]; then
         # Pass help flags through without capturing
         case " ${*:3} " in
