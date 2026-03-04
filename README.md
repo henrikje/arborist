@@ -15,7 +15,7 @@ Here's what that looks like on disk:
 ```
 ~/my-project/
 ├── .arb/repos/
-│   ├── frontend/           ← canonical clones, managed by arb
+│   ├── frontend/           ← canonical clones, managed by Arborist
 │   ├── backend/
 │   └── shared/
 │
@@ -27,7 +27,7 @@ Here's what that looks like on disk:
     └── frontend/
 ```
 
-You work in the workspaces. Each workspace represents one feature or issue. It contains a working copy of each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete. The canonical clones under `.arb/` are managed by arb — you never touch them directly.
+You work in the workspaces. Each workspace represents one feature or issue. It contains a working copy of each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete. The canonical clones under `.arb/` are managed by Arborist — you never touch them directly.
 
 Keeping your work in sync involves two axes:
 
@@ -40,7 +40,7 @@ Arborist's synchronization commands handle this across all repos at once.
 
 ## Install
 
-Arborist requires Git 2.17+ and works on macOS, Linux, or Windows using WSL.
+Arborist requires Git 2.17+ and works on macOS, Linux, or Windows using WSL. Git 2.38+ enables conflict prediction before rebase, merge, and pull operations.
 
 **Quick install**:
 ```
@@ -81,7 +81,7 @@ Next steps:
 
 `arb init` marks the current directory as an Arborist project to hold your workspaces.
 
-Next, we will clone the repositories we want to work with. They will be stored in `.arb/repos`.
+Next, clone the repositories you want to work with. They are stored in `.arb/repos`.
 
 ```bash
 arb repo clone https://github.com/example/frontend.git
@@ -91,7 +91,7 @@ arb repo clone https://github.com/example/shared.git
 
 ### Start a feature
 
-Standing in the newly initialized project, we are ready to create a workspace for the dark mode feature we will work on.
+With the repos cloned, create a workspace. Let's say you're adding dark mode.
 
 ```bash
 arb create add-dark-mode
@@ -108,7 +108,7 @@ Without repo arguments, Arborist prompts you to pick which repos to include. Not
 ↑↓ navigate • space select • a all • i invert • ⏎ submit
 ```
 
-Both selected repos will be checked out on the `add-dark-mode` branch. With the shell extension installed, Arborist automatically `cd` into the new workspace.
+Both selected repos will be checked out on the `add-dark-mode` branch. With the shell extension installed, Arborist automatically moves you into the new workspace.
 
 ```bash
 # You're in ~/my-project/add-dark-mode
@@ -131,6 +131,8 @@ Then a bug report comes in: logins are crashing! You need to fix it now, but you
 ```bash
 arb create fix-login-crash frontend
 ```
+
+Passing repos inline skips the interactive prompt — useful when you know exactly what you need.
 
 Both workspaces now exist side by side. `arb list` shows the full picture:
 
@@ -175,7 +177,7 @@ Rebase to integrate the upstream changes:
 arb rebase
 ```
 
-Arb shows a plan, including a conflict prediction for each repo, and asks for confirmation before proceeding:
+Arborist shows a plan, including a conflict prediction for each repo, and asks for confirmation before proceeding:
 
 ```
   backend    up to date
@@ -300,7 +302,7 @@ The `--base` flag creates a workspace that branches from a specific base instead
 arb repo clone https://github.com/you/api.git --upstream https://github.com/org/api.git
 ```
 
-One command clones your fork and registers the canonical repository. Arborist auto-detects remote roles from git config, so `rebase` targets the base while `push` goes to your fork — no arb-specific configuration needed. Different repos in the same workspace can use different remote layouts — some forked, some single-origin — and arb resolves remote roles independently for each, so `rebase` targets the right base and `push` goes to the right fork without per-repo configuration.
+One command clones your fork and registers the canonical repository. Arborist auto-detects remote roles from git config, so `rebase` targets the base while `push` goes to your fork — no additional configuration needed. Different repos in the same workspace can use different remote layouts — some forked, some single-origin — and Arborist resolves remote roles independently for each, so `rebase` targets the right base and `push` goes to the right fork without per-repo configuration.
 
 ### Script-friendly by design
 
@@ -312,7 +314,7 @@ arb status --json | jq ...    # machine-readable output
 arb list --quiet | xargs ...  # one workspace name per line
 ```
 
-All state-changing commands support `--dry-run` to preview the plan and `--yes` to skip confirmation prompts. `status`, `branch`, `list`, `log`, `diff`, and `repo list` support `--json` for structured output and `--quiet` for one name per line — useful for feeding into other commands. Exit codes are meaningful: 0 for success, 1 for issues, 130 for user abort. Human-facing output goes to stderr, machine-parseable data to stdout — so piping works naturally.
+All state-changing commands support `--dry-run` to preview the plan and `--yes` to skip confirmation prompts. `status`, `branch`, `list`, `log`, `diff`, and `repo list` support `--json` for structured output and `--quiet` for one name per line — useful for feeding into other commands. Exit codes are meaningful: 0 for success, 1 for issues, 130 for user abort. Human-facing output goes to stderr, machine-parsable data to stdout — so piping works naturally.
 
 ## Alternatives
 
@@ -335,8 +337,8 @@ To learn more about Arborist, check out the following resources:
 - [Workspace templates](docs/templates.md), a way to seed files into new workspaces.
 - [Fork workflows](docs/fork-workflows.md), how to use Arborist with fork-based development.
 - [Scripting and automation](docs/scripting-automation.md), using Arborist from scripts and pipelines.
-- [Tips and tricks](docs/tips.md), useful tips and tricks for day-to-day usage.
-- [Under the hood](docs/under-the-hood.md), how Arborist works under the hood.
+- [Tips and tricks](docs/tips.md), small conveniences for day-to-day usage.
+- [Under the hood](docs/under-the-hood.md), how Arborist works internally.
 
 ## License
 
