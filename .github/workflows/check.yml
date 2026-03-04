@@ -7,6 +7,23 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '!**/*.md'
+              - '!docs/**'
+              - '!decisions/**'
+              - '!LICENSE.md'
+
   static-analysis:
     name: Static analysis
     runs-on: ubuntu-latest
@@ -27,44 +44,70 @@ jobs:
 
   unit-tests:
     name: Unit tests
+    needs: changes
     runs-on: ubuntu-latest
     steps:
+      - name: Skip (no code changes)
+        if: needs.changes.outputs.code != 'true'
+        run: echo "No code changes detected, skipping tests"
       - uses: actions/checkout@v4
+        if: needs.changes.outputs.code == 'true'
       - uses: oven-sh/setup-bun@v2
+        if: needs.changes.outputs.code == 'true'
       - name: Configure git
+        if: needs.changes.outputs.code == 'true'
         run: |
           git config --global user.name "CI"
           git config --global user.email "ci@localhost"
       - run: bun install
+        if: needs.changes.outputs.code == 'true'
       - name: Unit tests
+        if: needs.changes.outputs.code == 'true'
         run: bun run test
 
   integration:
     name: Integration tests
+    needs: changes
     runs-on: ubuntu-latest
     steps:
+      - name: Skip (no code changes)
+        if: needs.changes.outputs.code != 'true'
+        run: echo "No code changes detected, skipping tests"
       - uses: actions/checkout@v4
+        if: needs.changes.outputs.code == 'true'
         with:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
+        if: needs.changes.outputs.code == 'true'
       - name: Configure git
+        if: needs.changes.outputs.code == 'true'
         run: |
           git config --global user.name "CI"
           git config --global user.email "ci@localhost"
       - run: bun install
+        if: needs.changes.outputs.code == 'true'
       - name: Build
+        if: needs.changes.outputs.code == 'true'
         run: bun run build
       - name: Integration tests
+        if: needs.changes.outputs.code == 'true'
         run: bun test test/integration/ --concurrent --timeout 30000
 
   integration-git217:
     name: Integration tests (git 2.17)
+    needs: changes
     runs-on: ubuntu-latest
     steps:
+      - name: Skip (no code changes)
+        if: needs.changes.outputs.code != 'true'
+        run: echo "No code changes detected, skipping tests"
       - uses: actions/checkout@v4
+        if: needs.changes.outputs.code == 'true'
       - name: Set up Docker Buildx
+        if: needs.changes.outputs.code == 'true'
         uses: docker/setup-buildx-action@v3
       - name: Build Docker image
+        if: needs.changes.outputs.code == 'true'
         uses: docker/build-push-action@v6
         with:
           context: test/docker/
@@ -74,4 +117,5 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Integration tests (git 2.17)
+        if: needs.changes.outputs.code == 'true'
         run: docker run --rm -v "$PWD":/app -w /app arb-git217
