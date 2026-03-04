@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import { detectBranchMerged, git } from "../git/git";
 import type { GitCache } from "../git/git-cache";
+import { warn } from "../terminal/output";
 import { listRepos, listWorkspaces, workspaceRepoDirs } from "./repos";
 
 /**
@@ -53,7 +54,13 @@ export function repairWorktreeRefs(wsDir: string, reposDir: string): void {
 		const expectedGitPath = join(repoDir, ".git");
 		if (backRef === expectedGitPath) continue;
 
-		// Mismatch — the canonical repo points to an old location. Repair it.
+		// The back-ref doesn't match this workspace repo. If the back-ref target
+		// still exists on disk, another workspace legitimately owns this worktree
+		// entry — do NOT repair (repairing would steal the entry from the other
+		// workspace). This is a shared-entry corruption, not a moved workspace.
+		if (existsSync(backRef)) continue;
+
+		// Mismatch and the original location is gone — workspace was moved. Repair it.
 		const repoName = basename(repoDir);
 		const canonicalRepoDir = join(reposDir, repoName);
 		if (existsSync(canonicalRepoDir)) {
@@ -134,6 +141,49 @@ export function repairAllWorktreeRefs(arbRootDir: string, reposDir: string): Set
 	}
 
 	return renamedRepos;
+}
+
+/**
+ * Detect when multiple workspace repos reference the same canonical worktree entry.
+ * This indicates corruption — typically caused by a worktree entry being pruned and
+ * its name reused while another workspace still holds a stale `.git` reference.
+ *
+ * Only checks repos in the given workspace (`wsDir`) against all other workspaces.
+ * Pure filesystem reads — no git processes spawned.
+ */
+export function detectSharedWorktreeEntries(wsDir: string, arbRootDir: string): void {
+	const thisWsRepos = workspaceRepoDirs(wsDir);
+	if (thisWsRepos.length === 0) return;
+
+	// Build a map of gitdir → workspace repo path for THIS workspace
+	const thisWsEntries = new Map<string, string>();
+	for (const repoDir of thisWsRepos) {
+		const gitdirPath = readGitdirFromWorktree(repoDir);
+		if (gitdirPath) {
+			thisWsEntries.set(gitdirPath, repoDir);
+		}
+	}
+	if (thisWsEntries.size === 0) return;
+
+	// Scan all other workspaces for collisions
+	const workspaces = listWorkspaces(arbRootDir);
+	const thisWsName = basename(wsDir);
+	for (const ws of workspaces) {
+		if (ws === thisWsName) continue;
+		const otherWsDir = join(arbRootDir, ws);
+		for (const otherRepoDir of workspaceRepoDirs(otherWsDir)) {
+			const otherGitdir = readGitdirFromWorktree(otherRepoDir);
+			if (!otherGitdir) continue;
+
+			const conflictingDir = thisWsEntries.get(otherGitdir);
+			if (conflictingDir) {
+				const repoName = basename(conflictingDir);
+				warn(
+					`  [${repoName}] shares worktree entry with ${ws}/${repoName} — run 'arb detach ${repoName}' then 'arb attach ${repoName}' to fix`,
+				);
+			}
+		}
+	}
 }
 
 /** Parse `git worktree list --porcelain` stdout into an array of worktree paths. */
