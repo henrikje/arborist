@@ -134,6 +134,55 @@ describe("wrapper function", () => {
 			// PWD should have recovered to an existing parent directory
 			expect(lastLine).not.toBe(join(env.projectDir, "tmp-ws/repo-a"));
 		}));
+
+	test("bash wrapper: arb delete navigates to project root when inside deleted workspace", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "doomed", "repo-a"]);
+			const result = await bash(
+				env,
+				`
+			source '${SHELL_FILE}'
+			cd '${env.projectDir}/doomed/repo-a'
+			arb delete doomed --yes --force 2>/dev/null
+			echo "$PWD"
+		`,
+			);
+			expect(result.exitCode).toBe(0);
+			const lastLine = result.lines[result.lines.length - 1];
+			expect(lastLine).toBe(env.projectDir);
+		}));
+
+	test("bash wrapper: arb delete does not navigate when not inside deleted workspace", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "other-ws", "repo-a"]);
+			await arb(env, ["create", "safe-ws", "repo-b"]);
+			const result = await bash(
+				env,
+				`
+			source '${SHELL_FILE}'
+			cd '${env.projectDir}/safe-ws/repo-b'
+			arb delete other-ws --yes --force 2>/dev/null
+			echo "$PWD"
+		`,
+			);
+			expect(result.exitCode).toBe(0);
+			const lastLine = result.lines[result.lines.length - 1];
+			expect(lastLine).toBe(join(env.projectDir, "safe-ws/repo-b"));
+		}));
+
+	test("bash wrapper: arb delete --help passes through without capturing", () =>
+		withEnv(async (env) => {
+			const result = await bash(
+				env,
+				`
+			source '${SHELL_FILE}'
+			cd '${env.projectDir}'
+			arb delete --help 2>&1
+		`,
+			);
+			expect(result.exitCode).toBe(0);
+			expect(result.output).toContain("Usage");
+		}));
 });
 
 // ── completion: subcommands ──────────────────────────────────────

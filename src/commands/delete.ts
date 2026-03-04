@@ -484,6 +484,13 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 				success(`Deleted ${plural(assessments.length, "workspace")}`);
 
 				hintNonWorkspaces(ctx.arbRootDir);
+
+				// If any deleted workspace was the current one, emit project root
+				// so the shell wrapper can cd there (same pattern as create/branch rename).
+				const deletedCurrentWorkspace = assessments.some((a) => a.name === ctx.currentWorkspace);
+				if (deletedCurrentWorkspace) {
+					process.stdout.write(`${ctx.arbRootDir}\n`);
+				}
 			},
 		);
 }
