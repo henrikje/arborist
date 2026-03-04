@@ -277,7 +277,12 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
 	const forkText = remotes && remotes.base !== remotes.share ? ` → ${a.shareRemote}` : "";
 
 	if (a.outcome === "will-push") {
-		const newBranchSuffix = a.recreate ? " (recreate)" : a.newBranch ? " (new branch)" : "";
+		const remoteBranch = `${a.shareRemote}/${a.branch}`;
+		const newBranchSuffix = a.recreate
+			? ` (recreate: ${remoteBranch})`
+			: a.newBranch
+				? ` (new branch: ${remoteBranch})`
+				: "";
 		let base = cell(`${plural(a.ahead, "commit")} to push${newBranchSuffix}`);
 		if (a.behindBase > 0) {
 			base = suffix(base, ` (${a.behindBase} behind base)`, "attention");
