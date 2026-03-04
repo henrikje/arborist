@@ -448,14 +448,22 @@ describe("formatPushPlan", () => {
 		expect(plan).toContain("3 commits to push");
 	});
 
-	test("shows new branch annotation", () => {
+	test("shows new branch annotation with remote branch name", () => {
 		const plan = formatPushPlan([makeAssessment({ newBranch: true })], makeRemotesMap(["repo-a", {}]));
-		expect(plan).toContain("(new branch)");
+		expect(plan).toContain("(new branch: origin/feature)");
 	});
 
-	test("shows recreate annotation", () => {
+	test("shows recreate annotation with remote branch name", () => {
 		const plan = formatPushPlan([makeAssessment({ recreate: true })], makeRemotesMap(["repo-a", {}]));
-		expect(plan).toContain("(recreate)");
+		expect(plan).toContain("(recreate: origin/feature)");
+	});
+
+	test("shows correct remote in new branch annotation for fork workflow", () => {
+		const plan = formatPushPlan(
+			[makeAssessment({ newBranch: true, shareRemote: "origin", branch: "my-feature" })],
+			makeRemotesMap(["repo-a", { base: "upstream", share: "origin" }]),
+		);
+		expect(plan).toContain("(new branch: origin/my-feature)");
 	});
 
 	test("shows force with rebased count", () => {
