@@ -1,5 +1,5 @@
 /**
- * Integration test environment — TypeScript equivalent of test_helper/common-setup.bash.
+ * Integration test environment.
  *
  * Each test gets a fresh temporary directory with:
  *   - An initialized arb root at `project/`
@@ -53,7 +53,7 @@ export interface TestEnv {
 export interface RunResult {
 	stdout: string;
 	stderr: string;
-	/** Merged stdout + stderr (matches BATS `$output` behavior) */
+	/** Merged stdout + stderr */
 	output: string;
 	exitCode: number;
 }
@@ -97,8 +97,8 @@ export async function initBareRepo(cwd: string, path: string, branch: string): P
 }
 
 /**
- * Run an arb command and capture output. Does NOT throw on non-zero exit
- * (like BATS `run`). Check `result.exitCode` in assertions.
+ * Run an arb command and capture output. Does NOT throw on non-zero exit.
+ * Check `result.exitCode` in assertions.
  */
 export async function arb(env: TestEnv, args: string[], opts?: { cwd?: string }): Promise<RunResult> {
 	const proc = Bun.spawn([ARB_BIN, ...args], {
@@ -120,7 +120,7 @@ export async function write(path: string, content: string): Promise<void> {
 
 // ── Environment lifecycle ────────────────────────────────────────
 
-/** Create a fresh test environment (mirrors BATS `setup()`). */
+/** Create a fresh test environment. */
 export async function createTestEnv(): Promise<TestEnv> {
 	const testDir = realpathSync(await mkdtemp(join(tmpdir(), "arb-test-")));
 	const projectDir = join(testDir, "project");
@@ -143,12 +143,12 @@ export async function createTestEnv(): Promise<TestEnv> {
 	return { testDir, projectDir, originDir };
 }
 
-/** Remove the test environment (mirrors BATS `teardown()`). */
+/** Remove the test environment. */
 export async function cleanupTestEnv(env: TestEnv): Promise<void> {
 	await rm(env.testDir, { recursive: true, force: true });
 }
 
-// ── BATS helper equivalents ──────────────────────────────────────
+// ── Test helper utilities ────────────────────────────────────────
 
 /** Set up a forked repo with upstream + origin (fork) remotes. */
 export async function setupForkRepo(env: TestEnv, name: string): Promise<void> {
@@ -205,7 +205,7 @@ export async function fetchAllRepos(env: TestEnv): Promise<void> {
 		try {
 			await git(repoDir, ["fetch", "--prune"]);
 		} catch {
-			// Ignore fetch failures (matches BATS behavior)
+			// Ignore fetch failures
 		}
 	}
 }

@@ -7,7 +7,6 @@
 		"build": "bun run scripts/set-version.ts && bun build src/index.ts --compile --outfile dist/arb && git checkout src/version.ts",
 		"test": "bun test src/ --concurrent --timeout 10000",
 		"test:integration": "bun run build && bun test test/integration/ --concurrent --timeout 30000",
-		"test:integration:bats": "bun run build && bats --jobs $(getconf _NPROCESSORS_ONLN) test/integration/",
 		"test:integration:git217": "docker build -f test/docker/git217.Dockerfile -t arb-git217 test/docker/ && docker run --rm -v \"$PWD\":/app -w /app arb-git217",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",

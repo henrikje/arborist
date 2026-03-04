@@ -46,7 +46,7 @@ Organized into semantic subdirectories. Each directory has a barrel `index.ts` r
 ### Testing
 
 - **Unit tests**: Bun's native test runner, files colocated as `*.test.ts` under `src/`. For code testable without spawning git processes or filesystem operations.
-- **Integration tests**: Bun test files in `test/integration/*.test.ts`, tests the compiled binary end-to-end. Shared helpers in `test/integration/helpers/env.ts` provide `createTestEnv()`, `arb()`, `git()`, and BATS-equivalent fixtures. Legacy BATS tests (`.bats` files) remain during migration.
+- **Integration tests**: Bun test files in `test/integration/*.test.ts`, tests the compiled binary end-to-end. Shared helpers in `test/integration/helpers/env.ts` provide `createTestEnv()`, `arb()`, `git()`, and fixtures.
 - **Playground scripts**: `test/playground/` contains setup scripts for self-contained arb playgrounds. Run `test/playground/setup-walkthrough.sh` or `test/playground/setup-stacked.sh` for a ready-to-explore environment.
 
 ### Code Style
@@ -67,7 +67,6 @@ Organized into semantic subdirectories. Each directory has a barrel `index.ts` r
 | `bun test src/lib/git/git.test.ts` | Run a single unit test file |
 | `bun run test:integration` | Build and run Bun integration tests |
 | `bun run build && bun test test/integration/sync.test.ts` | Run a single integration test file |
-| `bun run test:integration:bats` | Build and run legacy BATS integration tests |
 | `bun run test:integration:git217` | Build Docker image with git 2.17 and run integration tests |
 | `bun run lint` | Check with Biome (formatting + linting) |
 | `bun run lint:fix` | Auto-fix lint/format issues |
@@ -88,5 +87,5 @@ After each change, check whether the following need updating:
 - **Documentation** — For user-facing changes, always update the relevant file under `docs/`. Update `README.md` for important changes to behavior, CLI usage, configuration, or workflows.
 - **Command help text** — If the change modifies a command's options, arguments, or behavior, update `.description()` and `.option()` help strings in `src/commands/`.
 - **Shell tab completion** — If the change adds, removes, or renames a command option or subcommand, update both `shell/arb.bash` and `shell/arb.zsh`.
-- **BATS integration tests** — Always add new tests when changes affect CLI behavior.
+- **Integration tests** — Always add new tests when changes affect CLI behavior.
 - **Decision records** — If the change involved a significant design decision, write a `decisions/NNNN-*.md`. See `decisions/README.md` for the template. Existing records must never be modified.
