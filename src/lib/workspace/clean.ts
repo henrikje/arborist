@@ -1,8 +1,140 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { basename, join } from "node:path";
 import { detectBranchMerged, git } from "../git/git";
 import type { GitCache } from "../git/git-cache";
-import { listRepos } from "./repos";
+import { listRepos, listWorkspaces, workspaceRepoDirs } from "./repos";
+
+/**
+ * Read a worktree's `.git` file and extract the gitdir path.
+ * Returns null if the file doesn't exist or isn't a valid gitdir reference.
+ */
+function readGitdirFromWorktree(repoDir: string): string | null {
+	const gitPath = join(repoDir, ".git");
+	try {
+		const content = readFileSync(gitPath, "utf-8").trim();
+		if (content.startsWith("gitdir: ")) {
+			return content.slice("gitdir: ".length);
+		}
+	} catch {}
+	return null;
+}
+
+/**
+ * Read the `gitdir` file inside a canonical repo's worktree entry.
+ * Returns the absolute path the canonical repo thinks the worktree lives at.
+ */
+function readGitdirBackRef(worktreeEntryDir: string): string | null {
+	const gitdirFile = join(worktreeEntryDir, "gitdir");
+	try {
+		const content = readFileSync(gitdirFile, "utf-8").trim();
+		return content || null;
+	} catch {}
+	return null;
+}
+
+/**
+ * Check if a workspace's worktree references are stale (e.g. after manual `mv`)
+ * and repair them silently. Pure filesystem reads for detection; only spawns
+ * `git worktree repair` when a mismatch is found.
+ *
+ * After a manual `mv`, the forward reference (worktree `.git` → canonical) survives
+ * but the backward reference (canonical `gitdir` → worktree) still points to the old
+ * path. This function detects the mismatch and repairs it.
+ */
+export function repairWorktreeRefs(wsDir: string, reposDir: string): void {
+	const repoDirs = workspaceRepoDirs(wsDir);
+	for (const repoDir of repoDirs) {
+		const gitdirPath = readGitdirFromWorktree(repoDir);
+		if (!gitdirPath) continue;
+
+		const backRef = readGitdirBackRef(gitdirPath);
+		if (!backRef) continue;
+
+		const expectedGitPath = join(repoDir, ".git");
+		if (backRef === expectedGitPath) continue;
+
+		// Mismatch — the canonical repo points to an old location. Repair it.
+		const repoName = basename(repoDir);
+		const canonicalRepoDir = join(reposDir, repoName);
+		if (existsSync(canonicalRepoDir)) {
+			Bun.spawnSync(["git", "worktree", "repair", repoDir], {
+				cwd: canonicalRepoDir,
+				stdout: "ignore",
+				stderr: "ignore",
+			});
+		}
+	}
+}
+
+/**
+ * Detect and repair all renamed workspaces across all canonical repos. Called by
+ * `arb clean` before stale worktree detection to prevent pruning worktrees that
+ * were merely moved to a different directory.
+ *
+ * Builds a map of all worktree `.git` → canonical worktree entry paths across all
+ * workspaces, then checks each canonical repo's worktree entries for stale back-refs
+ * and repairs any that match an existing workspace repo.
+ *
+ * Returns the set of canonical repo names that had detected renames. On git < 2.30
+ * (where `worktree repair` is unavailable), the repair silently fails but the
+ * returned set still allows callers to exclude these repos from pruning.
+ */
+export function repairAllWorktreeRefs(arbRootDir: string, reposDir: string): Set<string> {
+	const renamedRepos = new Set<string>();
+	const workspaces = listWorkspaces(arbRootDir);
+	// Map: canonical worktree entry path → actual workspace repo dir
+	const worktreeEntryToRepoDir = new Map<string, string>();
+	for (const ws of workspaces) {
+		const wsDir = join(arbRootDir, ws);
+		for (const repoDir of workspaceRepoDirs(wsDir)) {
+			const gitdirPath = readGitdirFromWorktree(repoDir);
+			if (gitdirPath) {
+				worktreeEntryToRepoDir.set(gitdirPath, repoDir);
+			}
+		}
+	}
+
+	// Check each canonical repo's worktree entries for stale back-refs
+	for (const repo of listRepos(reposDir)) {
+		const worktreesDir = join(reposDir, repo, ".git", "worktrees");
+		let entries: string[];
+		try {
+			entries = readdirSync(worktreesDir);
+		} catch {
+			continue;
+		}
+
+		for (const entry of entries) {
+			const entryDir = join(worktreesDir, entry);
+			const backRef = readGitdirBackRef(entryDir);
+			if (!backRef) continue;
+
+			// If the back-ref path exists on disk, nothing is stale
+			if (existsSync(backRef)) continue;
+
+			// Stale back-ref — check if any workspace repo points to this entry
+			const actualRepoDir = worktreeEntryToRepoDir.get(entryDir);
+			if (!actualRepoDir) continue;
+
+			// Found a match — this is a renamed workspace, not a deleted one.
+			// Attempt repair (requires git 2.30+, silently fails on older versions)
+			const canonicalRepoDir = join(reposDir, repo);
+			Bun.spawnSync(["git", "worktree", "repair", actualRepoDir], {
+				cwd: canonicalRepoDir,
+				stdout: "ignore",
+				stderr: "ignore",
+			});
+
+			// If repair failed (git < 2.30), exclude this repo from pruning
+			const updatedBackRef = readGitdirBackRef(entryDir);
+			if (updatedBackRef && !existsSync(updatedBackRef)) {
+				renamedRepos.add(repo);
+			}
+		}
+	}
+
+	return renamedRepos;
+}
 
 /** Parse `git worktree list --porcelain` stdout into an array of worktree paths. */
 export function parseWorktreeList(stdout: string): string[] {
@@ -35,9 +167,10 @@ export async function findStaleWorktrees(reposDir: string): Promise<string[]> {
 	return stale;
 }
 
-export async function pruneWorktrees(reposDir: string): Promise<void> {
+export async function pruneWorktrees(reposDir: string, exclude?: Set<string>): Promise<void> {
 	const repos = listRepos(reposDir);
 	for (const repo of repos) {
+		if (exclude?.has(repo)) continue;
 		await git(join(reposDir, repo), "worktree", "prune");
 	}
 }

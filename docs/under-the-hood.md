@@ -39,3 +39,11 @@ base = develop
 ```
 
 Arborist does not record which repos belong to a workspace — it simply looks at which worktree directories exist inside it. If you `rm -rf` a single repo's worktree, arb will stop tracking it for that workspace. Git's internal worktree metadata is cleaned up automatically by `arb delete` or `git worktree prune`.
+
+You can rename a workspace directory with a plain `mv`:
+
+```bash
+mv fix-login auth-fix
+```
+
+Arb detects the rename and silently repairs Git's internal worktree references the next time any command runs inside the workspace (or when `arb clean` runs globally). No special command is needed — arb treats the filesystem as the source of truth.

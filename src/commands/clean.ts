@@ -9,7 +9,7 @@ import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { confirmOrExit } from "../lib/sync";
 import { dryRunNotice, error, info, isTTY, plural, success, yellow } from "../lib/terminal";
-import { findOrphanedBranches, findStaleWorktrees, pruneWorktrees } from "../lib/workspace";
+import { findOrphanedBranches, findStaleWorktrees, pruneWorktrees, repairAllWorktreeRefs } from "../lib/workspace";
 import { listNonWorkspaces, listWorkspaces, selectInteractive } from "../lib/workspace";
 import { workspaceBranch } from "../lib/workspace";
 
@@ -89,8 +89,16 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 				targetDirs = allNonWorkspaces;
 			}
 
+			// ── Repair renamed workspaces before detecting stale refs ──
+			// On git 2.30+, repair succeeds and renamed entries disappear from stale
+			// detection. On older git, repair fails silently — the returned set lets
+			// us exclude those repos from both display and pruning to prevent data loss.
+			const unrepairedRenames = repairAllWorktreeRefs(ctx.arbRootDir, ctx.reposDir);
+
 			// ── Section 2: Stale worktree references (detect only) ───
-			const staleWorktreeRepos = await findStaleWorktrees(ctx.reposDir);
+			const staleWorktreeRepos = (await findStaleWorktrees(ctx.reposDir)).filter(
+				(repo) => !unrepairedRenames.has(repo),
+			);
 
 			// ── Section 3: Orphaned local branches ───────────────────
 			const workspaces = listWorkspaces(ctx.arbRootDir);
@@ -206,7 +214,7 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 			}
 
 			if (hasStale) {
-				await pruneWorktrees(ctx.reposDir);
+				await pruneWorktrees(ctx.reposDir, unrepairedRenames);
 			}
 
 			for (const ob of orphansToDelete) {
