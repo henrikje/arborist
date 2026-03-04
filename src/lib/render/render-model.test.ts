@@ -266,6 +266,16 @@ describe("analyzeRemoteDiff", () => {
 
 	test("rebased-only — default attention", () => {
 		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 2,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
 			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 2, rebased: 2 },
 		});
 		const flags = computeFlags(repo, "feature");
