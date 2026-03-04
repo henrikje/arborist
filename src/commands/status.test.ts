@@ -310,15 +310,35 @@ describe("plainRemoteDiff", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
 				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 3, toPull: 2, rebased: 2 },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 3,
+					behind: 0,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
 			}),
 		);
-		expect(text).toBe("1 to push, 2 rebased");
+		expect(text).toBe("2 rebased, 1 to push");
 	});
 
 	test("shows rebased-only when all pushes are rebased", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
 				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 2, rebased: 2 },
+				base: {
+					remote: "origin",
+					ref: "main",
+					configuredRef: null,
+					ahead: 2,
+					behind: 0,
+					mergedIntoBase: null,
+					baseMergedIntoDefault: null,
+					detectedPr: null,
+				},
 			}),
 		);
 		expect(text).toBe("2 rebased");
