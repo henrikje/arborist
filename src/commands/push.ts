@@ -10,7 +10,7 @@ import { VERBOSE_COMMIT_LIMIT, skipCell, upToDateCell, verboseCommitsToNodes } f
 import { cell, suffix } from "../lib/render";
 import type { SkipFlag } from "../lib/status";
 import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
-import { confirmOrExit, runPlanFlow } from "../lib/sync";
+import { classifyNetworkError, confirmOrExit, runPlanFlow } from "../lib/sync";
 import { dryRunNotice, info, inlineResult, inlineStart, isTTY, plural, readNamesFromStdin, red } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveRepoSelection, workspaceRepoDirs } from "../lib/workspace";
 
@@ -165,7 +165,16 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 								process.stderr.write(`  ${line}\n`);
 							}
 						}
-						process.stderr.write("\n  To resolve, check the error above, then re-run 'arb push' to continue.\n");
+						const errorClass = classifyNetworkError(errText);
+						const recoveryHint =
+							errorClass === "offline"
+								? "Check your network connection, then re-run 'arb push' to continue."
+								: errorClass === "auth"
+									? "Check your credentials or token, then re-run 'arb push' to continue."
+									: errorClass === "not-found"
+										? "Verify the remote URL is correct, then re-run 'arb push' to continue."
+										: "To resolve, check the error above, then re-run 'arb push' to continue.";
+						process.stderr.write(`\n  ${recoveryHint}\n`);
 						throw new ArbError(`Push failed for ${a.repo}`);
 					}
 				}

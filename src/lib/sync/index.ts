@@ -16,3 +16,9 @@ export {
 	parallelFetch,
 	reportFetchFailures,
 } from "./parallel-fetch";
+export {
+	type NetworkErrorClass,
+	classifyNetworkError,
+	isNetworkError,
+	networkErrorHint,
+} from "./network-errors";

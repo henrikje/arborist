@@ -2,8 +2,9 @@ import { basename } from "node:path";
 import { git } from "../git/git";
 import type { RepoRemotes } from "../git/remotes";
 import { debugGit, isDebug } from "../terminal/debug";
-import { dim, error, plural } from "../terminal/output";
+import { dim, plural, warn } from "../terminal/output";
 import { isTTY } from "../terminal/tty";
+import { classifyNetworkError, isNetworkError, networkErrorHint } from "./network-errors";
 
 export interface FetchResult {
 	repo: string;
@@ -145,8 +146,12 @@ export async function parallelFetch(
 			results.set(repo, { repo, exitCode: lastExitCode, output: allOutput });
 
 			// Auto-detect remote HEAD on the base remote (only when we know which remote is base)
-			if (baseRemote) {
-				await git(repoDir, "remote", "set-head", baseRemote, "--auto");
+			if (baseRemote && lastExitCode === 0) {
+				try {
+					await git(repoDir, "remote", "set-head", baseRemote, "--auto");
+				} catch {
+					// set-head failure is non-fatal — the fetch itself succeeded
+				}
 			}
 		} catch {
 			results.set(repo, { repo, exitCode: 1, output: "fetch failed" });
@@ -177,19 +182,32 @@ export function reportFetchFailures(
 	results: Map<string, { exitCode: number; output: string }>,
 ): string[] {
 	const failed = getFetchFailedRepos(repos, results);
+	let allOffline = failed.length > 0;
+
 	for (const repo of failed) {
 		const fr = results.get(repo);
 		if (fr?.exitCode === 124) {
-			error(`  [${repo}] fetch timed out`);
+			warn(`  [${repo}] fetch timed out`);
+			allOffline = false;
 		} else {
-			error(`  [${repo}] fetch failed`);
+			const hint = fr?.output ? networkErrorHint(classifyNetworkError(fr.output)) : null;
+			const suffix = hint ? ` (${hint})` : "";
+			warn(`  [${repo}] fetch failed${suffix}`);
+			if (!fr?.output || !isNetworkError(fr.output)) {
+				allOffline = false;
+			}
 		}
 		if (fr?.output) {
 			for (const line of fr.output.split("\n").filter(Boolean)) {
-				error(`    ${line}`);
+				warn(`    ${line}`);
 			}
 		}
 	}
+
+	if (allOffline && failed.length > 1) {
+		warn("  hint: all repos failed to fetch \u2014 you may be offline. Use -N/--no-fetch to skip fetching.");
+	}
+
 	return failed;
 }
 
