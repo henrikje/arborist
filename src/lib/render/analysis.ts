@@ -102,12 +102,26 @@ export function plainRemoteDiff(repo: RepoStatus): string {
 
 	const rebased = repo.share.rebased;
 	if (rebased !== null && rebased > 0) {
-		const newPush = Math.max(0, toPush - rebased);
+		const baseAhead = repo.base?.ahead ?? null;
 		const newPull = Math.max(0, toPull - rebased);
 		const parts: string[] = [];
-		if (newPush > 0) parts.push(`${newPush} to push`);
+
+		if (baseAhead !== null) {
+			// Three-way split: fromBase / rebased / new
+			const fromBase = Math.max(0, toPush - baseAhead);
+			const newCount = Math.max(0, baseAhead - rebased);
+			const baseLabel = repo.base?.ref ?? "base";
+			if (fromBase > 0) parts.push(`${fromBase} from ${baseLabel}`);
+			if (rebased > 0) parts.push(`${rebased} rebased`);
+			if (newCount > 0) parts.push(`${newCount} to push`);
+		} else {
+			// Fallback: no base info, use two-way behavior
+			const newPush = Math.max(0, toPush - rebased);
+			if (newPush > 0) parts.push(`${newPush} to push`);
+			parts.push(`${rebased} rebased`);
+		}
+
 		if (newPull > 0) parts.push(`${newPull} to pull`);
-		parts.push(`${rebased} rebased`);
 		return parts.join(", ");
 	}
 
@@ -143,12 +157,13 @@ export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags): Cell {
 		return cell(text);
 	}
 
-	// Unpushed — check for rebased-only (no attention needed)
+	// Unpushed — check for rebased-only (no genuinely new work)
 	if (flags.isUnpushed) {
 		const rebased = repo.share.rebased ?? 0;
-		const netNew = (repo.share.toPush ?? 0) - rebased;
-		if (rebased > 0 && netNew <= 0) {
-			return cell(text); // rebased-only, default color
+		const baseAhead = repo.base?.ahead ?? repo.share.toPush ?? 0;
+		const newCount = baseAhead - rebased;
+		if (rebased > 0 && newCount <= 0) {
+			return cell(text); // rebased + fromBase only, default color
 		}
 		return cell(text, "attention");
 	}

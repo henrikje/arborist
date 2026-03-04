@@ -425,6 +425,8 @@ describe("formatPushPlan", () => {
 			ahead: 2,
 			behind: 0,
 			rebased: 0,
+			baseAhead: 0,
+			baseRef: "main",
 			branch: "feature",
 			shareRemote: "origin",
 			newBranch: false,
@@ -466,18 +468,18 @@ describe("formatPushPlan", () => {
 		expect(plan).toContain("(new branch: origin/my-feature)");
 	});
 
-	test("shows force with rebased count", () => {
+	test("shows force with rebased count and new commits", () => {
 		const plan = formatPushPlan(
-			[makeAssessment({ outcome: "will-force-push", ahead: 3, rebased: 2 })],
+			[makeAssessment({ outcome: "will-force-push", ahead: 3, rebased: 2, baseAhead: 3 })],
 			makeRemotesMap(["repo-a", {}]),
 		);
-		expect(plan).toContain("1 new + 2 rebased");
+		expect(plan).toContain("2 rebased + 1 new");
 		expect(plan).toContain("(force)");
 	});
 
 	test("shows force with all rebased (no new commits)", () => {
 		const plan = formatPushPlan(
-			[makeAssessment({ outcome: "will-force-push", ahead: 2, rebased: 2 })],
+			[makeAssessment({ outcome: "will-force-push", ahead: 2, rebased: 2, baseAhead: 2 })],
 			makeRemotesMap(["repo-a", {}]),
 		);
 		expect(plan).toContain("2 rebased");

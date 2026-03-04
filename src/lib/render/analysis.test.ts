@@ -553,19 +553,29 @@ describe("plainRemoteDiff", () => {
 		expect(plainRemoteDiff(repo)).toBe("up to date");
 	});
 
-	test("rebased count splitting: toPush=5, toPull=3, rebased=2", () => {
+	test("three-way split: fromBase + rebased + new + pull", () => {
 		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 4,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
 			share: {
 				remote: "origin",
 				ref: "origin/feature",
 				refMode: "configured",
-				toPush: 5,
+				toPush: 7,
 				toPull: 3,
 				rebased: 2,
 			},
 		});
-		// netPush = max(0, 5-2) = 3, netPull = max(0, 3-2) = 1
-		expect(plainRemoteDiff(repo)).toBe("3 to push, 1 to pull, 2 rebased");
+		// fromBase = 7-4 = 3, rebased = 2, newCount = 4-2 = 2, newPull = 3-2 = 1
+		expect(plainRemoteDiff(repo)).toBe("3 from main, 2 rebased, 2 to push, 1 to pull");
 	});
 
 	test("simple push count", () => {
@@ -596,8 +606,18 @@ describe("plainRemoteDiff", () => {
 		expect(plainRemoteDiff(repo)).toBe("2 to pull");
 	});
 
-	test("rebased only (netNew = 0)", () => {
+	test("rebased only (no fromBase, no new)", () => {
 		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 3,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
 			share: {
 				remote: "origin",
 				ref: "origin/feature",
@@ -607,8 +627,98 @@ describe("plainRemoteDiff", () => {
 				rebased: 3,
 			},
 		});
-		// netPush = max(0, 3-3) = 0, netPull = max(0, 3-3) = 0
+		// fromBase = 3-3 = 0, rebased = 3, newCount = 3-3 = 0, newPull = 3-3 = 0
 		expect(plainRemoteDiff(repo)).toBe("3 rebased");
+	});
+
+	test("fromBase + rebased (no new work)", () => {
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 2,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 5,
+				toPull: 2,
+				rebased: 2,
+			},
+		});
+		// fromBase = 5-2 = 3, rebased = 2, newCount = 2-2 = 0
+		expect(plainRemoteDiff(repo)).toBe("3 from main, 2 rebased");
+	});
+
+	test("rebased + new (no fromBase)", () => {
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 5,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 5,
+				toPull: 2,
+				rebased: 2,
+			},
+		});
+		// fromBase = 5-5 = 0, rebased = 2, newCount = 5-2 = 3
+		expect(plainRemoteDiff(repo)).toBe("2 rebased, 3 to push");
+	});
+
+	test("base null fallback uses two-way split", () => {
+		const repo = makeRepo({
+			base: null,
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 5,
+				toPull: 3,
+				rebased: 2,
+			},
+		});
+		// Fallback: newPush = 5-2 = 3, newPull = 3-2 = 1
+		expect(plainRemoteDiff(repo)).toBe("3 to push, 2 rebased, 1 to pull");
+	});
+
+	test("uses base ref name in from label", () => {
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "develop",
+				configuredRef: null,
+				ahead: 2,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 5,
+				toPull: 2,
+				rebased: 2,
+			},
+		});
+		expect(plainRemoteDiff(repo)).toBe("3 from develop, 2 rebased");
 	});
 });
 
@@ -658,8 +768,18 @@ describe("analyzeRemoteDiff", () => {
 		expect(result.spans[1]?.text).toBe("2 to push");
 	});
 
-	test("rebased-only (netNew <= 0) returns default attention", () => {
+	test("rebased-only (no new work) returns default attention", () => {
 		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 3,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
 			share: {
 				remote: "origin",
 				ref: "origin/feature",
@@ -670,7 +790,7 @@ describe("analyzeRemoteDiff", () => {
 			},
 		});
 		const flags = computeFlags(repo, "feature");
-		// toPush > 0 means isUnpushed, but rebased >= toPush so netNew <= 0
+		// base.ahead=3, rebased=3 → newCount=0, so default color
 		const result = analyzeRemoteDiff(repo, flags);
 		expect(result.plain).toBe("3 rebased");
 		expect(result.spans[0]?.attention).toBe("default");

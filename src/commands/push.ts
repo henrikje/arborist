@@ -23,6 +23,8 @@ export interface PushAssessment {
 	ahead: number;
 	behind: number;
 	rebased: number;
+	baseAhead: number;
+	baseRef: string;
 	branch: string;
 	shareRemote: string;
 	newBranch: boolean;
@@ -294,8 +296,13 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
 
 	// will-force-push
 	if (a.rebased > 0) {
-		const newCount = a.ahead - a.rebased;
-		const desc = newCount > 0 ? `${newCount} new + ${a.rebased} rebased` : `${a.rebased} rebased`;
+		const fromBase = Math.max(0, a.ahead - a.baseAhead);
+		const newCount = Math.max(0, a.baseAhead - a.rebased);
+		const parts: string[] = [];
+		if (fromBase > 0) parts.push(`${fromBase} from ${a.baseRef}`);
+		if (a.rebased > 0) parts.push(`${a.rebased} rebased`);
+		if (newCount > 0) parts.push(`${newCount} new`);
+		const desc = parts.join(" + ");
 		let base = cell(`${desc} to push (force)`);
 		if (a.behindBase > 0) {
 			base = suffix(base, ` (${a.behindBase} behind base)`, "attention");
@@ -355,6 +362,8 @@ export function assessPushRepo(
 		ahead: 0,
 		behind: 0,
 		rebased: 0,
+		baseAhead: status.base?.ahead ?? 0,
+		baseRef: status.base?.ref ?? "base",
 		branch,
 		shareRemote: status.share.remote,
 		newBranch: false,
