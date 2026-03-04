@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, renameSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { arb, git, withEnv, write } from "./helpers/env";
+import { arb, git, gitBelow230, withEnv, write } from "./helpers/env";
 
 // ── non-workspace directory cleanup ─────────────────────────────
 
@@ -270,6 +270,67 @@ describe("git cleanup", () => {
 			expect(mainBranchA).toContain("main");
 			const mainBranchB = await git(join(env.projectDir, ".arb/repos/repo-b"), ["branch", "--list", "main"]);
 			expect(mainBranchB).toContain("main");
+		}));
+});
+
+// ── workspace rename detection ──────────────────────────────────
+
+describe("workspace rename detection", () => {
+	test("arb clean does not prune renamed workspaces", () =>
+		withEnv(async (env) => {
+			const createResult = await arb(env, ["create", "old-name", "-a"]);
+			expect(createResult.exitCode).toBe(0);
+
+			// Manually rename the workspace directory
+			renameSync(join(env.projectDir, "old-name"), join(env.projectDir, "new-name"));
+
+			// Verify the gitdir back-ref is stale (still points to old path)
+			const gitFile = readFileSync(join(env.projectDir, "new-name/repo-a/.git"), "utf-8").trim();
+			const gitdirPath = gitFile.slice("gitdir: ".length);
+			const backRef = readFileSync(join(gitdirPath, "gitdir"), "utf-8").trim();
+			expect(backRef).toContain("old-name");
+
+			// arb clean should NOT show stale worktree references
+			const result = await arb(env, ["clean", "--dry-run"]);
+			expect(result.exitCode).toBe(0);
+			expect(result.output).not.toContain("Stale worktree");
+			expect(result.output).toContain("Nothing to clean up");
+		}));
+
+	test.skipIf(gitBelow230)("arb clean still prunes genuinely deleted workspaces after repair", () =>
+		withEnv(async (env) => {
+			const createRenamed = await arb(env, ["create", "renamed-ws", "-a"]);
+			expect(createRenamed.exitCode).toBe(0);
+			const createDeleted = await arb(env, ["create", "deleted-ws", "-a"]);
+			expect(createDeleted.exitCode).toBe(0);
+
+			// Rename one workspace, delete the other
+			renameSync(join(env.projectDir, "renamed-ws"), join(env.projectDir, "moved-ws"));
+			await rm(join(env.projectDir, "deleted-ws"), { recursive: true });
+
+			// arb clean should repair the renamed workspace and prune the deleted one
+			const result = await arb(env, ["clean", "--yes"]);
+			expect(result.exitCode).toBe(0);
+			expect(result.output).toContain("pruned");
+
+			// Verify the renamed workspace's worktree refs are intact
+			const wtList = await git(join(env.projectDir, ".arb/repos/repo-a"), ["worktree", "list"]);
+			expect(wtList).toContain("moved-ws");
+			expect(wtList).not.toContain("deleted-ws");
+		}),
+	);
+
+	test("workspace command works after manual mv", () =>
+		withEnv(async (env) => {
+			const createResult = await arb(env, ["create", "feature-login", "-a"]);
+			expect(createResult.exitCode).toBe(0);
+
+			// Manually rename
+			renameSync(join(env.projectDir, "feature-login"), join(env.projectDir, "feature-auth"));
+
+			// arb status from inside the renamed workspace should work
+			const statusResult = await arb(env, ["status"], { cwd: join(env.projectDir, "feature-auth") });
+			expect(statusResult.exitCode).toBe(0);
 		}));
 });
 

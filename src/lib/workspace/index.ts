@@ -1,6 +1,12 @@
 export { detectArbRoot, detectWorkspace } from "./arb-root";
 export { type WorkspaceBranchResult, workspaceBranch } from "./branch";
-export { findOrphanedBranches, findStaleWorktrees, pruneWorktrees } from "./clean";
+export {
+	findOrphanedBranches,
+	findStaleWorktrees,
+	pruneWorktrees,
+	repairAllWorktreeRefs,
+	repairWorktreeRefs,
+} from "./clean";
 export { requireBranch, requireWorkspace } from "./context";
 export {
 	collectRepo,

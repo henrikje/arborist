@@ -3,6 +3,7 @@ import { ArbError } from "../core/errors";
 import type { ArbContext } from "../core/types";
 import { error } from "../terminal/output";
 import { workspaceBranch } from "./branch";
+import { repairWorktreeRefs } from "./clean";
 
 export function requireWorkspace(ctx: ArbContext): { wsDir: string; workspace: string } {
 	if (!ctx.currentWorkspace) {
@@ -14,6 +15,7 @@ export function requireWorkspace(ctx: ArbContext): { wsDir: string; workspace: s
 		error(`Workspace '${ctx.currentWorkspace}' does not exist`);
 		throw new ArbError(`Workspace '${ctx.currentWorkspace}' does not exist`);
 	}
+	repairWorktreeRefs(wsDir, ctx.reposDir);
 	return { wsDir, workspace: ctx.currentWorkspace };
 }
 
