@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	analyzeReplayPlan,
 	analyzeRetargetReplay,
 	branchExistsLocally,
 	checkBranchMatch,
@@ -856,6 +857,66 @@ describe("git repo functions", () => {
 				const result = await matchDivergedCommits(repoDir, "HEAD");
 				expect(result.rebaseMatches.size).toBe(0);
 				expect(result.squashMatch).toBeNull();
+			}));
+	});
+
+	describe("analyzeReplayPlan", () => {
+		test("returns zero replay when feature is fully squash-equivalent", () =>
+			withRepo(async ({ repoDir }) => {
+				const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+				Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+				writeFileSync(join(repoDir, "a.txt"), "content a");
+				Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+				Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add a"]);
+				writeFileSync(join(repoDir, "b.txt"), "content b");
+				Bun.spawnSync(["git", "-C", repoDir, "add", "b.txt"]);
+				Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add b"]);
+
+				Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+				Bun.spawnSync(["git", "-C", repoDir, "merge", "--squash", "feature"]);
+				Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "squash feature"]);
+
+				Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+				const result = await analyzeReplayPlan(repoDir, defaultBranch);
+				expect(result).not.toBeNull();
+				if (!result) throw new Error("expected replay plan");
+				expect(result.contiguous).toBe(true);
+				expect(result.totalLocal).toBe(2);
+				expect(result.alreadyOnTarget).toBe(2);
+				expect(result.toReplay).toBe(0);
+				expect(result.boundaryRef).toBeUndefined();
+			}));
+
+		test("returns replay suffix when new commits are on top of already-merged work", () =>
+			withRepo(async ({ repoDir }) => {
+				const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+				Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+				writeFileSync(join(repoDir, "a.txt"), "content a");
+				Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+				Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add a"]);
+				writeFileSync(join(repoDir, "b.txt"), "content b");
+				Bun.spawnSync(["git", "-C", repoDir, "add", "b.txt"]);
+				Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add b"]);
+
+				Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+				Bun.spawnSync(["git", "-C", repoDir, "merge", "--squash", "feature"]);
+				Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "squash feature"]);
+
+				Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+				writeFileSync(join(repoDir, "c.txt"), "content c");
+				Bun.spawnSync(["git", "-C", repoDir, "add", "c.txt"]);
+				Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add c"]);
+
+				const result = await analyzeReplayPlan(repoDir, defaultBranch);
+				expect(result).not.toBeNull();
+				if (!result) throw new Error("expected replay plan");
+				expect(result.contiguous).toBe(true);
+				expect(result.totalLocal).toBe(3);
+				expect(result.alreadyOnTarget).toBe(2);
+				expect(result.toReplay).toBe(1);
+				expect(result.boundaryRef).toBe("HEAD~1");
 			}));
 	});
 

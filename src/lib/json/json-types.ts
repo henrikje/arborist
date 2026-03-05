@@ -37,6 +37,14 @@ export const StatusJsonRepoSchema = z.object({
 			mergedIntoBase: z.enum(["merge", "squash"]).nullable(),
 			newCommitsAfterMerge: z.number().optional(),
 			mergeCommitHash: z.string().optional(),
+			replayPlan: z
+				.object({
+					totalLocal: z.number(),
+					alreadyOnTarget: z.number(),
+					toReplay: z.number(),
+					contiguous: z.boolean(),
+				})
+				.optional(),
 			baseMergedIntoDefault: z.enum(["merge", "squash"]).nullable(),
 			detectedPr: z
 				.object({
