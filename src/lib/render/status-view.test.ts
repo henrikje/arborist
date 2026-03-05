@@ -24,7 +24,8 @@ function makeSummary(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummar
 function defaultCtx(overrides: Partial<StatusViewContext> = {}): StatusViewContext {
 	return {
 		expectedBranch: "feature",
-		conflictRepos: new Set(),
+		baseConflictRepos: new Set(),
+		pullConflictRepos: new Set(),
 		currentRepo: null,
 		...overrides,
 	};
@@ -137,7 +138,7 @@ describe("buildStatusView", () => {
 		expect(row.cells.local?.plain).toBe("clean");
 	});
 
-	test("conflict repos get attention on baseDiff", () => {
+	test("base conflict repos get attention on baseDiff", () => {
 		const repo = makeRepo({
 			base: {
 				remote: "origin",
@@ -152,11 +153,34 @@ describe("buildStatusView", () => {
 		});
 		const nodes = buildStatusView(
 			makeSummary({ repos: [repo] }),
-			defaultCtx({ conflictRepos: new Set(["test-repo"]) }),
+			defaultCtx({ baseConflictRepos: new Set(["test-repo"]) }),
 		);
 		const table = nodes[0] as TableNode;
 		const baseDiff = table.rows[0]?.cells.baseDiff;
 		expect(baseDiff?.spans[0]?.attention).toBe("attention");
+	});
+
+	test("pull conflict repos get attention on pull-side new segment", () => {
+		const repo = makeRepo({
+			base: null,
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 5,
+				toPull: 3,
+				rebased: 0,
+			},
+		});
+		const nodes = buildStatusView(
+			makeSummary({ repos: [repo] }),
+			defaultCtx({ pullConflictRepos: new Set(["test-repo"]) }),
+		);
+		const table = nodes[0] as TableNode;
+		const remoteDiff = table.rows[0]?.cells.remoteDiff;
+		const pullSpan = remoteDiff?.spans.find((s) => s.text === "3 new");
+		expect(remoteDiff?.plain).toBe("5 to push → 3 new");
+		expect(pullSpan?.attention).toBe("attention");
 	});
 
 	test("multiple repos produce correct number of rows", () => {

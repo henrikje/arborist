@@ -505,7 +505,10 @@ export function verboseDetailToNodes(repo: RepoStatus, verbose: VerboseDetail | 
 				)
 			: cell(`To pull from ${shareLabel}:`);
 		const items: Cell[] = verbose.toPull.map((c) => {
-			let commitCell = spans({ text: c.shortHash, attention: "muted" }, { text: ` ${c.subject}`, attention: "default" });
+			let commitCell = spans(
+				{ text: c.shortHash, attention: "muted" },
+				{ text: ` ${c.subject}`, attention: "default" },
+			);
 			if (c.superseded) {
 				commitCell = suffix(commitCell, " (rebased locally)", "muted");
 			}

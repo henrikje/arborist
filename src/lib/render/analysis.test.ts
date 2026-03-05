@@ -681,6 +681,30 @@ describe("plainRemoteDiff", () => {
 		expect(plainRemoteDiff(repo)).toBe("2 rebased, 3 new → 2 outdated");
 	});
 
+	test("push-side new count is bounded by toPush (not base ahead)", () => {
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 2,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 1,
+				toPull: 1,
+				rebased: 0,
+			},
+		});
+		expect(plainRemoteDiff(repo)).toBe("1 new → 1 new");
+	});
+
 	test("base null fallback uses two-way split", () => {
 		const repo = makeRepo({
 			base: null,
@@ -801,7 +825,7 @@ describe("analyzeRemoteDiff", () => {
 		expect(result.spans[2]?.attention).toBe("default");
 	});
 
-	test("pull-side 'new' gets attention when genuinely new remote content exists", () => {
+	test("pull-side 'new' stays default when no pull conflict is predicted", () => {
 		const repo = makeRepo({
 			base: {
 				remote: "origin",
@@ -824,15 +848,71 @@ describe("analyzeRemoteDiff", () => {
 		});
 		const flags = computeFlags(repo, "feature");
 		// fromBase=3, rebased=2, newCount=2; pull: outdated=2, newPull=1
-		const result = analyzeRemoteDiff(repo, flags);
+		const result = analyzeRemoteDiff(repo, flags, false);
 		expect(result.plain).toBe("3 from main, 2 rebased, 2 new → 2 outdated, 1 new");
-		// spans: pushText | " → " | "2 outdated, " | "1 new" (attention)
-		expect(result.spans[3]?.text).toBe("1 new");
-		expect(result.spans[3]?.attention).toBe("attention");
-		expect(result.spans[2]?.attention).toBe("default");
+		const pullNew = result.spans.filter((s) => s.text === "1 new").at(-1);
+		expect(pullNew?.attention).toBe("default");
 	});
 
-	test("pull side only 'new' (no outdated) gets attention", () => {
+	test("pull-side 'new' gets attention when pull conflict is predicted", () => {
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 4,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 7,
+				toPull: 3,
+				rebased: 2,
+			},
+		});
+		const flags = computeFlags(repo, "feature");
+		const result = analyzeRemoteDiff(repo, flags, true);
+		expect(result.plain).toBe("3 from main, 2 rebased, 2 new → 2 outdated, 1 new");
+		const pullNew = result.spans.filter((s) => s.text === "1 new").at(-1);
+		expect(pullNew?.attention).toBe("attention");
+	});
+
+	test("push-side highlights only n new (from main stays default)", () => {
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 4,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 7,
+				toPull: 0,
+				rebased: 2,
+			},
+		});
+		const flags = computeFlags(repo, "feature");
+		const result = analyzeRemoteDiff(repo, flags);
+		expect(result.plain).toBe("3 from main, 2 rebased, 2 new");
+		const fromMain = result.spans.find((s) => s.text.includes("from main"));
+		const pushNew = result.spans.find((s) => s.text === "2 new");
+		expect(fromMain?.attention).toBe("default");
+		expect(pushNew?.attention).toBe("attention");
+	});
+
+	test("pull side only 'new' (no outdated) stays default without pull conflict", () => {
 		const repo = makeRepo({
 			base: null,
 			share: {
@@ -846,7 +926,26 @@ describe("analyzeRemoteDiff", () => {
 		});
 		const flags = computeFlags(repo, "feature");
 		// rebased=0: outdated=0, newPull=3
-		const result = analyzeRemoteDiff(repo, flags);
+		const result = analyzeRemoteDiff(repo, flags, false);
+		expect(result.plain).toBe("5 to push → 3 new");
+		expect(result.spans[2]?.text).toBe("3 new");
+		expect(result.spans[2]?.attention).toBe("default");
+	});
+
+	test("pull side only 'new' gets attention with pull conflict", () => {
+		const repo = makeRepo({
+			base: null,
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 5,
+				toPull: 3,
+				rebased: 0,
+			},
+		});
+		const flags = computeFlags(repo, "feature");
+		const result = analyzeRemoteDiff(repo, flags, true);
 		expect(result.plain).toBe("5 to push → 3 new");
 		expect(result.spans[2]?.text).toBe("3 new");
 		expect(result.spans[2]?.attention).toBe("attention");

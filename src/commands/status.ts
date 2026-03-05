@@ -238,22 +238,38 @@ async function renderStatusTable(
 		return "  (no repos)\n";
 	}
 
-	// Predict conflicts for diverged repos (both ahead and behind base)
-	const conflictRepos = new Set<string>();
-	const conflictPromise = Promise.all(
+	// Predict base conflicts for repos diverged from base.
+	const baseConflictRepos = new Set<string>();
+	const baseConflictPromise = Promise.all(
 		repos
 			.filter((r) => r.base !== null && r.base.ahead > 0 && r.base.behind > 0)
 			.map(async (r) => {
 				const repoDir = `${wsDir}/${r.name}`;
 				const base = r.base;
 				if (!base) return;
-				const ref = baseRef(base);
-				const prediction = await predictMergeConflict(repoDir, ref);
+				const prediction = await predictMergeConflict(repoDir, baseRef(base));
 				if (prediction?.hasConflict) {
-					conflictRepos.add(r.name);
+					baseConflictRepos.add(r.name);
 				}
 			}),
 	);
+
+	// Predict pull conflicts for repos diverged from the share tracking ref.
+	const pullConflictRepos = new Set<string>();
+	const pullConflictPromise = Promise.all(
+		repos
+			.filter((r) => (r.share.toPush ?? 0) > 0 && (r.share.toPull ?? 0) > 0 && r.share.ref !== null)
+			.map(async (r) => {
+				const repoDir = `${wsDir}/${r.name}`;
+				const trackingRef = r.share.ref;
+				if (!trackingRef) return;
+				const prediction = await predictMergeConflict(repoDir, trackingRef);
+				if (prediction?.hasConflict) {
+					pullConflictRepos.add(r.name);
+				}
+			}),
+	);
+	const conflictPredictionsPromise = Promise.all([baseConflictPromise, pullConflictPromise]);
 
 	// Gather verbose detail in parallel (when verbose mode is on)
 	let verboseData: Map<string, VerboseDetail | undefined> | undefined;
@@ -264,10 +280,10 @@ async function renderStatusTable(
 				return [repo.name, detail] as const;
 			}),
 		);
-		const [, verboseEntries] = await Promise.all([conflictPromise, verbosePromise]);
+		const [, verboseEntries] = await Promise.all([conflictPredictionsPromise, verbosePromise]);
 		verboseData = new Map(verboseEntries);
 	} else {
-		await conflictPromise;
+		await conflictPredictionsPromise;
 	}
 
 	// Detect current repo from cwd
@@ -284,7 +300,8 @@ async function renderStatusTable(
 	// Build declarative view
 	const nodes = buildStatusView(filteredSummary, {
 		expectedBranch: filteredSummary.branch,
-		conflictRepos,
+		baseConflictRepos,
+		pullConflictRepos,
 		currentRepo,
 		verboseData,
 	});
