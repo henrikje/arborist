@@ -233,6 +233,8 @@ You see which repos will conflict before you commit to the operation. Arborist a
 
 If a rebase or merge does hit a conflict, Arborist continues with the remaining repos and reports everything at the end. One conflicting repo never blocks the others. You see per-repo conflict details and resolution instructions in a single pass.
 
+For `arb pull --merge`, Arborist can also detect rebased/force-pushed remote history and, when local has no unique commits to preserve, show a safe reset action in the plan and reset to the rewritten remote tip instead of running a three-way merge.
+
 ### Filter by status
 
 ```bash

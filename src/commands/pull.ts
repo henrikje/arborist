@@ -35,6 +35,15 @@ import {
 } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveRepoSelection, workspaceRepoDirs } from "../lib/workspace";
 
+type PullStrategy = "rebase-pull" | "merge-pull" | "safe-reset";
+
+interface PullFailure {
+	assessment: PullAssessment;
+	stdout: string;
+	stderr: string;
+	action: string;
+}
+
 export interface PullAssessment {
 	repo: string;
 	repoDir: string;
@@ -44,8 +53,14 @@ export interface PullAssessment {
 	behind: number;
 	toPush: number;
 	rebased: number;
+	rebasedKnown: boolean;
 	pullMode: "rebase" | "merge";
+	pullStrategy?: PullStrategy;
 	headSha: string;
+	safeResetReason?: string;
+	safeResetBlockedBy?: string;
+	safeResetTarget?: string;
+	oldRemoteTip?: string;
 	conflictPrediction?: "no-conflict" | "clean" | "conflict" | null;
 	needsStash?: boolean;
 	stashPopConflictFiles?: string[];
@@ -67,7 +82,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 		.option("-w, --where <filter>", "Only pull repos matching status filter (comma = OR, + = AND, ^ = negate)")
 		.summary("Pull the feature branch from the share remote")
 		.description(
-			"Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos with uncommitted changes are skipped unless --autostash is used. Repos that haven't been pushed yet or where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end. Use --verbose to show the incoming commits for each repo in the plan. Use --autostash to stash uncommitted changes before pulling and re-apply them after. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nThe pull mode (rebase or merge) is determined per-repo from git config (branch.<name>.rebase, then pull.rebase), defaulting to merge if neither is set. Use --rebase or --merge to override for all repos.\n\nSee 'arb help remotes' for remote role resolution.",
+			"Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos with uncommitted changes are skipped unless --autostash is used. Repos that haven't been pushed yet or where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end. When a remote branch was rebased and local has no unique commits to preserve, arb may safely reset to the rewritten remote tip instead of attempting a three-way merge. Use --verbose to show the incoming commits in the plan. Use --autostash to stash uncommitted changes before pulling and re-apply them after. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nThe pull mode (rebase or merge) is determined per-repo from git config (branch.<name>.rebase, then pull.rebase), defaulting to merge if neither is set. Use --rebase or --merge to override for all repos.\n\nSee 'arb help remotes' for remote role resolution.",
 		)
 		.action(
 			async (
@@ -135,6 +150,8 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				};
 
 				const postAssess = async (nextAssessments: PullAssessment[]) => {
+					await reviveRebasedSkipsForSafeReset(nextAssessments, remotesMap, branch);
+					await resolvePullStrategies(nextAssessments, remotesMap, branch);
 					await predictPullConflicts(nextAssessments, remotesMap, branch);
 					if (options.verbose) {
 						await gatherPullVerboseCommits(nextAssessments, remotesMap, branch);
@@ -176,14 +193,16 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 				// Phase 4: execute
 				let pullOk = 0;
 				const conflicted: { assessment: PullAssessment; stdout: string; stderr: string }[] = [];
+				const failed: PullFailure[] = [];
 				const stashPopFailed: PullAssessment[] = [];
 
 				for (const a of willPull) {
-					inlineStart(a.repo, `pulling (${a.pullMode})`);
+					const strategy = a.pullStrategy ?? (a.pullMode === "rebase" ? "rebase-pull" : "merge-pull");
+					inlineStart(a.repo, `pulling (${pullStrategyLabel(strategy)})`);
 					const pullRemote = remotesMap.get(a.repo)?.share;
 					if (!pullRemote) continue;
 
-					if (a.pullMode === "rebase") {
+					if (strategy === "rebase-pull") {
 						// Rebase mode: pass --autostash to git pull --rebase when needed
 						const pullArgs = a.needsStash
 							? ["pull", "--rebase", "--autostash", pullRemote, branch]
@@ -193,8 +212,49 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 							inlineResult(a.repo, `pulled ${plural(a.behind, "commit")} (${a.pullMode})`);
 							pullOk++;
 						} else {
-							inlineResult(a.repo, yellow("conflict"));
-							conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
+							if (isConflictResult(pullResult.stdout, pullResult.stderr)) {
+								inlineResult(a.repo, yellow("conflict"));
+								conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
+							} else {
+								inlineResult(a.repo, yellow("failed"));
+								failed.push({
+									assessment: a,
+									stdout: pullResult.stdout,
+									stderr: pullResult.stderr,
+									action: "pull --rebase",
+								});
+							}
+						}
+					} else if (strategy === "safe-reset") {
+						// Safe reset: remote was rewritten and local has no unique commits to preserve.
+						if (a.needsStash) {
+							await git(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
+						}
+						const target = a.safeResetTarget ?? `${pullRemote}/${branch}`;
+						const resetResult = await git(a.repoDir, "reset", "--hard", target);
+						if (resetResult.exitCode === 0) {
+							let stashPopOk = true;
+							if (a.needsStash) {
+								const popResult = await git(a.repoDir, "stash", "pop");
+								if (popResult.exitCode !== 0) {
+									stashPopOk = false;
+									stashPopFailed.push(a);
+								}
+							}
+							let doneMsg = `safe reset to ${target}`;
+							if (!stashPopOk) {
+								doneMsg += ` ${yellow("(stash pop failed)")}`;
+							}
+							inlineResult(a.repo, doneMsg);
+							pullOk++;
+						} else {
+							inlineResult(a.repo, yellow("failed"));
+							failed.push({
+								assessment: a,
+								stdout: resetResult.stdout,
+								stderr: resetResult.stderr,
+								action: `reset --hard ${target}`,
+							});
 						}
 					} else {
 						// Merge mode: manual stash cycle when needed
@@ -219,8 +279,18 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 							pullOk++;
 						} else {
 							// Do NOT pop stash if pull conflicted
-							inlineResult(a.repo, yellow("conflict"));
-							conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
+							if (isConflictResult(pullResult.stdout, pullResult.stderr)) {
+								inlineResult(a.repo, yellow("conflict"));
+								conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
+							} else {
+								inlineResult(a.repo, yellow("failed"));
+								failed.push({
+									assessment: a,
+									stdout: pullResult.stdout,
+									stderr: pullResult.stderr,
+									action: "pull --no-rebase",
+								});
+							}
 						}
 					}
 				}
@@ -235,21 +305,26 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 					})),
 				);
 
+				// Consolidated non-conflict failure report
+				const failureNodes = buildPullFailureReport(failed);
+
 				// Stash pop failure report
 				const stashNodes = buildStashPopFailureReport(stashPopFailed, "Pull");
 
 				const reportCtx = { tty: isTTY() };
 				if (conflictNodes.length > 0) process.stderr.write(render(conflictNodes, reportCtx));
+				if (failureNodes.length > 0) process.stderr.write(render(failureNodes, reportCtx));
 				if (stashNodes.length > 0) process.stderr.write(render(stashNodes, reportCtx));
 
 				// Phase 5: summary
 				process.stderr.write("\n");
 				const parts = [`Pulled ${plural(pullOk, "repo")}`];
 				if (conflicted.length > 0) parts.push(`${conflicted.length} conflicted`);
+				if (failed.length > 0) parts.push(`${failed.length} failed`);
 				if (stashPopFailed.length > 0) parts.push(`${stashPopFailed.length} stash pop failed`);
 				if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
 				if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
-				finishSummary(parts, conflicted.length > 0 || stashPopFailed.length > 0);
+				finishSummary(parts, conflicted.length > 0 || failed.length > 0 || stashPopFailed.length > 0);
 			},
 		);
 }
@@ -270,7 +345,9 @@ export function assessPullRepo(
 		behind: 0,
 		toPush: 0,
 		rebased: 0,
+		rebasedKnown: false,
 		pullMode,
+		pullStrategy: pullMode === "rebase" ? "rebase-pull" : "merge-pull",
 		headSha,
 	};
 
@@ -338,11 +415,27 @@ export function assessPullRepo(
 	// Skip if all to-pull commits are rebased locally
 	const rebased = status.share.rebased ?? 0;
 	if (rebased > 0 && rebased >= toPull) {
-		return { ...base, skipReason: "rebased locally (push --force instead)", skipFlag: "rebased-locally" };
+		const toPush = status.share.toPush ?? 0;
+		return {
+			...base,
+			behind: toPull,
+			toPush,
+			rebased,
+			rebasedKnown: status.share.rebased != null,
+			skipReason: "rebased locally (push --force instead)",
+			skipFlag: "rebased-locally",
+		};
 	}
 
 	const toPush = status.share.toPush ?? 0;
-	return { ...base, outcome: "will-pull", behind: toPull, toPush, rebased };
+	return {
+		...base,
+		outcome: "will-pull",
+		behind: toPull,
+		toPush,
+		rebased,
+		rebasedKnown: status.share.rebased != null,
+	};
 }
 
 export function formatPullPlan(
@@ -407,6 +500,29 @@ export function buildPullPlanNodes(
 export function pullActionCell(a: PullAssessment, remotesMap: Map<string, RepoRemotes>): Cell {
 	const remotes = remotesMap.get(a.repo);
 	const forkText = remotes && remotes.base !== remotes.share ? ` \u2190 ${remotes.share}` : "";
+	const strategy = a.pullStrategy ?? (a.pullMode === "rebase" ? "rebase-pull" : "merge-pull");
+
+	if (strategy === "safe-reset") {
+		const target = a.safeResetTarget ?? `${remotes?.share ?? "origin"}/?`;
+		let safeText = `${plural(a.behind, "commit")} to pull (safe reset to ${target}`;
+		if (a.safeResetReason) {
+			safeText += `: ${a.safeResetReason}`;
+		}
+		safeText += ")";
+		let result = cell(safeText);
+		if (a.needsStash) {
+			if (a.stashPopConflictFiles && a.stashPopConflictFiles.length > 0) {
+				result = suffix(result, " (autostash, stash pop conflict likely)", "attention");
+			} else if (a.stashPopConflictFiles) {
+				result = suffix(result, " (autostash, stash pop conflict unlikely)");
+			} else {
+				result = suffix(result, " (autostash)");
+			}
+		}
+		if (forkText) result = suffix(result, forkText);
+		if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
+		return result;
+	}
 
 	const rebasedHint = a.rebased > 0 ? `, ${a.rebased} rebased` : "";
 	const mergeType = a.pullMode === "merge" ? (a.toPush === 0 ? "fast-forward merge" : "three-way merge") : "";
@@ -453,6 +569,70 @@ export function pullActionCell(a: PullAssessment, remotesMap: Map<string, RepoRe
 	return result;
 }
 
+async function reviveRebasedSkipsForSafeReset(
+	assessments: PullAssessment[],
+	remotesMap: Map<string, RepoRemotes>,
+	branch: string,
+): Promise<void> {
+	await Promise.all(
+		assessments
+			.filter((a) => a.outcome === "skip" && a.skipFlag === "rebased-locally" && a.pullMode === "merge")
+			.map(async (a) => {
+				const shareRemote = remotesMap.get(a.repo)?.share;
+				if (!shareRemote) return;
+				const result = await evaluateSafeResetEligibility({
+					repoDir: a.repoDir,
+					shareRemote,
+					branch,
+					toPush: a.toPush,
+					rebased: a.rebased,
+					rebasedKnown: a.rebasedKnown,
+				});
+				if (!result.eligible) return;
+				a.outcome = "will-pull";
+				a.skipReason = undefined;
+				a.skipFlag = undefined;
+			}),
+	);
+}
+
+async function resolvePullStrategies(
+	assessments: PullAssessment[],
+	remotesMap: Map<string, RepoRemotes>,
+	branch: string,
+): Promise<void> {
+	await Promise.all(
+		assessments
+			.filter((a) => a.outcome === "will-pull")
+			.map(async (a) => {
+				if (a.pullMode === "rebase") {
+					a.pullStrategy = "rebase-pull";
+					return;
+				}
+				a.pullStrategy = "merge-pull";
+				if (a.behind <= 0 || a.toPush <= 0) return;
+				const shareRemote = remotesMap.get(a.repo)?.share;
+				if (!shareRemote) return;
+				const result = await evaluateSafeResetEligibility({
+					repoDir: a.repoDir,
+					shareRemote,
+					branch,
+					toPush: a.toPush,
+					rebased: a.rebased,
+					rebasedKnown: a.rebasedKnown,
+				});
+				if (result.eligible) {
+					a.pullStrategy = "safe-reset";
+					a.safeResetReason = result.reason;
+					a.safeResetTarget = `${shareRemote}/${branch}`;
+					a.oldRemoteTip = result.oldTipShort;
+				} else if (result.blockedBy) {
+					a.safeResetBlockedBy = result.blockedBy;
+				}
+			}),
+	);
+}
+
 async function predictPullConflicts(
 	assessments: PullAssessment[],
 	remotesMap: Map<string, RepoRemotes>,
@@ -462,6 +642,11 @@ async function predictPullConflicts(
 		assessments
 			.filter((a) => a.outcome === "will-pull")
 			.map(async (a) => {
+				const strategy = a.pullStrategy ?? (a.pullMode === "rebase" ? "rebase-pull" : "merge-pull");
+				if (strategy === "safe-reset") {
+					a.conflictPrediction = "no-conflict";
+					return;
+				}
 				const shareRemote = remotesMap.get(a.repo)?.share;
 				if (!shareRemote) return;
 				const ref = `${shareRemote}/${branch}`;
@@ -482,6 +667,123 @@ async function predictPullConflicts(
 				}
 			}),
 	);
+}
+
+interface SafeResetEligibilityInput {
+	repoDir: string;
+	shareRemote: string;
+	branch: string;
+	toPush: number;
+	rebased: number;
+	rebasedKnown: boolean;
+}
+
+interface SafeResetEligibilityResult {
+	eligible: boolean;
+	reason?: string;
+	blockedBy?: string;
+	oldTipShort?: string;
+}
+
+export async function evaluateSafeResetEligibility(
+	input: SafeResetEligibilityInput,
+	gitRunner: typeof git = git,
+): Promise<SafeResetEligibilityResult> {
+	const remoteRef = `${input.shareRemote}/${input.branch}`;
+	const oldTipResult = await gitRunner(input.repoDir, "rev-parse", `${remoteRef}@{1}`);
+	if (oldTipResult.exitCode !== 0) {
+		return { eligible: false, blockedBy: "previous remote tip unavailable" };
+	}
+	const oldTip = oldTipResult.stdout.trim();
+	if (!oldTip) {
+		return { eligible: false, blockedBy: "previous remote tip unavailable" };
+	}
+
+	const currentTipResult = await gitRunner(input.repoDir, "rev-parse", remoteRef);
+	if (currentTipResult.exitCode !== 0) {
+		return { eligible: false, blockedBy: "current remote tip unavailable" };
+	}
+	const currentTip = currentTipResult.stdout.trim();
+	if (!currentTip) {
+		return { eligible: false, blockedBy: "current remote tip unavailable" };
+	}
+	if (oldTip === currentTip) {
+		return { eligible: false, blockedBy: "no remote rewrite detected" };
+	}
+
+	const ancestorResult = await gitRunner(input.repoDir, "merge-base", "--is-ancestor", oldTip, "HEAD");
+	if (ancestorResult.exitCode !== 0) {
+		return { eligible: false, blockedBy: "HEAD not based on previous remote tip" };
+	}
+
+	const uniqueResult = await gitRunner(input.repoDir, "rev-list", "--count", `${oldTip}..HEAD`);
+	if (uniqueResult.exitCode !== 0) {
+		return { eligible: false, blockedBy: "unable to verify local commit ancestry" };
+	}
+	const uniqueCount = Number.parseInt(uniqueResult.stdout.trim(), 10);
+	if (!Number.isFinite(uniqueCount)) {
+		return { eligible: false, blockedBy: "unable to verify local commit ancestry" };
+	}
+	if (uniqueCount > 0) {
+		return { eligible: false, blockedBy: "local commits exist beyond previous remote tip" };
+	}
+
+	if (!input.rebasedKnown) {
+		return { eligible: false, blockedBy: "rebased-commit evidence unavailable" };
+	}
+	if (input.toPush - input.rebased > 0) {
+		return { eligible: false, blockedBy: "local net-new commits detected" };
+	}
+
+	return {
+		eligible: true,
+		reason: "remote rewritten, no local commits to preserve",
+		oldTipShort: oldTip.slice(0, 7),
+	};
+}
+
+function isConflictResult(stdout: string, stderr: string): boolean {
+	const combined = `${stdout}\n${stderr}`;
+	return combined.split("\n").some((line) => line.startsWith("CONFLICT"));
+}
+
+function pullStrategyLabel(strategy: PullStrategy): string {
+	switch (strategy) {
+		case "rebase-pull":
+			return "rebase";
+		case "safe-reset":
+			return "safe-reset";
+		default:
+			return "merge";
+	}
+}
+
+function buildPullFailureReport(entries: PullFailure[]): OutputNode[] {
+	if (entries.length === 0) return [];
+	const nodes: OutputNode[] = [
+		{ kind: "gap" },
+		{ kind: "message", level: "default", text: `${entries.length} repo(s) failed:` },
+	];
+	for (const entry of entries) {
+		const combined = `${entry.stdout}\n${entry.stderr}`
+			.split("\n")
+			.map((line) => line.trim())
+			.filter(Boolean);
+		nodes.push(
+			{ kind: "gap" },
+			{
+				kind: "section",
+				header: cell(entry.assessment.repo),
+				items: [
+					cell(`pull failed during ${entry.action}`),
+					...combined.slice(0, 3).map((line) => cell(line, "muted")),
+					cell(`cd ${entry.assessment.repo}`),
+					cell("# fix the issue, then re-run: arb pull"),
+				],
+			},
+		);
+	}
+	return nodes;
 }
 
 async function gatherPullVerboseCommits(
