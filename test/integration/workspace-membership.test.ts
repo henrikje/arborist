@@ -155,6 +155,28 @@ describe("create", () => {
 			expect(result.output).toContain("Usage: arb create");
 		}));
 
+	test("arb create --branch without name derives workspace name from branch tail", () =>
+		withEnv(async (env) => {
+			const result = await arb(env, ["create", "--branch", "claude/improve-arb-create-ux-Ipru1", "--all-repos"]);
+			expect(result.exitCode).toBe(0);
+			expect(result.output).toContain(
+				"! Workspace name: improve-arb-create-ux-Ipru1 (derived from claude/improve-arb-create-ux-Ipru1)",
+			);
+			const wsDir = join(env.projectDir, "improve-arb-create-ux-Ipru1");
+			expect(existsSync(wsDir)).toBe(true);
+			const config = await readFile(join(wsDir, ".arbws/config"), "utf8");
+			expect(config).toContain("branch = claude/improve-arb-create-ux-Ipru1");
+		}));
+
+	test("arb create --branch without name fails when derived workspace already exists", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "existing-tail", "repo-a"]);
+			const result = await arb(env, ["create", "--branch", "claude/existing-tail", "--all-repos"]);
+			expect(result.exitCode).not.toBe(0);
+			expect(result.output).toContain("Derived workspace name 'existing-tail'");
+			expect(result.output).toContain("already exists");
+		}));
+
 	test("arb create --branch without value fails", () =>
 		withEnv(async (env) => {
 			const result = await arb(env, ["create", "foo", "--branch"]);
@@ -174,6 +196,14 @@ describe("create", () => {
 			const result = await arb(env, ["create", "bad/name"]);
 			expect(result.exitCode).not.toBe(0);
 			expect(result.output).toContain("must not contain '/'");
+		}));
+
+	test("arb create with slash name suggests --branch usage when input looks like branch", () =>
+		withEnv(async (env) => {
+			const result = await arb(env, ["create", "claude/improve-arb-create-ux-Ipru1"]);
+			expect(result.exitCode).not.toBe(0);
+			expect(result.output).toContain("may have pasted a branch name");
+			expect(result.output).toContain("arb create --branch claude/improve-arb-create-ux-Ipru1");
 		}));
 
 	test("arb create rejects name with path traversal", () =>

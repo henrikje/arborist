@@ -14,7 +14,7 @@ import {
 } from "../lib/git";
 import { render } from "../lib/render";
 import { parallelFetch, reportFetchFailures } from "../lib/sync";
-import { dim, error, info, isTTY, plural, readNamesFromStdin, success, warn } from "../lib/terminal";
+import { blue, bold, dim, error, info, isTTY, plural, readNamesFromStdin, success, warn } from "../lib/terminal";
 import {
 	addWorktrees,
 	applyRepoTemplates,
@@ -27,6 +27,21 @@ import {
 const CREATE_DEFAULT = "\0create-default";
 const CREATE_CUSTOM = "\0create-custom";
 
+export function deriveWorkspaceNameFromBranch(branch: string): string | null {
+	const tail = branch.split("/").filter(Boolean).at(-1);
+	return tail ?? null;
+}
+
+export function shouldShowBranchPasteHint(
+	nameArg: string | undefined,
+	branchOpt: string | undefined,
+	validationError: string,
+): boolean {
+	if (!nameArg || branchOpt) return false;
+	if (!validationError.includes("must not contain '/'")) return false;
+	return validateBranchName(nameArg);
+}
+
 export function registerCreateCommand(program: Command, getCtx: () => ArbContext): void {
 	program
 		.command("create [name] [repos...]")
@@ -35,7 +50,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 		.option("-a, --all-repos", "Include all repos")
 		.summary("Create a new workspace")
 		.description(
-			"Create a workspace for a feature or issue. Creates a working copy of each selected repo on a shared feature branch, with isolated working directories. Automatically seeds files from .arb/templates/ into the new workspace. Prompts interactively for name, branch, and repos when run without arguments.\n\nIf the branch already exists locally or on the share remote, arb checks it out instead of creating a new one. This lets you resume work on an existing feature, collaborate on a shared branch, or set up a local workspace for a branch someone else started.\n\nSee 'arb help stacked' for stacking workspaces on feature branches.",
+			"Create a workspace for a feature or issue. Creates a working copy of each selected repo on a shared feature branch, with isolated working directories. Automatically seeds files from .arb/templates/ into the new workspace. Running with no arguments opens a guided flow; providing args or flags uses sensible defaults and prompts only for missing required values.\n\nIf the branch already exists locally or on the share remote, arb checks it out instead of creating a new one. This lets you resume work on an existing feature, collaborate on a shared branch, or set up a local workspace for a branch someone else started.\n\nSee 'arb help stacked' for stacking workspaces on feature branches.",
 		)
 		.action(
 			async (
@@ -45,6 +60,8 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 			) => {
 				const ctx = getCtx();
 				const isInteractive = process.stdin.isTTY === true;
+				const isBareGuidedCreate =
+					isInteractive && !nameArg && repoArgs.length === 0 && !options.branch && !options.base && !options.allRepos;
 				const allKnownRepos = listRepos(ctx.reposDir);
 
 				if (allKnownRepos.length === 0) {
@@ -53,7 +70,15 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				}
 
 				// 1. Workspace name
-				let name = nameArg;
+				const isDerivedFromBranch = !nameArg && !!options.branch;
+				const derivedName = options.branch ? deriveWorkspaceNameFromBranch(options.branch) : null;
+				if (isDerivedFromBranch && !derivedName) {
+					const msg = `Could not derive workspace name from branch '${options.branch}'. Pass an explicit workspace name: arb create <workspace-name> --branch ${options.branch}`;
+					error(msg);
+					throw new ArbError(msg);
+				}
+
+				let name = nameArg ?? derivedName ?? undefined;
 				if (!name) {
 					if (!process.stdin.isTTY) {
 						error("Usage: arb create <name> [repos...]");
@@ -75,14 +100,41 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 
 				const validationError = validateWorkspaceName(name);
 				if (validationError) {
+					if (shouldShowBranchPasteHint(nameArg, options.branch, validationError)) {
+						error(validationError);
+						process.stderr.write("\n");
+						info("It looks like you may have pasted a branch name.");
+						process.stderr.write("\n");
+						info("Try:");
+						info(`  arb create --branch ${nameArg}`);
+						process.stderr.write("\n");
+						info("Or set an explicit workspace name:");
+						info(`  arb create <workspace-name> --branch ${nameArg}`);
+						throw new ArbError(validationError);
+					}
+					if (isDerivedFromBranch) {
+						const msg = `Derived workspace name '${name}' from branch '${options.branch}' is invalid.`;
+						error(msg);
+						info(`Pass an explicit workspace name: arb create <workspace-name> --branch ${options.branch}`);
+						throw new ArbError(msg);
+					}
 					error(validationError);
 					throw new ArbError(validationError);
 				}
 
 				const wsDir = `${ctx.arbRootDir}/${name}`;
 				if (existsSync(wsDir)) {
+					if (isDerivedFromBranch) {
+						const msg = `Derived workspace name '${name}' from branch '${options.branch}' already exists.`;
+						error(msg);
+						info(`Pass an explicit workspace name: arb create <workspace-name> --branch ${options.branch}`);
+						throw new ArbError(msg);
+					}
 					error(`Workspace '${name}' already exists`);
 					throw new ArbError(`Workspace '${name}' already exists`);
+				}
+				if (isDerivedFromBranch) {
+					info(`${blue("!")} ${bold("Workspace name")}: ${blue(name)} (derived from ${options.branch})`);
 				}
 
 				// 2. Repo selection (moved before branch)
@@ -106,16 +158,11 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				}
 
 				if (repos.length === 0 && process.stdin.isTTY) {
-					while (repos.length === 0) {
-						try {
-							repos = await selectReposInteractive(ctx.reposDir);
-						} catch (e) {
-							error((e as Error).message);
-							throw new ArbError((e as Error).message);
-						}
-						if (repos.length === 0) {
-							warn("At least one repo must be selected.");
-						}
+					try {
+						repos = await selectReposInteractive(ctx.reposDir);
+					} catch (e) {
+						error((e as Error).message);
+						throw new ArbError((e as Error).message);
 					}
 				}
 
@@ -133,10 +180,8 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				// 3. Branch selection
 				const defaultBranch = name;
 				let branch = options.branch;
-				let isExistingBranch = false;
-				let branchWasInteractive = false;
 				if (!branch) {
-					if (isInteractive) {
+					if (isBareGuidedCreate) {
 						// Fetch selected repos so branch list is up-to-date
 						remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
 						const fetchDirs = repos.map((r) => `${ctx.reposDir}/${r}`);
@@ -180,21 +225,17 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 								{ output: process.stderr },
 							);
 
-							branchWasInteractive = true;
 							if (selected === CREATE_DEFAULT) {
 								branch = defaultBranch;
-								isExistingBranch = defaultIsExisting;
 							} else if (selected !== CREATE_CUSTOM) {
 								branch = selected;
-								isExistingBranch = true;
 							}
 							// CREATE_CUSTOM falls through to input below
 						}
 					}
 
 					if (!branch) {
-						if (isInteractive) {
-							branchWasInteractive = true;
+						if (isBareGuidedCreate) {
 							branch = await input(
 								{
 									message: "Branch name:",
@@ -213,20 +254,8 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 					throw new ArbError(`Invalid branch name: ${branch}`);
 				}
 
-				// 4. Base branch (skip for existing branches)
-				let base = options.base;
-				if (!base && !isExistingBranch && branchWasInteractive) {
-					const baseInput = await input(
-						{
-							message: "Base branch (leave blank for repo default):",
-						},
-						{ output: process.stderr },
-					);
-					if (baseInput.trim()) {
-						base = baseInput.trim();
-					}
-				}
-
+				// 4. Base branch (flag-only)
+				const base = options.base;
 				if (base && !validateBranchName(base)) {
 					error(`Invalid base branch name: ${base}`);
 					throw new ArbError(`Invalid base branch name: ${base}`);

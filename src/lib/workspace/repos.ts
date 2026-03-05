@@ -72,7 +72,16 @@ export async function selectReposInteractive(reposDir: string): Promise<string[]
 	if (repos.length === 0) {
 		throw new Error("No repos found. Clone a repo first: arb repo clone <url>");
 	}
-	return selectInteractive(repos, "Select repos to include");
+	return checkbox(
+		{
+			message: "Select repos to include",
+			choices: repos.map((name) => ({ name, value: name })),
+			validate: (selected) => (selected.length > 0 ? true : "At least one repo must be selected."),
+			pageSize: 20,
+			loop: false,
+		},
+		{ output: process.stderr },
+	);
 }
 
 export function collectRepo(value: string, previous: string[]): string[] {

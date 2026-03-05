@@ -70,7 +70,7 @@ Creating worktrees...
 Created workspace collab-work (2 repos) on branch feat/payments
 ```
 
-When run interactively, `arb create` fetches the selected repos and presents a branch selector that lists all remote branches across the selected repos. This makes it easy to discover and check out existing branches without having to remember exact names. The selector labels the default suggestion as "(new branch)" or "(existing branch)" and offers an "Enter a different name..." option for custom input.
+When run as bare `arb create` (no args or flags), arb fetches the selected repos and presents a branch selector that lists all remote branches across the selected repos. This makes it easy to discover and check out existing branches without having to remember exact names. The selector labels the default suggestion as "(new branch)" or "(existing branch)" and offers an "Enter a different name..." option for custom input.
 
 This is useful when you want to resume work on an existing feature, collaborate on a branch someone else started, or set up a local workspace after switching machines. The per-repo output tells you exactly what happened — whether each branch was created fresh, checked out from a remote, or attached from a local copy.
 
