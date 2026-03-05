@@ -303,7 +303,7 @@ describe("plainRemoteDiff", () => {
 				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 3, rebased: null },
 			}),
 		);
-		expect(text).toBe("2 to push, 3 to pull");
+		expect(text).toBe("2 to push → 3 to pull");
 	});
 
 	test("shows rebased counts", () => {
@@ -322,7 +322,8 @@ describe("plainRemoteDiff", () => {
 				},
 			}),
 		);
-		expect(text).toBe("2 rebased, 1 new");
+		// pull: outdated = min(2,2) = 2
+		expect(text).toBe("2 rebased, 1 new → 2 outdated");
 	});
 
 	test("shows rebased-only when all pushes are rebased", () => {
@@ -341,7 +342,8 @@ describe("plainRemoteDiff", () => {
 				},
 			}),
 		);
-		expect(text).toBe("2 rebased");
+		// pull: outdated = 2
+		expect(text).toBe("2 rebased → 2 outdated");
 	});
 
 	test("shows merged with new commits to push (not gone)", () => {

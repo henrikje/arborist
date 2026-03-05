@@ -81,6 +81,7 @@ export const StatusJsonRepoSchema = z.object({
 				)
 				.optional(),
 			unpushed: z.array(z.object({ hash: z.string(), subject: z.string(), rebased: z.boolean() })).optional(),
+			toPull: z.array(z.object({ hash: z.string(), subject: z.string(), superseded: z.boolean() })).optional(),
 			staged: z
 				.array(
 					z.object({

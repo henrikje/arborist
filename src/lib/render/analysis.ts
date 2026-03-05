@@ -74,80 +74,108 @@ export function analyzeRemoteName(repo: RepoStatus, flags: RepoFlags): Cell {
 	return cell(name, isDrifted || isUnexpected ? "attention" : "default");
 }
 
-/** Compute plain-text SHARE diff */
-export function plainRemoteDiff(repo: RepoStatus): string {
+/** Compute push/pull text parts for the SHARE diff cell separately.
+ * `pullNewText` is the "N new" suffix of `pull` when it deserves attention (rebased detected, genuinely new remote content). */
+function remoteDiffParts(repo: RepoStatus): { push: string; pull: string; pullNewText: string } {
 	const merged = repo.base?.mergedIntoBase != null;
 	const prNumber = repo.base?.detectedPr?.number;
 	const prSuffix = prNumber ? ` (#${prNumber})` : "";
-	const newCount = repo.base?.newCommitsAfterMerge;
-	const pushSuffix = merged && newCount && newCount > 0 ? `, ${newCount} to push` : "";
+	const newCommits = repo.base?.newCommitsAfterMerge;
+	const pushSuffix = merged && newCommits && newCommits > 0 ? `, ${newCommits} to push` : "";
 
 	if (repo.share.refMode === "gone") {
-		if (merged) return `merged${prSuffix}, gone${pushSuffix}`;
-		if (repo.base !== null && repo.base.ahead > 0) {
-			return `gone, ${repo.base.ahead} to push`;
-		}
-		return "gone";
+		if (merged) return { push: `merged${prSuffix}, gone${pushSuffix}`, pull: "", pullNewText: "" };
+		if (repo.base !== null && repo.base.ahead > 0) return { push: `gone, ${repo.base.ahead} to push`, pull: "", pullNewText: "" };
+		return { push: "gone", pull: "", pullNewText: "" };
 	}
 
 	if (repo.share.refMode === "noRef") {
-		if (repo.base !== null && repo.base.ahead > 0) return `${repo.base.ahead} to push`;
-		return "not pushed";
+		if (repo.base !== null && repo.base.ahead > 0) return { push: `${repo.base.ahead} to push`, pull: "", pullNewText: "" };
+		return { push: "not pushed", pull: "", pullNewText: "" };
 	}
 
-	if (merged && (repo.share.toPull ?? 0) === 0) return `merged${prSuffix}${pushSuffix}`;
+	if (merged && (repo.share.toPull ?? 0) === 0) return { push: `merged${prSuffix}${pushSuffix}`, pull: "", pullNewText: "" };
+
 	const toPush = repo.share.toPush ?? 0;
 	const toPull = repo.share.toPull ?? 0;
-	if (toPush === 0 && toPull === 0) return "up to date";
+	if (toPush === 0 && toPull === 0) return { push: "up to date", pull: "", pullNewText: "" };
 
 	const rebased = repo.share.rebased;
-	if (rebased !== null && rebased > 0) {
+
+	// rebased detection ran (implies both toPush > 0 and toPull > 0 at time of detection)
+	if (rebased !== null) {
 		const baseAhead = repo.base?.ahead ?? null;
-		const newPull = Math.max(0, toPull - rebased);
-		const parts: string[] = [];
+		const pushParts: string[] = [];
 
 		if (baseAhead !== null) {
 			// Three-way split: fromBase / rebased / new
 			const fromBase = Math.max(0, toPush - baseAhead);
 			const newCount = Math.max(0, baseAhead - rebased);
 			const baseLabel = repo.base?.ref ?? "base";
-			if (fromBase > 0) parts.push(`${fromBase} from ${baseLabel}`);
-			if (rebased > 0) parts.push(`${rebased} rebased`);
-			if (newCount > 0) parts.push(`${newCount} new`);
+			if (fromBase > 0) pushParts.push(`${fromBase} from ${baseLabel}`);
+			if (rebased > 0) pushParts.push(`${rebased} rebased`);
+			if (newCount > 0) pushParts.push(`${newCount} new`);
 		} else {
-			// Fallback: no base info, use two-way behavior
+			// Fallback: no base info
 			const newPush = Math.max(0, toPush - rebased);
-			if (newPush > 0) parts.push(`${newPush} to push`);
-			parts.push(`${rebased} rebased`);
+			if (newPush > 0) pushParts.push(`${newPush} to push`);
+			if (rebased > 0) pushParts.push(`${rebased} rebased`);
 		}
 
-		if (newPull > 0) parts.push(`${newPull} to pull`);
-		return parts.join(", ");
+		// Pull side: outdated first (already incorporated), then new (genuinely new remote content)
+		const pullParts: string[] = [];
+		let pullNewText = "";
+		if (toPull > 0) {
+			const outdated = rebased > 0 ? Math.min(rebased, toPull) : 0;
+			const newPull = Math.max(0, toPull - rebased);
+			if (outdated > 0) pullParts.push(`${outdated} outdated`);
+			if (newPull > 0) {
+				pullNewText = `${newPull} new`;
+				pullParts.push(pullNewText);
+			}
+		}
+
+		return { push: pushParts.filter(Boolean).join(", "), pull: pullParts.join(", "), pullNewText };
 	}
 
-	const parts = [toPush > 0 && `${toPush} to push`, toPull > 0 && `${toPull} to pull`].filter(Boolean).join(", ");
-	return parts;
+	// rebased not computed (only one of push/pull is active)
+	return {
+		push: toPush > 0 ? `${toPush} to push` : "",
+		pull: toPull > 0 ? `${toPull} to pull` : "",
+		pullNewText: "",
+	};
 }
 
-/** Analyze the SHARE diff cell — multi-span for merged+new work */
+/** Compute plain-text SHARE diff */
+export function plainRemoteDiff(repo: RepoStatus): string {
+	const { push, pull } = remoteDiffParts(repo);
+	if (push && pull) return `${push} → ${pull}`;
+	return push || pull || "";
+}
+
+/** Analyze the SHARE diff cell — arrow separator between push and pull sides */
 export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags): Cell {
 	const isDetached = repo.identity.headMode.kind === "detached";
 	if (isDetached) return EMPTY_CELL;
 
-	const text = plainRemoteDiff(repo);
-	if (!text) return EMPTY_CELL;
+	const { push: pushText, pull: pullText, pullNewText } = remoteDiffParts(repo);
+	if (!pushText && !pullText) return EMPTY_CELL;
 
-	// Simple non-attention cases
-	if (text === "up to date" || text === "gone") return cell(text);
-	if (text === "not pushed") return cell(text);
+	// Simple non-attention cases (no push activity)
+	if (!pushText) return cell(pullText);
+	if (pushText === "up to date" || pushText === "gone" || pushText === "not pushed") return cell(pushText);
 
-	// Behind-only (pull from share, nothing to push)
-	if (repo.share.toPush === 0 && repo.share.toPull !== null && repo.share.toPull > 0) {
-		return cell(text);
-	}
+	// Behind-only: already handled above (pushText empty)
 
-	// Merged with new work — color only the "N to push" portion
-	if (repo.base?.newCommitsAfterMerge && repo.base.newCommitsAfterMerge > 0) {
+	// Determine push-side attention
+	const rebased = repo.share.rebased ?? 0;
+	const baseAhead = repo.base?.ahead ?? repo.share.toPush ?? 0;
+	const newCount = baseAhead - rebased;
+	const pushNeedsAttention = flags.isUnpushed && (rebased === 0 || newCount > 0);
+
+	// Merged with new work — color only the push suffix portion
+	if (repo.base?.newCommitsAfterMerge && repo.base.newCommitsAfterMerge > 0 && !pullText) {
+		const text = pushText;
 		const pushIdx = text.lastIndexOf(", ");
 		if (pushIdx >= 0 && text.includes("to push")) {
 			const prefix = text.slice(0, pushIdx + 2);
@@ -157,18 +185,35 @@ export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags): Cell {
 		return cell(text);
 	}
 
-	// Unpushed — check for rebased-only (no genuinely new work)
-	if (flags.isUnpushed) {
-		const rebased = repo.share.rebased ?? 0;
-		const baseAhead = repo.base?.ahead ?? repo.share.toPush ?? 0;
-		const newCount = baseAhead - rebased;
-		if (rebased > 0 && newCount <= 0) {
-			return cell(text); // rebased + fromBase only, default color
-		}
-		return cell(text, "attention");
-	}
+	const pushAttention = pushNeedsAttention ? "attention" : "default";
 
-	return cell(text);
+	// Push-only: single span
+	if (!pullText) return cell(pushText, pushAttention);
+
+	// Both sides: push | arrow (muted) | pull (with "N new" highlighted when present)
+	if (pullNewText && pullText !== pullNewText) {
+		// Has outdated + new: "M outdated, K new" — highlight "K new" with attention
+		const outdatedPortion = pullText.slice(0, pullText.length - pullNewText.length - 2);
+		return spans(
+			{ text: pushText, attention: pushAttention },
+			{ text: " → ", attention: "muted" },
+			{ text: outdatedPortion + ", ", attention: "default" },
+			{ text: pullNewText, attention: "attention" },
+		);
+	}
+	if (pullNewText) {
+		// Pull is only "K new"
+		return spans(
+			{ text: pushText, attention: pushAttention },
+			{ text: " → ", attention: "muted" },
+			{ text: pullText, attention: "attention" },
+		);
+	}
+	return spans(
+		{ text: pushText, attention: pushAttention },
+		{ text: " → ", attention: "muted" },
+		{ text: pullText, attention: "default" },
+	);
 }
 
 /** Compute plain-text LOCAL cell */
