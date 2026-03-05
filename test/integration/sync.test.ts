@@ -688,6 +688,48 @@ describe("pull merge-mode annotations", () => {
 			expect(result.output).toContain("three-way merge");
 		}));
 
+	test("arb pull --merge shows safe reset when remote was rewritten without local net-new commits", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "my-feature", "repo-a"]);
+			const repoA = join(env.projectDir, "my-feature/repo-a");
+
+			await write(join(repoA, "feature.txt"), "feature");
+			await git(repoA, ["add", "feature.txt"]);
+			await git(repoA, ["commit", "-m", "feature"]);
+			await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+			// Rewrite remote history with an equivalent commit (same patch, different SHA).
+			const tmpClone = join(env.testDir, "tmp-safe-reset-pull");
+			await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpClone]);
+			await git(tmpClone, ["checkout", "my-feature"]);
+			const originalTip = (await git(tmpClone, ["rev-parse", "HEAD"])).trim();
+			await git(tmpClone, ["reset", "--hard", "HEAD~1"]);
+			await git(tmpClone, ["cherry-pick", originalTip]);
+			await git(tmpClone, ["commit", "--amend", "-m", "feature rebased"]);
+			await write(join(tmpClone, "extra.txt"), "remote extra");
+			await git(tmpClone, ["add", "extra.txt"]);
+			await git(tmpClone, ["commit", "-m", "remote extra"]);
+			await git(tmpClone, ["push", "--force"]);
+
+			const dryRun = await arb(env, ["pull", "--merge", "--dry-run"], {
+				cwd: join(env.projectDir, "my-feature"),
+			});
+			expect(dryRun.exitCode).toBe(0);
+			expect(dryRun.output).toContain("safe reset");
+			expect(dryRun.output).toContain("no local commits to preserve");
+			expect(dryRun.output).not.toContain("three-way merge");
+
+			const pullResult = await arb(env, ["pull", "--merge", "--yes"], {
+				cwd: join(env.projectDir, "my-feature"),
+			});
+			expect(pullResult.exitCode).toBe(0);
+			expect(pullResult.output).toContain("safe reset");
+
+			const localHead = await git(repoA, ["rev-parse", "HEAD"]);
+			const remoteHead = await git(repoA, ["rev-parse", "origin/my-feature"]);
+			expect(localHead).toBe(remoteHead);
+		}));
+
 	test("arb pull --rebase does not show fast-forward or three-way", () =>
 		withEnv(async (env) => {
 			await arb(env, ["create", "my-feature", "repo-a"]);

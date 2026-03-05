@@ -108,6 +108,8 @@ arb push
 arb push --force      # after rebasing (prompts for confirmation)
 ```
 
+When a collaborator force-pushes a rebased branch and you have no unique local commits to preserve, `arb pull --merge` shows a **safe reset** action in the plan and resets to the rewritten remote tip instead of attempting a three-way merge.
+
 If you add commits to a branch that was already merged (squash or regular), Arborist detects it and blocks `arb push` with a warning. Run `arb rebase` to replay only the new commits onto the updated base, then `arb push --force` and create a new PR.
 
 Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
