@@ -1,7 +1,7 @@
 import { AT_RISK_FLAGS, FLAG_LABELS, MERGED_IMPLIED_FLAGS } from "../status/status";
 import type { RepoFlags, RepoStatus, WorkspaceSummary } from "../status/status";
 import { yellow } from "../terminal/output";
-import { type Cell, EMPTY_CELL, cell, join, spans, suffix } from "./model";
+import { type Cell, EMPTY_CELL, type Span, cell, join, spans, suffix } from "./model";
 
 // ── Cell-Level Analysis Helpers ──
 
@@ -76,7 +76,7 @@ export function analyzeRemoteName(repo: RepoStatus, flags: RepoFlags): Cell {
 
 /** Compute push/pull text parts for the SHARE diff cell separately.
  * `pullNewText` is the "N new" suffix of `pull` when it deserves attention (rebased detected, genuinely new remote content). */
-function remoteDiffParts(repo: RepoStatus): { push: string; pull: string; pullNewText: string } {
+function remoteDiffParts(repo: RepoStatus): { push: string; pull: string; pullNewText: string; pushNewText: string } {
 	const merged = repo.base?.mergedIntoBase != null;
 	const prNumber = repo.base?.detectedPr?.number;
 	const prSuffix = prNumber ? ` (#${prNumber})` : "";
@@ -84,21 +84,24 @@ function remoteDiffParts(repo: RepoStatus): { push: string; pull: string; pullNe
 	const pushSuffix = merged && newCommits && newCommits > 0 ? `, ${newCommits} to push` : "";
 
 	if (repo.share.refMode === "gone") {
-		if (merged) return { push: `merged${prSuffix}, gone${pushSuffix}`, pull: "", pullNewText: "" };
-		if (repo.base !== null && repo.base.ahead > 0) return { push: `gone, ${repo.base.ahead} to push`, pull: "", pullNewText: "" };
-		return { push: "gone", pull: "", pullNewText: "" };
+		if (merged) return { push: `merged${prSuffix}, gone${pushSuffix}`, pull: "", pullNewText: "", pushNewText: "" };
+		if (repo.base !== null && repo.base.ahead > 0)
+			return { push: `gone, ${repo.base.ahead} to push`, pull: "", pullNewText: "", pushNewText: "" };
+		return { push: "gone", pull: "", pullNewText: "", pushNewText: "" };
 	}
 
 	if (repo.share.refMode === "noRef") {
-		if (repo.base !== null && repo.base.ahead > 0) return { push: `${repo.base.ahead} to push`, pull: "", pullNewText: "" };
-		return { push: "not pushed", pull: "", pullNewText: "" };
+		if (repo.base !== null && repo.base.ahead > 0)
+			return { push: `${repo.base.ahead} to push`, pull: "", pullNewText: "", pushNewText: "" };
+		return { push: "not pushed", pull: "", pullNewText: "", pushNewText: "" };
 	}
 
-	if (merged && (repo.share.toPull ?? 0) === 0) return { push: `merged${prSuffix}${pushSuffix}`, pull: "", pullNewText: "" };
+	if (merged && (repo.share.toPull ?? 0) === 0)
+		return { push: `merged${prSuffix}${pushSuffix}`, pull: "", pullNewText: "", pushNewText: "" };
 
 	const toPush = repo.share.toPush ?? 0;
 	const toPull = repo.share.toPull ?? 0;
-	if (toPush === 0 && toPull === 0) return { push: "up to date", pull: "", pullNewText: "" };
+	if (toPush === 0 && toPull === 0) return { push: "up to date", pull: "", pullNewText: "", pushNewText: "" };
 
 	const rebased = repo.share.rebased;
 
@@ -106,19 +109,28 @@ function remoteDiffParts(repo: RepoStatus): { push: string; pull: string; pullNe
 	if (rebased !== null) {
 		const baseAhead = repo.base?.ahead ?? null;
 		const pushParts: string[] = [];
+		let pushNewText = "";
 
 		if (baseAhead !== null) {
 			// Three-way split: fromBase / rebased / new
 			const fromBase = Math.max(0, toPush - baseAhead);
-			const newCount = Math.max(0, baseAhead - rebased);
+			// Keep push-side breakdown anchored to share.toPush:
+			// fromBase + rebased + new must not exceed what can actually be pushed.
+			const newCount = Math.max(0, toPush - fromBase - rebased);
 			const baseLabel = repo.base?.ref ?? "base";
 			if (fromBase > 0) pushParts.push(`${fromBase} from ${baseLabel}`);
 			if (rebased > 0) pushParts.push(`${rebased} rebased`);
-			if (newCount > 0) pushParts.push(`${newCount} new`);
+			if (newCount > 0) {
+				pushNewText = `${newCount} new`;
+				pushParts.push(pushNewText);
+			}
 		} else {
 			// Fallback: no base info
 			const newPush = Math.max(0, toPush - rebased);
-			if (newPush > 0) pushParts.push(`${newPush} to push`);
+			if (newPush > 0) {
+				pushNewText = `${newPush} to push`;
+				pushParts.push(pushNewText);
+			}
 			if (rebased > 0) pushParts.push(`${rebased} rebased`);
 		}
 
@@ -135,7 +147,12 @@ function remoteDiffParts(repo: RepoStatus): { push: string; pull: string; pullNe
 			}
 		}
 
-		return { push: pushParts.filter(Boolean).join(", "), pull: pullParts.join(", "), pullNewText };
+		return {
+			push: pushParts.filter(Boolean).join(", "),
+			pull: pullParts.join(", "),
+			pullNewText,
+			pushNewText,
+		};
 	}
 
 	// rebased not computed (only one of push/pull is active)
@@ -143,7 +160,21 @@ function remoteDiffParts(repo: RepoStatus): { push: string; pull: string; pullNe
 		push: toPush > 0 ? `${toPush} to push` : "",
 		pull: toPull > 0 ? `${toPull} to pull` : "",
 		pullNewText: "",
+		pushNewText: toPush > 0 ? `${toPush} to push` : "",
 	};
+}
+
+function pushSideSpans(pushText: string, pushNewText: string, pushNeedsAttention: boolean): Span[] {
+	if (!pushNeedsAttention) return [{ text: pushText, attention: "default" }];
+	if (!pushNewText || pushText === pushNewText) return [{ text: pushText, attention: "attention" }];
+	if (pushText.endsWith(`, ${pushNewText}`)) {
+		const prefix = pushText.slice(0, pushText.length - pushNewText.length - 2);
+		return [
+			{ text: `${prefix}, `, attention: "default" },
+			{ text: pushNewText, attention: "attention" },
+		];
+	}
+	return [{ text: pushText, attention: "attention" }];
 }
 
 /** Compute plain-text SHARE diff */
@@ -154,11 +185,11 @@ export function plainRemoteDiff(repo: RepoStatus): string {
 }
 
 /** Analyze the SHARE diff cell — arrow separator between push and pull sides */
-export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags): Cell {
+export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags, hasPullConflict = false): Cell {
 	const isDetached = repo.identity.headMode.kind === "detached";
 	if (isDetached) return EMPTY_CELL;
 
-	const { push: pushText, pull: pullText, pullNewText } = remoteDiffParts(repo);
+	const { push: pushText, pull: pullText, pullNewText, pushNewText } = remoteDiffParts(repo);
 	if (!pushText && !pullText) return EMPTY_CELL;
 
 	// Simple non-attention cases (no push activity)
@@ -169,9 +200,10 @@ export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags): Cell {
 
 	// Determine push-side attention
 	const rebased = repo.share.rebased ?? 0;
-	const baseAhead = repo.base?.ahead ?? repo.share.toPush ?? 0;
-	const newCount = baseAhead - rebased;
+	const toPush = repo.share.toPush ?? 0;
+	const newCount = toPush - rebased;
 	const pushNeedsAttention = flags.isUnpushed && (rebased === 0 || newCount > 0);
+	const pushSpans = pushSideSpans(pushText, pushNewText, pushNeedsAttention);
 
 	// Merged with new work — color only the push suffix portion
 	if (repo.base?.newCommitsAfterMerge && repo.base.newCommitsAfterMerge > 0 && !pullText) {
@@ -185,35 +217,30 @@ export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags): Cell {
 		return cell(text);
 	}
 
-	const pushAttention = pushNeedsAttention ? "attention" : "default";
-
 	// Push-only: single span
-	if (!pullText) return cell(pushText, pushAttention);
+	if (!pullText)
+		return pushSpans.length === 1 ? cell(pushText, pushSpans[0]?.attention ?? "default") : spans(...pushSpans);
 
-	// Both sides: push | arrow (muted) | pull (with "N new" highlighted when present)
+	// Both sides: push | arrow (muted) | pull (highlight "N new" only when pull conflict is predicted)
 	if (pullNewText && pullText !== pullNewText) {
 		// Has outdated + new: "M outdated, K new" — highlight "K new" with attention
 		const outdatedPortion = pullText.slice(0, pullText.length - pullNewText.length - 2);
 		return spans(
-			{ text: pushText, attention: pushAttention },
+			...pushSpans,
 			{ text: " → ", attention: "muted" },
-			{ text: outdatedPortion + ", ", attention: "default" },
-			{ text: pullNewText, attention: "attention" },
+			{ text: `${outdatedPortion}, `, attention: "default" },
+			{ text: pullNewText, attention: hasPullConflict ? "attention" : "default" },
 		);
 	}
 	if (pullNewText) {
 		// Pull is only "K new"
 		return spans(
-			{ text: pushText, attention: pushAttention },
+			...pushSpans,
 			{ text: " → ", attention: "muted" },
-			{ text: pullText, attention: "attention" },
+			{ text: pullText, attention: hasPullConflict ? "attention" : "default" },
 		);
 	}
-	return spans(
-		{ text: pushText, attention: pushAttention },
-		{ text: " → ", attention: "muted" },
-		{ text: pullText, attention: "default" },
-	);
+	return spans(...pushSpans, { text: " → ", attention: "muted" }, { text: pullText, attention: "default" });
 }
 
 /** Compute plain-text LOCAL cell */

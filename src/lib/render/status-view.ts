@@ -14,8 +14,10 @@ import { type VerboseDetail, verboseDetailToNodes } from "./status-verbose";
 export interface StatusViewContext {
 	/** The expected branch name for this workspace */
 	expectedBranch: string;
-	/** Set of repo names that have predicted merge conflicts */
-	conflictRepos: Set<string>;
+	/** Set of repo names with predicted conflicts against the base branch */
+	baseConflictRepos: Set<string>;
+	/** Set of repo names with predicted conflicts against the share tracking ref */
+	pullConflictRepos: Set<string>;
 	/** Name of the repo the user is currently cd'd into, if any */
 	currentRepo: string | null;
 	/** When provided, verbose detail is attached as afterRow nodes on each table row */
@@ -44,7 +46,8 @@ export function buildStatusView(summary: WorkspaceSummary, ctx: StatusViewContex
 	// Build rows
 	const rows: TableRow[] = repos.map((repo, i) => {
 		const flags = computeFlags(repo, ctx.expectedBranch);
-		const hasConflict = ctx.conflictRepos.has(repo.name);
+		const hasBaseConflict = ctx.baseConflictRepos.has(repo.name);
+		const hasPullConflict = ctx.pullConflictRepos.has(repo.name);
 		const lc = lastCommitParts[i] ?? { num: "", unit: "" };
 
 		const row: TableRow = {
@@ -52,9 +55,9 @@ export function buildStatusView(summary: WorkspaceSummary, ctx: StatusViewContex
 				repo: cell(repo.name),
 				branch: analyzeBranch(repo, ctx.expectedBranch),
 				baseName: analyzeBaseName(repo, flags),
-				baseDiff: analyzeBaseDiff(repo, flags, hasConflict),
+				baseDiff: analyzeBaseDiff(repo, flags, hasBaseConflict),
 				remoteName: analyzeRemoteName(repo, flags),
-				remoteDiff: analyzeRemoteDiff(repo, flags),
+				remoteDiff: analyzeRemoteDiff(repo, flags, hasPullConflict),
 				local: analyzeLocal(repo),
 				lastCommitNum: lc.num ? cell(lc.num) : EMPTY_CELL,
 				lastCommitUnit: lc.unit ? cell(lc.unit) : EMPTY_CELL,
