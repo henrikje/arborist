@@ -419,12 +419,13 @@ _arb() {
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($repo_names)'
                     ;;
-                push)
-                    _arguments \
-                        '(-f --force)'{-f,--force}'[Force push with lease]' \
-                        '(-N --fetch --no-fetch)--fetch[Fetch before push (default)]' \
-                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before push]' \
-                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+				push)
+					_arguments \
+						'(-f --force)'{-f,--force}'[Force push with lease]' \
+						'--include-merged[Include branches already merged into base]' \
+						'(-N --fetch --no-fetch)--fetch[Fetch before push (default)]' \
+						'(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before push]' \
+						'(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show outgoing commits in the plan]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \

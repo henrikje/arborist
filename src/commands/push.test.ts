@@ -83,11 +83,11 @@ describe("assessPushRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("already merged into main");
-		expect(a.skipReason).toContain("--force to recreate");
+		expect(a.skipReason).toContain("--include-merged to recreate");
 		expect(a.skipFlag).toBe("already-merged");
 	});
 
-	test("will-push gone+merged with force (recreate)", () => {
+	test("will-push gone+merged with includeMerged (recreate)", () => {
 		const a = assessPushRepo(
 			makeRepo({
 				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
@@ -105,7 +105,7 @@ describe("assessPushRepo", () => {
 			DIR,
 			"feature",
 			SHA,
-			{ force: true },
+			{ includeMerged: true },
 		);
 		expect(a.outcome).toBe("will-push");
 		expect(a.recreate).toBe(true);
@@ -156,7 +156,7 @@ describe("assessPushRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("already merged into main");
-		expect(a.skipReason).toContain("--force");
+		expect(a.skipReason).toContain("--include-merged");
 		expect(a.skipFlag).toBe("already-merged");
 	});
 
@@ -182,7 +182,7 @@ describe("assessPushRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("merged into main with 1 new commit");
-		expect(a.skipReason).toContain("rebase or --force");
+		expect(a.skipReason).toContain("rebase or --include-merged");
 		expect(a.skipFlag).toBe("merged-new-work");
 	});
 
@@ -207,7 +207,7 @@ describe("assessPushRepo", () => {
 		);
 		expect(a.outcome).toBe("skip");
 		expect(a.skipReason).toContain("merged into main with 2 new commits");
-		expect(a.skipReason).toContain("rebase or --force");
+		expect(a.skipReason).toContain("rebase or --include-merged");
 		expect(a.skipFlag).toBe("merged-new-work");
 	});
 
@@ -369,7 +369,7 @@ describe("assessPushRepo", () => {
 		expect(a.recreate).toBe(true);
 	});
 
-	test("merged-not-gone with force falls through to push logic", () => {
+	test("merged-not-gone with includeMerged falls through to push logic", () => {
 		const a = assessPushRepo(
 			makeRepo({
 				base: {
@@ -387,7 +387,7 @@ describe("assessPushRepo", () => {
 			DIR,
 			"feature",
 			SHA,
-			{ force: true },
+			{ includeMerged: true },
 		);
 		expect(a.outcome).toBe("will-push");
 		expect(a.ahead).toBe(2);
@@ -622,7 +622,7 @@ describe("formatPushPlan", () => {
 			[
 				makeAssessment({
 					outcome: "skip",
-					skipReason: "merged into main with 1 new commit (rebase or --force)",
+					skipReason: "merged into main with 1 new commit (rebase or --include-merged)",
 					skipFlag: "merged-new-work",
 				}),
 			],
