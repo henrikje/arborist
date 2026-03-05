@@ -175,6 +175,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 										...remainingBranches.map((b) => ({ name: b, value: b })),
 									],
 									pageSize: 20,
+									loop: false,
 								},
 								{ output: process.stderr },
 							);

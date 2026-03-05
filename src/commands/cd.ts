@@ -36,6 +36,7 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 							message: `Select a repo in '${ctx.currentWorkspace}'`,
 							choices: worktreeNames.map((name) => ({ name, value: name })),
 							pageSize: 20,
+							loop: false,
 						},
 						{ output: process.stderr },
 					);
@@ -56,6 +57,7 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
 						message: "Select a workspace",
 						choices: workspaces.map((name) => ({ name, value: name })),
 						pageSize: 20,
+						loop: false,
 					},
 					{ output: process.stderr },
 				);
