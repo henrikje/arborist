@@ -18,7 +18,13 @@ Use `--branch` (`-b`) when the branch name differs from the workspace name, `--b
 arb create dark-mode --branch "feat/dark-mode" --base develop --all-repos
 ```
 
-Running `arb create` without arguments walks you through it interactively. See `arb create --help` for all options.
+`arb create` adapts to how much you already specified:
+
+- `arb create` (no args) runs a guided flow (name, repos, branch).
+- `arb create <name>` prompts for repos only and uses `<name>` as the branch by default.
+- `arb create --branch <branch>` derives the workspace name from the branch tail (text after the last `/`).
+
+See `arb create --help` for all options.
 
 ## Work in your repos as usual
 
