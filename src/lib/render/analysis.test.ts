@@ -574,8 +574,8 @@ describe("plainRemoteDiff", () => {
 				rebased: 2,
 			},
 		});
-		// fromBase = 7-4 = 3, rebased = 2, newCount = 4-2 = 2, newPull = 3-2 = 1
-		expect(plainRemoteDiff(repo)).toBe("3 from main, 2 rebased, 2 new, 1 to pull");
+		// fromBase = 7-4 = 3, rebased = 2, newCount = 4-2 = 2; pull: outdated = 2, newPull = 3-2 = 1
+		expect(plainRemoteDiff(repo)).toBe("3 from main, 2 rebased, 2 new → 2 outdated, 1 new");
 	});
 
 	test("simple push count", () => {
@@ -627,8 +627,8 @@ describe("plainRemoteDiff", () => {
 				rebased: 3,
 			},
 		});
-		// fromBase = 3-3 = 0, rebased = 3, newCount = 3-3 = 0, newPull = 3-3 = 0
-		expect(plainRemoteDiff(repo)).toBe("3 rebased");
+		// fromBase = 3-3 = 0, rebased = 3, newCount = 3-3 = 0; pull: outdated = 3
+		expect(plainRemoteDiff(repo)).toBe("3 rebased → 3 outdated");
 	});
 
 	test("fromBase + rebased (no new work)", () => {
@@ -652,8 +652,8 @@ describe("plainRemoteDiff", () => {
 				rebased: 2,
 			},
 		});
-		// fromBase = 5-2 = 3, rebased = 2, newCount = 2-2 = 0
-		expect(plainRemoteDiff(repo)).toBe("3 from main, 2 rebased");
+		// fromBase = 5-2 = 3, rebased = 2, newCount = 2-2 = 0; pull: outdated = 2
+		expect(plainRemoteDiff(repo)).toBe("3 from main, 2 rebased → 2 outdated");
 	});
 
 	test("rebased + new (no fromBase)", () => {
@@ -677,8 +677,8 @@ describe("plainRemoteDiff", () => {
 				rebased: 2,
 			},
 		});
-		// fromBase = 5-5 = 0, rebased = 2, newCount = 5-2 = 3
-		expect(plainRemoteDiff(repo)).toBe("2 rebased, 3 new");
+		// fromBase = 5-5 = 0, rebased = 2, newCount = 5-2 = 3; pull: outdated = 2
+		expect(plainRemoteDiff(repo)).toBe("2 rebased, 3 new → 2 outdated");
 	});
 
 	test("base null fallback uses two-way split", () => {
@@ -693,8 +693,8 @@ describe("plainRemoteDiff", () => {
 				rebased: 2,
 			},
 		});
-		// Fallback: newPush = 5-2 = 3, newPull = 3-2 = 1
-		expect(plainRemoteDiff(repo)).toBe("3 to push, 2 rebased, 1 to pull");
+		// Fallback: newPush = 5-2 = 3; pull: outdated = 2, newPull = 3-2 = 1
+		expect(plainRemoteDiff(repo)).toBe("3 to push, 2 rebased → 2 outdated, 1 new");
 	});
 
 	test("uses base ref name in from label", () => {
@@ -718,7 +718,8 @@ describe("plainRemoteDiff", () => {
 				rebased: 2,
 			},
 		});
-		expect(plainRemoteDiff(repo)).toBe("3 from develop, 2 rebased");
+		// pull: outdated = 2
+		expect(plainRemoteDiff(repo)).toBe("3 from develop, 2 rebased → 2 outdated");
 	});
 });
 
@@ -768,7 +769,7 @@ describe("analyzeRemoteDiff", () => {
 		expect(result.spans[1]?.text).toBe("2 to push");
 	});
 
-	test("rebased-only (no new work) returns default attention", () => {
+	test("rebased-only (no new work) returns default attention with arrow and outdated", () => {
 		const repo = makeRepo({
 			base: {
 				remote: "origin",
@@ -790,10 +791,86 @@ describe("analyzeRemoteDiff", () => {
 			},
 		});
 		const flags = computeFlags(repo, "feature");
-		// base.ahead=3, rebased=3 → newCount=0, so default color
+		// base.ahead=3, rebased=3 → newCount=0, push default; pull: 3 outdated
 		const result = analyzeRemoteDiff(repo, flags);
-		expect(result.plain).toBe("3 rebased");
+		expect(result.plain).toBe("3 rebased → 3 outdated");
+		// Push span is default (no new work), arrow is muted, pull is default
 		expect(result.spans[0]?.attention).toBe("default");
+		expect(result.spans[1]?.text).toBe(" → ");
+		expect(result.spans[1]?.attention).toBe("muted");
+		expect(result.spans[2]?.attention).toBe("default");
+	});
+
+	test("pull-side 'new' gets attention when genuinely new remote content exists", () => {
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 4,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 7,
+				toPull: 3,
+				rebased: 2,
+			},
+		});
+		const flags = computeFlags(repo, "feature");
+		// fromBase=3, rebased=2, newCount=2; pull: outdated=2, newPull=1
+		const result = analyzeRemoteDiff(repo, flags);
+		expect(result.plain).toBe("3 from main, 2 rebased, 2 new → 2 outdated, 1 new");
+		// spans: pushText | " → " | "2 outdated, " | "1 new" (attention)
+		expect(result.spans[3]?.text).toBe("1 new");
+		expect(result.spans[3]?.attention).toBe("attention");
+		expect(result.spans[2]?.attention).toBe("default");
+	});
+
+	test("pull side only 'new' (no outdated) gets attention", () => {
+		const repo = makeRepo({
+			base: null,
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 5,
+				toPull: 3,
+				rebased: 0,
+			},
+		});
+		const flags = computeFlags(repo, "feature");
+		// rebased=0: outdated=0, newPull=3
+		const result = analyzeRemoteDiff(repo, flags);
+		expect(result.plain).toBe("5 to push → 3 new");
+		expect(result.spans[2]?.text).toBe("3 new");
+		expect(result.spans[2]?.attention).toBe("attention");
+	});
+
+	test("push and pull with rebased=null uses arrow with 'to pull'", () => {
+		const repo = makeRepo({
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 5,
+				toPull: 1,
+				rebased: null,
+			},
+		});
+		const flags = computeFlags(repo, "feature");
+		const result = analyzeRemoteDiff(repo, flags);
+		expect(result.plain).toBe("5 to push → 1 to pull");
+		// Push span is attention (isUnpushed, rebased=0), arrow is muted
+		expect(result.spans[0]?.attention).toBe("attention");
+		expect(result.spans[1]?.text).toBe(" → ");
+		expect(result.spans[1]?.attention).toBe("muted");
+		expect(result.spans[2]?.attention).toBe("default");
 	});
 
 	test("behind-only returns default attention", () => {

@@ -280,8 +280,11 @@ describe("analyzeRemoteDiff", () => {
 		});
 		const flags = computeFlags(repo, "feature");
 		const c = analyzeRemoteDiff(repo, flags);
-		expect(c.plain).toBe("2 rebased");
+		// pull: outdated = 2; push has no new work → default attention
+		expect(c.plain).toBe("2 rebased → 2 outdated");
 		expect(c.spans[0]?.attention).toBe("default");
+		expect(c.spans[1]?.text).toBe(" → ");
+		expect(c.spans[2]?.attention).toBe("default");
 	});
 
 	test("merged with new work — multi-span", () => {

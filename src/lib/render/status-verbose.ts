@@ -29,6 +29,7 @@ export interface VerboseDetail {
 		squashOf?: { hashes: string[]; shortHashes: string[] };
 	})[];
 	unpushed?: (VerboseCommit & { rebased: boolean })[];
+	toPull?: (VerboseCommit & { superseded: boolean })[];
 	staged?: NonNullable<StatusJsonRepo["verbose"]>["staged"];
 	unstaged?: NonNullable<StatusJsonRepo["verbose"]>["unstaged"];
 	untracked?: string[];
@@ -143,6 +144,24 @@ export async function gatherVerboseDetail(repo: RepoStatus, wsDir: string): Prom
 		}
 	}
 
+	// To pull from remote
+	if (repo.share.toPull !== null && repo.share.toPull > 0 && repo.share.ref) {
+		let rebasedRemoteHashes: Set<string> | null = null;
+		if (repo.share.rebased != null && repo.share.rebased > 0) {
+			const detection = await detectRebasedCommits(repoDir, repo.share.ref);
+			rebasedRemoteHashes = detection?.rebasedRemoteHashes ?? null;
+		}
+		const commits = await getCommitsBetweenFull(repoDir, "HEAD", repo.share.ref);
+		if (commits.length > 0) {
+			verbose.toPull = commits.map((c) => ({
+				hash: c.fullHash,
+				shortHash: c.shortHash,
+				subject: c.subject,
+				superseded: rebasedRemoteHashes?.has(c.fullHash) ?? false,
+			}));
+		}
+	}
+
 	// File-level detail
 	if (repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0) {
 		const files = await parseGitStatusFiles(repoDir);
@@ -162,7 +181,7 @@ export function toJsonVerbose(
 	detail: VerboseDetail,
 	base?: { newCommitsAfterMerge?: number; mergeCommitHash?: string } | null,
 ): StatusJsonRepo["verbose"] {
-	const { aheadOfBase, behindBase, unpushed, ...rest } = detail;
+	const { aheadOfBase, behindBase, unpushed, toPull, ...rest } = detail;
 	const stripShort = ({ hash, subject }: VerboseCommit) => ({ hash, subject });
 	const n = base?.newCommitsAfterMerge;
 	const mergeHash = base?.mergeCommitHash;
@@ -184,6 +203,7 @@ export function toJsonVerbose(
 			})),
 		}),
 		...(unpushed && { unpushed: unpushed.map(({ hash, subject, rebased }) => ({ hash, subject, rebased })) }),
+		...(toPull && { toPull: toPull.map(({ hash, subject, superseded }) => ({ hash, subject, superseded })) }),
 	};
 }
 
@@ -287,6 +307,19 @@ export function formatVerboseDetail(repo: RepoStatus, verbose: VerboseDetail | u
 			}
 			sections.push(section);
 		}
+	}
+
+	// To pull from remote
+	if (verbose?.toPull && repo.share) {
+		const shareLabel = repo.share.ref ?? repo.share.remote;
+		const allSuperseded = verbose.toPull.every((c) => c.superseded);
+		const safeSuffix = allSuperseded ? dim("  (safe to force push)") : "";
+		let section = `\n${SECTION_INDENT}To pull from ${shareLabel}:${safeSuffix}\n`;
+		for (const c of verbose.toPull) {
+			const tag = c.superseded ? dim(" (rebased locally)") : "";
+			section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
+		}
+		sections.push(section);
 	}
 
 	// File-level detail
@@ -459,6 +492,26 @@ export function verboseDetailToNodes(repo: RepoStatus, verbose: VerboseDetail | 
 
 			nodes.push({ kind: "gap" }, { kind: "section", header: cell(`Unpushed to ${shareLabel}:`), items });
 		}
+	}
+
+	// To pull from remote
+	if (verbose?.toPull && repo.share) {
+		const shareLabel = repo.share.ref ?? repo.share.remote;
+		const allSuperseded = verbose.toPull.every((c) => c.superseded);
+		const header: Cell = allSuperseded
+			? spans(
+					{ text: `To pull from ${shareLabel}:`, attention: "default" },
+					{ text: "  (safe to force push)", attention: "muted" },
+				)
+			: cell(`To pull from ${shareLabel}:`);
+		const items: Cell[] = verbose.toPull.map((c) => {
+			let commitCell = spans({ text: c.shortHash, attention: "muted" }, { text: ` ${c.subject}`, attention: "default" });
+			if (c.superseded) {
+				commitCell = suffix(commitCell, " (rebased locally)", "muted");
+			}
+			return commitCell;
+		});
+		nodes.push({ kind: "gap" }, { kind: "section", header, items });
 	}
 
 	// File-level detail

@@ -725,7 +725,7 @@ export async function verifySquashRange(
 export async function detectRebasedCommits(
 	repoDir: string,
 	trackingRef: string,
-): Promise<{ count: number; rebasedLocalHashes: Set<string> } | null> {
+): Promise<{ count: number; rebasedLocalHashes: Set<string>; rebasedRemoteHashes: Set<string> } | null> {
 	const rebaseStart = isDebug() ? performance.now() : 0;
 	const [localResult, remoteResult] = await Promise.all([
 		Bun.$`git -C ${repoDir} log -p ${trackingRef}..HEAD | git patch-id --stable`.quiet().nothrow(),
@@ -749,13 +749,21 @@ export async function detectRebasedCommits(
 	};
 
 	const localMap = parse(localResult.text());
-	const remoteIds = new Set(parse(remoteResult.text()).keys());
+	const remoteMap = parse(remoteResult.text());
 
 	const rebasedLocalHashes = new Set<string>();
+	const remoteIds = new Set(remoteMap.keys());
 	for (const [patchId, hash] of localMap) {
 		if (remoteIds.has(patchId)) rebasedLocalHashes.add(hash);
 	}
-	return { count: rebasedLocalHashes.size, rebasedLocalHashes };
+
+	const rebasedRemoteHashes = new Set<string>();
+	const localPatchIds = new Set(localMap.keys());
+	for (const [patchId, hash] of remoteMap) {
+		if (localPatchIds.has(patchId)) rebasedRemoteHashes.add(hash);
+	}
+
+	return { count: rebasedLocalHashes.size, rebasedLocalHashes, rebasedRemoteHashes };
 }
 
 export async function getDiffShortstat(
