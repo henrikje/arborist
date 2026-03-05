@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { basename, join } from "node:path";
 import { detectBranchMerged, git } from "../git/git";
 import type { GitCache } from "../git/git-cache";
@@ -155,7 +155,8 @@ export function repairAllWorktreeRefs(arbRootDir: string, reposDir: string): Set
  *   references it: warn (the other workspace's stale ref will be cleaned up by
  *   `cleanupWorktreeCollisions` on the next attach).
  * - If this workspace is the stale side (back-ref points elsewhere): remove the
- *   stale directory so it can be re-attached cleanly.
+ *   stale `.git` file (not the directory — it may contain uncommitted work) so
+ *   it can be re-attached cleanly.
  */
 export function detectSharedWorktreeEntries(wsDir: string, arbRootDir: string): void {
 	const thisWsRepos = workspaceRepoDirs(wsDir);
@@ -189,10 +190,13 @@ export function detectSharedWorktreeEntries(wsDir: string, arbRootDir: string): 
 			}
 		} else if (existsSync(backRef)) {
 			// The back-ref points to another workspace that still exists on disk.
-			// This workspace is the stale side — remove its directory so the repo
-			// can be re-attached with a fresh worktree entry.
-			rmSync(repoDir, { recursive: true, force: true });
-			warn(`  [${repoName}] removed stale worktree reference (entry belongs to another workspace)`);
+			// This workspace is the stale side — remove only the `.git` file to
+			// break the shared link. Keep the directory intact in case it contains
+			// uncommitted work. The repo can be re-attached with `arb attach`.
+			unlinkSync(join(repoDir, ".git"));
+			warn(
+				`  [${repoName}] removed stale worktree reference (entry belongs to another workspace) — run 'arb attach ${repoName}' to re-attach`,
+			);
 		}
 	}
 }

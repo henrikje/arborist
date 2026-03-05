@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync, unlinkSync } from "node:fs";
 import { basename, join } from "node:path";
 import { branchExistsLocally, git, isRepoDirty, remoteBranchExists } from "../git/git";
 import { GitCache } from "../git/git-cache";
@@ -44,7 +44,16 @@ export async function addWorktrees(
 				result.skipped.push(repo);
 				continue;
 			}
-			// Stale worktree reference — remove and recreate below
+			// Stale worktree reference — check if directory has user files
+			const entries = readdirSync(`${wsDir}/${repo}`).filter((e) => e !== ".git");
+			if (entries.length > 0) {
+				error(
+					`  [${repo}] directory exists with stale worktree reference and contains files — remove it manually or back up your changes first`,
+				);
+				result.failed.push(repo);
+				continue;
+			}
+			// Empty directory (or just .git) — safe to remove and recreate
 			warn(`  [${repo}] stale worktree reference — recreating`);
 			rmSync(`${wsDir}/${repo}`, { recursive: true });
 		}
@@ -238,7 +247,7 @@ function cleanupWorktreeCollisions(wsDir: string, repoName: string, arbRootDir: 
 		if (otherRepoDir === myRepoDir) continue;
 		const otherGitdir = readGitdirFromWorktree(otherRepoDir);
 		if (otherGitdir && otherGitdir === myGitdir) {
-			rmSync(otherRepoDir, { recursive: true, force: true });
+			unlinkSync(join(otherRepoDir, ".git"));
 			warn(`  [${repoName}] removed stale reference in ${ws}/${repoName}`);
 		}
 	}
