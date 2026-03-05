@@ -424,12 +424,12 @@ describe("formatPullPlan", () => {
 
 	test("shows fast-forward for merge-mode with toPush=0", () => {
 		const plan = formatPullPlan([makeAssessment({ pullMode: "merge", toPush: 0 })], makeRemotesMap(["repo-a", {}]));
-		expect(plan).toContain("(merge, fast-forward");
+		expect(plan).toContain("(fast-forward merge");
 	});
 
 	test("shows three-way for merge-mode with toPush>0", () => {
 		const plan = formatPullPlan([makeAssessment({ pullMode: "merge", toPush: 2 })], makeRemotesMap(["repo-a", {}]));
-		expect(plan).toContain("(merge, three-way");
+		expect(plan).toContain("(three-way merge");
 	});
 
 	test("no merge type annotation for rebase mode", () => {

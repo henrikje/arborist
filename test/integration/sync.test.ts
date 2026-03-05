@@ -641,7 +641,7 @@ describe("--verbose", () => {
 // ── pull merge-mode annotations ──────────────────────────────────
 
 describe("pull merge-mode annotations", () => {
-	test("arb pull --merge fast-forward shows merge, fast-forward", () =>
+	test("arb pull --merge fast-forward shows fast-forward merge", () =>
 		withEnv(async (env) => {
 			await arb(env, ["create", "my-feature", "repo-a"]);
 			await git(join(env.projectDir, "my-feature/repo-a"), ["push", "-u", "origin", "my-feature"]);
@@ -659,10 +659,10 @@ describe("pull merge-mode annotations", () => {
 				cwd: join(env.projectDir, "my-feature"),
 			});
 			expect(result.exitCode).toBe(0);
-			expect(result.output).toContain("merge, fast-forward");
+			expect(result.output).toContain("fast-forward merge");
 		}));
 
-	test("arb pull --merge three-way shows merge, three-way when diverged", () =>
+	test("arb pull --merge three-way shows three-way merge when diverged", () =>
 		withEnv(async (env) => {
 			await arb(env, ["create", "my-feature", "repo-a"]);
 			await git(join(env.projectDir, "my-feature/repo-a"), ["push", "-u", "origin", "my-feature"]);
@@ -685,7 +685,7 @@ describe("pull merge-mode annotations", () => {
 				cwd: join(env.projectDir, "my-feature"),
 			});
 			expect(result.exitCode).toBe(0);
-			expect(result.output).toContain("merge, three-way");
+			expect(result.output).toContain("three-way merge");
 		}));
 
 	test("arb pull --rebase does not show fast-forward or three-way", () =>
