@@ -453,7 +453,7 @@ describe("gone remote branches", () => {
 // ── merged branch detection ──────────────────────────────────────
 
 describe("merged branch detection", () => {
-	test("arb push --force overrides merged skip and recreates branch", () =>
+	test("arb push --include-merged overrides merged skip and recreates branch", () =>
 		withEnv(async (env) => {
 			await arb(env, ["create", "merged-force", "repo-a"]);
 			const wt = join(env.projectDir, "merged-force/repo-a");
@@ -475,11 +475,68 @@ describe("merged branch detection", () => {
 			await git(bare, ["branch", "-D", "merged-force"]);
 			await git(join(env.projectDir, ".arb/repos/repo-a"), ["fetch", "--prune"]);
 
-			const result = await arb(env, ["push", "--force", "--yes"], {
+			const result = await arb(env, ["push", "--include-merged", "--yes"], {
 				cwd: join(env.projectDir, "merged-force"),
 			});
 			expect(result.exitCode).toBe(0);
 			expect(result.output).toMatch(/pushed|Pushed/);
+		}));
+
+	test("arb push --force does not override merged skip", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "merged-force-only", "repo-a"]);
+			const wt = join(env.projectDir, "merged-force-only/repo-a");
+
+			await write(join(wt, "feature.txt"), "feature content");
+			await git(wt, ["add", "feature.txt"]);
+			await git(wt, ["commit", "-m", "feature work"]);
+			await arb(env, ["push", "--yes"], { cwd: join(env.projectDir, "merged-force-only") });
+
+			const bare = join(env.originDir, "repo-a.git");
+			const tmp = join(env.testDir, "tmp-squash-force-only");
+			await git(env.testDir, ["clone", bare, tmp]);
+			await git(tmp, ["merge", "--squash", "origin/merged-force-only"]);
+			await git(tmp, ["commit", "-m", "squash merge"]);
+			await git(tmp, ["push", "origin", "main"]);
+			await rm(tmp, { recursive: true });
+			await git(bare, ["branch", "-D", "merged-force-only"]);
+			await git(join(env.projectDir, ".arb/repos/repo-a"), ["fetch", "--prune"]);
+
+			const result = await arb(env, ["push", "--force", "--yes"], {
+				cwd: join(env.projectDir, "merged-force-only"),
+			});
+			expect(result.exitCode).toBe(0);
+			expect(result.output).toContain("already merged");
+			expect(result.output).toContain("--include-merged");
+		}));
+
+	test("arb push --include-merged does not push diverged repo", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "diverged-include-merged", "repo-a"]);
+			await write(join(env.projectDir, "diverged-include-merged/repo-a/file.txt"), "feature");
+			await git(join(env.projectDir, "diverged-include-merged/repo-a"), ["add", "file.txt"]);
+			await git(join(env.projectDir, "diverged-include-merged/repo-a"), ["commit", "-m", "feature"]);
+			await git(join(env.projectDir, "diverged-include-merged/repo-a"), [
+				"push",
+				"-u",
+				"origin",
+				"diverged-include-merged",
+			]);
+
+			const mainRepo = join(env.projectDir, ".arb/repos/repo-a");
+			await write(join(mainRepo, "upstream.txt"), "upstream");
+			await git(mainRepo, ["add", "upstream.txt"]);
+			await git(mainRepo, ["commit", "-m", "upstream"]);
+			await git(mainRepo, ["push"]);
+
+			await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "diverged-include-merged") });
+
+			const result = await arb(env, ["push", "--include-merged", "--yes"], {
+				cwd: join(env.projectDir, "diverged-include-merged"),
+			});
+			expect(result.exitCode).toBe(0);
+			expect(result.output).toContain("diverged from origin");
+			expect(result.output).toContain("--force");
 		}));
 
 	test("arb status --json includes mergedIntoBase field", () =>

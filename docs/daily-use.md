@@ -112,6 +112,8 @@ When a collaborator force-pushes a rebased branch and you have no unique local c
 
 If you add commits to a branch that was already merged (squash or regular), Arborist detects it and blocks `arb push` with a warning. Run `arb rebase` to replay only the new commits onto the updated base, then `arb push --force` and create a new PR.
 
+If you intentionally want to push an already merged branch anyway (for example to restore a deleted remote branch), use `arb push --include-merged`.
+
 Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
 
 All sync commands support `--where` (`-w`) to filter which repos are included in the plan:

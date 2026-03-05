@@ -349,6 +349,7 @@ describe("completion: flags", () => {
 			);
 			expect(result.exitCode).toBe(0);
 			expect(result.output).toContain("--force");
+			expect(result.output).toContain("--include-merged");
 			expect(result.output).toContain("--yes");
 			expect(result.output).toContain("--dry-run");
 		}));

@@ -39,6 +39,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 	program
 		.command("push [repos...]")
 		.option("-f, --force", "Force push with lease")
+		.option("--include-merged", "Include branches already merged into base")
 		.option("--fetch", "Fetch from all remotes before push (default)")
 		.option("-N, --no-fetch", "Skip fetching before push")
 		.option("-y, --yes", "Skip confirmation prompt")
@@ -47,13 +48,14 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 		.option("-w, --where <filter>", "Only push repos matching status filter (comma = OR, + = AND, ^ = negate)")
 		.summary("Push the feature branch to the share remote")
 		.description(
-			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos with no commits to push, or whose branches have been merged into the base branch. If a remote branch was deleted after merge, use --force to recreate it. Use --force after rebase or amend to force push with lease. Use --verbose to show the outgoing commits for each repo in the plan. Fetches before push by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
+			"Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos with no commits to push, or whose branches have been merged into the base branch unless --include-merged is used. If a remote branch was deleted after merge, use --include-merged to recreate it. Use --force after rebase or amend to force push with lease. Use --verbose to show the outgoing commits for each repo in the plan. Fetches before push by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
 		)
 		.action(
 			async (
 				repoArgs: string[],
 				options: {
 					force?: boolean;
+					includeMerged?: boolean;
 					fetch?: boolean;
 					yes?: boolean;
 					dryRun?: boolean;
@@ -93,7 +95,10 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 								if (!repoMatchesWhere(flags, where)) return null;
 							}
 							const headSha = await getShortHead(repoDir);
-							return assessPushRepo(status, repoDir, branch, headSha, { force: options.force });
+							return assessPushRepo(status, repoDir, branch, headSha, {
+								force: options.force,
+								includeMerged: options.includeMerged,
+							});
 						}),
 					);
 					const filtered = assessments.filter((a): a is PushAssessment => a !== null);
@@ -351,7 +356,7 @@ export function assessPushRepo(
 	repoDir: string,
 	branch: string,
 	headSha: string,
-	options?: { force?: boolean },
+	options?: { force?: boolean; includeMerged?: boolean },
 ): PushAssessment {
 	const behindBase = status.base?.behind ?? 0;
 
@@ -396,18 +401,18 @@ export function assessPushRepo(
 
 	// Remote branch was deleted (gone)
 	if (status.share.refMode === "gone") {
-		if (status.base?.mergedIntoBase != null && !options?.force) {
+		if (status.base?.mergedIntoBase != null && !options?.includeMerged) {
 			const n = status.base.newCommitsAfterMerge;
 			if (n && n > 0) {
 				return {
 					...base,
-					skipReason: `merged into ${status.base.ref} with ${n} new ${n === 1 ? "commit" : "commits"} (rebase or --force to recreate)`,
+					skipReason: `merged into ${status.base.ref} with ${n} new ${n === 1 ? "commit" : "commits"} (rebase or --include-merged to recreate)`,
 					skipFlag: "merged-new-work",
 				};
 			}
 			return {
 				...base,
-				skipReason: `already merged into ${status.base.ref} (use --force to recreate)`,
+				skipReason: `already merged into ${status.base.ref} (use --include-merged to recreate)`,
 				skipFlag: "already-merged",
 			};
 		}
@@ -416,16 +421,20 @@ export function assessPushRepo(
 	}
 
 	// Merged but not gone — nothing useful to push unless forced
-	if (status.base?.mergedIntoBase != null && !options?.force) {
+	if (status.base?.mergedIntoBase != null && !options?.includeMerged) {
 		const n = status.base.newCommitsAfterMerge;
 		if (n && n > 0) {
 			return {
 				...base,
-				skipReason: `merged into ${status.base.ref} with ${n} new ${n === 1 ? "commit" : "commits"} (rebase or --force)`,
+				skipReason: `merged into ${status.base.ref} with ${n} new ${n === 1 ? "commit" : "commits"} (rebase or --include-merged)`,
 				skipFlag: "merged-new-work",
 			};
 		}
-		return { ...base, skipReason: `already merged into ${status.base.ref} (use --force)`, skipFlag: "already-merged" };
+		return {
+			...base,
+			skipReason: `already merged into ${status.base.ref} (use --include-merged)`,
+			skipFlag: "already-merged",
+		};
 	}
 
 	// Never pushed (noRef) — new branch

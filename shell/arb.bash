@@ -469,10 +469,10 @@ __arb_complete_push() {
         __arb_complete_where_value "$cur"
         return
     fi
-    if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-f --force --fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -w --where" -- "$cur"))
-        return
-    fi
+	if [[ "$cur" == -* ]]; then
+		COMPREPLY=($(compgen -W "-f --force --include-merged --fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -w --where" -- "$cur"))
+		return
+	fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
 }
 
