@@ -164,6 +164,8 @@ describe("create", () => {
 			);
 			const wsDir = join(env.projectDir, "improve-arb-create-ux-Ipru1");
 			expect(existsSync(wsDir)).toBe(true);
+			expect(existsSync(join(wsDir, "repo-a"))).toBe(true);
+			expect(existsSync(join(wsDir, "repo-b"))).toBe(true);
 			const config = await readFile(join(wsDir, ".arbws/config"), "utf8");
 			expect(config).toContain("branch = claude/improve-arb-create-ux-Ipru1");
 		}));
