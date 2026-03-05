@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import { detectBranchMerged, git } from "../git/git";
 import type { GitCache } from "../git/git-cache";
@@ -9,7 +9,7 @@ import { listRepos, listWorkspaces, workspaceRepoDirs } from "./repos";
  * Read a worktree's `.git` file and extract the gitdir path.
  * Returns null if the file doesn't exist or isn't a valid gitdir reference.
  */
-function readGitdirFromWorktree(repoDir: string): string | null {
+export function readGitdirFromWorktree(repoDir: string): string | null {
 	const gitPath = join(repoDir, ".git");
 	try {
 		const content = readFileSync(gitPath, "utf-8").trim();
@@ -144,44 +144,55 @@ export function repairAllWorktreeRefs(arbRootDir: string, reposDir: string): Set
 }
 
 /**
- * Detect when multiple workspace repos reference the same canonical worktree entry.
- * This indicates corruption — typically caused by a worktree entry being pruned and
- * its name reused while another workspace still holds a stale `.git` reference.
+ * Detect when multiple workspace repos reference the same canonical worktree entry,
+ * and auto-repair when the current workspace is the stale side.
  *
- * Only checks repos in the given workspace (`wsDir`) against all other workspaces.
- * Pure filesystem reads — no git processes spawned.
+ * This corruption is typically caused by a worktree entry being pruned and its name
+ * reused while another workspace still holds a stale `.git` reference.
+ *
+ * For each repo in this workspace:
+ * - If this workspace owns the entry (back-ref matches) but another workspace also
+ *   references it: warn (the other workspace's stale ref will be cleaned up by
+ *   `cleanupWorktreeCollisions` on the next attach).
+ * - If this workspace is the stale side (back-ref points elsewhere): remove the
+ *   stale directory so it can be re-attached cleanly.
  */
 export function detectSharedWorktreeEntries(wsDir: string, arbRootDir: string): void {
 	const thisWsRepos = workspaceRepoDirs(wsDir);
 	if (thisWsRepos.length === 0) return;
 
-	// Build a map of gitdir → workspace repo path for THIS workspace
-	const thisWsEntries = new Map<string, string>();
+	const thisWsName = basename(wsDir);
+	const workspaces = listWorkspaces(arbRootDir);
+
 	for (const repoDir of thisWsRepos) {
 		const gitdirPath = readGitdirFromWorktree(repoDir);
-		if (gitdirPath) {
-			thisWsEntries.set(gitdirPath, repoDir);
-		}
-	}
-	if (thisWsEntries.size === 0) return;
+		if (!gitdirPath) continue;
 
-	// Scan all other workspaces for collisions
-	const workspaces = listWorkspaces(arbRootDir);
-	const thisWsName = basename(wsDir);
-	for (const ws of workspaces) {
-		if (ws === thisWsName) continue;
-		const otherWsDir = join(arbRootDir, ws);
-		for (const otherRepoDir of workspaceRepoDirs(otherWsDir)) {
-			const otherGitdir = readGitdirFromWorktree(otherRepoDir);
-			if (!otherGitdir) continue;
+		const backRef = readGitdirBackRef(gitdirPath);
+		if (!backRef) continue;
 
-			const conflictingDir = thisWsEntries.get(otherGitdir);
-			if (conflictingDir) {
-				const repoName = basename(conflictingDir);
-				warn(
-					`  [${repoName}] shares worktree entry with ${ws}/${repoName} — run 'arb detach ${repoName}' then 'arb attach ${repoName}' to fix`,
-				);
+		const expectedGitPath = join(repoDir, ".git");
+		const repoName = basename(repoDir);
+
+		if (backRef === expectedGitPath) {
+			// This workspace owns the entry. Check if another workspace also
+			// points to it (the other workspace has a stale forward-ref).
+			for (const ws of workspaces) {
+				if (ws === thisWsName) continue;
+				const otherRepoDir = join(arbRootDir, ws, repoName);
+				const otherGitdir = readGitdirFromWorktree(otherRepoDir);
+				if (otherGitdir && otherGitdir === gitdirPath) {
+					warn(
+						`  [${repoName}] worktree entry shared with ${ws}/${repoName} — stale reference will be cleaned on next attach`,
+					);
+				}
 			}
+		} else if (existsSync(backRef)) {
+			// The back-ref points to another workspace that still exists on disk.
+			// This workspace is the stale side — remove its directory so the repo
+			// can be re-attached with a fresh worktree entry.
+			rmSync(repoDir, { recursive: true, force: true });
+			warn(`  [${repoName}] removed stale worktree reference (entry belongs to another workspace)`);
 		}
 	}
 }

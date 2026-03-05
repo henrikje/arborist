@@ -68,22 +68,42 @@ describe("worktree integrity", () => {
 			expect(newGitContent).not.toBe(wsSecondGitContent);
 		}));
 
-	test("shared worktree entry is detected and warned about", () =>
+	test("shared worktree entry — stale side is auto-repaired on command run", () =>
 		withEnv(async (env) => {
 			// Create two workspaces with repo-a
 			await arb(env, ["create", "ws-alpha", "repo-a"]);
 			await arb(env, ["create", "ws-beta", "repo-a"]);
 
-			// Corrupt ws-alpha to point to ws-beta's worktree entry
+			// Corrupt ws-alpha to point to ws-beta's worktree entry (ws-alpha becomes the stale side)
 			const wsBetaGitContent = readFileSync(join(env.projectDir, "ws-beta/repo-a/.git"), "utf-8").trim();
 			writeFileSync(join(env.projectDir, "ws-alpha/repo-a/.git"), wsBetaGitContent);
 
-			// Run any command that calls requireWorkspace() — status is a good candidate
+			// Run status in ws-alpha — should auto-repair by removing the stale directory
 			const result = await arb(env, ["-C", join(env.projectDir, "ws-alpha"), "status", "-N"]);
+			expect(result.output).toContain("removed stale worktree reference");
 
-			// Should warn about the shared entry
-			expect(result.output).toContain("shares worktree entry");
-			expect(result.output).toContain("ws-beta");
+			// ws-alpha/repo-a should no longer exist (was the stale side, removed)
+			expect(existsSync(join(env.projectDir, "ws-alpha/repo-a"))).toBe(false);
+
+			// ws-beta should still be fine
+			const betaResult = await arb(env, ["-C", join(env.projectDir, "ws-beta"), "status", "-N"]);
+			expect(betaResult.exitCode).toBe(0);
+			expect(betaResult.output).not.toContain("stale");
+			expect(betaResult.output).not.toContain("shared");
+		}));
+
+	test("shared worktree entry — owner side warns about other workspace", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "ws-owner", "repo-a"]);
+			await arb(env, ["create", "ws-stale", "repo-a"]);
+
+			// Make ws-stale point to ws-owner's worktree entry
+			const wsOwnerGitContent = readFileSync(join(env.projectDir, "ws-owner/repo-a/.git"), "utf-8").trim();
+			writeFileSync(join(env.projectDir, "ws-stale/repo-a/.git"), wsOwnerGitContent);
+
+			// Run status from ws-owner (the owner side) — should warn about the other workspace
+			const result = await arb(env, ["-C", join(env.projectDir, "ws-owner"), "status", "-N"]);
+			expect(result.output).toContain("worktree entry shared with ws-stale");
 		}));
 
 	test("valid worktree directory is correctly skipped without stale warning", () =>
@@ -94,5 +114,138 @@ describe("worktree integrity", () => {
 			const result = await arb(env, ["attach", "repo-a"], { cwd: join(env.projectDir, "ws-ok") });
 			expect(result.output).toContain("already exists");
 			expect(result.output).not.toContain("stale");
+		}));
+
+	test("detach+attach cycle resolves shared entry", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "ws-a", "repo-a"]);
+			await arb(env, ["create", "ws-b", "repo-a"]);
+
+			// Corrupt: make ws-a point to ws-b's worktree entry
+			const wsBGitContent = readFileSync(join(env.projectDir, "ws-b/repo-a/.git"), "utf-8").trim();
+			writeFileSync(join(env.projectDir, "ws-a/repo-a/.git"), wsBGitContent);
+
+			// Detach from ws-a — auto-repair removes stale dir, detach sees "not in workspace"
+			await arb(env, ["detach", "repo-a", "--force"], { cwd: join(env.projectDir, "ws-a") });
+
+			// Attach to ws-a — should create a new, non-shared entry
+			const attachResult = await arb(env, ["attach", "repo-a"], { cwd: join(env.projectDir, "ws-a") });
+			expect(attachResult.exitCode).toBe(0);
+
+			// Verify ws-a has its own valid entry
+			const wsAGit = readFileSync(join(env.projectDir, "ws-a/repo-a/.git"), "utf-8").trim();
+			const wsBGit = readFileSync(join(env.projectDir, "ws-b/repo-a/.git"), "utf-8").trim();
+			expect(wsAGit).not.toBe(wsBGit);
+
+			// Both should have valid back-refs
+			const wsAGitdir = wsAGit.slice("gitdir: ".length);
+			const wsABackRef = readFileSync(join(wsAGitdir, "gitdir"), "utf-8").trim();
+			expect(wsABackRef).toBe(join(env.projectDir, "ws-a/repo-a/.git"));
+
+			const wsBGitdir = wsBGit.slice("gitdir: ".length);
+			const wsBBackRef = readFileSync(join(wsBGitdir, "gitdir"), "utf-8").trim();
+			expect(wsBBackRef).toBe(join(env.projectDir, "ws-b/repo-a/.git"));
+		}));
+
+	test("detach fallback does not run global prune", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "ws-keep", "repo-a"]);
+			await arb(env, ["create", "ws-fix", "repo-a"]);
+
+			// Save ws-keep's gitdir info before deleting
+			const wsKeepGit = readFileSync(join(env.projectDir, "ws-keep/repo-a/.git"), "utf-8").trim();
+			const wsKeepGitdir = wsKeepGit.slice("gitdir: ".length);
+
+			// Delete ws-keep's repo dir (simulate temporary absence)
+			await rm(join(env.projectDir, "ws-keep/repo-a"), { recursive: true });
+
+			// Detach from ws-fix — the fallback should use scoped pruning
+			await arb(env, ["detach", "repo-a"], { cwd: join(env.projectDir, "ws-fix") });
+
+			// ws-keep's worktree entry should still exist in the canonical repo
+			// (global prune would have removed it since ws-keep/repo-a is gone)
+			expect(existsSync(wsKeepGitdir)).toBe(true);
+		}));
+
+	test("detach with invalid worktree ref skips git worktree remove", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "ws-good", "repo-a"]);
+			await arb(env, ["create", "ws-bad", "repo-a"]);
+
+			// Corrupt ws-bad to point to ws-good's entry
+			const wsGoodGitContent = readFileSync(join(env.projectDir, "ws-good/repo-a/.git"), "utf-8").trim();
+			writeFileSync(join(env.projectDir, "ws-bad/repo-a/.git"), wsGoodGitContent);
+
+			// Detach from ws-bad — should succeed (auto-repair removes stale dir first)
+			const result = await arb(env, ["detach", "repo-a", "--force"], { cwd: join(env.projectDir, "ws-bad") });
+			expect(result.exitCode).toBe(0);
+
+			// ws-good should still work fine (its entry was not touched)
+			const goodResult = await arb(env, ["-C", join(env.projectDir, "ws-good"), "status", "-N"]);
+			expect(goodResult.exitCode).toBe(0);
+			const goodGit = readFileSync(join(env.projectDir, "ws-good/repo-a/.git"), "utf-8").trim();
+			const goodGitdir = goodGit.slice("gitdir: ".length);
+			const backRef = readFileSync(join(goodGitdir, "gitdir"), "utf-8").trim();
+			expect(backRef).toBe(join(env.projectDir, "ws-good/repo-a/.git"));
+		}));
+
+	test("attach cleans up stale collision refs in other workspaces", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "ws-victim", "repo-a"]);
+			await arb(env, ["create", "ws-culprit", "repo-a"]);
+
+			// Save ws-victim's gitdir path
+			const victimGit = readFileSync(join(env.projectDir, "ws-victim/repo-a/.git"), "utf-8").trim();
+
+			// Detach repo-a from ws-culprit
+			await arb(env, ["detach", "repo-a"], { cwd: join(env.projectDir, "ws-culprit") });
+
+			// Simulate the corruption scenario: prune ws-victim's entry, then recreate
+			// a stale .git file that will collide when ws-culprit re-attaches
+			await rm(join(env.projectDir, "ws-victim/repo-a"), { recursive: true });
+			await git(join(env.projectDir, ".arb/repos/repo-a"), ["worktree", "prune"]);
+
+			// Recreate ws-victim dir with stale .git pointing to the old entry name
+			await mkdir(join(env.projectDir, "ws-victim/repo-a"), { recursive: true });
+			writeFileSync(join(env.projectDir, "ws-victim/repo-a/.git"), victimGit);
+
+			// Re-attach to ws-culprit — if the new entry reuses the name,
+			// cleanupWorktreeCollisions should remove ws-victim's stale .git
+			const result = await arb(env, ["attach", "repo-a"], { cwd: join(env.projectDir, "ws-culprit") });
+			expect(result.exitCode).toBe(0);
+
+			// ws-culprit should have a valid, non-shared entry
+			const culpritGit = readFileSync(join(env.projectDir, "ws-culprit/repo-a/.git"), "utf-8").trim();
+			const culpritGitdir = culpritGit.slice("gitdir: ".length);
+			const backRef = readFileSync(join(culpritGitdir, "gitdir"), "utf-8").trim();
+			expect(backRef).toBe(join(env.projectDir, "ws-culprit/repo-a/.git"));
+
+			// ws-victim's stale .git should have been cleaned up (if collision occurred)
+			// or not exist at all
+			if (existsSync(join(env.projectDir, "ws-victim/repo-a/.git"))) {
+				// If the .git file still exists, it should not point to ws-culprit's entry
+				const victimGitNow = readFileSync(join(env.projectDir, "ws-victim/repo-a/.git"), "utf-8").trim();
+				expect(victimGitNow).not.toBe(culpritGit);
+			}
+		}));
+
+	test("targeted stale entry removal unblocks worktree add", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "ws-stale", "repo-a"]);
+
+			// Delete the workspace repo dir to make its worktree entry stale
+			await rm(join(env.projectDir, "ws-stale/repo-a"), { recursive: true });
+
+			// Re-attach — removeStaleEntryAtPath should find and remove the stale entry
+			// allowing git worktree add to succeed
+			const result = await arb(env, ["attach", "repo-a"], { cwd: join(env.projectDir, "ws-stale") });
+			expect(result.exitCode).toBe(0);
+
+			// Should have a valid worktree
+			const gitContent = readFileSync(join(env.projectDir, "ws-stale/repo-a/.git"), "utf-8").trim();
+			expect(gitContent.startsWith("gitdir: ")).toBe(true);
+			const gitdirPath = gitContent.slice("gitdir: ".length);
+			const backRef = readFileSync(join(gitdirPath, "gitdir"), "utf-8").trim();
+			expect(backRef).toBe(join(env.projectDir, "ws-stale/repo-a/.git"));
 		}));
 });

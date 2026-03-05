@@ -5,6 +5,7 @@ export {
 	findOrphanedBranches,
 	findStaleWorktrees,
 	pruneWorktrees,
+	readGitdirFromWorktree,
 	repairAllWorktreeRefs,
 	repairWorktreeRefs,
 } from "./clean";
@@ -56,4 +57,4 @@ export {
 	workspaceFilePath,
 	workspaceRepoList,
 } from "./templates";
-export { type AddWorktreesResult, addWorktrees } from "./worktrees";
+export { type AddWorktreesResult, addWorktrees, isWorktreeRefValid, pruneWorktreeEntriesForDir } from "./worktrees";

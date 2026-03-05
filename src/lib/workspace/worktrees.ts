@@ -1,10 +1,11 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { branchExistsLocally, git, isRepoDirty, remoteBranchExists } from "../git/git";
 import { GitCache } from "../git/git-cache";
 import type { RepoRemotes } from "../git/remotes";
 import { error, inlineResult, inlineStart, warn } from "../terminal/output";
-import { parseWorktreeList } from "./clean";
+import { parseWorktreeList, readGitdirFromWorktree } from "./clean";
+import { listWorkspaces } from "./repos";
 
 export interface AddWorktreesResult {
 	created: string[];
@@ -91,13 +92,11 @@ export async function addWorktrees(
 
 		const branchExists = await branchExistsLocally(repoPath, branch);
 
-		// Prune only stale worktree entries that target this workspace, to avoid
-		// destroying entries belonging to other workspaces whose directories may be
-		// temporarily missing (e.g. deleted by an agent). A blanket `git worktree prune`
-		// would remove ALL stale entries, allowing git to reuse their names for new
-		// entries — leaving orphaned `.git` files in other workspaces pointing to the
-		// wrong worktree.
-		await pruneWorktreeEntriesForDir(repoPath, wsDir);
+		// Remove the specific stale worktree entry at the exact path we're about to
+		// use, if one exists. This is more surgical than pruning all stale entries in
+		// the workspace — it only removes the single entry that would block the
+		// upcoming `git worktree add`.
+		await removeStaleEntryAtPath(repoPath, `${wsDir}/${repo}`);
 
 		if (branchExists) {
 			inlineStart(repo, `attaching branch ${branch}`);
@@ -140,6 +139,10 @@ export async function addWorktrees(
 			inlineResult(repo, `branch ${branch} created from ${startPoint}`);
 		}
 
+		// After creating the worktree, clean up stale `.git` files in other workspaces
+		// that now accidentally point to the same entry due to git reusing entry names.
+		cleanupWorktreeCollisions(wsDir, repo, arbRootDir);
+
 		result.created.push(repo);
 	}
 
@@ -153,7 +156,7 @@ export async function addWorktrees(
  * - The worktree entry it references doesn't exist
  * - The worktree entry's back-reference (`gitdir` file) doesn't match
  */
-function isWorktreeRefValid(repoDir: string): boolean {
+export function isWorktreeRefValid(repoDir: string): boolean {
 	const gitPath = join(repoDir, ".git");
 	try {
 		const content = readFileSync(gitPath, "utf-8").trim();
@@ -176,7 +179,7 @@ function isWorktreeRefValid(repoDir: string): boolean {
  * prevents accidentally destroying entries for other workspaces whose directories
  * may be temporarily missing.
  */
-async function pruneWorktreeEntriesForDir(repoPath: string, targetDir: string): Promise<void> {
+export async function pruneWorktreeEntriesForDir(repoPath: string, targetDir: string): Promise<void> {
 	const listResult = await git(repoPath, "worktree", "list", "--porcelain");
 	if (listResult.exitCode !== 0) return;
 
@@ -190,5 +193,53 @@ async function pruneWorktreeEntriesForDir(repoPath: string, targetDir: string): 
 		if (existsSync(wtPath)) continue;
 		// Stale entry for this workspace — remove it
 		await git(repoPath, "worktree", "remove", "--force", wtPath);
+	}
+}
+
+/**
+ * Remove the specific stale worktree entry at an exact target path, if one exists.
+ * Unlike `pruneWorktreeEntriesForDir` (which scans all entries in a workspace dir),
+ * this only checks for and removes the single entry at the given path.
+ *
+ * Returns true if a stale entry was found and removed.
+ */
+async function removeStaleEntryAtPath(repoPath: string, targetPath: string): Promise<boolean> {
+	if (existsSync(targetPath)) return false;
+
+	const listResult = await git(repoPath, "worktree", "list", "--porcelain");
+	if (listResult.exitCode !== 0) return false;
+
+	const paths = parseWorktreeList(listResult.stdout);
+	for (const wtPath of paths) {
+		if (wtPath === repoPath) continue;
+		if (wtPath === targetPath) {
+			await git(repoPath, "worktree", "remove", "--force", wtPath);
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * After creating a worktree, check all other workspaces for stale `.git` files
+ * that now accidentally point to the same worktree entry (due to git reusing
+ * the entry name after a previous entry was pruned). Remove any such stale
+ * references to prevent shared-entry corruption.
+ */
+function cleanupWorktreeCollisions(wsDir: string, repoName: string, arbRootDir: string): void {
+	const myRepoDir = join(wsDir, repoName);
+	const myGitdir = readGitdirFromWorktree(myRepoDir);
+	if (!myGitdir) return;
+
+	const thisWsName = basename(wsDir);
+	for (const ws of listWorkspaces(arbRootDir)) {
+		if (ws === thisWsName) continue;
+		const otherRepoDir = join(arbRootDir, ws, repoName);
+		if (otherRepoDir === myRepoDir) continue;
+		const otherGitdir = readGitdirFromWorktree(otherRepoDir);
+		if (otherGitdir && otherGitdir === myGitdir) {
+			rmSync(otherRepoDir, { recursive: true, force: true });
+			warn(`  [${repoName}] removed stale reference in ${ws}/${repoName}`);
+		}
 	}
 }
