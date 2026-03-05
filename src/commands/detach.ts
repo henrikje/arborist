@@ -1,5 +1,5 @@
 import { existsSync, rmSync } from "node:fs";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/core";
 import type { ArbContext } from "../lib/core";
@@ -11,7 +11,9 @@ import {
 	applyRepoTemplates,
 	applyWorkspaceTemplates,
 	displayOverlaySummary,
+	isWorktreeRefValid,
 	listRepos,
+	pruneWorktreeEntriesForDir,
 	requireBranch,
 	requireWorkspace,
 	selectInteractive,
@@ -93,14 +95,22 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 				}
 
 				inlineStart(repo, "detaching");
-				const removeArgs = ["worktree", "remove"];
-				if (options.force) removeArgs.push("--force");
-				removeArgs.push(wtPath);
-				const removeResult = await git(`${ctx.reposDir}/${repo}`, ...removeArgs);
-				if (removeResult.exitCode !== 0) {
-					// Fallback: rm and prune
+				const canonicalDir = `${ctx.reposDir}/${repo}`;
+
+				if (!isWorktreeRefValid(join(wsDir, repo))) {
+					// Stale or shared ref — the worktree entry belongs to another
+					// workspace. Just remove the directory; don't touch the entry.
 					rmSync(wtPath, { recursive: true, force: true });
-					await git(`${ctx.reposDir}/${repo}`, "worktree", "prune");
+				} else {
+					const removeArgs = ["worktree", "remove"];
+					if (options.force) removeArgs.push("--force");
+					removeArgs.push(wtPath);
+					const removeResult = await git(canonicalDir, ...removeArgs);
+					if (removeResult.exitCode !== 0) {
+						// Fallback: rm and scoped prune (only this workspace's entries)
+						rmSync(wtPath, { recursive: true, force: true });
+						await pruneWorktreeEntriesForDir(canonicalDir, wsDir);
+					}
 				}
 				inlineResult(repo, "detached");
 
