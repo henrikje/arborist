@@ -55,6 +55,25 @@ arb path fix-login/frontend    # /home/you/my-project/fix-login/frontend
 arb path frontend              # /home/you/my-project/fix-login/frontend (when inside fix-login)
 ```
 
+## Check out an existing branch
+
+`arb create` works with both new and existing branches. If the branch already exists locally or on the share remote, arb checks it out instead of creating a new one:
+
+```bash
+arb create collab-work -b feat/payments repo-a repo-b
+```
+
+```
+Creating worktrees...
+  [repo-a] branch feat/payments checked out from origin/feat/payments
+  [repo-b] branch feat/payments created from origin/main
+Created workspace collab-work (2 repos) on branch feat/payments
+```
+
+When run interactively, `arb create` fetches the selected repos and presents a branch selector that lists all remote branches across the selected repos. This makes it easy to discover and check out existing branches without having to remember exact names. The selector labels the default suggestion as "(new branch)" or "(existing branch)" and offers an "Enter a different name..." option for custom input.
+
+This is useful when you want to resume work on an existing feature, collaborate on a branch someone else started, or set up a local workspace after switching machines. The per-repo output tells you exactly what happened — whether each branch was created fresh, checked out from a remote, or attached from a local copy.
+
 ## Attach and detach repos
 
 You can attach more repos to an existing workspace at any time:

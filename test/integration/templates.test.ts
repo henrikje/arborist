@@ -101,15 +101,15 @@ describe("templates", () => {
 			expect(existsSync(join(env.projectDir, "tpl-ignore-test/nonexistent-repo/.env"))).toBe(false);
 		}));
 
-	test("workspace templates applied when creating workspace with zero repos", () =>
+	test("workspace templates applied even without repo templates", () =>
 		withEnv(async (env) => {
 			await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
-			await write(join(env.projectDir, ".arb/templates/workspace/config.txt"), "empty-ws");
+			await write(join(env.projectDir, ".arb/templates/workspace/config.txt"), "ws-only");
 
-			await arb(env, ["create", "tpl-empty-ws"]);
-			expect(existsSync(join(env.projectDir, "tpl-empty-ws/config.txt"))).toBe(true);
-			const content = await readFile(join(env.projectDir, "tpl-empty-ws/config.txt"), "utf8");
-			expect(content.trimEnd()).toBe("empty-ws");
+			await arb(env, ["create", "tpl-ws-only", "--all-repos"]);
+			expect(existsSync(join(env.projectDir, "tpl-ws-only/config.txt"))).toBe(true);
+			const content = await readFile(join(env.projectDir, "tpl-ws-only/config.txt"), "utf8");
+			expect(content.trimEnd()).toBe("ws-only");
 		}));
 
 	test("arb create reports seeded template count", () =>

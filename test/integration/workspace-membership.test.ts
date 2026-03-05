@@ -57,13 +57,6 @@ describe("create", () => {
 			expect(content).toContain("branch = feat/payments");
 		}));
 
-	test("arb create derives branch from workspace name (lowercased)", () =>
-		withEnv(async (env) => {
-			await arb(env, ["create", "MyFeature", "--all-repos"]);
-			const content = await readFile(join(env.projectDir, "MyFeature/.arbws/config"), "utf8");
-			expect(content).toContain("branch = myfeature");
-		}));
-
 	test("arb create attaches existing branch", () =>
 		withEnv(async (env) => {
 			const canonicalRepoA = join(env.projectDir, ".arb/repos/repo-a");
@@ -148,12 +141,11 @@ describe("create", () => {
 			expect(result.output).toContain("already exists");
 		}));
 
-	test("arb create with no repos creates empty workspace", () =>
+	test("arb create with no repos fails in non-TTY", () =>
 		withEnv(async (env) => {
 			const result = await arb(env, ["create", "no-repos-ws"]);
-			expect(result.exitCode).toBe(0);
-			expect(existsSync(join(env.projectDir, "no-repos-ws/.arbws"))).toBe(true);
-			expect(result.output).toContain("No repos added");
+			expect(result.exitCode).not.toBe(0);
+			expect(result.output).toContain("Usage: arb create");
 		}));
 
 	test("arb create without name fails", () =>
@@ -204,6 +196,60 @@ describe("create", () => {
 			expect(result.exitCode).not.toBe(0);
 			expect(result.output).toContain("Unknown repos: badrepo");
 			expect(result.output).toContain("Not found in .arb/repos/");
+		}));
+
+	test("arb create with name and repos derives branch without interactive prompts", () =>
+		withEnv(async (env) => {
+			const result = await arb(env, ["create", "FeatureFoo", "repo-a", "repo-b"]);
+			expect(result.exitCode).toBe(0);
+			const config = await readFile(join(env.projectDir, "FeatureFoo/.arbws/config"), "utf8");
+			expect(config).toContain("branch = FeatureFoo");
+			expect(existsSync(join(env.projectDir, "FeatureFoo/repo-a"))).toBe(true);
+			expect(existsSync(join(env.projectDir, "FeatureFoo/repo-b"))).toBe(true);
+		}));
+
+	test("arb create with name, repos, and --branch skips branch derivation", () =>
+		withEnv(async (env) => {
+			const result = await arb(env, ["create", "my-ws", "-b", "custom/branch", "repo-a"]);
+			expect(result.exitCode).toBe(0);
+			const config = await readFile(join(env.projectDir, "my-ws/.arbws/config"), "utf8");
+			expect(config).toContain("branch = custom/branch");
+		}));
+
+	test("arb create with --base stores base without interactive prompt", () =>
+		withEnv(async (env) => {
+			const result = await arb(env, ["create", "stacked-ws", "-b", "feat/ui", "--base", "feat/core", "repo-a"]);
+			expect(result.exitCode).toBe(0);
+			const config = await readFile(join(env.projectDir, "stacked-ws/.arbws/config"), "utf8");
+			expect(config).toContain("branch = feat/ui");
+			expect(config).toContain("base = feat/core");
+		}));
+
+	test("arb create without --base omits base from config in non-TTY", () =>
+		withEnv(async (env) => {
+			const result = await arb(env, ["create", "no-base-ws", "repo-a"]);
+			expect(result.exitCode).toBe(0);
+			const config = await readFile(join(env.projectDir, "no-base-ws/.arbws/config"), "utf8");
+			expect(config).toContain("branch = no-base-ws");
+			expect(config).not.toContain("base =");
+		}));
+
+	test("arb create checks out existing remote branch with name on CLI", () =>
+		withEnv(async (env) => {
+			const canonicalRepoA = join(env.projectDir, ".arb/repos/repo-a");
+			await git(canonicalRepoA, ["checkout", "-b", "shared-feat"]);
+			await write(join(canonicalRepoA, "shared.txt"), "shared");
+			await git(canonicalRepoA, ["add", "shared.txt"]);
+			await git(canonicalRepoA, ["commit", "-m", "shared commit"]);
+			await git(canonicalRepoA, ["push", "-u", "origin", "shared-feat"]);
+			await git(canonicalRepoA, ["checkout", "--detach", "HEAD"]);
+			await git(canonicalRepoA, ["branch", "-D", "shared-feat"]);
+
+			const result = await arb(env, ["create", "collab-ws", "-b", "shared-feat", "repo-a"]);
+			expect(result.exitCode).toBe(0);
+			expect(existsSync(join(env.projectDir, "collab-ws/repo-a/shared.txt"))).toBe(true);
+			const branch = (await git(join(env.projectDir, "collab-ws/repo-a"), ["symbolic-ref", "--short", "HEAD"])).trim();
+			expect(branch).toBe("shared-feat");
 		}));
 });
 
