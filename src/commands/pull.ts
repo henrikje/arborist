@@ -409,7 +409,7 @@ export function pullActionCell(a: PullAssessment, remotesMap: Map<string, RepoRe
 	const forkText = remotes && remotes.base !== remotes.share ? ` \u2190 ${remotes.share}` : "";
 
 	const rebasedHint = a.rebased > 0 ? `, ${a.rebased} rebased` : "";
-	const mergeType = a.pullMode === "merge" ? (a.toPush === 0 ? ", fast-forward" : ", three-way") : "";
+	const mergeType = a.pullMode === "merge" ? (a.toPush === 0 ? "fast-forward merge" : "three-way merge") : "";
 
 	let conflictText = "";
 	let conflictIsAttention = false;
@@ -425,12 +425,12 @@ export function pullActionCell(a: PullAssessment, remotesMap: Map<string, RepoRe
 	let result: Cell;
 	if (conflictIsAttention) {
 		result = spans(
-			{ text: `${plural(a.behind, "commit")} to pull (${a.pullMode}${mergeType}${rebasedHint}`, attention: "default" },
+			{ text: `${plural(a.behind, "commit")} to pull (${mergeType || a.pullMode}${rebasedHint}`, attention: "default" },
 			{ text: conflictText, attention: "attention" },
 			{ text: ")", attention: "default" },
 		);
 	} else {
-		result = cell(`${plural(a.behind, "commit")} to pull (${a.pullMode}${mergeType}${rebasedHint}${conflictText})`);
+		result = cell(`${plural(a.behind, "commit")} to pull (${mergeType || a.pullMode}${rebasedHint}${conflictText})`);
 	}
 
 	// Stash hint
