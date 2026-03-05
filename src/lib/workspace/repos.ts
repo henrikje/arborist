@@ -61,6 +61,7 @@ export async function selectInteractive(items: string[], message: string): Promi
 			message,
 			choices: items.map((name) => ({ name, value: name })),
 			pageSize: 20,
+			loop: false,
 		},
 		{ output: process.stderr },
 	);
