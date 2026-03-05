@@ -146,6 +146,7 @@ export async function integrate(
 			}
 		}
 	}
+	const retargetConfigTarget = retarget ? resolveRetargetConfigTarget(assessments) : null;
 
 	// Phase 4: confirm
 	const willOperate = assessments.filter((a) => a.outcome === "will-operate");
@@ -153,6 +154,14 @@ export async function integrate(
 	const skipped = assessments.filter((a) => a.outcome === "skip");
 
 	if (willOperate.length === 0) {
+		await maybeWriteRetargetConfig({
+			dryRun: options.dryRun,
+			wsDir,
+			branch,
+			assessments,
+			retargetConfigTarget,
+			cache,
+		});
 		info(upToDate.length > 0 ? "All repos up to date" : "Nothing to do");
 		return;
 	}
@@ -258,27 +267,15 @@ export async function integrate(
 	if (stashNodes.length > 0) process.stderr.write(render(stashNodes, reportCtx));
 
 	// Update config after successful retarget (skip branch-merged replays — base doesn't change)
-	const retargetAssessments = willOperate.filter((a) => a.retargetTo && a.retargetReason !== "branch-merged");
-	if (retargetAssessments.length > 0 && conflicted.length === 0) {
-		const retargetTo = retargetAssessments[0]?.retargetTo;
-		if (retargetTo) {
-			const configFile = `${wsDir}/.arbws/config`;
-			const wb = await workspaceBranch(wsDir);
-			const wsBranch = wb?.branch ?? branch;
-			// Resolve the repo's default branch to check if retargetTo matches
-			// If retargeting to the default branch, remove the base key
-			// If retargeting to a non-default branch, set it as the new base
-			const firstRetarget = retargetAssessments[0];
-			const repoDefault = firstRetarget
-				? await cache.getDefaultBranch(firstRetarget.repoDir, firstRetarget.baseRemote)
-				: null;
-			if (repoDefault && retargetTo !== repoDefault) {
-				writeConfig(configFile, wsBranch, retargetTo);
-			} else {
-				writeConfig(configFile, wsBranch, undefined);
-			}
-		}
-	}
+	await maybeWriteRetargetConfig({
+		dryRun: options.dryRun,
+		wsDir,
+		branch,
+		assessments,
+		retargetConfigTarget,
+		cache,
+		hasConflicts: conflicted.length > 0,
+	});
 
 	// Phase 6: summary
 	process.stderr.write("\n");
@@ -294,6 +291,54 @@ export async function integrate(
 	if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
 	if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
 	finishSummary(parts, conflicted.length > 0 || stashPopFailed.length > 0);
+}
+
+export function resolveRetargetConfigTarget(assessments: RepoAssessment[]): string | null {
+	const retargetTargets = [
+		...new Set(
+			assessments
+				.filter((a) => a.retargetTo && a.retargetReason !== "branch-merged")
+				.map((a) => a.retargetTo as string),
+		),
+	];
+	if (retargetTargets.length === 0) return null;
+	if (retargetTargets.length > 1) {
+		const targets = retargetTargets.sort().join(", ");
+		throw new ArbError(`Cannot retarget: repos disagree on target base (${targets}).`);
+	}
+	return retargetTargets[0] ?? null;
+}
+
+export async function maybeWriteRetargetConfig(options: {
+	dryRun?: boolean;
+	wsDir: string;
+	branch: string;
+	assessments: RepoAssessment[];
+	retargetConfigTarget: string | null;
+	cache: Pick<GitCache, "getDefaultBranch">;
+	hasConflicts?: boolean;
+}): Promise<boolean> {
+	if (options.dryRun) return false;
+	if (options.hasConflicts) return false;
+	if (!options.retargetConfigTarget) return false;
+	const { wsDir, branch, assessments, retargetConfigTarget, cache } = options;
+	const firstRetarget = assessments.find(
+		(a) => a.retargetTo === retargetConfigTarget && a.retargetReason !== "branch-merged",
+	);
+	if (!firstRetarget) return false;
+	const configFile = `${wsDir}/.arbws/config`;
+	const wb = await workspaceBranch(wsDir);
+	const wsBranch = wb?.branch ?? branch;
+	// Resolve the repo's default branch to check if retargetTo matches
+	// If retargeting to the default branch, remove the base key
+	// If retargeting to a non-default branch, set it as the new base
+	const repoDefault = await cache.getDefaultBranch(firstRetarget.repoDir, firstRetarget.baseRemote);
+	if (repoDefault && retargetConfigTarget !== repoDefault) {
+		writeConfig(configFile, wsBranch, retargetConfigTarget);
+	} else {
+		writeConfig(configFile, wsBranch, undefined);
+	}
+	return true;
 }
 
 // ── Semantic intermediate for integrate plan ──
@@ -840,7 +885,17 @@ async function assessRepo(
 
 		// Up-to-date check: already on target and 0 behind
 		if (base?.ref === retargetExplicit && base?.behind === 0) {
-			return { ...classified, outcome: "up-to-date", baseBranch: retargetExplicit };
+			return {
+				...classified,
+				outcome: "up-to-date",
+				baseBranch: retargetExplicit,
+				retargetFrom: oldBaseName,
+				retargetTo: retargetExplicit,
+				retargetWarning,
+				retargetReason: "base-merged",
+				behind: base.behind,
+				ahead: base.ahead,
+			};
 		}
 
 		// Retarget replay analysis
@@ -909,17 +964,27 @@ async function assessRepo(
 			};
 		}
 
+		const oldBaseNameForReplay = base.configuredRef ?? base.ref;
+
 		// For squash-merged repos, check if already retargeted
 		if (base.baseMergedIntoDefault === "squash") {
 			const defaultRef = `${baseRemote}/${trueDefault}`;
 			const alreadyOnDefault = await git(repoDir, "merge-base", "--is-ancestor", defaultRef, "HEAD");
 			if (alreadyOnDefault.exitCode === 0) {
-				return { ...classified, outcome: "up-to-date", baseBranch: trueDefault };
+				return {
+					...classified,
+					outcome: "up-to-date",
+					baseBranch: trueDefault,
+					retargetFrom: oldBaseNameForReplay,
+					retargetTo: trueDefault,
+					retargetReason: "base-merged",
+					behind: base.behind,
+					ahead: base.ahead,
+				};
 			}
 		}
 
 		// Retarget replay analysis
-		const oldBaseNameForReplay = base.configuredRef ?? base.ref;
 		const oldBaseRemoteRefExists = await remoteBranchExists(repoDir, oldBaseNameForReplay, baseRemote);
 		const oldBaseRefForReplay = oldBaseRemoteRefExists ? `${baseRemote}/${oldBaseNameForReplay}` : oldBaseNameForReplay;
 		const newBaseRefForReplay = `${baseRemote}/${trueDefault}`;

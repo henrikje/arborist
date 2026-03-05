@@ -851,6 +851,43 @@ describe("explicit retarget to non-default branch", () => {
 			expect(config).not.toContain("base =");
 		}));
 
+	test("arb rebase --retarget main updates config in no-op retarget path", () =>
+		withEnv(async (env) => {
+			const repoA = join(env.projectDir, ".arb/repos/repo-a");
+			await git(repoA, ["checkout", "-b", "feat/auth"]);
+			await write(join(repoA, "auth.txt"), "auth");
+			await git(repoA, ["add", "auth.txt"]);
+			await git(repoA, ["commit", "-m", "auth feature"]);
+			await git(repoA, ["push", "-u", "origin", "feat/auth"]);
+			await git(repoA, ["checkout", "--detach"]);
+
+			await arb(env, ["create", "stacked", "--base", "feat/auth", "-b", "feat/auth-ui", "repo-a"]);
+
+			// Merge feat/auth into main and delete the old base branch from remote.
+			const tmpMerge = join(env.testDir, "tmp-merge-no-dryrun");
+			await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpMerge]);
+			await git(tmpMerge, ["merge", "origin/feat/auth", "--no-ff", "-m", "merge feat/auth"]);
+			await git(tmpMerge, ["push"]);
+			await git(join(env.originDir, "repo-a.git"), ["branch", "-D", "feat/auth"]);
+			// Keep canonical refs in sync so base resolution falls back to default.
+			await git(join(env.projectDir, ".arb/repos/repo-a"), ["fetch", "--prune"]);
+
+			// Simulate already-retargeted history while config still points at feat/auth.
+			await git(join(env.projectDir, "stacked/repo-a"), ["merge", "--ff-only", "origin/main"]);
+
+			const before = await readFile(join(env.projectDir, "stacked/.arbws/config"), "utf-8");
+			expect(before).toContain("base = feat/auth");
+
+			const result = await arb(env, ["rebase", "--retarget", "main"], {
+				cwd: join(env.projectDir, "stacked"),
+			});
+			expect(result.exitCode).toBe(0);
+			expect(result.output).toContain("All repos up to date");
+
+			const after = await readFile(join(env.projectDir, "stacked/.arbws/config"), "utf-8");
+			expect(after).not.toContain("base =");
+		}));
+
 	test("arb rebase --retarget nonexistent target fails", () =>
 		withEnv(async (env) => {
 			const repoA = join(env.projectDir, ".arb/repos/repo-a");
