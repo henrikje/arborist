@@ -15,6 +15,15 @@ import { join, resolve } from "node:path";
 
 const ARB_BIN = resolve(join(import.meta.dir, "../../../dist/arb"));
 
+/** Base env vars for all spawned processes — disables commit signing and color. */
+const TEST_ENV: Record<string, string> = {
+	...(process.env as Record<string, string>),
+	NO_COLOR: "1",
+	GIT_CONFIG_COUNT: "1",
+	GIT_CONFIG_KEY_0: "commit.gpgsign",
+	GIT_CONFIG_VALUE_0: "false",
+};
+
 // ── Git version detection ────────────────────────────────────────
 
 interface GitVersion {
@@ -66,7 +75,7 @@ async function exec(cmd: string[], opts: { cwd: string; env?: Record<string, str
 		cwd: opts.cwd,
 		stdout: "pipe",
 		stderr: "pipe",
-		env: { ...process.env, NO_COLOR: "1", ...opts.env },
+		env: { ...TEST_ENV, ...opts.env },
 	});
 	const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
 	const exitCode = await proc.exited;
@@ -105,7 +114,7 @@ export async function arb(env: TestEnv, args: string[], opts?: { cwd?: string })
 		cwd: opts?.cwd ?? env.projectDir,
 		stdout: "pipe",
 		stderr: "pipe",
-		env: { ...process.env, NO_COLOR: "1" },
+		env: { ...TEST_ENV },
 	});
 	const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
 	const exitCode = await proc.exited;
