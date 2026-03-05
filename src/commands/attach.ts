@@ -4,6 +4,7 @@ import { ArbError, configGet } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, assertMinimumGitVersion } from "../lib/git";
 import { render } from "../lib/render";
+import { parallelFetch, reportFetchFailures } from "../lib/sync";
 import { error, info, plural, success, warn } from "../lib/terminal";
 import { readNamesFromStdin } from "../lib/terminal";
 import { isTTY } from "../lib/terminal";
@@ -66,6 +67,11 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
 			const cache = new GitCache();
 			await assertMinimumGitVersion(cache);
 			const remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
+
+			const fetchDirs = repos.map((r) => `${ctx.reposDir}/${r}`);
+			const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
+			reportFetchFailures(repos, fetchResults);
+
 			const result = await addWorktrees(
 				workspace,
 				branch,

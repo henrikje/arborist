@@ -23,6 +23,7 @@ export {
 	git,
 	isLinkedWorktree,
 	isRepoDirty,
+	listRemoteBranches,
 	isShallowRepo,
 	parseGitNumstat,
 	parseGitStatus,

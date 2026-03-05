@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { branchExistsLocally, git, isRepoDirty, remoteBranchExists } from "../git/git";
 import { GitCache } from "../git/git-cache";
 import type { RepoRemotes } from "../git/remotes";
-import { type FetchResult, parallelFetch } from "../sync/parallel-fetch";
 import { error, inlineResult, inlineStart, warn } from "../terminal/output";
 import { parseWorktreeList } from "./clean";
 
@@ -27,50 +26,13 @@ export async function addWorktrees(
 	const wsDir = `${arbRootDir}/${name}`;
 	const result: AddWorktreesResult = { created: [], skipped: [], failed: [] };
 
-	// Phase 1: parallel fetch
-	const fetchResults = new Map<string, FetchResult>();
-	const reposDirsToFetch: string[] = [];
-
-	for (const repo of repos) {
-		const repoPath = `${reposDir}/${repo}`;
-		if (!existsSync(`${repoPath}/.git`)) {
-			fetchResults.set(repo, { repo, exitCode: 1, output: "" });
-			continue;
-		}
-		reposDirsToFetch.push(repoPath);
-	}
-
-	if (reposDirsToFetch.length > 0) {
-		const fetched = await parallelFetch(reposDirsToFetch, undefined, remotesMap);
-		for (const [repo, fr] of fetched) {
-			fetchResults.set(repo, fr);
-		}
-	}
-
-	// Phase 2: sequential worktree creation
 	process.stderr.write("Creating worktrees...\n");
 
 	for (const repo of repos) {
 		const repoPath = `${reposDir}/${repo}`;
-		const fr = fetchResults.get(repo);
 
 		if (!existsSync(`${repoPath}/.git`)) {
 			error(`  [${repo}] not a git repo`);
-			result.failed.push(repo);
-			continue;
-		}
-
-		if (fr && fr.exitCode !== 0) {
-			if (fr.exitCode === 124) {
-				error(`  [${repo}] fetch timed out`);
-			} else {
-				error(`  [${repo}] fetch failed`);
-			}
-			if (fr.output) {
-				for (const line of fr.output.split("\n").filter(Boolean)) {
-					error(`    ${line}`);
-				}
-			}
 			result.failed.push(repo);
 			continue;
 		}

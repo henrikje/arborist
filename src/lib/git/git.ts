@@ -131,6 +131,19 @@ export async function remoteBranchExists(repoDir: string, branch: string, remote
 	return result.exitCode === 0;
 }
 
+/** List all branch names on a given remote (from locally cached refs). */
+export async function listRemoteBranches(repoDir: string, remote: string): Promise<string[]> {
+	const prefix = `refs/remotes/${remote}/`;
+	const result = await git(repoDir, "for-each-ref", "--format=%(refname)", prefix);
+	if (result.exitCode !== 0 || !result.stdout.trim()) return [];
+	return result.stdout
+		.trim()
+		.split("\n")
+		.filter(Boolean)
+		.map((ref) => ref.slice(prefix.length))
+		.filter((name) => name !== "HEAD");
+}
+
 export async function isRepoDirty(repoDir: string): Promise<boolean> {
 	const result = await git(repoDir, "status", "--porcelain");
 	return result.exitCode !== 0 || !!result.stdout.trim();
