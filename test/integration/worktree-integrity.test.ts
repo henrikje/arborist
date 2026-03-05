@@ -78,12 +78,14 @@ describe("worktree integrity", () => {
 			const wsBetaGitContent = readFileSync(join(env.projectDir, "ws-beta/repo-a/.git"), "utf-8").trim();
 			writeFileSync(join(env.projectDir, "ws-alpha/repo-a/.git"), wsBetaGitContent);
 
-			// Run status in ws-alpha — should auto-repair by removing the stale directory
+			// Run status in ws-alpha — should auto-repair by removing the stale .git file
 			const result = await arb(env, ["-C", join(env.projectDir, "ws-alpha"), "status", "-N"]);
 			expect(result.output).toContain("removed stale worktree reference");
 
-			// ws-alpha/repo-a should no longer exist (was the stale side, removed)
-			expect(existsSync(join(env.projectDir, "ws-alpha/repo-a"))).toBe(false);
+			// ws-alpha/repo-a directory should still exist (may contain uncommitted work)
+			// but the .git file should be gone
+			expect(existsSync(join(env.projectDir, "ws-alpha/repo-a"))).toBe(true);
+			expect(existsSync(join(env.projectDir, "ws-alpha/repo-a/.git"))).toBe(false);
 
 			// ws-beta should still be fine
 			const betaResult = await arb(env, ["-C", join(env.projectDir, "ws-beta"), "status", "-N"]);
