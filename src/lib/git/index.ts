@@ -4,6 +4,8 @@ export {
 	type GitOperation,
 	type GitVersion,
 	type MergeDetectionResult,
+	type ReplayPlanAnalysis,
+	analyzeReplayPlan,
 	analyzeRetargetReplay,
 	assertMinimumGitVersion,
 	branchExistsLocally,

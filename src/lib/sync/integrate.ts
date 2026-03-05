@@ -863,6 +863,35 @@ async function assessRepo(
 		};
 	}
 
+	// Diverged branch where some/all local commits are already represented on target base.
+	// When contiguous, replay only the top suffix; when none remain, treat as up-to-date.
+	// Explicit retarget takes precedence over this optimization.
+	if (
+		mode === "rebase" &&
+		retargetExplicit === null &&
+		classified.outcome === "will-operate" &&
+		base?.replayPlan?.contiguous
+	) {
+		const replayPlan = base.replayPlan;
+		if (replayPlan.alreadyOnTarget > 0 && replayPlan.toReplay === 0) {
+			return { ...classified, outcome: "up-to-date", baseBranch: base.ref, behind: 0, ahead: base.ahead };
+		}
+		if (replayPlan.alreadyOnTarget > 0 && replayPlan.toReplay > 0) {
+			return {
+				...classified,
+				outcome: "will-operate",
+				baseBranch: base.ref,
+				behind: base.behind,
+				ahead: replayPlan.toReplay,
+				retargetFrom: `HEAD~${replayPlan.toReplay}`,
+				retargetTo: base.ref,
+				retargetReplayCount: replayPlan.toReplay,
+				retargetAlreadyOnTarget: replayPlan.alreadyOnTarget,
+				retargetReason: "branch-merged",
+			};
+		}
+	}
+
 	// Stacked base branch has been merged into default (auto-detect)
 	if (base?.baseMergedIntoDefault != null) {
 		if (!retarget) {

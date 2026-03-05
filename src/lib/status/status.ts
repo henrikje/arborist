@@ -4,6 +4,7 @@ import { ArbError } from "../core/errors";
 import { latestCommitDate } from "../core/time";
 import {
 	type GitOperation,
+	analyzeReplayPlan,
 	branchExistsLocally,
 	detectBranchMerged,
 	detectOperation,
@@ -45,6 +46,12 @@ export interface RepoStatus {
 		mergedIntoBase: "merge" | "squash" | null;
 		newCommitsAfterMerge?: number;
 		mergeCommitHash?: string;
+		replayPlan?: {
+			totalLocal: number;
+			alreadyOnTarget: number;
+			toReplay: number;
+			contiguous: boolean;
+		};
 		baseMergedIntoDefault: "merge" | "squash" | null;
 		detectedPr: { number: number; url: string | null; mergeCommit?: string } | null;
 	} | null;
@@ -456,6 +463,7 @@ export async function gatherRepoStatus(
 	// ── Section 3: Base (integration status vs upstream default branch) ──
 
 	let baseStatus: RepoStatus["base"] = null;
+	let compareRef: string | null = null;
 	if (!detached) {
 		// Base branch resolution
 		let defaultBranch: string | null = null;
@@ -472,7 +480,7 @@ export async function gatherRepoStatus(
 		}
 
 		if (defaultBranch) {
-			const compareRef = baseRemote ? `${baseRemote}/${defaultBranch}` : defaultBranch;
+			compareRef = baseRemote ? `${baseRemote}/${defaultBranch}` : defaultBranch;
 			const lr = await git(repoDir, "rev-list", "--left-right", "--count", `${compareRef}...HEAD`);
 			if (lr.exitCode === 0) {
 				const { left: behind, right: ahead } = parseLeftRight(lr.stdout);
@@ -567,6 +575,19 @@ export async function gatherRepoStatus(
 			toPull: null,
 			rebased: null,
 		};
+	}
+
+	// Analyze replay-only rebase opportunities for diverged branches.
+	if (baseStatus && compareRef && baseStatus.ahead > 0 && baseStatus.behind > 0) {
+		const replayPlan = await analyzeReplayPlan(repoDir, compareRef);
+		if (replayPlan) {
+			baseStatus.replayPlan = {
+				totalLocal: replayPlan.totalLocal,
+				alreadyOnTarget: replayPlan.alreadyOnTarget,
+				toReplay: replayPlan.toReplay,
+				contiguous: replayPlan.contiguous,
+			};
+		}
 	}
 
 	// ── Merge detection ──

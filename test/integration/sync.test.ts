@@ -1007,4 +1007,35 @@ describe("--where filtering", () => {
 			expect(pushResult.exitCode).toBe(0);
 			expect(pushResult.output).toMatch(/pushed|Pushed/);
 		}));
+
+	test("rebase skips when all local commits are already squash-equivalent on base", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "rebase-squash-equivalent-test", "repo-a"]);
+			const wt = join(env.projectDir, "rebase-squash-equivalent-test/repo-a");
+
+			// Make feature work locally (do not push branch to origin).
+			await write(join(wt, "feature.txt"), "feature content v1\n");
+			await git(wt, ["add", "feature.txt"]);
+			await git(wt, ["commit", "-m", "feature part 1"]);
+			await write(join(wt, "feature.txt"), "feature content v1\nfeature content v2\n");
+			await git(wt, ["add", "feature.txt"]);
+			await git(wt, ["commit", "-m", "feature part 2"]);
+
+			// Add an equivalent squashed commit directly on main.
+			const bare = join(env.originDir, "repo-a.git");
+			const tmp = join(env.testDir, "tmp-squash-equivalent");
+			await git(env.testDir, ["clone", bare, tmp]);
+			await write(join(tmp, "feature.txt"), "feature content v1\nfeature content v2\n");
+			await git(tmp, ["add", "feature.txt"]);
+			await git(tmp, ["commit", "-m", "squash-equivalent on main"]);
+			await git(tmp, ["push", "origin", "main"]);
+			await rm(tmp, { recursive: true });
+
+			const rebaseResult = await arb(env, ["rebase", "--yes"], {
+				cwd: join(env.projectDir, "rebase-squash-equivalent-test"),
+			});
+			expect(rebaseResult.exitCode).toBe(0);
+			expect(rebaseResult.output).toContain("All repos up to date");
+			expect(rebaseResult.output).not.toContain("conflict");
+		}));
 });
