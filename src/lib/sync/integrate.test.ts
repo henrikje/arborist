@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { formatVerboseCommits } from "../render/status-verbose";
 import { makeRepo } from "../status/test-helpers";
 import {
@@ -8,6 +11,8 @@ import {
 	describeIntegrateAction,
 	formatIntegratePlan,
 	integrateActionCell,
+	maybeWriteRetargetConfig,
+	resolveRetargetConfigTarget,
 } from "./integrate";
 
 const DIR = "/tmp/test-repo";
@@ -1024,6 +1029,137 @@ describe("formatIntegratePlan", () => {
 		);
 		expect(plan).toContain("Incoming from origin/main:");
 		expect(plan).toContain("def5678");
+	});
+});
+
+describe("resolveRetargetConfigTarget", () => {
+	function makeAssessment(overrides: Partial<RepoAssessment> = {}): RepoAssessment {
+		return {
+			repo: "repo-a",
+			repoDir: "/tmp/repo-a",
+			outcome: "will-operate",
+			behind: 3,
+			ahead: 1,
+			baseRemote: "origin",
+			baseBranch: "main",
+			headSha: "abc1234",
+			shallow: false,
+			...overrides,
+		};
+	}
+
+	test("returns null when no config retarget assessments exist", () => {
+		const target = resolveRetargetConfigTarget([makeAssessment(), makeAssessment({ retargetReason: "branch-merged" })]);
+		expect(target).toBeNull();
+	});
+
+	test("returns target when up-to-date retarget assessment exists", () => {
+		const target = resolveRetargetConfigTarget([
+			makeAssessment({
+				outcome: "up-to-date",
+				retargetFrom: "feat/old",
+				retargetTo: "main",
+				retargetReason: "base-merged",
+			}),
+		]);
+		expect(target).toBe("main");
+	});
+
+	test("ignores branch-merged replay retarget assessments", () => {
+		const target = resolveRetargetConfigTarget([
+			makeAssessment({
+				retargetFrom: "abc1234",
+				retargetTo: "main",
+				retargetReason: "branch-merged",
+			}),
+			makeAssessment({
+				outcome: "up-to-date",
+				retargetFrom: "feat/old",
+				retargetTo: "feat/A",
+				retargetReason: "base-merged",
+			}),
+		]);
+		expect(target).toBe("feat/A");
+	});
+
+	test("throws when retarget targets disagree", () => {
+		expect(() =>
+			resolveRetargetConfigTarget([
+				makeAssessment({ retargetFrom: "feat/old", retargetTo: "main", retargetReason: "base-merged" }),
+				makeAssessment({
+					repo: "repo-b",
+					retargetFrom: "feat/old",
+					retargetTo: "release/1.0",
+					retargetReason: "base-merged",
+				}),
+			]),
+		).toThrow("Cannot retarget: repos disagree on target base (main, release/1.0).");
+	});
+});
+
+describe("maybeWriteRetargetConfig", () => {
+	function makeAssessment(overrides: Partial<RepoAssessment> = {}): RepoAssessment {
+		return {
+			repo: "repo-a",
+			repoDir: "/tmp/repo-a",
+			outcome: "up-to-date",
+			behind: 0,
+			ahead: 2,
+			baseRemote: "origin",
+			baseBranch: "main",
+			headSha: "abc1234",
+			shallow: false,
+			retargetFrom: "feat/old",
+			retargetTo: "main",
+			retargetReason: "base-merged",
+			...overrides,
+		};
+	}
+
+	test("does not write config on dry-run (no-op retarget path)", async () => {
+		const wsDir = mkdtempSync(join(tmpdir(), "arb-retarget-dryrun-"));
+		try {
+			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+			const configFile = join(wsDir, ".arbws", "config");
+			writeFileSync(configFile, "branch = feature\nbase = feat/old\n");
+
+			const wrote = await maybeWriteRetargetConfig({
+				dryRun: true,
+				wsDir,
+				branch: "feature",
+				assessments: [makeAssessment()],
+				retargetConfigTarget: "main",
+				cache: { getDefaultBranch: async () => "main" },
+			});
+
+			expect(wrote).toBe(false);
+			expect(readFileSync(configFile, "utf-8")).toBe("branch = feature\nbase = feat/old\n");
+		} finally {
+			rmSync(wsDir, { recursive: true, force: true });
+		}
+	});
+
+	test("writes config when not dry-run", async () => {
+		const wsDir = mkdtempSync(join(tmpdir(), "arb-retarget-write-"));
+		try {
+			mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+			const configFile = join(wsDir, ".arbws", "config");
+			writeFileSync(configFile, "branch = feature\nbase = feat/old\n");
+
+			const wrote = await maybeWriteRetargetConfig({
+				dryRun: false,
+				wsDir,
+				branch: "feature",
+				assessments: [makeAssessment()],
+				retargetConfigTarget: "main",
+				cache: { getDefaultBranch: async () => "main" },
+			});
+
+			expect(wrote).toBe(true);
+			expect(readFileSync(configFile, "utf-8")).toBe("branch = feature\n");
+		} finally {
+			rmSync(wsDir, { recursive: true, force: true });
+		}
 	});
 });
 
