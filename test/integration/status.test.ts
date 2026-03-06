@@ -661,6 +661,146 @@ describe("status rebased detection", () => {
 		}));
 });
 
+// ── status arrow separator and verbose to-pull ────────────────────
+
+describe("status arrow separator and verbose to-pull", () => {
+	test("arb status shows arrow separator between push and pull sides after rebase", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "my-feature", "repo-a"]);
+			const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+			await write(join(wtRepoA, "file.txt"), "feature");
+			await git(wtRepoA, ["add", "file.txt"]);
+			await git(wtRepoA, ["commit", "-m", "feature work"]);
+			await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
+
+			// Advance main
+			const repoA = join(env.projectDir, ".arb/repos/repo-a");
+			await write(join(repoA, "upstream.txt"), "upstream");
+			await git(repoA, ["add", "upstream.txt"]);
+			await git(repoA, ["commit", "-m", "upstream"]);
+			await git(repoA, ["push"]);
+
+			// Rebase feature onto advanced main
+			await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+
+			await fetchAllRepos(env);
+			const result = await arb(env, ["status"], { cwd: join(env.projectDir, "my-feature") });
+			// After rebase, the old remote commits become outdated
+			expect(result.output).toContain("outdated");
+		}));
+
+	test("arb status -v shows To pull section with outdated commits after rebase", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "my-feature", "repo-a"]);
+			const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+			await write(join(wtRepoA, "file.txt"), "feature");
+			await git(wtRepoA, ["add", "file.txt"]);
+			await git(wtRepoA, ["commit", "-m", "feature work"]);
+			await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
+
+			// Advance main
+			const repoA = join(env.projectDir, ".arb/repos/repo-a");
+			await write(join(repoA, "upstream.txt"), "upstream");
+			await git(repoA, ["add", "upstream.txt"]);
+			await git(repoA, ["commit", "-m", "upstream"]);
+			await git(repoA, ["push"]);
+
+			// Rebase
+			await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+
+			await fetchAllRepos(env);
+			const result = await arb(env, ["status", "-v"], { cwd: join(env.projectDir, "my-feature") });
+			// Verbose should show "To pull from" section with the old remote commit
+			expect(result.output).toContain("To pull from");
+			expect(result.output).toContain("(rebased locally)");
+			expect(result.output).toContain("feature work");
+		}));
+
+	test("arb status -v shows safe to force push hint when all to-pull commits are superseded", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "my-feature", "repo-a"]);
+			const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+			await write(join(wtRepoA, "file.txt"), "feature");
+			await git(wtRepoA, ["add", "file.txt"]);
+			await git(wtRepoA, ["commit", "-m", "feature work"]);
+			await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
+
+			// Advance main
+			const repoA = join(env.projectDir, ".arb/repos/repo-a");
+			await write(join(repoA, "upstream.txt"), "upstream");
+			await git(repoA, ["add", "upstream.txt"]);
+			await git(repoA, ["commit", "-m", "upstream"]);
+			await git(repoA, ["push"]);
+
+			// Rebase — all to-pull commits should be superseded (rebased locally)
+			await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+
+			await fetchAllRepos(env);
+			const result = await arb(env, ["status", "-v"], { cwd: join(env.projectDir, "my-feature") });
+			expect(result.output).toContain("safe to force push");
+		}));
+
+	test("arb status -v shows genuinely new to-pull commits without superseded tag", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "my-feature", "repo-a"]);
+			const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+			await write(join(wtRepoA, "local.txt"), "local work");
+			await git(wtRepoA, ["add", "local.txt"]);
+			await git(wtRepoA, ["commit", "-m", "local work"]);
+			await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
+
+			// Simulate a collaborator pushing a new commit to the remote feature branch
+			// Use a temporary clone to avoid worktree conflicts with the canonical repo
+			const collabClone = join(env.testDir, "collab-repo-a");
+			await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), collabClone]);
+			await git(collabClone, ["checkout", "my-feature"]);
+			await write(join(collabClone, "collab.txt"), "collaborator");
+			await git(collabClone, ["add", "collab.txt"]);
+			await git(collabClone, ["commit", "-m", "collaborator commit"]);
+			await git(collabClone, ["push", "origin", "my-feature"]);
+
+			// Add another local commit so we have both toPush and toPull
+			await write(join(wtRepoA, "local2.txt"), "more local");
+			await git(wtRepoA, ["add", "local2.txt"]);
+			await git(wtRepoA, ["commit", "-m", "more local work"]);
+
+			await fetchAllRepos(env);
+			const result = await arb(env, ["status", "-v"], { cwd: join(env.projectDir, "my-feature") });
+			expect(result.output).toContain("To pull from");
+			expect(result.output).toContain("collaborator commit");
+			// Should NOT show "safe to force push" since there's genuinely new content
+			expect(result.output).not.toContain("safe to force push");
+		}));
+
+	test("arb status --json includes toPull in verbose output", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "my-feature", "repo-a"]);
+			const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+			await write(join(wtRepoA, "file.txt"), "feature");
+			await git(wtRepoA, ["add", "file.txt"]);
+			await git(wtRepoA, ["commit", "-m", "feature work"]);
+			await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
+
+			// Advance main
+			const repoA = join(env.projectDir, ".arb/repos/repo-a");
+			await write(join(repoA, "upstream.txt"), "upstream");
+			await git(repoA, ["add", "upstream.txt"]);
+			await git(repoA, ["commit", "-m", "upstream"]);
+			await git(repoA, ["push"]);
+
+			// Rebase
+			await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+
+			await fetchAllRepos(env);
+			const result = await arb(env, ["status", "--json", "-v"], { cwd: join(env.projectDir, "my-feature") });
+			const json = JSON.parse(result.stdout);
+			const repo = json.repos[0];
+			expect(repo.verbose.toPull).toBeDefined();
+			expect(repo.verbose.toPull.length).toBeGreaterThan(0);
+			expect(repo.verbose.toPull[0].superseded).toBe(true);
+		}));
+});
+
 // ── compact status display ────────────────────────────────────────
 
 describe("compact status display", () => {

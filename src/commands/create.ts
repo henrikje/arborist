@@ -14,7 +14,7 @@ import {
 } from "../lib/git";
 import { render } from "../lib/render";
 import { parallelFetch, reportFetchFailures } from "../lib/sync";
-import { blue, bold, dim, error, info, isTTY, plural, readNamesFromStdin, success, warn } from "../lib/terminal";
+import { bold, cyan, dim, error, info, isTTY, plural, readNamesFromStdin, success, warn } from "../lib/terminal";
 import {
 	addWorktrees,
 	applyRepoTemplates,
@@ -65,8 +65,9 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				const allKnownRepos = listRepos(ctx.reposDir);
 
 				if (allKnownRepos.length === 0) {
-					error("No repos found. Clone a repo first: arb repo clone <url>");
-					throw new ArbError("No repos found. Clone a repo first: arb repo clone <url>");
+					const msg = "No repos found. Clone a repo first: arb repo clone <url>";
+					error(msg);
+					throw new ArbError(msg);
 				}
 
 				// 1. Workspace name
@@ -81,8 +82,9 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				let name = nameArg ?? derivedName ?? undefined;
 				if (!name) {
 					if (!process.stdin.isTTY) {
-						error("Usage: arb create <name> [repos...]");
-						throw new ArbError("Usage: arb create <name> [repos...]");
+						const msg = "Usage: arb create <name> [repos...]";
+						error(msg);
+						throw new ArbError(msg);
 					}
 					name = await input(
 						{
@@ -130,11 +132,12 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 						info(`Pass an explicit workspace name: arb create <workspace-name> --branch ${options.branch}`);
 						throw new ArbError(msg);
 					}
-					error(`Workspace '${name}' already exists`);
-					throw new ArbError(`Workspace '${name}' already exists`);
+					const msg = `Workspace '${name}' already exists`;
+					error(msg);
+					throw new ArbError(msg);
 				}
 				if (isDerivedFromBranch) {
-					info(`${blue("!")} ${bold("Workspace name")}: ${blue(name)} (derived from ${options.branch})`);
+					info(`${cyan("!")} ${bold("Workspace name")}: ${cyan(name)} (derived from ${options.branch})`);
 				}
 
 				// 2. Repo selection (moved before branch)
@@ -152,8 +155,9 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				if (repos.length > 0 && !options.allRepos) {
 					const unknown = repos.filter((r) => !allKnownRepos.includes(r));
 					if (unknown.length > 0) {
-						error(`Unknown repos: ${unknown.join(", ")}. Not found in .arb/repos/.`);
-						throw new ArbError(`Unknown repos: ${unknown.join(", ")}. Not found in .arb/repos/.`);
+						const msg = `Unknown repos: ${unknown.join(", ")}. Not found in .arb/repos/.`;
+						error(msg);
+						throw new ArbError(msg);
 					}
 				}
 
@@ -167,8 +171,9 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				}
 
 				if (repos.length === 0) {
-					error("Usage: arb create <name> [repos...]");
-					throw new ArbError("Usage: arb create <name> [repos...]");
+					const msg = "Usage: arb create <name> [repos...]";
+					error(msg);
+					throw new ArbError(msg);
 				}
 
 				// Hoist cache + git version check (needed for branch discovery and addWorktrees)
@@ -250,15 +255,17 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 				}
 
 				if (!validateBranchName(branch)) {
-					error(`Invalid branch name: ${branch}`);
-					throw new ArbError(`Invalid branch name: ${branch}`);
+					const msg = `Invalid branch name: ${branch}`;
+					error(msg);
+					throw new ArbError(msg);
 				}
 
 				// 4. Base branch (flag-only)
 				const base = options.base;
 				if (base && !validateBranchName(base)) {
-					error(`Invalid base branch name: ${base}`);
-					throw new ArbError(`Invalid base branch name: ${base}`);
+					const msg = `Invalid base branch name: ${base}`;
+					error(msg);
+					throw new ArbError(msg);
 				}
 
 				// 5. Create workspace

@@ -912,6 +912,34 @@ describe("analyzeRemoteDiff", () => {
 		expect(pushNew?.attention).toBe("attention");
 	});
 
+	test("push-side fromBase+rebased (no new work) stays default attention", () => {
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 2,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 5,
+				toPull: 2,
+				rebased: 2,
+			},
+		});
+		const flags = computeFlags(repo, "feature");
+		// fromBase=3, rebased=2, newCount=0 → push default; pull: 2 outdated
+		const result = analyzeRemoteDiff(repo, flags);
+		expect(result.plain).toBe("3 from main, 2 rebased → 2 outdated");
+		expect(result.spans[0]?.attention).toBe("default");
+	});
+
 	test("pull side only 'new' (no outdated) stays default without pull conflict", () => {
 		const repo = makeRepo({
 			base: null,

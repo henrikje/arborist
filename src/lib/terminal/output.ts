@@ -3,7 +3,7 @@ import { isTTY } from "./tty";
 const RED = "\x1b[0;31m";
 const GREEN = "\x1b[0;32m";
 const YELLOW = "\x1b[0;33m";
-const BLUE = "\x1b[0;36m";
+const CYAN = "\x1b[0;36m";
 const BOLD = "\x1b[1m";
 const DIM = "\x1b[2m";
 const NC = "\x1b[0m";
@@ -25,8 +25,8 @@ export function yellow(text: string): string {
 	return color(YELLOW, text);
 }
 
-export function blue(text: string): string {
-	return color(BLUE, text);
+export function cyan(text: string): string {
+	return color(CYAN, text);
 }
 
 export function bold(text: string): string {
