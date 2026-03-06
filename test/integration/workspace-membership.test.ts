@@ -283,6 +283,51 @@ describe("create", () => {
 			const branch = (await git(join(env.projectDir, "collab-ws/repo-a"), ["symbolic-ref", "--short", "HEAD"])).trim();
 			expect(branch).toBe("shared-feat");
 		}));
+
+	test("arb create aborts and cleans up when a worktree fails", () =>
+		withEnv(async (env) => {
+			// Create workspace A with repo-a on branch feat/conflict
+			await arb(env, ["create", "ws-a", "--branch", "feat/conflict", "repo-a"]);
+			expect(existsSync(join(env.projectDir, "ws-a/repo-a"))).toBe(true);
+
+			// Attempt to create workspace B with both repos on the same branch
+			// repo-a should fail (branch already checked out in ws-a)
+			const result = await arb(env, ["create", "ws-b", "--branch", "feat/conflict", "repo-a", "repo-b"]);
+			expect(result.exitCode).not.toBe(0);
+
+			// Workspace B should not exist (rolled back)
+			expect(existsSync(join(env.projectDir, "ws-b"))).toBe(false);
+
+			// repo-b should not have the branch (rolled back)
+			const canonicalRepoB = join(env.projectDir, ".arb/repos/repo-b");
+			const branchCheck = await git(canonicalRepoB, ["branch", "--list", "feat/conflict"]);
+			expect(branchCheck.trim()).toBe("");
+
+			// Error should mention the workspace name
+			expect(result.stderr).toContain("workspace 'ws-a'");
+
+			// Workspace A should be unaffected
+			const branchA = (await git(join(env.projectDir, "ws-a/repo-a"), ["symbolic-ref", "--short", "HEAD"])).trim();
+			expect(branchA).toBe("feat/conflict");
+		}));
+
+	test("arb create aborts even when some repos succeed before a failure", () =>
+		withEnv(async (env) => {
+			// Create workspace A with repo-b on branch feat/partial
+			await arb(env, ["create", "ws-a", "--branch", "feat/partial", "repo-b"]);
+
+			// Attempt to create workspace B with repo-a (will succeed) then repo-b (will fail)
+			const result = await arb(env, ["create", "ws-b", "--branch", "feat/partial", "repo-a", "repo-b"]);
+			expect(result.exitCode).not.toBe(0);
+
+			// Workspace B should not exist (rolled back)
+			expect(existsSync(join(env.projectDir, "ws-b"))).toBe(false);
+
+			// repo-a's newly created branch should be cleaned up
+			const canonicalRepoA = join(env.projectDir, ".arb/repos/repo-a");
+			const branchCheck = await git(canonicalRepoA, ["branch", "--list", "feat/partial"]);
+			expect(branchCheck.trim()).toBe("");
+		}));
 });
 
 // ── attach ───────────────────────────────────────────────────────
@@ -373,6 +418,22 @@ describe("attach", () => {
 			expect(result.exitCode).toBe(0);
 			expect(existsSync(join(env.projectDir, "my-feature/repo-a"))).toBe(true);
 			expect(existsSync(join(env.projectDir, "my-feature/repo-b"))).toBe(true);
+		}));
+
+	test("arb attach tolerates partial failure without aborting", () =>
+		withEnv(async (env) => {
+			// Create ws-a with repo-a on branch feat/attach-partial
+			await arb(env, ["create", "ws-a", "--branch", "feat/attach-partial", "repo-a"]);
+			// Create ws-b with repo-b on the same branch
+			await arb(env, ["create", "ws-b", "--branch", "feat/attach-partial", "repo-b"]);
+
+			// Try to attach repo-a to ws-b — should fail (branch checked out in ws-a)
+			const result = await arb(env, ["attach", "repo-a"], { cwd: join(env.projectDir, "ws-b") });
+
+			// Attach reports failure but does not destroy the workspace
+			expect(result.stderr).toContain("failed");
+			expect(existsSync(join(env.projectDir, "ws-b/repo-b"))).toBe(true);
+			expect(existsSync(join(env.projectDir, "ws-b/.arbws/config"))).toBe(true);
 		}));
 });
 
