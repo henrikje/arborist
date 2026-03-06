@@ -869,3 +869,40 @@ describe("delete --where", () => {
 			expect(result.output).toContain("No workspaces match the filter");
 		}));
 });
+
+// ── delete empty workspace ─────────────────────────────────────
+
+describe("delete empty workspace", () => {
+	test("arb delete does not delete empty workspace without confirmation", () =>
+		withEnv(async (env) => {
+			// Create a workspace, then remove the repo worktree to make it empty
+			await arb(env, ["create", "ws-empty", "repo-a"]);
+			await rm(join(env.projectDir, "ws-empty/repo-a"), { recursive: true });
+
+			// Without --yes, non-TTY should fail (confirmation required, not silently deleted)
+			const result = await arb(env, ["delete", "ws-empty", "--force"]);
+			expect(result.exitCode).not.toBe(0);
+			expect(existsSync(join(env.projectDir, "ws-empty"))).toBe(true);
+		}));
+
+	test("arb delete --yes removes empty workspace after skipping confirmation", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "ws-empty", "repo-a"]);
+			await rm(join(env.projectDir, "ws-empty/repo-a"), { recursive: true });
+
+			const result = await arb(env, ["delete", "ws-empty", "--yes", "--force"]);
+			expect(result.exitCode).toBe(0);
+			expect(existsSync(join(env.projectDir, "ws-empty"))).toBe(false);
+		}));
+
+	test("arb delete --all-safe includes empty workspaces", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "ws-empty", "repo-a"]);
+			await rm(join(env.projectDir, "ws-empty/repo-a"), { recursive: true });
+
+			const result = await arb(env, ["delete", "--all-safe", "--yes"]);
+			expect(result.exitCode).toBe(0);
+			expect(result.output).toContain("empty");
+			expect(existsSync(join(env.projectDir, "ws-empty"))).toBe(false);
+		}));
+});

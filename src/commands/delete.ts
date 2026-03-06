@@ -105,35 +105,46 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
 	const repoPaths = workspaceRepoDirs(wsDir);
 	const repos = repoPaths.map((d) => basename(d));
 
-	if (repos.length === 0) {
-		warn(`No repos found in ${wsDir} — cleaning up directory`);
-		rmSync(wsDir, { recursive: true, force: true });
-		return null;
-	}
-
-	// Gather workspace summary using the canonical status model.
-	// Delete must be resilient to repos with broken/missing/ambiguous remotes —
-	// if we can't determine the state, treat the workspace as at-risk.
 	let summary: WorkspaceSummary;
 	const cache = new GitCache();
-	await assertMinimumGitVersion(cache);
-	try {
-		summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
-	} catch (e) {
-		warn(`Could not gather status for ${name}: ${e instanceof Error ? e.message : e}`);
+
+	if (repos.length === 0) {
 		summary = {
 			workspace: name,
 			branch,
 			base: null,
 			repos: [],
-			total: repos.length,
-			atRiskCount: repos.length,
+			total: 0,
+			atRiskCount: 0,
 			rebasedOnlyCount: 0,
 			statusLabels: [],
 			statusCounts: [],
 			lastCommit: null,
 			detectedTicket: null,
 		};
+	} else {
+		// Gather workspace summary using the canonical status model.
+		// Delete must be resilient to repos with broken/missing/ambiguous remotes —
+		// if we can't determine the state, treat the workspace as at-risk.
+		await assertMinimumGitVersion(cache);
+		try {
+			summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
+		} catch (e) {
+			warn(`Could not gather status for ${name}: ${e instanceof Error ? e.message : e}`);
+			summary = {
+				workspace: name,
+				branch,
+				base: null,
+				repos: [],
+				total: repos.length,
+				atRiskCount: repos.length,
+				rebasedOnlyCount: 0,
+				statusLabels: [],
+				statusCounts: [],
+				lastCommit: null,
+				detectedTicket: null,
+			};
+		}
 	}
 
 	// Determine at-risk repos
@@ -182,7 +193,9 @@ function buildDeleteTableNodes(assessments: WorkspaceAssessment[]): OutputNode[]
 
 		// Status cell
 		let statusCell: Cell;
-		if (a.summary.repos.length === 0 && a.summary.total > 0) {
+		if (a.summary.total === 0) {
+			statusCell = cell("empty");
+		} else if (a.summary.repos.length === 0 && a.summary.total > 0) {
 			statusCell = cell("(remotes not resolved)", "attention");
 		} else if (a.summary.statusCounts.length === 0) {
 			statusCell = cell("no issues");
