@@ -6,6 +6,7 @@ import {
 	type GitOperation,
 	analyzeReplayPlan,
 	branchExistsLocally,
+	branchIsInWorktree,
 	detectBranchMerged,
 	detectOperation,
 	detectRebasedCommits,
@@ -688,12 +689,18 @@ export async function gatherRepoStatus(
 				baseStatus.baseMergedIntoDefault = result?.kind ?? null;
 			}
 		} else {
-			// Base branch gone from remote — try local branch ref for detection
+			// Base branch gone from remote — try local branch ref for detection.
+			// Skip when the local branch is checked out in a worktree — it's likely
+			// an arb workspace branch (readonly repo outside the stack), not a leftover
+			// from a merged feature branch.
 			const localExists = await branchExistsLocally(repoPath, configBase);
 			if (localExists) {
-				const defaultRef = `${baseRemote}/${baseStatus.ref}`;
-				const result = await detectBranchMerged(repoDir, defaultRef, 200, configBase);
-				baseStatus.baseMergedIntoDefault = result?.kind ?? null;
+				const inWorktree = await branchIsInWorktree(repoPath, configBase);
+				if (!inWorktree) {
+					const defaultRef = `${baseRemote}/${baseStatus.ref}`;
+					const result = await detectBranchMerged(repoDir, defaultRef, 200, configBase);
+					baseStatus.baseMergedIntoDefault = result?.kind ?? null;
+				}
 			}
 		}
 	}

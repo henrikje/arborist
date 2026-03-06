@@ -9,6 +9,7 @@ export {
 	analyzeRetargetReplay,
 	assertMinimumGitVersion,
 	branchExistsLocally,
+	branchIsInWorktree,
 	checkBranchMatch,
 	detectBranchMerged,
 	detectOperation,
