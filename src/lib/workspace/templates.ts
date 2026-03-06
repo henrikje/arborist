@@ -12,937 +12,937 @@ export const ARBTEMPLATE_EXT = ".arbtemplate";
 const liquid = new Liquid({ strictVariables: false });
 
 export interface RemoteInfo {
-	name: string;
-	url: string;
+  name: string;
+  url: string;
 }
 
 export interface RepoInfo {
-	name: string;
-	path: string;
-	baseRemote: RemoteInfo;
-	shareRemote: RemoteInfo;
+  name: string;
+  path: string;
+  baseRemote: RemoteInfo;
+  shareRemote: RemoteInfo;
 }
 
 export interface TemplateContext {
-	rootPath: string;
-	workspaceName: string;
-	workspacePath: string;
-	repoName?: string;
-	repoPath?: string;
-	repos?: RepoInfo[];
-	previousRepos?: RepoInfo[];
+  rootPath: string;
+  workspaceName: string;
+  workspacePath: string;
+  repoName?: string;
+  repoPath?: string;
+  repos?: RepoInfo[];
+  previousRepos?: RepoInfo[];
 }
 
 export interface UnknownVariable {
-	varName: string;
-	filePath: string;
+  varName: string;
+  filePath: string;
 }
 
 function toTemplateData(ctx: TemplateContext): Record<string, unknown> {
-	const currentRepo = ctx.repoName
-		? (ctx.repos?.find((r) => r.name === ctx.repoName) ?? {
-				name: ctx.repoName,
-				path: ctx.repoPath,
-				baseRemote: { name: "", url: "" },
-				shareRemote: { name: "", url: "" },
-			})
-		: undefined;
-	return {
-		project: { path: ctx.rootPath },
-		workspace: {
-			name: ctx.workspaceName,
-			path: ctx.workspacePath,
-			repos: ctx.repos ?? [],
-		},
-		repo: currentRepo,
-	};
+  const currentRepo = ctx.repoName
+    ? (ctx.repos?.find((r) => r.name === ctx.repoName) ?? {
+        name: ctx.repoName,
+        path: ctx.repoPath,
+        baseRemote: { name: "", url: "" },
+        shareRemote: { name: "", url: "" },
+      })
+    : undefined;
+  return {
+    project: { path: ctx.rootPath },
+    workspace: {
+      name: ctx.workspaceName,
+      path: ctx.workspacePath,
+      repos: ctx.repos ?? [],
+    },
+    repo: currentRepo,
+  };
 }
 
 export function renderTemplate(content: string, ctx: TemplateContext): string {
-	return liquid.parseAndRenderSync(content, toTemplateData(ctx));
+  return liquid.parseAndRenderSync(content, toTemplateData(ctx));
 }
 
 function knownVariablePaths(ctx: TemplateContext): Set<string> {
-	const paths = new Set(["project.path", "workspace.name", "workspace.path", "workspace.repos"]);
-	if (ctx.repoName) {
-		paths.add("repo.name");
-		paths.add("repo.path");
-		paths.add("repo.baseRemote.name");
-		paths.add("repo.baseRemote.url");
-		paths.add("repo.shareRemote.name");
-		paths.add("repo.shareRemote.url");
-	}
-	return paths;
+  const paths = new Set(["project.path", "workspace.name", "workspace.path", "workspace.repos"]);
+  if (ctx.repoName) {
+    paths.add("repo.name");
+    paths.add("repo.path");
+    paths.add("repo.baseRemote.name");
+    paths.add("repo.baseRemote.url");
+    paths.add("repo.shareRemote.name");
+    paths.add("repo.shareRemote.url");
+  }
+  return paths;
 }
 
 function isKnownPath(varPath: string, known: Set<string>): boolean {
-	if (known.has(varPath)) return true;
-	// Check if varPath is a valid prefix of any known path
-	const prefix = `${varPath}.`;
-	for (const k of known) {
-		if (k.startsWith(prefix)) return true;
-	}
-	return false;
+  if (known.has(varPath)) return true;
+  // Check if varPath is a valid prefix of any known path
+  const prefix = `${varPath}.`;
+  for (const k of known) {
+    if (k.startsWith(prefix)) return true;
+  }
+  return false;
 }
 
 export function checkUnknownVariables(content: string, ctx: TemplateContext): string[] {
-	const ast = liquid.parse(content);
-	const vars = liquid.globalFullVariablesSync(ast);
-	const known = knownVariablePaths(ctx);
-	const unknowns: string[] = [];
-	const seen = new Set<string>();
-	for (const v of vars) {
-		if (!seen.has(v) && !isKnownPath(v, known)) {
-			unknowns.push(v);
-			seen.add(v);
-		}
-	}
-	return unknowns;
+  const ast = liquid.parse(content);
+  const vars = liquid.globalFullVariablesSync(ast);
+  const known = knownVariablePaths(ctx);
+  const unknowns: string[] = [];
+  const seen = new Set<string>();
+  for (const v of vars) {
+    if (!seen.has(v) && !isKnownPath(v, known)) {
+      unknowns.push(v);
+      seen.add(v);
+    }
+  }
+  return unknowns;
 }
 
 export function displayUnknownVariables(unknowns: UnknownVariable[]): OutputNode[] {
-	if (unknowns.length === 0) return [];
-	return [
-		{ kind: "gap" },
-		{
-			kind: "section",
-			header: cell("Unknown template variables", "attention"),
-			items: unknowns.map(({ varName, filePath }) => cell(`'${varName}' in ${filePath}`)),
-		},
-	];
+  if (unknowns.length === 0) return [];
+  return [
+    { kind: "gap" },
+    {
+      kind: "section",
+      header: cell("Unknown template variables", "attention"),
+      items: unknowns.map(({ varName, filePath }) => cell(`'${varName}' in ${filePath}`)),
+    },
+  ];
 }
 
 function collectUnknownVariables(content: string, ctx: TemplateContext, filePath: string): UnknownVariable[] {
-	return checkUnknownVariables(content, ctx).map((varName) => ({ varName, filePath }));
+  return checkUnknownVariables(content, ctx).map((varName) => ({ varName, filePath }));
 }
 
 function isTemplateFile(relPath: string): boolean {
-	return relPath.endsWith(ARBTEMPLATE_EXT);
+  return relPath.endsWith(ARBTEMPLATE_EXT);
 }
 
 function stripTemplateExt(relPath: string): string {
-	return relPath.slice(0, -ARBTEMPLATE_EXT.length);
+  return relPath.slice(0, -ARBTEMPLATE_EXT.length);
 }
 
 export interface FailedCopy {
-	path: string;
-	error: string;
+  path: string;
+  error: string;
 }
 
 export interface ConflictInfo {
-	scope: "workspace" | "repo";
-	repo?: string;
-	relPath: string;
+  scope: "workspace" | "repo";
+  repo?: string;
+  relPath: string;
 }
 
 export interface OverlayResult {
-	seeded: string[];
-	skipped: string[];
-	regenerated: string[];
-	conflicts: ConflictInfo[];
-	failed: FailedCopy[];
-	unknownVariables: UnknownVariable[];
-	repoDirectoryWarnings: string[];
+  seeded: string[];
+  skipped: string[];
+  regenerated: string[];
+  conflicts: ConflictInfo[];
+  failed: FailedCopy[];
+  unknownVariables: UnknownVariable[];
+  repoDirectoryWarnings: string[];
 }
 
 function emptyResult(): OverlayResult {
-	return {
-		seeded: [],
-		skipped: [],
-		regenerated: [],
-		conflicts: [],
-		failed: [],
-		unknownVariables: [],
-		repoDirectoryWarnings: [],
-	};
+  return {
+    seeded: [],
+    skipped: [],
+    regenerated: [],
+    conflicts: [],
+    failed: [],
+    unknownVariables: [],
+    repoDirectoryWarnings: [],
+  };
 }
 
 export function overlayDirectory(
-	srcDir: string,
-	destDir: string,
-	ctx?: TemplateContext,
-	tplPathPrefix?: string,
-	conflictScope?: "workspace" | "repo",
-	conflictRepo?: string,
+  srcDir: string,
+  destDir: string,
+  ctx?: TemplateContext,
+  tplPathPrefix?: string,
+  conflictScope?: "workspace" | "repo",
+  conflictRepo?: string,
 ): OverlayResult {
-	if (!existsSync(srcDir)) return emptyResult();
+  if (!existsSync(srcDir)) return emptyResult();
 
-	const result = emptyResult();
-	const seen = new Set<string>();
+  const result = emptyResult();
+  const seen = new Set<string>();
 
-	function walk(dir: string): void {
-		for (const entry of readdirSync(dir)) {
-			const srcPath = join(dir, entry);
-			const stat = lstatSync(srcPath);
+  function walk(dir: string): void {
+    for (const entry of readdirSync(dir)) {
+      const srcPath = join(dir, entry);
+      const stat = lstatSync(srcPath);
 
-			if (stat.isSymbolicLink()) continue;
+      if (stat.isSymbolicLink()) continue;
 
-			if (stat.isDirectory()) {
-				walk(srcPath);
-			} else if (stat.isFile()) {
-				const rawRelPath = relative(srcDir, srcPath);
-				const isArbtpl = isTemplateFile(rawRelPath);
-				const relPath = isArbtpl ? stripTemplateExt(rawRelPath) : rawRelPath;
+      if (stat.isDirectory()) {
+        walk(srcPath);
+      } else if (stat.isFile()) {
+        const rawRelPath = relative(srcDir, srcPath);
+        const isArbtpl = isTemplateFile(rawRelPath);
+        const relPath = isArbtpl ? stripTemplateExt(rawRelPath) : rawRelPath;
 
-				if (seen.has(relPath)) {
-					result.conflicts.push({ scope: conflictScope ?? "workspace", repo: conflictRepo, relPath });
-					continue;
-				}
-				seen.add(relPath);
+        if (seen.has(relPath)) {
+          result.conflicts.push({ scope: conflictScope ?? "workspace", repo: conflictRepo, relPath });
+          continue;
+        }
+        seen.add(relPath);
 
-				const destPath = join(destDir, relPath);
-				const tplContent = isArbtpl && ctx ? readFileSync(srcPath, "utf-8") : null;
+        const destPath = join(destDir, relPath);
+        const tplContent = isArbtpl && ctx ? readFileSync(srcPath, "utf-8") : null;
 
-				if (tplContent !== null && ctx) {
-					const displayPath = tplPathPrefix ? `${tplPathPrefix}/${rawRelPath}` : rawRelPath;
-					result.unknownVariables.push(...collectUnknownVariables(tplContent, ctx, displayPath));
-				}
+        if (tplContent !== null && ctx) {
+          const displayPath = tplPathPrefix ? `${tplPathPrefix}/${rawRelPath}` : rawRelPath;
+          result.unknownVariables.push(...collectUnknownVariables(tplContent, ctx, displayPath));
+        }
 
-				if (!existsSync(destPath)) {
-					try {
-						mkdirSync(join(destDir, relative(srcDir, dir)), { recursive: true });
-						if (tplContent !== null && ctx) {
-							writeFileSync(destPath, renderTemplate(tplContent, ctx));
-						} else {
-							copyFileSync(srcPath, destPath);
-						}
-						result.seeded.push(relPath);
-					} catch (e) {
-						const msg = e instanceof Error ? e.message : String(e);
-						result.failed.push({ path: relPath, error: msg });
-					}
-				} else if (tplContent !== null && ctx?.previousRepos) {
-					// Membership change: check if file should be regenerated
-					try {
-						const newRender = renderTemplate(tplContent, ctx);
-						const existingContent = readFileSync(destPath, "utf-8");
+        if (!existsSync(destPath)) {
+          try {
+            mkdirSync(join(destDir, relative(srcDir, dir)), { recursive: true });
+            if (tplContent !== null && ctx) {
+              writeFileSync(destPath, renderTemplate(tplContent, ctx));
+            } else {
+              copyFileSync(srcPath, destPath);
+            }
+            result.seeded.push(relPath);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            result.failed.push({ path: relPath, error: msg });
+          }
+        } else if (tplContent !== null && ctx?.previousRepos) {
+          // Membership change: check if file should be regenerated
+          try {
+            const newRender = renderTemplate(tplContent, ctx);
+            const existingContent = readFileSync(destPath, "utf-8");
 
-						if (existingContent === newRender) {
-							result.skipped.push(relPath);
-						} else {
-							// Render with previous context to check for user edits
-							const prevCtx: TemplateContext = { ...ctx, repos: ctx.previousRepos };
-							const prevRender = renderTemplate(tplContent, prevCtx);
+            if (existingContent === newRender) {
+              result.skipped.push(relPath);
+            } else {
+              // Render with previous context to check for user edits
+              const prevCtx: TemplateContext = { ...ctx, repos: ctx.previousRepos };
+              const prevRender = renderTemplate(tplContent, prevCtx);
 
-							if (existingContent === prevRender) {
-								// User hasn't edited — safe to overwrite
-								writeFileSync(destPath, newRender);
-								result.regenerated.push(relPath);
-							} else {
-								// User has edited — don't overwrite
-								result.skipped.push(relPath);
-							}
-						}
-					} catch (e) {
-						const msg = e instanceof Error ? e.message : String(e);
-						result.failed.push({ path: relPath, error: msg });
-					}
-				} else {
-					result.skipped.push(relPath);
-				}
-			}
-		}
-	}
+              if (existingContent === prevRender) {
+                // User hasn't edited — safe to overwrite
+                writeFileSync(destPath, newRender);
+                result.regenerated.push(relPath);
+              } else {
+                // User has edited — don't overwrite
+                result.skipped.push(relPath);
+              }
+            }
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            result.failed.push({ path: relPath, error: msg });
+          }
+        } else {
+          result.skipped.push(relPath);
+        }
+      }
+    }
+  }
 
-	walk(srcDir);
-	return result;
+  walk(srcDir);
+  return result;
 }
 
 export async function applyWorkspaceTemplates(
-	arbRootDir: string,
-	wsDir: string,
-	changedRepos?: { added?: string[]; removed?: string[] },
-	cache?: GitCache,
+  arbRootDir: string,
+  wsDir: string,
+  changedRepos?: { added?: string[]; removed?: string[] },
+  cache?: GitCache,
 ): Promise<OverlayResult> {
-	const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
-	const reposDir = join(arbRootDir, ".arb", "repos");
-	const c = cache ?? new GitCache();
-	const repos = await workspaceRepoList(wsDir, reposDir, c);
-	const ctx: TemplateContext = {
-		rootPath: arbRootDir,
-		workspaceName: basename(wsDir),
-		workspacePath: wsDir,
-		repos,
-	};
+  const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
+  const reposDir = join(arbRootDir, ".arb", "repos");
+  const c = cache ?? new GitCache();
+  const repos = await workspaceRepoList(wsDir, reposDir, c);
+  const ctx: TemplateContext = {
+    rootPath: arbRootDir,
+    workspaceName: basename(wsDir),
+    workspacePath: wsDir,
+    repos,
+  };
 
-	if (changedRepos) {
-		ctx.previousRepos = await reconstructPreviousRepos(repos, changedRepos, reposDir, c);
-	}
+  if (changedRepos) {
+    ctx.previousRepos = await reconstructPreviousRepos(repos, changedRepos, reposDir, c);
+  }
 
-	const result = overlayDirectory(templateDir, wsDir, ctx, ".arb/templates/workspace", "workspace");
-	result.repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(arbRootDir);
-	return result;
+  const result = overlayDirectory(templateDir, wsDir, ctx, ".arb/templates/workspace", "workspace");
+  result.repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(arbRootDir);
+  return result;
 }
 
 export async function applyRepoTemplates(
-	arbRootDir: string,
-	wsDir: string,
-	repos: string[],
-	changedRepos?: { added?: string[]; removed?: string[] },
-	cache?: GitCache,
+  arbRootDir: string,
+  wsDir: string,
+  repos: string[],
+  changedRepos?: { added?: string[]; removed?: string[] },
+  cache?: GitCache,
 ): Promise<OverlayResult> {
-	const result = emptyResult();
-	const reposDir = join(arbRootDir, ".arb", "repos");
-	const c = cache ?? new GitCache();
-	const allRepos = await workspaceRepoList(wsDir, reposDir, c);
+  const result = emptyResult();
+  const reposDir = join(arbRootDir, ".arb", "repos");
+  const c = cache ?? new GitCache();
+  const allRepos = await workspaceRepoList(wsDir, reposDir, c);
 
-	for (const repo of repos) {
-		const templateDir = join(arbRootDir, ".arb", "templates", "repos", repo);
-		const repoDir = join(wsDir, repo);
+  for (const repo of repos) {
+    const templateDir = join(arbRootDir, ".arb", "templates", "repos", repo);
+    const repoDir = join(wsDir, repo);
 
-		if (!existsSync(templateDir) || !existsSync(repoDir)) continue;
+    if (!existsSync(templateDir) || !existsSync(repoDir)) continue;
 
-		const ctx: TemplateContext = {
-			rootPath: arbRootDir,
-			workspaceName: basename(wsDir),
-			workspacePath: wsDir,
-			repoName: repo,
-			repoPath: repoDir,
-			repos: allRepos,
-		};
-		if (changedRepos) {
-			ctx.previousRepos = await reconstructPreviousRepos(allRepos, changedRepos, reposDir, c);
-		}
-		const repoResult = overlayDirectory(templateDir, repoDir, ctx, `.arb/templates/repos/${repo}`, "repo", repo);
-		result.seeded.push(...repoResult.seeded);
-		result.skipped.push(...repoResult.skipped);
-		result.regenerated.push(...repoResult.regenerated);
-		result.conflicts.push(...repoResult.conflicts);
-		result.failed.push(...repoResult.failed);
-		result.unknownVariables.push(...repoResult.unknownVariables);
-	}
+    const ctx: TemplateContext = {
+      rootPath: arbRootDir,
+      workspaceName: basename(wsDir),
+      workspacePath: wsDir,
+      repoName: repo,
+      repoPath: repoDir,
+      repos: allRepos,
+    };
+    if (changedRepos) {
+      ctx.previousRepos = await reconstructPreviousRepos(allRepos, changedRepos, reposDir, c);
+    }
+    const repoResult = overlayDirectory(templateDir, repoDir, ctx, `.arb/templates/repos/${repo}`, "repo", repo);
+    result.seeded.push(...repoResult.seeded);
+    result.skipped.push(...repoResult.skipped);
+    result.regenerated.push(...repoResult.regenerated);
+    result.conflicts.push(...repoResult.conflicts);
+    result.failed.push(...repoResult.failed);
+    result.unknownVariables.push(...repoResult.unknownVariables);
+  }
 
-	return result;
+  return result;
 }
 
 const emptyRemote: RemoteInfo = { name: "", url: "" };
 
 /** Resolve remote info for a single repo, falling back to empty on error. */
 async function resolveRepoRemoteInfo(
-	repoDir: string,
-	cache: GitCache,
+  repoDir: string,
+  cache: GitCache,
 ): Promise<{ baseRemote: RemoteInfo; shareRemote: RemoteInfo }> {
-	try {
-		const remotes = await cache.resolveRemotes(repoDir);
-		const baseUrl = await cache.getRemoteUrl(repoDir, remotes.base);
-		const shareUrl = remotes.share !== remotes.base ? await cache.getRemoteUrl(repoDir, remotes.share) : baseUrl;
-		return {
-			baseRemote: { name: remotes.base, url: baseUrl ?? "" },
-			shareRemote: { name: remotes.share, url: shareUrl ?? "" },
-		};
-	} catch {
-		return { baseRemote: emptyRemote, shareRemote: emptyRemote };
-	}
+  try {
+    const remotes = await cache.resolveRemotes(repoDir);
+    const baseUrl = await cache.getRemoteUrl(repoDir, remotes.base);
+    const shareUrl = remotes.share !== remotes.base ? await cache.getRemoteUrl(repoDir, remotes.share) : baseUrl;
+    return {
+      baseRemote: { name: remotes.base, url: baseUrl ?? "" },
+      shareRemote: { name: remotes.share, url: shareUrl ?? "" },
+    };
+  } catch {
+    return { baseRemote: emptyRemote, shareRemote: emptyRemote };
+  }
 }
 
 /** Build the repo list for template context from a workspace directory. */
 export async function workspaceRepoList(wsDir: string, reposDir: string, cache?: GitCache): Promise<RepoInfo[]> {
-	if (!existsSync(wsDir)) return [];
-	const c = cache ?? new GitCache();
-	const dirs = readdirSync(wsDir)
-		.filter((entry) => entry !== ".arbws")
-		.map((entry) => join(wsDir, entry))
-		.filter((fullPath) => {
-			try {
-				return lstatSync(fullPath).isDirectory() && existsSync(join(fullPath, ".git"));
-			} catch {
-				return false;
-			}
-		})
-		.sort();
+  if (!existsSync(wsDir)) return [];
+  const c = cache ?? new GitCache();
+  const dirs = readdirSync(wsDir)
+    .filter((entry) => entry !== ".arbws")
+    .map((entry) => join(wsDir, entry))
+    .filter((fullPath) => {
+      try {
+        return lstatSync(fullPath).isDirectory() && existsSync(join(fullPath, ".git"));
+      } catch {
+        return false;
+      }
+    })
+    .sort();
 
-	const results: RepoInfo[] = [];
-	for (const fullPath of dirs) {
-		const name = basename(fullPath);
-		// Resolve remotes from canonical repo (workspace repos may not have independent remote config)
-		const canonicalDir = join(reposDir, name);
-		const remoteDir = existsSync(canonicalDir) ? canonicalDir : fullPath;
-		const { baseRemote, shareRemote } = await resolveRepoRemoteInfo(remoteDir, c);
-		results.push({ name, path: fullPath, baseRemote, shareRemote });
-	}
-	return results;
+  const results: RepoInfo[] = [];
+  for (const fullPath of dirs) {
+    const name = basename(fullPath);
+    // Resolve remotes from canonical repo (workspace repos may not have independent remote config)
+    const canonicalDir = join(reposDir, name);
+    const remoteDir = existsSync(canonicalDir) ? canonicalDir : fullPath;
+    const { baseRemote, shareRemote } = await resolveRepoRemoteInfo(remoteDir, c);
+    results.push({ name, path: fullPath, baseRemote, shareRemote });
+  }
+  return results;
 }
 
 /** Reconstruct previous repo list by reversing the change. */
 async function reconstructPreviousRepos(
-	currentRepos: RepoInfo[],
-	changedRepos: { added?: string[]; removed?: string[] },
-	reposDir: string,
-	cache: GitCache,
+  currentRepos: RepoInfo[],
+  changedRepos: { added?: string[]; removed?: string[] },
+  reposDir: string,
+  cache: GitCache,
 ): Promise<RepoInfo[]> {
-	const addedSet = new Set(changedRepos.added ?? []);
-	const removedSet = new Set(changedRepos.removed ?? []);
+  const addedSet = new Set(changedRepos.added ?? []);
+  const removedSet = new Set(changedRepos.removed ?? []);
 
-	// Previous = current minus added plus removed
-	const prev = currentRepos.filter((r) => !addedSet.has(r.name));
+  // Previous = current minus added plus removed
+  const prev = currentRepos.filter((r) => !addedSet.has(r.name));
 
-	// Add back removed repos (resolve remotes from canonical repo)
-	for (const name of removedSet) {
-		if (!prev.some((r) => r.name === name)) {
-			const wsDir = currentRepos.length > 0 ? dirname(currentRepos[0]?.path ?? "") : "";
-			if (wsDir) {
-				const canonicalDir = join(reposDir, name);
-				const { baseRemote, shareRemote } = await resolveRepoRemoteInfo(canonicalDir, cache);
-				prev.push({ name, path: join(wsDir, name), baseRemote, shareRemote });
-			}
-		}
-	}
+  // Add back removed repos (resolve remotes from canonical repo)
+  for (const name of removedSet) {
+    if (!prev.some((r) => r.name === name)) {
+      const wsDir = currentRepos.length > 0 ? dirname(currentRepos[0]?.path ?? "") : "";
+      if (wsDir) {
+        const canonicalDir = join(reposDir, name);
+        const { baseRemote, shareRemote } = await resolveRepoRemoteInfo(canonicalDir, cache);
+        prev.push({ name, path: join(wsDir, name), baseRemote, shareRemote });
+      }
+    }
+  }
 
-	return prev.sort((a, b) => a.path.localeCompare(b.path));
+  return prev.sort((a, b) => a.path.localeCompare(b.path));
 }
 
 export interface TemplateDiff {
-	relPath: string;
-	scope: "workspace" | "repo";
-	repo?: string;
-	kind: "modified" | "deleted";
+  relPath: string;
+  scope: "workspace" | "repo";
+  repo?: string;
+  kind: "modified" | "deleted";
 }
 
 interface DiffDirectoryResult {
-	modified: string[];
-	deleted: string[];
+  modified: string[];
+  deleted: string[];
 }
 
 function diffDirectory(srcDir: string, destDir: string, ctx?: TemplateContext): DiffDirectoryResult {
-	if (!existsSync(srcDir)) return { modified: [], deleted: [] };
+  if (!existsSync(srcDir)) return { modified: [], deleted: [] };
 
-	const modified: string[] = [];
-	const deleted: string[] = [];
-	const seen = new Set<string>();
+  const modified: string[] = [];
+  const deleted: string[] = [];
+  const seen = new Set<string>();
 
-	function walk(dir: string): void {
-		for (const entry of readdirSync(dir)) {
-			const srcPath = join(dir, entry);
-			const stat = lstatSync(srcPath);
+  function walk(dir: string): void {
+    for (const entry of readdirSync(dir)) {
+      const srcPath = join(dir, entry);
+      const stat = lstatSync(srcPath);
 
-			if (stat.isSymbolicLink()) continue;
+      if (stat.isSymbolicLink()) continue;
 
-			if (stat.isDirectory()) {
-				walk(srcPath);
-			} else if (stat.isFile()) {
-				const rawRelPath = relative(srcDir, srcPath);
-				const isArbtpl = isTemplateFile(rawRelPath);
-				const relPath = isArbtpl ? stripTemplateExt(rawRelPath) : rawRelPath;
+      if (stat.isDirectory()) {
+        walk(srcPath);
+      } else if (stat.isFile()) {
+        const rawRelPath = relative(srcDir, srcPath);
+        const isArbtpl = isTemplateFile(rawRelPath);
+        const relPath = isArbtpl ? stripTemplateExt(rawRelPath) : rawRelPath;
 
-				if (seen.has(relPath)) continue;
-				seen.add(relPath);
+        if (seen.has(relPath)) continue;
+        seen.add(relPath);
 
-				const destPath = join(destDir, relPath);
+        const destPath = join(destDir, relPath);
 
-				if (!existsSync(destPath)) {
-					deleted.push(relPath);
-					continue;
-				}
+        if (!existsSync(destPath)) {
+          deleted.push(relPath);
+          continue;
+        }
 
-				const srcContent =
-					isArbtpl && ctx ? Buffer.from(renderTemplate(readFileSync(srcPath, "utf-8"), ctx)) : readFileSync(srcPath);
-				const destContent = readFileSync(destPath);
-				if (!srcContent.equals(destContent)) {
-					modified.push(relPath);
-				}
-			}
-		}
-	}
+        const srcContent =
+          isArbtpl && ctx ? Buffer.from(renderTemplate(readFileSync(srcPath, "utf-8"), ctx)) : readFileSync(srcPath);
+        const destContent = readFileSync(destPath);
+        if (!srcContent.equals(destContent)) {
+          modified.push(relPath);
+        }
+      }
+    }
+  }
 
-	walk(srcDir);
-	return { modified, deleted };
+  walk(srcDir);
+  return { modified, deleted };
 }
 
 export async function diffTemplates(
-	arbRootDir: string,
-	wsDir: string,
-	repos: string[],
-	cache?: GitCache,
+  arbRootDir: string,
+  wsDir: string,
+  repos: string[],
+  cache?: GitCache,
 ): Promise<TemplateDiff[]> {
-	const result: TemplateDiff[] = [];
-	const reposDir = join(arbRootDir, ".arb", "repos");
-	const c = cache ?? new GitCache();
-	const allRepos = await workspaceRepoList(wsDir, reposDir, c);
+  const result: TemplateDiff[] = [];
+  const reposDir = join(arbRootDir, ".arb", "repos");
+  const c = cache ?? new GitCache();
+  const allRepos = await workspaceRepoList(wsDir, reposDir, c);
 
-	const wsTemplateDir = join(arbRootDir, ".arb", "templates", "workspace");
-	const wsCtx: TemplateContext = {
-		rootPath: arbRootDir,
-		workspaceName: basename(wsDir),
-		workspacePath: wsDir,
-		repos: allRepos,
-	};
-	const wsDiffs = diffDirectory(wsTemplateDir, wsDir, wsCtx);
-	for (const relPath of wsDiffs.modified) {
-		result.push({ relPath, scope: "workspace", kind: "modified" });
-	}
-	for (const relPath of wsDiffs.deleted) {
-		result.push({ relPath, scope: "workspace", kind: "deleted" });
-	}
+  const wsTemplateDir = join(arbRootDir, ".arb", "templates", "workspace");
+  const wsCtx: TemplateContext = {
+    rootPath: arbRootDir,
+    workspaceName: basename(wsDir),
+    workspacePath: wsDir,
+    repos: allRepos,
+  };
+  const wsDiffs = diffDirectory(wsTemplateDir, wsDir, wsCtx);
+  for (const relPath of wsDiffs.modified) {
+    result.push({ relPath, scope: "workspace", kind: "modified" });
+  }
+  for (const relPath of wsDiffs.deleted) {
+    result.push({ relPath, scope: "workspace", kind: "deleted" });
+  }
 
-	for (const repo of repos) {
-		const repoTemplateDir = join(arbRootDir, ".arb", "templates", "repos", repo);
-		const repoDir = join(wsDir, repo);
-		if (!existsSync(repoDir)) continue;
+  for (const repo of repos) {
+    const repoTemplateDir = join(arbRootDir, ".arb", "templates", "repos", repo);
+    const repoDir = join(wsDir, repo);
+    if (!existsSync(repoDir)) continue;
 
-		const repoCtx: TemplateContext = {
-			rootPath: arbRootDir,
-			workspaceName: basename(wsDir),
-			workspacePath: wsDir,
-			repoName: repo,
-			repoPath: repoDir,
-			repos: allRepos,
-		};
-		const repoDiffs = diffDirectory(repoTemplateDir, repoDir, repoCtx);
-		for (const relPath of repoDiffs.modified) {
-			result.push({ relPath, scope: "repo", repo, kind: "modified" });
-		}
-		for (const relPath of repoDiffs.deleted) {
-			result.push({ relPath, scope: "repo", repo, kind: "deleted" });
-		}
-	}
+    const repoCtx: TemplateContext = {
+      rootPath: arbRootDir,
+      workspaceName: basename(wsDir),
+      workspacePath: wsDir,
+      repoName: repo,
+      repoPath: repoDir,
+      repos: allRepos,
+    };
+    const repoDiffs = diffDirectory(repoTemplateDir, repoDir, repoCtx);
+    for (const relPath of repoDiffs.modified) {
+      result.push({ relPath, scope: "repo", repo, kind: "modified" });
+    }
+    for (const relPath of repoDiffs.deleted) {
+      result.push({ relPath, scope: "repo", repo, kind: "deleted" });
+    }
+  }
 
-	return result;
+  return result;
 }
 
 export async function checkAllTemplateVariables(
-	arbRootDir: string,
-	wsDir: string,
-	repos: string[],
-	cache?: GitCache,
+  arbRootDir: string,
+  wsDir: string,
+  repos: string[],
+  cache?: GitCache,
 ): Promise<UnknownVariable[]> {
-	const unknowns: UnknownVariable[] = [];
-	const reposDir = join(arbRootDir, ".arb", "repos");
-	const c = cache ?? new GitCache();
-	const allRepos = await workspaceRepoList(wsDir, reposDir, c);
-	const templatesDir = join(arbRootDir, ".arb", "templates");
+  const unknowns: UnknownVariable[] = [];
+  const reposDir = join(arbRootDir, ".arb", "repos");
+  const c = cache ?? new GitCache();
+  const allRepos = await workspaceRepoList(wsDir, reposDir, c);
+  const templatesDir = join(arbRootDir, ".arb", "templates");
 
-	const wsTemplateDir = join(templatesDir, "workspace");
-	const wsCtx: TemplateContext = {
-		rootPath: arbRootDir,
-		workspaceName: basename(wsDir),
-		workspacePath: wsDir,
-		repos: allRepos,
-	};
-	if (existsSync(wsTemplateDir)) {
-		for (const rawRelPath of walkFiles(wsTemplateDir)) {
-			if (isTemplateFile(rawRelPath)) {
-				const content = readFileSync(join(wsTemplateDir, rawRelPath), "utf-8");
-				const tplPath = `.arb/templates/workspace/${rawRelPath}`;
-				unknowns.push(...collectUnknownVariables(content, wsCtx, tplPath));
-			}
-		}
-	}
+  const wsTemplateDir = join(templatesDir, "workspace");
+  const wsCtx: TemplateContext = {
+    rootPath: arbRootDir,
+    workspaceName: basename(wsDir),
+    workspacePath: wsDir,
+    repos: allRepos,
+  };
+  if (existsSync(wsTemplateDir)) {
+    for (const rawRelPath of walkFiles(wsTemplateDir)) {
+      if (isTemplateFile(rawRelPath)) {
+        const content = readFileSync(join(wsTemplateDir, rawRelPath), "utf-8");
+        const tplPath = `.arb/templates/workspace/${rawRelPath}`;
+        unknowns.push(...collectUnknownVariables(content, wsCtx, tplPath));
+      }
+    }
+  }
 
-	for (const repo of repos) {
-		const repoTemplateDir = join(templatesDir, "repos", repo);
-		const repoDir = join(wsDir, repo);
-		if (!existsSync(repoTemplateDir)) continue;
+  for (const repo of repos) {
+    const repoTemplateDir = join(templatesDir, "repos", repo);
+    const repoDir = join(wsDir, repo);
+    if (!existsSync(repoTemplateDir)) continue;
 
-		const repoCtx: TemplateContext = {
-			rootPath: arbRootDir,
-			workspaceName: basename(wsDir),
-			workspacePath: wsDir,
-			repoName: repo,
-			repoPath: existsSync(repoDir) ? repoDir : undefined,
-			repos: allRepos,
-		};
-		for (const rawRelPath of walkFiles(repoTemplateDir)) {
-			if (isTemplateFile(rawRelPath)) {
-				const content = readFileSync(join(repoTemplateDir, rawRelPath), "utf-8");
-				const tplPath = `.arb/templates/repos/${repo}/${rawRelPath}`;
-				unknowns.push(...collectUnknownVariables(content, repoCtx, tplPath));
-			}
-		}
-	}
+    const repoCtx: TemplateContext = {
+      rootPath: arbRootDir,
+      workspaceName: basename(wsDir),
+      workspacePath: wsDir,
+      repoName: repo,
+      repoPath: existsSync(repoDir) ? repoDir : undefined,
+      repos: allRepos,
+    };
+    for (const rawRelPath of walkFiles(repoTemplateDir)) {
+      if (isTemplateFile(rawRelPath)) {
+        const content = readFileSync(join(repoTemplateDir, rawRelPath), "utf-8");
+        const tplPath = `.arb/templates/repos/${repo}/${rawRelPath}`;
+        unknowns.push(...collectUnknownVariables(content, repoCtx, tplPath));
+      }
+    }
+  }
 
-	return unknowns;
+  return unknowns;
 }
 
 // ── Template management helpers ──────────────────────────────────────
 
 export interface TemplateEntry {
-	scope: "workspace" | "repo";
-	repo?: string;
-	relPath: string;
-	isTemplate?: boolean;
-	conflict?: boolean;
+  scope: "workspace" | "repo";
+  repo?: string;
+  relPath: string;
+  isTemplate?: boolean;
+  conflict?: boolean;
 }
 
 export function listTemplates(arbRootDir: string): TemplateEntry[] {
-	const seen = new Map<string, TemplateEntry>();
-	const templatesDir = join(arbRootDir, ".arb", "templates");
+  const seen = new Map<string, TemplateEntry>();
+  const templatesDir = join(arbRootDir, ".arb", "templates");
 
-	function addEntry(entry: TemplateEntry): void {
-		const key = `${entry.scope}:${entry.repo ?? ""}:${entry.relPath}`;
-		const existing = seen.get(key);
-		if (existing) {
-			// Prefer the plain file over .arbtemplate; flag the conflict
-			if (existing.isTemplate && !entry.isTemplate) {
-				seen.set(key, { ...entry, conflict: true });
-			} else {
-				existing.conflict = true;
-			}
-		} else {
-			seen.set(key, entry);
-		}
-	}
+  function addEntry(entry: TemplateEntry): void {
+    const key = `${entry.scope}:${entry.repo ?? ""}:${entry.relPath}`;
+    const existing = seen.get(key);
+    if (existing) {
+      // Prefer the plain file over .arbtemplate; flag the conflict
+      if (existing.isTemplate && !entry.isTemplate) {
+        seen.set(key, { ...entry, conflict: true });
+      } else {
+        existing.conflict = true;
+      }
+    } else {
+      seen.set(key, entry);
+    }
+  }
 
-	// Workspace templates
-	const wsDir = join(templatesDir, "workspace");
-	if (existsSync(wsDir)) {
-		for (const rawRelPath of walkFiles(wsDir)) {
-			if (isTemplateFile(rawRelPath)) {
-				addEntry({ scope: "workspace", relPath: stripTemplateExt(rawRelPath), isTemplate: true });
-			} else {
-				addEntry({ scope: "workspace", relPath: rawRelPath });
-			}
-		}
-	}
+  // Workspace templates
+  const wsDir = join(templatesDir, "workspace");
+  if (existsSync(wsDir)) {
+    for (const rawRelPath of walkFiles(wsDir)) {
+      if (isTemplateFile(rawRelPath)) {
+        addEntry({ scope: "workspace", relPath: stripTemplateExt(rawRelPath), isTemplate: true });
+      } else {
+        addEntry({ scope: "workspace", relPath: rawRelPath });
+      }
+    }
+  }
 
-	// Repo templates
-	const reposDir = join(templatesDir, "repos");
-	if (existsSync(reposDir)) {
-		for (const entry of readdirSync(reposDir)) {
-			const repoTemplateDir = join(reposDir, entry);
-			if (!lstatSync(repoTemplateDir).isDirectory()) continue;
-			for (const rawRelPath of walkFiles(repoTemplateDir)) {
-				if (isTemplateFile(rawRelPath)) {
-					addEntry({ scope: "repo", repo: entry, relPath: stripTemplateExt(rawRelPath), isTemplate: true });
-				} else {
-					addEntry({ scope: "repo", repo: entry, relPath: rawRelPath });
-				}
-			}
-		}
-	}
+  // Repo templates
+  const reposDir = join(templatesDir, "repos");
+  if (existsSync(reposDir)) {
+    for (const entry of readdirSync(reposDir)) {
+      const repoTemplateDir = join(reposDir, entry);
+      if (!lstatSync(repoTemplateDir).isDirectory()) continue;
+      for (const rawRelPath of walkFiles(repoTemplateDir)) {
+        if (isTemplateFile(rawRelPath)) {
+          addEntry({ scope: "repo", repo: entry, relPath: stripTemplateExt(rawRelPath), isTemplate: true });
+        } else {
+          addEntry({ scope: "repo", repo: entry, relPath: rawRelPath });
+        }
+      }
+    }
+  }
 
-	return [...seen.values()];
+  return [...seen.values()];
 }
 
 function walkFiles(dir: string): string[] {
-	const files: string[] = [];
+  const files: string[] = [];
 
-	function walk(current: string): void {
-		for (const entry of readdirSync(current)) {
-			const fullPath = join(current, entry);
-			const stat = lstatSync(fullPath);
-			if (stat.isSymbolicLink()) continue;
-			if (stat.isDirectory()) {
-				walk(fullPath);
-			} else if (stat.isFile()) {
-				files.push(relative(dir, fullPath));
-			}
-		}
-	}
+  function walk(current: string): void {
+    for (const entry of readdirSync(current)) {
+      const fullPath = join(current, entry);
+      const stat = lstatSync(fullPath);
+      if (stat.isSymbolicLink()) continue;
+      if (stat.isDirectory()) {
+        walk(fullPath);
+      } else if (stat.isFile()) {
+        files.push(relative(dir, fullPath));
+      }
+    }
+  }
 
-	walk(dir);
-	return files;
+  walk(dir);
+  return files;
 }
 
 export interface TemplateScope {
-	scope: "workspace" | "repo";
-	repo?: string;
+  scope: "workspace" | "repo";
+  repo?: string;
 }
 
 export function detectScopeFromPath(wsDir: string, srcPath: string): TemplateScope | null {
-	const wsPrefix = `${wsDir}/`;
-	if (!srcPath.startsWith(wsPrefix)) return null;
+  const wsPrefix = `${wsDir}/`;
+  if (!srcPath.startsWith(wsPrefix)) return null;
 
-	for (const repoDir of workspaceRepoDirs(wsDir)) {
-		if (srcPath.startsWith(`${repoDir}/`) || srcPath === repoDir) {
-			return { scope: "repo", repo: basename(repoDir) };
-		}
-	}
+  for (const repoDir of workspaceRepoDirs(wsDir)) {
+    if (srcPath.startsWith(`${repoDir}/`) || srcPath === repoDir) {
+      return { scope: "repo", repo: basename(repoDir) };
+    }
+  }
 
-	return { scope: "workspace" };
+  return { scope: "workspace" };
 }
 
 export interface ForceOverlayResult {
-	seeded: string[];
-	reset: string[];
-	unchanged: string[];
-	conflicts: ConflictInfo[];
-	failed: FailedCopy[];
-	unknownVariables: UnknownVariable[];
-	repoDirectoryWarnings: string[];
+  seeded: string[];
+  reset: string[];
+  unchanged: string[];
+  conflicts: ConflictInfo[];
+  failed: FailedCopy[];
+  unknownVariables: UnknownVariable[];
+  repoDirectoryWarnings: string[];
 }
 
 export function forceOverlayDirectory(
-	srcDir: string,
-	destDir: string,
-	ctx?: TemplateContext,
-	tplPathPrefix?: string,
-	conflictScope?: "workspace" | "repo",
-	conflictRepo?: string,
+  srcDir: string,
+  destDir: string,
+  ctx?: TemplateContext,
+  tplPathPrefix?: string,
+  conflictScope?: "workspace" | "repo",
+  conflictRepo?: string,
 ): ForceOverlayResult {
-	if (!existsSync(srcDir))
-		return {
-			seeded: [],
-			reset: [],
-			unchanged: [],
-			conflicts: [],
-			failed: [],
-			unknownVariables: [],
-			repoDirectoryWarnings: [],
-		};
+  if (!existsSync(srcDir))
+    return {
+      seeded: [],
+      reset: [],
+      unchanged: [],
+      conflicts: [],
+      failed: [],
+      unknownVariables: [],
+      repoDirectoryWarnings: [],
+    };
 
-	const result: ForceOverlayResult = {
-		seeded: [],
-		reset: [],
-		unchanged: [],
-		conflicts: [],
-		failed: [],
-		unknownVariables: [],
-		repoDirectoryWarnings: [],
-	};
-	const seen = new Set<string>();
+  const result: ForceOverlayResult = {
+    seeded: [],
+    reset: [],
+    unchanged: [],
+    conflicts: [],
+    failed: [],
+    unknownVariables: [],
+    repoDirectoryWarnings: [],
+  };
+  const seen = new Set<string>();
 
-	function walk(dir: string): void {
-		for (const entry of readdirSync(dir)) {
-			const srcPath = join(dir, entry);
-			const stat = lstatSync(srcPath);
+  function walk(dir: string): void {
+    for (const entry of readdirSync(dir)) {
+      const srcPath = join(dir, entry);
+      const stat = lstatSync(srcPath);
 
-			if (stat.isSymbolicLink()) continue;
+      if (stat.isSymbolicLink()) continue;
 
-			if (stat.isDirectory()) {
-				walk(srcPath);
-			} else if (stat.isFile()) {
-				const rawRelPath = relative(srcDir, srcPath);
-				const isArbtpl = isTemplateFile(rawRelPath);
-				const relPath = isArbtpl ? stripTemplateExt(rawRelPath) : rawRelPath;
+      if (stat.isDirectory()) {
+        walk(srcPath);
+      } else if (stat.isFile()) {
+        const rawRelPath = relative(srcDir, srcPath);
+        const isArbtpl = isTemplateFile(rawRelPath);
+        const relPath = isArbtpl ? stripTemplateExt(rawRelPath) : rawRelPath;
 
-				if (seen.has(relPath)) {
-					result.conflicts.push({ scope: conflictScope ?? "workspace", repo: conflictRepo, relPath });
-					continue;
-				}
-				seen.add(relPath);
+        if (seen.has(relPath)) {
+          result.conflicts.push({ scope: conflictScope ?? "workspace", repo: conflictRepo, relPath });
+          continue;
+        }
+        seen.add(relPath);
 
-				const destPath = join(destDir, relPath);
-				const tplContent = isArbtpl && ctx ? readFileSync(srcPath, "utf-8") : null;
+        const destPath = join(destDir, relPath);
+        const tplContent = isArbtpl && ctx ? readFileSync(srcPath, "utf-8") : null;
 
-				if (tplContent !== null && ctx) {
-					const displayPath = tplPathPrefix ? `${tplPathPrefix}/${rawRelPath}` : rawRelPath;
-					result.unknownVariables.push(...collectUnknownVariables(tplContent, ctx, displayPath));
-				}
+        if (tplContent !== null && ctx) {
+          const displayPath = tplPathPrefix ? `${tplPathPrefix}/${rawRelPath}` : rawRelPath;
+          result.unknownVariables.push(...collectUnknownVariables(tplContent, ctx, displayPath));
+        }
 
-				try {
-					if (!existsSync(destPath)) {
-						mkdirSync(join(destDir, relative(srcDir, dir)), { recursive: true });
-						if (tplContent !== null && ctx) {
-							writeFileSync(destPath, renderTemplate(tplContent, ctx));
-						} else {
-							copyFileSync(srcPath, destPath);
-						}
-						result.seeded.push(relPath);
-					} else {
-						const srcContent =
-							tplContent !== null && ctx ? Buffer.from(renderTemplate(tplContent, ctx)) : readFileSync(srcPath);
-						const destContent = readFileSync(destPath);
-						if (srcContent.equals(destContent)) {
-							result.unchanged.push(relPath);
-						} else {
-							if (tplContent !== null && ctx) {
-								writeFileSync(destPath, srcContent);
-							} else {
-								copyFileSync(srcPath, destPath);
-							}
-							result.reset.push(relPath);
-						}
-					}
-				} catch (e) {
-					const msg = e instanceof Error ? e.message : String(e);
-					result.failed.push({ path: relPath, error: msg });
-				}
-			}
-		}
-	}
+        try {
+          if (!existsSync(destPath)) {
+            mkdirSync(join(destDir, relative(srcDir, dir)), { recursive: true });
+            if (tplContent !== null && ctx) {
+              writeFileSync(destPath, renderTemplate(tplContent, ctx));
+            } else {
+              copyFileSync(srcPath, destPath);
+            }
+            result.seeded.push(relPath);
+          } else {
+            const srcContent =
+              tplContent !== null && ctx ? Buffer.from(renderTemplate(tplContent, ctx)) : readFileSync(srcPath);
+            const destContent = readFileSync(destPath);
+            if (srcContent.equals(destContent)) {
+              result.unchanged.push(relPath);
+            } else {
+              if (tplContent !== null && ctx) {
+                writeFileSync(destPath, srcContent);
+              } else {
+                copyFileSync(srcPath, destPath);
+              }
+              result.reset.push(relPath);
+            }
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          result.failed.push({ path: relPath, error: msg });
+        }
+      }
+    }
+  }
 
-	walk(srcDir);
-	return result;
+  walk(srcDir);
+  return result;
 }
 
 export async function forceApplyWorkspaceTemplates(
-	arbRootDir: string,
-	wsDir: string,
-	cache?: GitCache,
+  arbRootDir: string,
+  wsDir: string,
+  cache?: GitCache,
 ): Promise<ForceOverlayResult> {
-	const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
-	const reposDir = join(arbRootDir, ".arb", "repos");
-	const c = cache ?? new GitCache();
-	const repos = await workspaceRepoList(wsDir, reposDir, c);
-	const ctx: TemplateContext = {
-		rootPath: arbRootDir,
-		workspaceName: basename(wsDir),
-		workspacePath: wsDir,
-		repos,
-	};
-	const result = forceOverlayDirectory(templateDir, wsDir, ctx, ".arb/templates/workspace", "workspace");
-	result.repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(arbRootDir);
-	return result;
+  const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
+  const reposDir = join(arbRootDir, ".arb", "repos");
+  const c = cache ?? new GitCache();
+  const repos = await workspaceRepoList(wsDir, reposDir, c);
+  const ctx: TemplateContext = {
+    rootPath: arbRootDir,
+    workspaceName: basename(wsDir),
+    workspacePath: wsDir,
+    repos,
+  };
+  const result = forceOverlayDirectory(templateDir, wsDir, ctx, ".arb/templates/workspace", "workspace");
+  result.repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(arbRootDir);
+  return result;
 }
 
 export async function forceApplyRepoTemplates(
-	arbRootDir: string,
-	wsDir: string,
-	repos: string[],
-	cache?: GitCache,
+  arbRootDir: string,
+  wsDir: string,
+  repos: string[],
+  cache?: GitCache,
 ): Promise<ForceOverlayResult> {
-	const result: ForceOverlayResult = {
-		seeded: [],
-		reset: [],
-		unchanged: [],
-		conflicts: [],
-		failed: [],
-		unknownVariables: [],
-		repoDirectoryWarnings: [],
-	};
-	const reposDir = join(arbRootDir, ".arb", "repos");
-	const c = cache ?? new GitCache();
-	const allRepos = await workspaceRepoList(wsDir, reposDir, c);
+  const result: ForceOverlayResult = {
+    seeded: [],
+    reset: [],
+    unchanged: [],
+    conflicts: [],
+    failed: [],
+    unknownVariables: [],
+    repoDirectoryWarnings: [],
+  };
+  const reposDir = join(arbRootDir, ".arb", "repos");
+  const c = cache ?? new GitCache();
+  const allRepos = await workspaceRepoList(wsDir, reposDir, c);
 
-	for (const repo of repos) {
-		const templateDir = join(arbRootDir, ".arb", "templates", "repos", repo);
-		const repoDir = join(wsDir, repo);
+  for (const repo of repos) {
+    const templateDir = join(arbRootDir, ".arb", "templates", "repos", repo);
+    const repoDir = join(wsDir, repo);
 
-		if (!existsSync(templateDir) || !existsSync(repoDir)) continue;
+    if (!existsSync(templateDir) || !existsSync(repoDir)) continue;
 
-		const ctx: TemplateContext = {
-			rootPath: arbRootDir,
-			workspaceName: basename(wsDir),
-			workspacePath: wsDir,
-			repoName: repo,
-			repoPath: repoDir,
-			repos: allRepos,
-		};
-		const repoResult = forceOverlayDirectory(templateDir, repoDir, ctx, `.arb/templates/repos/${repo}`, "repo", repo);
-		result.seeded.push(...repoResult.seeded);
-		result.reset.push(...repoResult.reset);
-		result.unchanged.push(...repoResult.unchanged);
-		result.conflicts.push(...repoResult.conflicts);
-		result.failed.push(...repoResult.failed);
-		result.unknownVariables.push(...repoResult.unknownVariables);
-	}
+    const ctx: TemplateContext = {
+      rootPath: arbRootDir,
+      workspaceName: basename(wsDir),
+      workspacePath: wsDir,
+      repoName: repo,
+      repoPath: repoDir,
+      repos: allRepos,
+    };
+    const repoResult = forceOverlayDirectory(templateDir, repoDir, ctx, `.arb/templates/repos/${repo}`, "repo", repo);
+    result.seeded.push(...repoResult.seeded);
+    result.reset.push(...repoResult.reset);
+    result.unchanged.push(...repoResult.unchanged);
+    result.conflicts.push(...repoResult.conflicts);
+    result.failed.push(...repoResult.failed);
+    result.unknownVariables.push(...repoResult.unknownVariables);
+  }
 
-	return result;
+  return result;
 }
 
 export function displayTemplateDiffs(templateDiffs: TemplateDiff[], suffix?: string): OutputNode[] {
-	if (templateDiffs.length === 0) return [];
-	const nodes: OutputNode[] = [];
-	const modified = templateDiffs.filter((d) => d.kind === "modified");
-	const deleted = templateDiffs.filter((d) => d.kind === "deleted");
-	if (modified.length > 0) {
-		nodes.push({
-			kind: "section",
-			header: cell(`Template files modified${suffix ?? ""}`, "attention"),
-			items: modified.map((diff) => {
-				const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
-				return cell(`${prefix}${diff.relPath}`);
-			}),
-		});
-		nodes.push({ kind: "gap" });
-	}
-	if (deleted.length > 0) {
-		nodes.push({
-			kind: "section",
-			header: cell(`Template files deleted${suffix ?? ""}`, "attention"),
-			items: deleted.map((diff) => {
-				const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
-				return cell(`${prefix}${diff.relPath}`);
-			}),
-		});
-		nodes.push({ kind: "gap" });
-	}
-	return nodes;
+  if (templateDiffs.length === 0) return [];
+  const nodes: OutputNode[] = [];
+  const modified = templateDiffs.filter((d) => d.kind === "modified");
+  const deleted = templateDiffs.filter((d) => d.kind === "deleted");
+  if (modified.length > 0) {
+    nodes.push({
+      kind: "section",
+      header: cell(`Template files modified${suffix ?? ""}`, "attention"),
+      items: modified.map((diff) => {
+        const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
+        return cell(`${prefix}${diff.relPath}`);
+      }),
+    });
+    nodes.push({ kind: "gap" });
+  }
+  if (deleted.length > 0) {
+    nodes.push({
+      kind: "section",
+      header: cell(`Template files deleted${suffix ?? ""}`, "attention"),
+      items: deleted.map((diff) => {
+        const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
+        return cell(`${prefix}${diff.relPath}`);
+      }),
+    });
+    nodes.push({ kind: "gap" });
+  }
+  return nodes;
 }
 
 export function displayTemplateConflicts(conflicts: ConflictInfo[]): OutputNode[] {
-	if (conflicts.length === 0) return [];
-	return [
-		{ kind: "gap" },
-		{
-			kind: "section",
-			header: cell("Conflicting templates (both plain and .arbtemplate versions exist)", "attention"),
-			items: conflicts.map((c) => {
-				const tplDir = c.scope === "workspace" ? ".arb/templates/workspace" : `.arb/templates/repos/${c.repo}`;
-				const arbtplName = `${basename(c.relPath)}${ARBTEMPLATE_EXT}`;
-				return cell(`remove either ${tplDir}/${c.relPath} or ${arbtplName}`);
-			}),
-		},
-	];
+  if (conflicts.length === 0) return [];
+  return [
+    { kind: "gap" },
+    {
+      kind: "section",
+      header: cell("Conflicting templates (both plain and .arbtemplate versions exist)", "attention"),
+      items: conflicts.map((c) => {
+        const tplDir = c.scope === "workspace" ? ".arb/templates/workspace" : `.arb/templates/repos/${c.repo}`;
+        const arbtplName = `${basename(c.relPath)}${ARBTEMPLATE_EXT}`;
+        return cell(`remove either ${tplDir}/${c.relPath} or ${arbtplName}`);
+      }),
+    },
+  ];
 }
 
 export function templateFilePath(
-	arbRootDir: string,
-	scope: "workspace" | "repo",
-	relPath: string,
-	repo?: string,
+  arbRootDir: string,
+  scope: "workspace" | "repo",
+  relPath: string,
+  repo?: string,
 ): string {
-	const plainPath =
-		scope === "workspace"
-			? join(arbRootDir, ".arb", "templates", "workspace", relPath)
-			: join(arbRootDir, ".arb", "templates", "repos", repo ?? "", relPath);
+  const plainPath =
+    scope === "workspace"
+      ? join(arbRootDir, ".arb", "templates", "workspace", relPath)
+      : join(arbRootDir, ".arb", "templates", "repos", repo ?? "", relPath);
 
-	if (existsSync(plainPath)) return plainPath;
+  if (existsSync(plainPath)) return plainPath;
 
-	const arbtplPath = `${plainPath}${ARBTEMPLATE_EXT}`;
-	if (existsSync(arbtplPath)) return arbtplPath;
+  const arbtplPath = `${plainPath}${ARBTEMPLATE_EXT}`;
+  if (existsSync(arbtplPath)) return arbtplPath;
 
-	return plainPath;
+  return plainPath;
 }
 
 export function workspaceFilePath(wsDir: string, scope: "workspace" | "repo", relPath: string, repo?: string): string {
-	return scope === "workspace" ? join(wsDir, relPath) : join(wsDir, repo ?? "", relPath);
+  return scope === "workspace" ? join(wsDir, relPath) : join(wsDir, repo ?? "", relPath);
 }
 
 /** Check workspace template entries for paths whose top-level directory matches a known repo name. */
 export function checkWorkspaceTemplateRepoWarnings(arbRootDir: string): string[] {
-	const reposDir = join(arbRootDir, ".arb", "repos");
-	const repoNames = new Set(listRepos(reposDir));
-	if (repoNames.size === 0) return [];
+  const reposDir = join(arbRootDir, ".arb", "repos");
+  const repoNames = new Set(listRepos(reposDir));
+  if (repoNames.size === 0) return [];
 
-	const wsTemplateDir = join(arbRootDir, ".arb", "templates", "workspace");
-	if (!existsSync(wsTemplateDir)) return [];
+  const wsTemplateDir = join(arbRootDir, ".arb", "templates", "workspace");
+  if (!existsSync(wsTemplateDir)) return [];
 
-	const warnings: string[] = [];
-	const warnedDirs = new Set<string>();
+  const warnings: string[] = [];
+  const warnedDirs = new Set<string>();
 
-	for (const rawRelPath of walkFiles(wsTemplateDir)) {
-		const relPath = isTemplateFile(rawRelPath) ? stripTemplateExt(rawRelPath) : rawRelPath;
-		const topDir = relPath.split("/")[0];
-		if (topDir && repoNames.has(topDir) && !warnedDirs.has(topDir)) {
-			warnedDirs.add(topDir);
-			warnings.push(topDir);
-		}
-	}
+  for (const rawRelPath of walkFiles(wsTemplateDir)) {
+    const relPath = isTemplateFile(rawRelPath) ? stripTemplateExt(rawRelPath) : rawRelPath;
+    const topDir = relPath.split("/")[0];
+    if (topDir && repoNames.has(topDir) && !warnedDirs.has(topDir)) {
+      warnedDirs.add(topDir);
+      warnings.push(topDir);
+    }
+  }
 
-	return warnings;
+  return warnings;
 }
 
 export function displayRepoDirectoryWarnings(warnings: string[]): OutputNode[] {
-	if (warnings.length === 0) return [];
-	return [
-		{ kind: "gap" },
-		{
-			kind: "section",
-			header: cell("Workspace templates target repo directories", "attention"),
-			items: warnings.map((dir) => cell(`'${dir}/' — use .arb/templates/repos/${dir}/ for repo-scoped templates`)),
-		},
-	];
+  if (warnings.length === 0) return [];
+  return [
+    { kind: "gap" },
+    {
+      kind: "section",
+      header: cell("Workspace templates target repo directories", "attention"),
+      items: warnings.map((dir) => cell(`'${dir}/' — use .arb/templates/repos/${dir}/ for repo-scoped templates`)),
+    },
+  ];
 }
 
 export function displayOverlaySummary(
-	wsResult: OverlayResult,
-	repoResult: OverlayResult,
-	renderFn: (nodes: OutputNode[]) => string,
+  wsResult: OverlayResult,
+  repoResult: OverlayResult,
+  renderFn: (nodes: OutputNode[]) => string,
 ): void {
-	const totalSeeded = wsResult.seeded.length + repoResult.seeded.length;
-	const totalRegenerated = wsResult.regenerated.length + repoResult.regenerated.length;
-	if (totalSeeded > 0) info(`Seeded ${plural(totalSeeded, "template file")}`);
-	if (totalRegenerated > 0) info(`Regenerated ${plural(totalRegenerated, "template file")}`);
-	const nodes: OutputNode[] = [...displayTemplateConflicts([...wsResult.conflicts, ...repoResult.conflicts])];
-	for (const f of [...wsResult.failed, ...repoResult.failed]) {
-		warn(`Failed to copy template ${f.path}: ${f.error}`);
-	}
-	nodes.push(
-		...displayUnknownVariables([...wsResult.unknownVariables, ...repoResult.unknownVariables]),
-		...displayRepoDirectoryWarnings(wsResult.repoDirectoryWarnings),
-	);
-	if (nodes.length > 0) {
-		process.stderr.write(renderFn(nodes));
-	}
+  const totalSeeded = wsResult.seeded.length + repoResult.seeded.length;
+  const totalRegenerated = wsResult.regenerated.length + repoResult.regenerated.length;
+  if (totalSeeded > 0) info(`Seeded ${plural(totalSeeded, "template file")}`);
+  if (totalRegenerated > 0) info(`Regenerated ${plural(totalRegenerated, "template file")}`);
+  const nodes: OutputNode[] = [...displayTemplateConflicts([...wsResult.conflicts, ...repoResult.conflicts])];
+  for (const f of [...wsResult.failed, ...repoResult.failed]) {
+    warn(`Failed to copy template ${f.path}: ${f.error}`);
+  }
+  nodes.push(
+    ...displayUnknownVariables([...wsResult.unknownVariables, ...repoResult.unknownVariables]),
+    ...displayRepoDirectoryWarnings(wsResult.repoDirectoryWarnings),
+  );
+  if (nodes.length > 0) {
+    process.stderr.write(renderFn(nodes));
+  }
 }

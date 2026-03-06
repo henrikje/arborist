@@ -10,14 +10,14 @@ import { listRepos, listWorkspaces, workspaceRepoDirs } from "./repos";
  * Returns null if the file doesn't exist or isn't a valid gitdir reference.
  */
 export function readGitdirFromWorktree(repoDir: string): string | null {
-	const gitPath = join(repoDir, ".git");
-	try {
-		const content = readFileSync(gitPath, "utf-8").trim();
-		if (content.startsWith("gitdir: ")) {
-			return content.slice("gitdir: ".length);
-		}
-	} catch {}
-	return null;
+  const gitPath = join(repoDir, ".git");
+  try {
+    const content = readFileSync(gitPath, "utf-8").trim();
+    if (content.startsWith("gitdir: ")) {
+      return content.slice("gitdir: ".length);
+    }
+  } catch {}
+  return null;
 }
 
 /**
@@ -25,12 +25,12 @@ export function readGitdirFromWorktree(repoDir: string): string | null {
  * Returns the absolute path the canonical repo thinks the worktree lives at.
  */
 function readGitdirBackRef(worktreeEntryDir: string): string | null {
-	const gitdirFile = join(worktreeEntryDir, "gitdir");
-	try {
-		const content = readFileSync(gitdirFile, "utf-8").trim();
-		return content || null;
-	} catch {}
-	return null;
+  const gitdirFile = join(worktreeEntryDir, "gitdir");
+  try {
+    const content = readFileSync(gitdirFile, "utf-8").trim();
+    return content || null;
+  } catch {}
+  return null;
 }
 
 /**
@@ -38,10 +38,10 @@ function readGitdirBackRef(worktreeEntryDir: string): string | null {
  * segment. Returns null if the segment is not found.
  */
 function extractOldProjectRoot(gitdirPath: string): string | null {
-	const marker = "/.arb/repos/";
-	const idx = gitdirPath.lastIndexOf(marker);
-	if (idx === -1) return null;
-	return gitdirPath.slice(0, idx);
+  const marker = "/.arb/repos/";
+  const idx = gitdirPath.lastIndexOf(marker);
+  if (idx === -1) return null;
+  return gitdirPath.slice(0, idx);
 }
 
 /**
@@ -53,20 +53,20 @@ function extractOldProjectRoot(gitdirPath: string): string | null {
  * false positives from symlink setups.
  */
 function detectProjectMove(wsDir: string, arbRootDir: string): string | null {
-	const repoDirs = workspaceRepoDirs(wsDir);
-	for (const repoDir of repoDirs) {
-		const gitdirPath = readGitdirFromWorktree(repoDir);
-		if (!gitdirPath) continue;
+  const repoDirs = workspaceRepoDirs(wsDir);
+  for (const repoDir of repoDirs) {
+    const gitdirPath = readGitdirFromWorktree(repoDir);
+    if (!gitdirPath) continue;
 
-		const oldRoot = extractOldProjectRoot(gitdirPath);
-		if (!oldRoot) continue;
-		if (oldRoot === arbRootDir) continue;
+    const oldRoot = extractOldProjectRoot(gitdirPath);
+    if (!oldRoot) continue;
+    if (oldRoot === arbRootDir) continue;
 
-		if (!existsSync(oldRoot)) {
-			return oldRoot;
-		}
-	}
-	return null;
+    if (!existsSync(oldRoot)) {
+      return oldRoot;
+    }
+  }
+  return null;
 }
 
 /**
@@ -76,35 +76,35 @@ function detectProjectMove(wsDir: string, arbRootDir: string): string | null {
  * forward and backward refs.
  */
 function repairProjectMove(arbRootDir: string, reposDir: string, oldRoot: string): void {
-	for (const repo of listRepos(reposDir)) {
-		const repoDir = join(reposDir, repo);
-		const worktreesDir = join(repoDir, ".git", "worktrees");
-		let entries: string[];
-		try {
-			entries = readdirSync(worktreesDir);
-		} catch {
-			continue;
-		}
+  for (const repo of listRepos(reposDir)) {
+    const repoDir = join(reposDir, repo);
+    const worktreesDir = join(repoDir, ".git", "worktrees");
+    let entries: string[];
+    try {
+      entries = readdirSync(worktreesDir);
+    } catch {
+      continue;
+    }
 
-		for (const entry of entries) {
-			const entryDir = join(worktreesDir, entry);
-			const backRef = readGitdirBackRef(entryDir);
-			if (!backRef) continue;
-			if (!backRef.startsWith(oldRoot)) continue;
+    for (const entry of entries) {
+      const entryDir = join(worktreesDir, entry);
+      const backRef = readGitdirBackRef(entryDir);
+      if (!backRef) continue;
+      if (!backRef.startsWith(oldRoot)) continue;
 
-			const newGitPath = arbRootDir + backRef.slice(oldRoot.length);
-			const gitSuffix = "/.git";
-			const worktreeDir = newGitPath.endsWith(gitSuffix) ? newGitPath.slice(0, -gitSuffix.length) : newGitPath;
+      const newGitPath = arbRootDir + backRef.slice(oldRoot.length);
+      const gitSuffix = "/.git";
+      const worktreeDir = newGitPath.endsWith(gitSuffix) ? newGitPath.slice(0, -gitSuffix.length) : newGitPath;
 
-			if (!existsSync(worktreeDir)) continue;
+      if (!existsSync(worktreeDir)) continue;
 
-			Bun.spawnSync(["git", "worktree", "repair", worktreeDir], {
-				cwd: repoDir,
-				stdout: "ignore",
-				stderr: "ignore",
-			});
-		}
-	}
+      Bun.spawnSync(["git", "worktree", "repair", worktreeDir], {
+        cwd: repoDir,
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+    }
+  }
 }
 
 /**
@@ -120,9 +120,9 @@ function repairProjectMove(arbRootDir: string, reposDir: string, oldRoot: string
  * `git worktree repair` to fix both forward and backward refs.
  */
 export function detectAndRepairProjectMove(wsDir: string, arbRootDir: string, reposDir: string): void {
-	const oldRoot = detectProjectMove(wsDir, arbRootDir);
-	if (!oldRoot) return;
-	repairProjectMove(arbRootDir, reposDir, oldRoot);
+  const oldRoot = detectProjectMove(wsDir, arbRootDir);
+  if (!oldRoot) return;
+  repairProjectMove(arbRootDir, reposDir, oldRoot);
 }
 
 /**
@@ -135,34 +135,34 @@ export function detectAndRepairProjectMove(wsDir: string, arbRootDir: string, re
  * path. This function detects the mismatch and repairs it.
  */
 export function repairWorktreeRefs(wsDir: string, reposDir: string): void {
-	const repoDirs = workspaceRepoDirs(wsDir);
-	for (const repoDir of repoDirs) {
-		const gitdirPath = readGitdirFromWorktree(repoDir);
-		if (!gitdirPath) continue;
+  const repoDirs = workspaceRepoDirs(wsDir);
+  for (const repoDir of repoDirs) {
+    const gitdirPath = readGitdirFromWorktree(repoDir);
+    if (!gitdirPath) continue;
 
-		const backRef = readGitdirBackRef(gitdirPath);
-		if (!backRef) continue;
+    const backRef = readGitdirBackRef(gitdirPath);
+    if (!backRef) continue;
 
-		const expectedGitPath = join(repoDir, ".git");
-		if (backRef === expectedGitPath) continue;
+    const expectedGitPath = join(repoDir, ".git");
+    if (backRef === expectedGitPath) continue;
 
-		// The back-ref doesn't match this workspace repo. If the back-ref target
-		// still exists on disk, another workspace legitimately owns this worktree
-		// entry — do NOT repair (repairing would steal the entry from the other
-		// workspace). This is a shared-entry corruption, not a moved workspace.
-		if (existsSync(backRef)) continue;
+    // The back-ref doesn't match this workspace repo. If the back-ref target
+    // still exists on disk, another workspace legitimately owns this worktree
+    // entry — do NOT repair (repairing would steal the entry from the other
+    // workspace). This is a shared-entry corruption, not a moved workspace.
+    if (existsSync(backRef)) continue;
 
-		// Mismatch and the original location is gone — workspace was moved. Repair it.
-		const repoName = basename(repoDir);
-		const canonicalRepoDir = join(reposDir, repoName);
-		if (existsSync(canonicalRepoDir)) {
-			Bun.spawnSync(["git", "worktree", "repair", repoDir], {
-				cwd: canonicalRepoDir,
-				stdout: "ignore",
-				stderr: "ignore",
-			});
-		}
-	}
+    // Mismatch and the original location is gone — workspace was moved. Repair it.
+    const repoName = basename(repoDir);
+    const canonicalRepoDir = join(reposDir, repoName);
+    if (existsSync(canonicalRepoDir)) {
+      Bun.spawnSync(["git", "worktree", "repair", repoDir], {
+        cwd: canonicalRepoDir,
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+    }
+  }
 }
 
 /**
@@ -179,60 +179,60 @@ export function repairWorktreeRefs(wsDir: string, reposDir: string): void {
  * returned set still allows callers to exclude these repos from pruning.
  */
 export function repairAllWorktreeRefs(arbRootDir: string, reposDir: string): Set<string> {
-	const renamedRepos = new Set<string>();
-	const workspaces = listWorkspaces(arbRootDir);
-	// Map: canonical worktree entry path → actual workspace repo dir
-	const worktreeEntryToRepoDir = new Map<string, string>();
-	for (const ws of workspaces) {
-		const wsDir = join(arbRootDir, ws);
-		for (const repoDir of workspaceRepoDirs(wsDir)) {
-			const gitdirPath = readGitdirFromWorktree(repoDir);
-			if (gitdirPath) {
-				worktreeEntryToRepoDir.set(gitdirPath, repoDir);
-			}
-		}
-	}
+  const renamedRepos = new Set<string>();
+  const workspaces = listWorkspaces(arbRootDir);
+  // Map: canonical worktree entry path → actual workspace repo dir
+  const worktreeEntryToRepoDir = new Map<string, string>();
+  for (const ws of workspaces) {
+    const wsDir = join(arbRootDir, ws);
+    for (const repoDir of workspaceRepoDirs(wsDir)) {
+      const gitdirPath = readGitdirFromWorktree(repoDir);
+      if (gitdirPath) {
+        worktreeEntryToRepoDir.set(gitdirPath, repoDir);
+      }
+    }
+  }
 
-	// Check each canonical repo's worktree entries for stale back-refs
-	for (const repo of listRepos(reposDir)) {
-		const worktreesDir = join(reposDir, repo, ".git", "worktrees");
-		let entries: string[];
-		try {
-			entries = readdirSync(worktreesDir);
-		} catch {
-			continue;
-		}
+  // Check each canonical repo's worktree entries for stale back-refs
+  for (const repo of listRepos(reposDir)) {
+    const worktreesDir = join(reposDir, repo, ".git", "worktrees");
+    let entries: string[];
+    try {
+      entries = readdirSync(worktreesDir);
+    } catch {
+      continue;
+    }
 
-		for (const entry of entries) {
-			const entryDir = join(worktreesDir, entry);
-			const backRef = readGitdirBackRef(entryDir);
-			if (!backRef) continue;
+    for (const entry of entries) {
+      const entryDir = join(worktreesDir, entry);
+      const backRef = readGitdirBackRef(entryDir);
+      if (!backRef) continue;
 
-			// If the back-ref path exists on disk, nothing is stale
-			if (existsSync(backRef)) continue;
+      // If the back-ref path exists on disk, nothing is stale
+      if (existsSync(backRef)) continue;
 
-			// Stale back-ref — check if any workspace repo points to this entry
-			const actualRepoDir = worktreeEntryToRepoDir.get(entryDir);
-			if (!actualRepoDir) continue;
+      // Stale back-ref — check if any workspace repo points to this entry
+      const actualRepoDir = worktreeEntryToRepoDir.get(entryDir);
+      if (!actualRepoDir) continue;
 
-			// Found a match — this is a renamed workspace, not a deleted one.
-			// Attempt repair (requires git 2.30+, silently fails on older versions)
-			const canonicalRepoDir = join(reposDir, repo);
-			Bun.spawnSync(["git", "worktree", "repair", actualRepoDir], {
-				cwd: canonicalRepoDir,
-				stdout: "ignore",
-				stderr: "ignore",
-			});
+      // Found a match — this is a renamed workspace, not a deleted one.
+      // Attempt repair (requires git 2.30+, silently fails on older versions)
+      const canonicalRepoDir = join(reposDir, repo);
+      Bun.spawnSync(["git", "worktree", "repair", actualRepoDir], {
+        cwd: canonicalRepoDir,
+        stdout: "ignore",
+        stderr: "ignore",
+      });
 
-			// If repair failed (git < 2.30), exclude this repo from pruning
-			const updatedBackRef = readGitdirBackRef(entryDir);
-			if (updatedBackRef && !existsSync(updatedBackRef)) {
-				renamedRepos.add(repo);
-			}
-		}
-	}
+      // If repair failed (git < 2.30), exclude this repo from pruning
+      const updatedBackRef = readGitdirBackRef(entryDir);
+      if (updatedBackRef && !existsSync(updatedBackRef)) {
+        renamedRepos.add(repo);
+      }
+    }
+  }
 
-	return renamedRepos;
+  return renamedRepos;
 }
 
 /**
@@ -251,113 +251,113 @@ export function repairAllWorktreeRefs(arbRootDir: string, reposDir: string): Set
  *   it can be re-attached cleanly.
  */
 export function detectSharedWorktreeEntries(wsDir: string, arbRootDir: string): void {
-	const thisWsRepos = workspaceRepoDirs(wsDir);
-	if (thisWsRepos.length === 0) return;
+  const thisWsRepos = workspaceRepoDirs(wsDir);
+  if (thisWsRepos.length === 0) return;
 
-	const thisWsName = basename(wsDir);
-	const workspaces = listWorkspaces(arbRootDir);
+  const thisWsName = basename(wsDir);
+  const workspaces = listWorkspaces(arbRootDir);
 
-	for (const repoDir of thisWsRepos) {
-		const gitdirPath = readGitdirFromWorktree(repoDir);
-		if (!gitdirPath) continue;
+  for (const repoDir of thisWsRepos) {
+    const gitdirPath = readGitdirFromWorktree(repoDir);
+    if (!gitdirPath) continue;
 
-		const backRef = readGitdirBackRef(gitdirPath);
-		if (!backRef) continue;
+    const backRef = readGitdirBackRef(gitdirPath);
+    if (!backRef) continue;
 
-		const expectedGitPath = join(repoDir, ".git");
-		const repoName = basename(repoDir);
+    const expectedGitPath = join(repoDir, ".git");
+    const repoName = basename(repoDir);
 
-		if (backRef === expectedGitPath) {
-			// This workspace owns the entry. Check if another workspace also
-			// points to it (the other workspace has a stale forward-ref).
-			for (const ws of workspaces) {
-				if (ws === thisWsName) continue;
-				const otherRepoDir = join(arbRootDir, ws, repoName);
-				const otherGitdir = readGitdirFromWorktree(otherRepoDir);
-				if (otherGitdir && otherGitdir === gitdirPath) {
-					warn(
-						`  [${repoName}] worktree entry shared with ${ws}/${repoName} — stale reference will be cleaned on next attach`,
-					);
-				}
-			}
-		} else if (existsSync(backRef)) {
-			// The back-ref points to another workspace that still exists on disk.
-			// This workspace is the stale side — remove only the `.git` file to
-			// break the shared link. Keep the directory intact in case it contains
-			// uncommitted work. The repo can be re-attached with `arb attach`.
-			unlinkSync(join(repoDir, ".git"));
-			warn(
-				`  [${repoName}] removed stale worktree reference (entry belongs to another workspace) — run 'arb attach ${repoName}' to re-attach`,
-			);
-		}
-	}
+    if (backRef === expectedGitPath) {
+      // This workspace owns the entry. Check if another workspace also
+      // points to it (the other workspace has a stale forward-ref).
+      for (const ws of workspaces) {
+        if (ws === thisWsName) continue;
+        const otherRepoDir = join(arbRootDir, ws, repoName);
+        const otherGitdir = readGitdirFromWorktree(otherRepoDir);
+        if (otherGitdir && otherGitdir === gitdirPath) {
+          warn(
+            `  [${repoName}] worktree entry shared with ${ws}/${repoName} — stale reference will be cleaned on next attach`,
+          );
+        }
+      }
+    } else if (existsSync(backRef)) {
+      // The back-ref points to another workspace that still exists on disk.
+      // This workspace is the stale side — remove only the `.git` file to
+      // break the shared link. Keep the directory intact in case it contains
+      // uncommitted work. The repo can be re-attached with `arb attach`.
+      unlinkSync(join(repoDir, ".git"));
+      warn(
+        `  [${repoName}] removed stale worktree reference (entry belongs to another workspace) — run 'arb attach ${repoName}' to re-attach`,
+      );
+    }
+  }
 }
 
 /** Parse `git worktree list --porcelain` stdout into an array of worktree paths. */
 export function parseWorktreeList(stdout: string): string[] {
-	const paths: string[] = [];
-	for (const line of stdout.split("\n")) {
-		if (line.startsWith("worktree ")) {
-			paths.push(line.slice("worktree ".length));
-		}
-	}
-	return paths;
+  const paths: string[] = [];
+  for (const line of stdout.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      paths.push(line.slice("worktree ".length));
+    }
+  }
+  return paths;
 }
 
 export async function findStaleWorktrees(reposDir: string): Promise<string[]> {
-	const repos = listRepos(reposDir);
-	const stale: string[] = [];
-	for (const repo of repos) {
-		const repoDir = join(reposDir, repo);
-		const result = await git(repoDir, "worktree", "list", "--porcelain");
-		if (result.exitCode !== 0) continue;
-		const paths = parseWorktreeList(result.stdout);
-		for (const wtPath of paths) {
-			// The first entry is the main worktree (the canonical repo itself) — skip it
-			if (wtPath === repoDir) continue;
-			if (!existsSync(wtPath)) {
-				stale.push(repo);
-				break;
-			}
-		}
-	}
-	return stale;
+  const repos = listRepos(reposDir);
+  const stale: string[] = [];
+  for (const repo of repos) {
+    const repoDir = join(reposDir, repo);
+    const result = await git(repoDir, "worktree", "list", "--porcelain");
+    if (result.exitCode !== 0) continue;
+    const paths = parseWorktreeList(result.stdout);
+    for (const wtPath of paths) {
+      // The first entry is the main worktree (the canonical repo itself) — skip it
+      if (wtPath === repoDir) continue;
+      if (!existsSync(wtPath)) {
+        stale.push(repo);
+        break;
+      }
+    }
+  }
+  return stale;
 }
 
 export async function pruneWorktrees(reposDir: string, exclude?: Set<string>): Promise<void> {
-	const repos = listRepos(reposDir);
-	for (const repo of repos) {
-		if (exclude?.has(repo)) continue;
-		await git(join(reposDir, repo), "worktree", "prune");
-	}
+  const repos = listRepos(reposDir);
+  for (const repo of repos) {
+    if (exclude?.has(repo)) continue;
+    await git(join(reposDir, repo), "worktree", "prune");
+  }
 }
 
 export async function findOrphanedBranches(
-	reposDir: string,
-	workspaceBranches: Set<string>,
-	cache: GitCache,
+  reposDir: string,
+  workspaceBranches: Set<string>,
+  cache: GitCache,
 ): Promise<{ repo: string; branch: string; mergeStatus: "merged" | "unmerged"; aheadCount: number }[]> {
-	const repos = listRepos(reposDir);
-	const orphaned: { repo: string; branch: string; mergeStatus: "merged" | "unmerged"; aheadCount: number }[] = [];
-	for (const repo of repos) {
-		const repoDir = join(reposDir, repo);
-		const result = await git(repoDir, "for-each-ref", "refs/heads/", "--format=%(refname:short)");
-		if (result.exitCode !== 0) continue;
-		const defaultBranch = await cache.getDefaultBranch(repoDir, "origin");
-		for (const branch of result.stdout.split("\n").filter(Boolean)) {
-			if (branch === defaultBranch) continue;
-			if (!workspaceBranches.has(branch)) {
-				const defaultRef = defaultBranch ? `origin/${defaultBranch}` : "HEAD";
-				const mergeResult = await detectBranchMerged(repoDir, defaultRef, 200, branch);
-				if (mergeResult) {
-					orphaned.push({ repo, branch, mergeStatus: "merged", aheadCount: 0 });
-				} else {
-					const countResult = await git(repoDir, "rev-list", "--count", `${defaultRef}..${branch}`);
-					const aheadCount = countResult.exitCode === 0 ? Number.parseInt(countResult.stdout.trim(), 10) : 0;
-					orphaned.push({ repo, branch, mergeStatus: "unmerged", aheadCount });
-				}
-			}
-		}
-	}
-	return orphaned;
+  const repos = listRepos(reposDir);
+  const orphaned: { repo: string; branch: string; mergeStatus: "merged" | "unmerged"; aheadCount: number }[] = [];
+  for (const repo of repos) {
+    const repoDir = join(reposDir, repo);
+    const result = await git(repoDir, "for-each-ref", "refs/heads/", "--format=%(refname:short)");
+    if (result.exitCode !== 0) continue;
+    const defaultBranch = await cache.getDefaultBranch(repoDir, "origin");
+    for (const branch of result.stdout.split("\n").filter(Boolean)) {
+      if (branch === defaultBranch) continue;
+      if (!workspaceBranches.has(branch)) {
+        const defaultRef = defaultBranch ? `origin/${defaultBranch}` : "HEAD";
+        const mergeResult = await detectBranchMerged(repoDir, defaultRef, 200, branch);
+        if (mergeResult) {
+          orphaned.push({ repo, branch, mergeStatus: "merged", aheadCount: 0 });
+        } else {
+          const countResult = await git(repoDir, "rev-list", "--count", `${defaultRef}..${branch}`);
+          const aheadCount = countResult.exitCode === 0 ? Number.parseInt(countResult.stdout.trim(), 10) : 0;
+          orphaned.push({ repo, branch, mergeStatus: "unmerged", aheadCount });
+        }
+      }
+    }
+  }
+  return orphaned;
 }

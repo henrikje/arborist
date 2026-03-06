@@ -1,16 +1,16 @@
 {
-	"compilerOptions": {
-		"target": "ESNext",
-		"module": "ESNext",
-		"moduleResolution": "bundler",
-		"types": ["bun"],
-		"strict": true,
-		"noUncheckedIndexedAccess": true,
-		"esModuleInterop": true,
-		"skipLibCheck": true,
-		"noEmit": true,
-		"outDir": "dist",
-		"rootDir": "src"
-	},
-	"include": ["src"]
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["bun"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src"]
 }

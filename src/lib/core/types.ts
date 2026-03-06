@@ -1,5 +1,5 @@
 export interface ArbContext {
-	arbRootDir: string;
-	reposDir: string;
-	currentWorkspace: string | null;
+  arbRootDir: string;
+  reposDir: string;
+  currentWorkspace: string | null;
 }

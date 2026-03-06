@@ -1,36 +1,36 @@
 {
-	"name": "arb",
-	"version": "0.103.0",
-	"type": "module",
-	"scripts": {
-		"dev": "bun run src/index.ts --",
-		"build": "bun run scripts/set-version.ts && bun build src/index.ts --compile --outfile dist/arb && git checkout src/version.ts",
-		"test": "bun test src/ --concurrent --timeout 10000",
-		"test:integration": "bun run build && bun test test/integration/ --concurrent --timeout 30000",
-		"test:integration:git217": "docker build -f test/docker/git217.Dockerfile -t arb-git217 test/docker/ && docker run --rm -v \"$PWD\":/app -w /app arb-git217",
-		"lint": "biome check .",
-		"lint:fix": "biome check --write .",
-		"typecheck": "tsc --noEmit",
-		"cycles": "madge --circular --extensions ts src/",
-		"check": "bun run lint && bun run typecheck && bun run cycles && bun run test && bun run test:integration",
-		"build:release": "bun run scripts/build-release.ts"
-	},
-	"dependencies": {
-		"@inquirer/checkbox": "^5.0.4",
-		"@inquirer/confirm": "^6.0.4",
-		"@inquirer/input": "^5.0.4",
-		"@inquirer/select": "^5.0.6",
-		"commander": "^13",
-		"liquidjs": "^10.24.0",
-		"zod": "^4.3.6"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "^1.9",
-		"@commitlint/cli": "^20.4.1",
-		"@commitlint/config-conventional": "^20.4.1",
-		"@types/bun": "latest",
-		"ajv": "^8.18.0",
-		"madge": "^8.0.0",
-		"typescript": "^5.9.3"
-	}
+  "name": "arb",
+  "version": "0.103.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/index.ts --",
+    "build": "bun run scripts/set-version.ts && bun build src/index.ts --compile --outfile dist/arb && git checkout src/version.ts",
+    "test": "bun test src/ --concurrent --timeout 10000",
+    "test:integration": "bun run build && bun test test/integration/ --concurrent --timeout 30000",
+    "test:integration:git217": "docker build -f test/docker/git217.Dockerfile -t arb-git217 test/docker/ && docker run --rm -v \"$PWD\":/app -w /app arb-git217",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "cycles": "madge --circular --extensions ts src/",
+    "check": "bun run lint && bun run typecheck && bun run cycles && bun run test && bun run test:integration",
+    "build:release": "bun run scripts/build-release.ts"
+  },
+  "dependencies": {
+    "@inquirer/checkbox": "^5.0.4",
+    "@inquirer/confirm": "^6.0.4",
+    "@inquirer/input": "^5.0.4",
+    "@inquirer/select": "^5.0.6",
+    "commander": "^13",
+    "liquidjs": "^10.24.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9",
+    "@commitlint/cli": "^20.4.1",
+    "@commitlint/config-conventional": "^20.4.1",
+    "@types/bun": "latest",
+    "ajv": "^8.18.0",
+    "madge": "^8.0.0",
+    "typescript": "^5.9.3"
+  }
 }

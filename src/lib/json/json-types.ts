@@ -12,117 +12,117 @@ const GitOperationSchema = z.enum(["rebase", "merge", "cherry-pick", "revert", "
 // ── Status JSON schemas ──
 
 export const StatusJsonRepoSchema = z.object({
-	name: z.string(),
-	identity: z.object({
-		worktreeKind: z.enum(["full", "linked"]),
-		headMode: z.union([
-			z.object({ kind: z.literal("attached"), branch: z.string() }),
-			z.object({ kind: z.literal("detached") }),
-		]),
-		shallow: z.boolean(),
-	}),
-	local: z.object({
-		staged: z.number(),
-		modified: z.number(),
-		untracked: z.number(),
-		conflicts: z.number(),
-	}),
-	base: z
-		.object({
-			remote: z.string().nullable(),
-			ref: z.string(),
-			configuredRef: z.string().nullable(),
-			ahead: z.number(),
-			behind: z.number(),
-			mergedIntoBase: z.enum(["merge", "squash"]).nullable(),
-			newCommitsAfterMerge: z.number().optional(),
-			mergeCommitHash: z.string().optional(),
-			replayPlan: z
-				.object({
-					totalLocal: z.number(),
-					alreadyOnTarget: z.number(),
-					toReplay: z.number(),
-					contiguous: z.boolean(),
-				})
-				.optional(),
-			baseMergedIntoDefault: z.enum(["merge", "squash"]).nullable(),
-			detectedPr: z
-				.object({
-					number: z.number(),
-					url: z.string().nullable(),
-					mergeCommit: z.string().optional(),
-				})
-				.nullable(),
-		})
-		.nullable(),
-	share: z.object({
-		remote: z.string(),
-		ref: z.string().nullable(),
-		refMode: z.enum(["noRef", "implicit", "configured", "gone"]),
-		toPush: z.number().nullable(),
-		toPull: z.number().nullable(),
-		rebased: z.number().nullable(),
-		replaced: z.number().nullable(),
-	}),
-	predictions: z
-		.object({
-			baseConflict: z.boolean(),
-			pullConflict: z.boolean(),
-		})
-		.optional(),
-	operation: GitOperationSchema,
-	lastCommit: z.string().nullable(),
-	verbose: z
-		.object({
-			aheadOfBase: z
-				.array(z.object({ hash: z.string(), subject: z.string(), mergedAs: z.string().optional() }))
-				.optional(),
-			behindBase: z
-				.array(
-					z.object({
-						hash: z.string(),
-						subject: z.string(),
-						rebaseOf: z.string().optional(),
-						squashOf: z.array(z.string()).optional(),
-					}),
-				)
-				.optional(),
-			unpushed: z.array(z.object({ hash: z.string(), subject: z.string(), rebased: z.boolean() })).optional(),
-			toPull: z.array(z.object({ hash: z.string(), subject: z.string(), superseded: z.boolean() })).optional(),
-			staged: z
-				.array(
-					z.object({
-						file: z.string(),
-						type: z.enum(["new file", "modified", "deleted", "renamed", "copied"]),
-					}),
-				)
-				.optional(),
-			unstaged: z.array(z.object({ file: z.string(), type: z.enum(["modified", "deleted"]) })).optional(),
-			untracked: z.array(z.string()).optional(),
-		})
-		.optional(),
+  name: z.string(),
+  identity: z.object({
+    worktreeKind: z.enum(["full", "linked"]),
+    headMode: z.union([
+      z.object({ kind: z.literal("attached"), branch: z.string() }),
+      z.object({ kind: z.literal("detached") }),
+    ]),
+    shallow: z.boolean(),
+  }),
+  local: z.object({
+    staged: z.number(),
+    modified: z.number(),
+    untracked: z.number(),
+    conflicts: z.number(),
+  }),
+  base: z
+    .object({
+      remote: z.string().nullable(),
+      ref: z.string(),
+      configuredRef: z.string().nullable(),
+      ahead: z.number(),
+      behind: z.number(),
+      mergedIntoBase: z.enum(["merge", "squash"]).nullable(),
+      newCommitsAfterMerge: z.number().optional(),
+      mergeCommitHash: z.string().optional(),
+      replayPlan: z
+        .object({
+          totalLocal: z.number(),
+          alreadyOnTarget: z.number(),
+          toReplay: z.number(),
+          contiguous: z.boolean(),
+        })
+        .optional(),
+      baseMergedIntoDefault: z.enum(["merge", "squash"]).nullable(),
+      detectedPr: z
+        .object({
+          number: z.number(),
+          url: z.string().nullable(),
+          mergeCommit: z.string().optional(),
+        })
+        .nullable(),
+    })
+    .nullable(),
+  share: z.object({
+    remote: z.string(),
+    ref: z.string().nullable(),
+    refMode: z.enum(["noRef", "implicit", "configured", "gone"]),
+    toPush: z.number().nullable(),
+    toPull: z.number().nullable(),
+    rebased: z.number().nullable(),
+    replaced: z.number().nullable(),
+  }),
+  predictions: z
+    .object({
+      baseConflict: z.boolean(),
+      pullConflict: z.boolean(),
+    })
+    .optional(),
+  operation: GitOperationSchema,
+  lastCommit: z.string().nullable(),
+  verbose: z
+    .object({
+      aheadOfBase: z
+        .array(z.object({ hash: z.string(), subject: z.string(), mergedAs: z.string().optional() }))
+        .optional(),
+      behindBase: z
+        .array(
+          z.object({
+            hash: z.string(),
+            subject: z.string(),
+            rebaseOf: z.string().optional(),
+            squashOf: z.array(z.string()).optional(),
+          }),
+        )
+        .optional(),
+      unpushed: z.array(z.object({ hash: z.string(), subject: z.string(), rebased: z.boolean() })).optional(),
+      toPull: z.array(z.object({ hash: z.string(), subject: z.string(), superseded: z.boolean() })).optional(),
+      staged: z
+        .array(
+          z.object({
+            file: z.string(),
+            type: z.enum(["new file", "modified", "deleted", "renamed", "copied"]),
+          }),
+        )
+        .optional(),
+      unstaged: z.array(z.object({ file: z.string(), type: z.enum(["modified", "deleted"]) })).optional(),
+      untracked: z.array(z.string()).optional(),
+    })
+    .optional(),
 });
 
 export const DetectedTicketSchema = z
-	.object({
-		key: z.string(),
-	})
-	.nullable();
+  .object({
+    key: z.string(),
+  })
+  .nullable();
 
 export const StatusJsonOutputSchema = z.object({
-	workspace: z.string(),
-	branch: z.string(),
-	base: z.string().nullable(),
-	repos: z.array(StatusJsonRepoSchema),
-	total: z.number(),
-	atRiskCount: z.number(),
-	baseConflictCount: z.number(),
-	pullConflictCount: z.number(),
-	rebasedOnlyCount: z.number(),
-	statusLabels: z.array(z.string()),
-	statusCounts: z.array(z.object({ label: z.string(), count: z.number() })),
-	lastCommit: z.string().nullable(),
-	detectedTicket: DetectedTicketSchema,
+  workspace: z.string(),
+  branch: z.string(),
+  base: z.string().nullable(),
+  repos: z.array(StatusJsonRepoSchema),
+  total: z.number(),
+  atRiskCount: z.number(),
+  baseConflictCount: z.number(),
+  pullConflictCount: z.number(),
+  rebasedOnlyCount: z.number(),
+  statusLabels: z.array(z.string()),
+  statusCounts: z.array(z.object({ label: z.string(), count: z.number() })),
+  lastCommit: z.string().nullable(),
+  detectedTicket: DetectedTicketSchema,
 });
 
 // ── Log JSON schemas ──
@@ -130,24 +130,24 @@ export const StatusJsonOutputSchema = z.object({
 const LogJsonRepoStatusSchema = z.enum(["ok", "detached", "drifted", "no-base", "fallback-base"]);
 
 const LogJsonCommitSchema = z.object({
-	hash: z.string(),
-	shortHash: z.string(),
-	subject: z.string(),
+  hash: z.string(),
+  shortHash: z.string(),
+  subject: z.string(),
 });
 
 export const LogJsonRepoSchema = z.object({
-	name: z.string(),
-	status: LogJsonRepoStatusSchema,
-	reason: z.string().optional(),
-	commits: z.array(LogJsonCommitSchema),
+  name: z.string(),
+  status: LogJsonRepoStatusSchema,
+  reason: z.string().optional(),
+  commits: z.array(LogJsonCommitSchema),
 });
 
 export const LogJsonOutputSchema = z.object({
-	workspace: z.string(),
-	branch: z.string(),
-	base: z.string().nullable(),
-	repos: z.array(LogJsonRepoSchema),
-	totalCommits: z.number(),
+  workspace: z.string(),
+  branch: z.string(),
+  base: z.string().nullable(),
+  repos: z.array(LogJsonRepoSchema),
+  totalCommits: z.number(),
 });
 
 // ── Diff JSON schemas ──
@@ -155,70 +155,70 @@ export const LogJsonOutputSchema = z.object({
 const DiffJsonRepoStatusSchema = z.enum(["ok", "detached", "drifted", "no-base", "fallback-base", "clean"]);
 
 const DiffJsonFileStatSchema = z.object({
-	file: z.string(),
-	insertions: z.number(),
-	deletions: z.number(),
+  file: z.string(),
+  insertions: z.number(),
+  deletions: z.number(),
 });
 
 export const DiffJsonRepoSchema = z.object({
-	name: z.string(),
-	status: DiffJsonRepoStatusSchema,
-	reason: z.string().optional(),
-	stat: z.object({ files: z.number(), insertions: z.number(), deletions: z.number() }),
-	fileStat: z.array(DiffJsonFileStatSchema).optional(),
-	untrackedCount: z.number().optional(),
+  name: z.string(),
+  status: DiffJsonRepoStatusSchema,
+  reason: z.string().optional(),
+  stat: z.object({ files: z.number(), insertions: z.number(), deletions: z.number() }),
+  fileStat: z.array(DiffJsonFileStatSchema).optional(),
+  untrackedCount: z.number().optional(),
 });
 
 export const DiffJsonOutputSchema = z.object({
-	workspace: z.string(),
-	branch: z.string(),
-	base: z.string().nullable(),
-	repos: z.array(DiffJsonRepoSchema),
-	totalFiles: z.number(),
-	totalInsertions: z.number(),
-	totalDeletions: z.number(),
-	totalUntracked: z.number().optional(),
+  workspace: z.string(),
+  branch: z.string(),
+  base: z.string().nullable(),
+  repos: z.array(DiffJsonRepoSchema),
+  totalFiles: z.number(),
+  totalInsertions: z.number(),
+  totalDeletions: z.number(),
+  totalUntracked: z.number().optional(),
 });
 
 // ── Repo list JSON schema ──
 
 export const RepoListJsonEntrySchema = z.object({
-	name: z.string(),
-	url: z.string(),
-	share: z.object({ name: z.string(), url: z.string() }),
-	base: z.object({ name: z.string(), url: z.string() }),
+  name: z.string(),
+  url: z.string(),
+  share: z.object({ name: z.string(), url: z.string() }),
+  base: z.object({ name: z.string(), url: z.string() }),
 });
 
 // ── List JSON schema ──
 
 export const ListJsonEntrySchema = z.object({
-	workspace: z.string(),
-	active: z.boolean(),
-	branch: z.string().nullable(),
-	base: z.string().nullable(),
-	repoCount: z.number().nullable(),
-	status: z.enum(["config-missing", "empty", "error"]).nullable(),
-	atRiskCount: z.number().optional(),
-	statusLabels: z.array(z.string()).optional(),
-	statusCounts: z.array(z.object({ label: z.string(), count: z.number() })).optional(),
-	lastCommit: z.string().nullable().optional(),
-	detectedTicket: DetectedTicketSchema.optional(),
+  workspace: z.string(),
+  active: z.boolean(),
+  branch: z.string().nullable(),
+  base: z.string().nullable(),
+  repoCount: z.number().nullable(),
+  status: z.enum(["config-missing", "empty", "error"]).nullable(),
+  atRiskCount: z.number().optional(),
+  statusLabels: z.array(z.string()).optional(),
+  statusCounts: z.array(z.object({ label: z.string(), count: z.number() })).optional(),
+  lastCommit: z.string().nullable().optional(),
+  detectedTicket: DetectedTicketSchema.optional(),
 });
 
 // ── Branch JSON schema ──
 
 export const BranchJsonRepoSchema = z.object({
-	name: z.string(),
-	branch: z.string().nullable(),
-	base: z.string().nullable().optional(),
-	share: z.string().nullable().optional(),
-	refMode: z.enum(["noRef", "implicit", "configured", "gone"]).optional(),
+  name: z.string(),
+  branch: z.string().nullable(),
+  base: z.string().nullable().optional(),
+  share: z.string().nullable().optional(),
+  refMode: z.enum(["noRef", "implicit", "configured", "gone"]).optional(),
 });
 
 export const BranchJsonOutputSchema = z.object({
-	branch: z.string(),
-	base: z.string().nullable(),
-	repos: z.array(BranchJsonRepoSchema),
+  branch: z.string(),
+  base: z.string().nullable(),
+  repos: z.array(BranchJsonRepoSchema),
 });
 
 // ── Derived TypeScript types ──

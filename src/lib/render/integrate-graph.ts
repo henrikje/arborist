@@ -20,110 +20,110 @@ import { SECTION_INDENT } from "./status-verbose";
  *     * origin/main  (new base)
  */
 export function formatBranchGraph(assessment: RepoAssessment, branch: string, verbose: boolean): string {
-	const baseRef = `${assessment.baseRemote}/${assessment.baseBranch}`;
+  const baseRef = `${assessment.baseRemote}/${assessment.baseBranch}`;
 
-	if (assessment.retargetFrom) {
-		return formatRetargetGraph(assessment, branch, baseRef, verbose);
-	}
-	return formatNormalGraph(assessment, branch, baseRef, verbose);
+  if (assessment.retargetFrom) {
+    return formatRetargetGraph(assessment, branch, baseRef, verbose);
+  }
+  return formatNormalGraph(assessment, branch, baseRef, verbose);
 }
 
 function formatNormalGraph(a: RepoAssessment, branch: string, baseRef: string, verbose: boolean): string {
-	let out = "\n";
-	const P = SECTION_INDENT; // prefix for graph lines (6 spaces)
+  let out = "\n";
+  const P = SECTION_INDENT; // prefix for graph lines (6 spaces)
 
-	// Fast-forward case: ahead === 0, HEAD is at the merge-base
-	if (a.ahead === 0) {
-		const mbLabel = a.mergeBaseSha ? `  (${a.mergeBaseSha})` : "";
-		out += `${P}${dim(`* ${branch}  HEAD  (at merge-base${mbLabel})`)}\n`;
-		out += `${P}${dim("|")}\n`;
-		out += `${P}${dim(`* ${baseRef}  (${a.behind} behind)`)}\n`;
-		if (verbose && a.commits && a.commits.length > 0) {
-			out += formatInlineCommits(a.commits, a.totalCommits ?? a.commits.length);
-		}
-		out += "\n";
-		return out;
-	}
+  // Fast-forward case: ahead === 0, HEAD is at the merge-base
+  if (a.ahead === 0) {
+    const mbLabel = a.mergeBaseSha ? `  (${a.mergeBaseSha})` : "";
+    out += `${P}${dim(`* ${branch}  HEAD  (at merge-base${mbLabel})`)}\n`;
+    out += `${P}${dim("|")}\n`;
+    out += `${P}${dim(`* ${baseRef}  (${a.behind} behind)`)}\n`;
+    if (verbose && a.commits && a.commits.length > 0) {
+      out += formatInlineCommits(a.commits, a.totalCommits ?? a.commits.length);
+    }
+    out += "\n";
+    return out;
+  }
 
-	// Feature branch on top
-	const aheadLabel = `${a.ahead} ahead`;
-	out += `${P}${dim("*")} ${branch}  HEAD  ${dim(`(${aheadLabel})`)}\n`;
+  // Feature branch on top
+  const aheadLabel = `${a.ahead} ahead`;
+  out += `${P}${dim("*")} ${branch}  HEAD  ${dim(`(${aheadLabel})`)}\n`;
 
-	// Outgoing commits (verbose + graph)
-	if (verbose && a.outgoingCommits && a.outgoingCommits.length > 0) {
-		out += formatInlineCommits(a.outgoingCommits, a.totalOutgoingCommits ?? a.outgoingCommits.length);
-	} else {
-		out += `${P}${dim("|")}\n`;
-	}
+  // Outgoing commits (verbose + graph)
+  if (verbose && a.outgoingCommits && a.outgoingCommits.length > 0) {
+    out += formatInlineCommits(a.outgoingCommits, a.totalOutgoingCommits ?? a.outgoingCommits.length);
+  } else {
+    out += `${P}${dim("|")}\n`;
+  }
 
-	// Merge-base
-	const mbSha = a.mergeBaseSha ? `  (${a.mergeBaseSha})` : "";
-	out += `${P}${dim(`--o-- merge-base${mbSha}`)}\n`;
+  // Merge-base
+  const mbSha = a.mergeBaseSha ? `  (${a.mergeBaseSha})` : "";
+  out += `${P}${dim(`--o-- merge-base${mbSha}`)}\n`;
 
-	// Connector
-	out += `${P}${dim("|")}\n`;
+  // Connector
+  out += `${P}${dim("|")}\n`;
 
-	// Base branch on bottom
-	const behindLabel = `${a.behind} behind`;
-	out += `${P}${dim("*")} ${baseRef}  ${dim(`(${behindLabel})`)}\n`;
+  // Base branch on bottom
+  const behindLabel = `${a.behind} behind`;
+  out += `${P}${dim("*")} ${baseRef}  ${dim(`(${behindLabel})`)}\n`;
 
-	// Incoming commits (verbose + graph)
-	if (verbose && a.commits && a.commits.length > 0) {
-		out += formatInlineCommits(a.commits, a.totalCommits ?? a.commits.length);
-	}
+  // Incoming commits (verbose + graph)
+  if (verbose && a.commits && a.commits.length > 0) {
+    out += formatInlineCommits(a.commits, a.totalCommits ?? a.commits.length);
+  }
 
-	out += "\n";
-	return out;
+  out += "\n";
+  return out;
 }
 
 function formatRetargetGraph(a: RepoAssessment, branch: string, baseRef: string, verbose: boolean): string {
-	let out = "\n";
-	const P = SECTION_INDENT;
+  let out = "\n";
+  const P = SECTION_INDENT;
 
-	// Feature branch on top
-	let replayLabel: string;
-	if (a.retargetAlreadyOnTarget != null && a.retargetAlreadyOnTarget > 0) {
-		const total = (a.retargetReplayCount ?? 0) + a.retargetAlreadyOnTarget;
-		replayLabel = `${total} local, ${a.retargetAlreadyOnTarget} already on target, ${a.retargetReplayCount ?? 0} to rebase`;
-	} else if (a.retargetReplayCount != null && a.retargetReplayCount > 0) {
-		replayLabel = `${a.retargetReplayCount} to rebase`;
-	} else if (a.ahead > 0) {
-		replayLabel = `${a.ahead} commits to rebase`;
-	} else {
-		replayLabel = "at cut point";
-	}
-	out += `${P}${dim("*")} ${branch}  HEAD  ${dim(`(${replayLabel})`)}\n`;
+  // Feature branch on top
+  let replayLabel: string;
+  if (a.retargetAlreadyOnTarget != null && a.retargetAlreadyOnTarget > 0) {
+    const total = (a.retargetReplayCount ?? 0) + a.retargetAlreadyOnTarget;
+    replayLabel = `${total} local, ${a.retargetAlreadyOnTarget} already on target, ${a.retargetReplayCount ?? 0} to rebase`;
+  } else if (a.retargetReplayCount != null && a.retargetReplayCount > 0) {
+    replayLabel = `${a.retargetReplayCount} to rebase`;
+  } else if (a.ahead > 0) {
+    replayLabel = `${a.ahead} commits to rebase`;
+  } else {
+    replayLabel = "at cut point";
+  }
+  out += `${P}${dim("*")} ${branch}  HEAD  ${dim(`(${replayLabel})`)}\n`;
 
-	// Outgoing commits (verbose + graph)
-	if (verbose && a.outgoingCommits && a.outgoingCommits.length > 0) {
-		out += formatInlineCommits(a.outgoingCommits, a.totalOutgoingCommits ?? a.outgoingCommits.length);
-	} else {
-		out += `${P}${dim("|")}\n`;
-	}
+  // Outgoing commits (verbose + graph)
+  if (verbose && a.outgoingCommits && a.outgoingCommits.length > 0) {
+    out += formatInlineCommits(a.outgoingCommits, a.totalOutgoingCommits ?? a.outgoingCommits.length);
+  } else {
+    out += `${P}${dim("|")}\n`;
+  }
 
-	// Cut point (old base)
-	const mbSha = a.mergeBaseSha ? ` (${a.mergeBaseSha})` : "";
-	out += `${P}${dim(`--x-- ${a.retargetFrom}  (old base, merged)${mbSha}`)}\n`;
+  // Cut point (old base)
+  const mbSha = a.mergeBaseSha ? ` (${a.mergeBaseSha})` : "";
+  out += `${P}${dim(`--x-- ${a.retargetFrom}  (old base, merged)${mbSha}`)}\n`;
 
-	// Dotted connector to new base
-	out += `${P}${dim(":")}\n`;
+  // Dotted connector to new base
+  out += `${P}${dim(":")}\n`;
 
-	// New base
-	out += `${P}${dim("*")} ${baseRef}  ${dim("(new base)")}\n`;
+  // New base
+  out += `${P}${dim("*")} ${baseRef}  ${dim("(new base)")}\n`;
 
-	out += "\n";
-	return out;
+  out += "\n";
+  return out;
 }
 
 function formatInlineCommits(commits: { shortHash: string; subject: string }[], totalCommits: number): string {
-	const P = SECTION_INDENT;
-	let out = "";
-	for (const c of commits) {
-		out += `${P}${dim(`| ${c.shortHash}`)} ${c.subject}\n`;
-	}
-	if (totalCommits > commits.length) {
-		out += `${P}${dim(`| ... and ${totalCommits - commits.length} more`)}\n`;
-	}
-	out += `${P}${dim("|")}\n`;
-	return out;
+  const P = SECTION_INDENT;
+  let out = "";
+  for (const c of commits) {
+    out += `${P}${dim(`| ${c.shortHash}`)} ${c.subject}\n`;
+  }
+  if (totalCommits > commits.length) {
+    out += `${P}${dim(`| ... and ${totalCommits - commits.length} more`)}\n`;
+  }
+  out += `${P}${dim("|")}\n`;
+  return out;
 }

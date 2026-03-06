@@ -8,121 +8,121 @@ import { error, info } from "../lib/terminal";
 import { listWorkspaces, workspaceRepoDirs } from "../lib/workspace";
 
 export function registerCdCommand(program: Command, getCtx: () => ArbContext): void {
-	program
-		.command("cd [name]")
-		.summary("Navigate to a workspace or repo directory")
-		.description(
-			'Change into a workspace or repo directory. When run from inside a workspace, names are resolved as repos first (e.g. "arb cd backend" navigates to the backend repo). Use "workspace/repo" to be explicit. When run without arguments in a TTY, shows an interactive picker (repos when inside a workspace, workspaces otherwise).\n\nRequires shell integration (installed by install.sh) to change the shell\'s working directory. Without it, the resolved path is printed to stdout.',
-		)
-		.action(async (input?: string) => {
-			const ctx = getCtx();
+  program
+    .command("cd [name]")
+    .summary("Navigate to a workspace or repo directory")
+    .description(
+      'Change into a workspace or repo directory. When run from inside a workspace, names are resolved as repos first (e.g. "arb cd backend" navigates to the backend repo). Use "workspace/repo" to be explicit. When run without arguments in a TTY, shows an interactive picker (repos when inside a workspace, workspaces otherwise).\n\nRequires shell integration (installed by install.sh) to change the shell\'s working directory. Without it, the resolved path is printed to stdout.',
+    )
+    .action(async (input?: string) => {
+      const ctx = getCtx();
 
-			if (!input) {
-				if (!process.stdin.isTTY || !process.stderr.isTTY) {
-					error("Usage: arb cd <workspace>");
-					throw new ArbError("Usage: arb cd <workspace>");
-				}
+      if (!input) {
+        if (!process.stdin.isTTY || !process.stderr.isTTY) {
+          error("Usage: arb cd <workspace>");
+          throw new ArbError("Usage: arb cd <workspace>");
+        }
 
-				if (ctx.currentWorkspace) {
-					const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
-					const worktreeNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
-					if (worktreeNames.length === 0) {
-						error(`No repos in workspace '${ctx.currentWorkspace}'.`);
-						throw new ArbError(`No repos in workspace '${ctx.currentWorkspace}'.`);
-					}
+        if (ctx.currentWorkspace) {
+          const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
+          const worktreeNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
+          if (worktreeNames.length === 0) {
+            error(`No repos in workspace '${ctx.currentWorkspace}'.`);
+            throw new ArbError(`No repos in workspace '${ctx.currentWorkspace}'.`);
+          }
 
-					const selected = await select(
-						{
-							message: `Select a repo in '${ctx.currentWorkspace}'`,
-							choices: worktreeNames.map((name) => ({ name, value: name })),
-							pageSize: 20,
-							loop: false,
-						},
-						{ output: process.stderr },
-					);
+          const selected = await select(
+            {
+              message: `Select a repo in '${ctx.currentWorkspace}'`,
+              choices: worktreeNames.map((name) => ({ name, value: name })),
+              pageSize: 20,
+              loop: false,
+            },
+            { output: process.stderr },
+          );
 
-					process.stdout.write(`${wsDir}/${selected}\n`);
-					printHintIfNeeded();
-					return;
-				}
+          process.stdout.write(`${wsDir}/${selected}\n`);
+          printHintIfNeeded();
+          return;
+        }
 
-				const workspaces = listWorkspaces(ctx.arbRootDir);
-				if (workspaces.length === 0) {
-					error("No workspaces found.");
-					throw new ArbError("No workspaces found.");
-				}
+        const workspaces = listWorkspaces(ctx.arbRootDir);
+        if (workspaces.length === 0) {
+          error("No workspaces found.");
+          throw new ArbError("No workspaces found.");
+        }
 
-				const selected = await select(
-					{
-						message: "Select a workspace",
-						choices: workspaces.map((name) => ({ name, value: name })),
-						pageSize: 20,
-						loop: false,
-					},
-					{ output: process.stderr },
-				);
+        const selected = await select(
+          {
+            message: "Select a workspace",
+            choices: workspaces.map((name) => ({ name, value: name })),
+            pageSize: 20,
+            loop: false,
+          },
+          { output: process.stderr },
+        );
 
-				process.stdout.write(`${ctx.arbRootDir}/${selected}\n`);
-				printHintIfNeeded();
-				return;
-			}
+        process.stdout.write(`${ctx.arbRootDir}/${selected}\n`);
+        printHintIfNeeded();
+        return;
+      }
 
-			// Explicit workspace/subpath syntax — always resolve from root
-			const slashIdx = input.indexOf("/");
-			if (slashIdx >= 0) {
-				const wsName = input.slice(0, slashIdx);
-				const subpath = input.slice(slashIdx + 1);
+      // Explicit workspace/subpath syntax — always resolve from root
+      const slashIdx = input.indexOf("/");
+      if (slashIdx >= 0) {
+        const wsName = input.slice(0, slashIdx);
+        const subpath = input.slice(slashIdx + 1);
 
-				const wsDir = `${ctx.arbRootDir}/${wsName}`;
-				if (!existsSync(`${wsDir}/.arbws`)) {
-					error(`Workspace '${wsName}' does not exist`);
-					throw new ArbError(`Workspace '${wsName}' does not exist`);
-				}
+        const wsDir = `${ctx.arbRootDir}/${wsName}`;
+        if (!existsSync(`${wsDir}/.arbws`)) {
+          error(`Workspace '${wsName}' does not exist`);
+          throw new ArbError(`Workspace '${wsName}' does not exist`);
+        }
 
-				if (subpath) {
-					const fullPath = `${wsDir}/${subpath}`;
-					if (!existsSync(fullPath)) {
-						error(`'${subpath}' not found in workspace '${wsName}'`);
-						throw new ArbError(`'${subpath}' not found in workspace '${wsName}'`);
-					}
-					process.stdout.write(`${fullPath}\n`);
-				} else {
-					process.stdout.write(`${wsDir}\n`);
-				}
+        if (subpath) {
+          const fullPath = `${wsDir}/${subpath}`;
+          if (!existsSync(fullPath)) {
+            error(`'${subpath}' not found in workspace '${wsName}'`);
+            throw new ArbError(`'${subpath}' not found in workspace '${wsName}'`);
+          }
+          process.stdout.write(`${fullPath}\n`);
+        } else {
+          process.stdout.write(`${wsDir}\n`);
+        }
 
-				printHintIfNeeded();
-				return;
-			}
+        printHintIfNeeded();
+        return;
+      }
 
-			// No slash — scope-aware resolution
-			if (ctx.currentWorkspace) {
-				const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
-				const worktreeNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
+      // No slash — scope-aware resolution
+      if (ctx.currentWorkspace) {
+        const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
+        const worktreeNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
 
-				if (worktreeNames.includes(input)) {
-					process.stdout.write(`${wsDir}/${input}\n`);
-					printHintIfNeeded();
-					return;
-				}
-			}
+        if (worktreeNames.includes(input)) {
+          process.stdout.write(`${wsDir}/${input}\n`);
+          printHintIfNeeded();
+          return;
+        }
+      }
 
-			// Fall back to workspace resolution
-			const wsDir = `${ctx.arbRootDir}/${input}`;
-			if (!existsSync(`${wsDir}/.arbws`)) {
-				const msg = ctx.currentWorkspace
-					? `'${input}' is not a repo in workspace '${ctx.currentWorkspace}' or a workspace`
-					: `Workspace '${input}' does not exist`;
-				error(msg);
-				throw new ArbError(msg);
-			}
+      // Fall back to workspace resolution
+      const wsDir = `${ctx.arbRootDir}/${input}`;
+      if (!existsSync(`${wsDir}/.arbws`)) {
+        const msg = ctx.currentWorkspace
+          ? `'${input}' is not a repo in workspace '${ctx.currentWorkspace}' or a workspace`
+          : `Workspace '${input}' does not exist`;
+        error(msg);
+        throw new ArbError(msg);
+      }
 
-			process.stdout.write(`${wsDir}\n`);
-			printHintIfNeeded();
-		});
+      process.stdout.write(`${wsDir}\n`);
+      printHintIfNeeded();
+    });
 }
 
 function printHintIfNeeded(): void {
-	if (process.stdout.isTTY && process.stderr.isTTY) {
-		info("Hint: install shell integration to cd directly. See 'arb cd --help'.");
-	}
+  if (process.stdout.isTTY && process.stderr.isTTY) {
+    info("Hint: install shell integration to cd directly. See 'arb cd --help'.");
+  }
 }
