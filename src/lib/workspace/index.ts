@@ -58,4 +58,11 @@ export {
 	workspaceFilePath,
 	workspaceRepoList,
 } from "./templates";
-export { type AddWorktreesResult, addWorktrees, isWorktreeRefValid, pruneWorktreeEntriesForDir } from "./worktrees";
+export {
+	type AddWorktreesResult,
+	addWorktrees,
+	formatWorktreeError,
+	isWorktreeRefValid,
+	pruneWorktreeEntriesForDir,
+	rollbackWorktrees,
+} from "./worktrees";

@@ -126,6 +126,13 @@ export async function branchExistsLocally(repoDir: string, branch: string): Prom
 	return result.exitCode === 0;
 }
 
+export async function branchIsInWorktree(repoDir: string, branch: string): Promise<boolean> {
+	const result = await git(repoDir, "worktree", "list", "--porcelain");
+	if (result.exitCode !== 0) return false;
+	const target = `branch refs/heads/${branch}`;
+	return result.stdout.split("\n").some((line) => line === target);
+}
+
 export async function remoteBranchExists(repoDir: string, branch: string, remote: string): Promise<boolean> {
 	const result = await git(repoDir, "show-ref", "--verify", "--quiet", `refs/remotes/${remote}/${branch}`);
 	return result.exitCode === 0;

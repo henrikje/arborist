@@ -1758,3 +1758,178 @@ describe("--graph flag", () => {
 			expect(result.output).toContain("origin/main");
 		}));
 });
+
+// ── Retarget with readonly repos (target branch missing on some remotes) ──
+
+describe("retarget with readonly repos", () => {
+	test("arb rebase --retarget proceeds when some repos lack the target branch", () =>
+		withEnv(async (env) => {
+			// Setup: push feat/auth to both repos
+			const repoA = join(env.projectDir, ".arb/repos/repo-a");
+			await git(repoA, ["checkout", "-b", "feat/auth"]);
+			await write(join(repoA, "auth.txt"), "auth");
+			await git(repoA, ["add", "auth.txt"]);
+			await git(repoA, ["commit", "-m", "auth feature"]);
+			await git(repoA, ["push", "-u", "origin", "feat/auth"]);
+			await git(repoA, ["checkout", "--detach"]);
+
+			const repoB = join(env.projectDir, ".arb/repos/repo-b");
+			await git(repoB, ["checkout", "-b", "feat/auth"]);
+			await write(join(repoB, "auth.txt"), "auth-b");
+			await git(repoB, ["add", "auth.txt"]);
+			await git(repoB, ["commit", "-m", "auth feature"]);
+			await git(repoB, ["push", "-u", "origin", "feat/auth"]);
+			await git(repoB, ["checkout", "--detach"]);
+
+			// Create stacked workspace with both repos
+			await arb(env, ["create", "stacked", "--base", "feat/auth", "-b", "feat/auth-ui", "repo-a", "repo-b"]);
+
+			// Add feature commits on both
+			await write(join(env.projectDir, "stacked/repo-a/ui.txt"), "ui-a");
+			await git(join(env.projectDir, "stacked/repo-a"), ["add", "ui.txt"]);
+			await git(join(env.projectDir, "stacked/repo-a"), ["commit", "-m", "ui a"]);
+			await write(join(env.projectDir, "stacked/repo-b/ui.txt"), "ui-b");
+			await git(join(env.projectDir, "stacked/repo-b"), ["add", "ui.txt"]);
+			await git(join(env.projectDir, "stacked/repo-b"), ["commit", "-m", "ui b"]);
+
+			// Push feat/next only to repo-a's origin (not repo-b)
+			const tmpPush = join(env.testDir, "tmp-push");
+			await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpPush]);
+			await git(tmpPush, ["checkout", "-b", "feat/next"]);
+			await write(join(tmpPush, "next.txt"), "next");
+			await git(tmpPush, ["add", "next.txt"]);
+			await git(tmpPush, ["commit", "-m", "next feature"]);
+			await git(tmpPush, ["push", "-u", "origin", "feat/next"]);
+			await rm(tmpPush, { recursive: true });
+
+			// Retarget should succeed — repo-b is skipped (target not found), repo-a proceeds
+			const result = await arb(env, ["rebase", "--retarget", "feat/next", "--yes"], {
+				cwd: join(env.projectDir, "stacked"),
+			});
+			expect(result.exitCode).toBe(0);
+			expect(result.output).toContain("retarget");
+			expect(result.output).toContain("repo-b");
+			expect(result.output).toContain("skipped");
+
+			// Verify workspace config updated with new base
+			const config = await readFile(join(env.projectDir, "stacked/.arbws/config"), "utf-8");
+			expect(config).toContain("base = feat/next");
+		}));
+
+	test("arb rebase --retarget still blocks when a repo is dirty", () =>
+		withEnv(async (env) => {
+			const repoA = join(env.projectDir, ".arb/repos/repo-a");
+			await git(repoA, ["checkout", "-b", "feat/auth"]);
+			await write(join(repoA, "auth.txt"), "auth");
+			await git(repoA, ["add", "auth.txt"]);
+			await git(repoA, ["commit", "-m", "auth feature"]);
+			await git(repoA, ["push", "-u", "origin", "feat/auth"]);
+			await git(repoA, ["checkout", "--detach"]);
+
+			const repoB = join(env.projectDir, ".arb/repos/repo-b");
+			await git(repoB, ["checkout", "-b", "feat/auth"]);
+			await write(join(repoB, "auth.txt"), "auth-b");
+			await git(repoB, ["add", "auth.txt"]);
+			await git(repoB, ["commit", "-m", "auth feature"]);
+			await git(repoB, ["push", "-u", "origin", "feat/auth"]);
+			await git(repoB, ["checkout", "--detach"]);
+
+			await arb(env, ["create", "stacked", "--base", "feat/auth", "-b", "feat/auth-ui", "repo-a", "repo-b"]);
+
+			// Add feature commits
+			await write(join(env.projectDir, "stacked/repo-a/ui.txt"), "ui-a");
+			await git(join(env.projectDir, "stacked/repo-a"), ["add", "ui.txt"]);
+			await git(join(env.projectDir, "stacked/repo-a"), ["commit", "-m", "ui a"]);
+
+			// Push feat/next only to repo-a's origin
+			const tmpPush = join(env.testDir, "tmp-push");
+			await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpPush]);
+			await git(tmpPush, ["checkout", "-b", "feat/next"]);
+			await write(join(tmpPush, "next.txt"), "next");
+			await git(tmpPush, ["add", "next.txt"]);
+			await git(tmpPush, ["commit", "-m", "next feature"]);
+			await git(tmpPush, ["push", "-u", "origin", "feat/next"]);
+			await rm(tmpPush, { recursive: true });
+
+			// Make repo-a dirty — should block retarget even though repo-b is just "not found"
+			await write(join(env.projectDir, "stacked/repo-a/dirty.txt"), "dirty");
+
+			const result = await arb(env, ["rebase", "--retarget", "feat/next", "--yes"], {
+				cwd: join(env.projectDir, "stacked"),
+			});
+			expect(result.exitCode).not.toBe(0);
+			expect(result.output).toContain("Cannot retarget");
+			expect(result.output).toContain("repo-a");
+			expect(result.output).toContain("uncommitted changes");
+		}));
+
+	test("arb status shows not-found (not base-merged) for repos where base is a worktree branch", () =>
+		withEnv(async (env) => {
+			// Setup: push feat/auth and feat/next to repo-a only
+			const repoA = join(env.projectDir, ".arb/repos/repo-a");
+			await git(repoA, ["checkout", "-b", "feat/auth"]);
+			await write(join(repoA, "auth.txt"), "auth");
+			await git(repoA, ["add", "auth.txt"]);
+			await git(repoA, ["commit", "-m", "auth feature"]);
+			await git(repoA, ["push", "-u", "origin", "feat/auth"]);
+			await git(repoA, ["checkout", "--detach"]);
+
+			const repoB = join(env.projectDir, ".arb/repos/repo-b");
+			await git(repoB, ["checkout", "-b", "feat/auth"]);
+			await write(join(repoB, "auth.txt"), "auth-b");
+			await git(repoB, ["add", "auth.txt"]);
+			await git(repoB, ["commit", "-m", "auth feature"]);
+			await git(repoB, ["push", "-u", "origin", "feat/auth"]);
+			await git(repoB, ["checkout", "--detach"]);
+
+			// Push feat/next only to repo-a
+			const tmpPush = join(env.testDir, "tmp-push");
+			await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpPush]);
+			await git(tmpPush, ["checkout", "-b", "feat/next"]);
+			await write(join(tmpPush, "next.txt"), "next");
+			await git(tmpPush, ["add", "next.txt"]);
+			await git(tmpPush, ["commit", "-m", "next feature"]);
+			await git(tmpPush, ["push", "-u", "origin", "feat/next"]);
+			await rm(tmpPush, { recursive: true });
+
+			// Create stacked workspace and retarget repo-a only
+			await arb(env, ["create", "stacked", "--base", "feat/auth", "-b", "feat/auth-ui", "repo-a", "repo-b"]);
+
+			await write(join(env.projectDir, "stacked/repo-a/ui.txt"), "ui-a");
+			await git(join(env.projectDir, "stacked/repo-a"), ["add", "ui.txt"]);
+			await git(join(env.projectDir, "stacked/repo-a"), ["commit", "-m", "ui a"]);
+
+			// Retarget (repo-b will be skipped — target not on its remote)
+			await arb(env, ["rebase", "--retarget", "feat/next", "--yes"], {
+				cwd: join(env.projectDir, "stacked"),
+			});
+
+			// Now create another workspace on feat/next so the local branch is in a worktree for repo-b
+			await arb(env, ["create", "next-ws", "-b", "feat/next", "repo-b"]);
+
+			// Verify: repo-b now has local branch feat/next (from worktree), but it's not on origin
+			// Status should show "not found", NOT "base merged"
+			const result = await arb(env, ["status"], { cwd: join(env.projectDir, "stacked") });
+			expect(result.output).toContain("not found");
+			expect(result.output).not.toContain("base merged");
+		}));
+
+	test("arb rebase --retarget fails when target not found on any repo", () =>
+		withEnv(async (env) => {
+			const repoA = join(env.projectDir, ".arb/repos/repo-a");
+			await git(repoA, ["checkout", "-b", "feat/auth"]);
+			await write(join(repoA, "auth.txt"), "auth");
+			await git(repoA, ["add", "auth.txt"]);
+			await git(repoA, ["commit", "-m", "auth feature"]);
+			await git(repoA, ["push", "-u", "origin", "feat/auth"]);
+			await git(repoA, ["checkout", "--detach"]);
+
+			await arb(env, ["create", "stacked", "--base", "feat/auth", "-b", "feat/auth-ui", "repo-a"]);
+
+			const result = await arb(env, ["rebase", "--retarget", "totally-nonexistent", "--yes"], {
+				cwd: join(env.projectDir, "stacked"),
+			});
+			expect(result.exitCode).not.toBe(0);
+			expect(result.output).toContain("not found");
+		}));
+});

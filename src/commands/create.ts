@@ -21,6 +21,7 @@ import {
 	applyWorkspaceTemplates,
 	displayOverlaySummary,
 	listRepos,
+	rollbackWorktrees,
 	selectReposInteractive,
 } from "../lib/workspace";
 
@@ -50,7 +51,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 		.option("-a, --all-repos", "Include all repos")
 		.summary("Create a new workspace")
 		.description(
-			"Create a workspace for a feature or issue. Creates a working copy of each selected repo on a shared feature branch, with isolated working directories. Automatically seeds files from .arb/templates/ into the new workspace. Running with no arguments opens a guided flow; providing args or flags uses sensible defaults and prompts only for missing required values.\n\nIf the branch already exists locally or on the share remote, arb checks it out instead of creating a new one. This lets you resume work on an existing feature, collaborate on a shared branch, or set up a local workspace for a branch someone else started.\n\nSee 'arb help stacked' for stacking workspaces on feature branches.",
+			"Create a workspace for a feature or issue. Creates a working copy of each selected repo on a shared feature branch, with isolated working directories. Automatically seeds files from .arb/templates/ into the new workspace. Running with no arguments opens a guided flow; providing args or flags uses sensible defaults and prompts only for missing required values.\n\nIf the branch already exists locally or on the share remote, arb checks it out instead of creating a new one. This lets you resume work on an existing feature, collaborate on a shared branch, or set up a local workspace for a branch someone else started.\n\nIf any repo fails to attach (for example, the branch is already checked out in another workspace), the entire operation is aborted and any partially created worktrees are rolled back. Use 'arb attach' to add repos individually if partial success is acceptable.\n\nSee 'arb help stacked' for stacking workspaces on feature branches.",
 		)
 		.action(
 			async (
@@ -310,26 +311,31 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 
 				const result = await addWorktrees(name, branch, repos, ctx.reposDir, ctx.arbRootDir, base, remotesMap, cache);
 
+				if (result.failed.length > 0) {
+					await rollbackWorktrees(result, branch, ctx.reposDir, wsDir);
+					process.stderr.write("\n");
+					const msg = `Failed to create workspace: could not attach ${plural(result.failed.length, "repo")} (${result.failed.join(", ")})`;
+					error(msg);
+					throw new ArbError(msg);
+				}
+
 				const wsTemplates = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir, undefined, cache);
 				const repoTemplates = await applyRepoTemplates(ctx.arbRootDir, wsDir, result.created, undefined, cache);
 				displayOverlaySummary(wsTemplates, repoTemplates, (nodes) => render(nodes, { tty: isTTY() }));
 
 				process.stderr.write("\n");
 				const branchSuffix = branch === defaultBranch ? "" : ` on branch ${branch}`;
-				if (result.failed.length === 0 && result.skipped.length === 0) {
+				if (result.skipped.length === 0) {
 					success(`Created workspace ${name} (${plural(result.created.length, "repo")})${branchSuffix}`);
 					info(`  ${dim(wsDir)}`);
 				} else {
 					success(`Created workspace ${name}${branchSuffix}`);
 					if (result.created.length > 0) info(`  added:   ${result.created.join(" ")}`);
 					if (result.skipped.length > 0) warn(`  skipped: ${result.skipped.join(" ")}`);
-					if (result.failed.length > 0) error(`  failed:  ${result.failed.join(" ")}`);
 					info(`  ${dim(wsDir)}`);
 				}
 
-				if (result.failed.length === 0) {
-					process.stdout.write(`${wsDir}\n`);
-				}
+				process.stdout.write(`${wsDir}\n`);
 			},
 		);
 }

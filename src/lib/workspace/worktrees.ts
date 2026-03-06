@@ -11,6 +11,7 @@ export interface AddWorktreesResult {
 	created: string[];
 	skipped: string[];
 	failed: string[];
+	createdBranches: string[];
 }
 
 export async function addWorktrees(
@@ -25,7 +26,7 @@ export async function addWorktrees(
 ): Promise<AddWorktreesResult> {
 	const c = cache ?? new GitCache();
 	const wsDir = `${arbRootDir}/${name}`;
-	const result: AddWorktreesResult = { created: [], skipped: [], failed: [] };
+	const result: AddWorktreesResult = { created: [], skipped: [], failed: [], createdBranches: [] };
 
 	process.stderr.write("Creating worktrees...\n");
 
@@ -113,7 +114,7 @@ export async function addWorktrees(
 			if (wt.exitCode !== 0) {
 				inlineResult(repo, "failed");
 				const errText = wt.stderr.trim();
-				if (errText) error(`    ${errText}`);
+				if (errText) error(`    ${formatWorktreeError(errText, arbRootDir)}`);
 				result.failed.push(repo);
 				continue;
 			}
@@ -125,11 +126,12 @@ export async function addWorktrees(
 			if (wt.exitCode !== 0) {
 				inlineResult(repo, "failed");
 				const errText = wt.stderr.trim();
-				if (errText) error(`    ${errText}`);
+				if (errText) error(`    ${formatWorktreeError(errText, arbRootDir)}`);
 				result.failed.push(repo);
 				continue;
 			}
 			inlineResult(repo, `branch ${branch} checked out from ${startPoint}`);
+			result.createdBranches.push(repo);
 		} else {
 			const startPoint = baseRemote ? `${baseRemote}/${effectiveBase}` : effectiveBase;
 			inlineStart(repo, `creating branch ${branch} from ${startPoint}`);
@@ -141,11 +143,12 @@ export async function addWorktrees(
 			if (wt.exitCode !== 0) {
 				inlineResult(repo, "failed");
 				const errText = wt.stderr.trim();
-				if (errText) error(`    ${errText}`);
+				if (errText) error(`    ${formatWorktreeError(errText, arbRootDir)}`);
 				result.failed.push(repo);
 				continue;
 			}
 			inlineResult(repo, `branch ${branch} created from ${startPoint}`);
+			result.createdBranches.push(repo);
 		}
 
 		// After creating the worktree, clean up stale `.git` files in other workspaces
@@ -251,4 +254,70 @@ function cleanupWorktreeCollisions(wsDir: string, repoName: string, arbRootDir: 
 			warn(`  [${repoName}] removed stale reference in ${ws}/${repoName}`);
 		}
 	}
+}
+
+/**
+ * Parse a git worktree error and return a user-friendly message.
+ * If the error matches a known pattern (branch already checked out),
+ * returns a message with the workspace name. Otherwise returns the
+ * original error text unchanged.
+ */
+export function formatWorktreeError(stderr: string, arbRootDir: string): string {
+	// git uses "is already used by worktree at" (older) or "is already checked out at" (newer)
+	const match = stderr.match(/fatal: '([^']+)' is already (?:used by worktree|checked out) at '([^']+)'/);
+	if (!match?.[1] || !match[2]) return stderr;
+
+	const branch = match[1];
+	const worktreePath = match[2];
+	const prefix = `${arbRootDir}/`;
+	if (!worktreePath.startsWith(prefix)) {
+		return `Branch '${branch}' is already checked out at ${worktreePath}`;
+	}
+
+	// Path is <arbRootDir>/<workspace>/<repo> — extract workspace name
+	const relative = worktreePath.slice(prefix.length);
+	const workspace = relative.split("/")[0];
+	if (workspace) {
+		return `Branch '${branch}' is already checked out in workspace '${workspace}'`;
+	}
+	return stderr;
+}
+
+/**
+ * Roll back worktrees created by `addWorktrees()`. Removes each successfully
+ * created worktree, deletes newly created local branches, and removes the
+ * workspace directory. Resilient — logs warnings on individual cleanup failures.
+ */
+export async function rollbackWorktrees(
+	result: AddWorktreesResult,
+	branch: string,
+	reposDir: string,
+	wsDir: string,
+): Promise<void> {
+	const createdSet = new Set(result.createdBranches);
+
+	for (const repo of result.created) {
+		const repoPath = `${reposDir}/${repo}`;
+		try {
+			await git(repoPath, "worktree", "remove", "--force", `${wsDir}/${repo}`);
+		} catch {
+			warn(`  [${repo}] failed to remove worktree during rollback`);
+		}
+
+		if (createdSet.has(repo)) {
+			try {
+				await git(repoPath, "branch", "-D", branch);
+			} catch {
+				warn(`  [${repo}] failed to delete branch '${branch}' during rollback`);
+			}
+		}
+
+		try {
+			await git(repoPath, "worktree", "prune");
+		} catch {
+			// Pruning is best-effort
+		}
+	}
+
+	rmSync(wsDir, { recursive: true, force: true });
 }
