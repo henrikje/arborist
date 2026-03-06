@@ -74,7 +74,7 @@ export async function selectReposInteractive(reposDir: string): Promise<string[]
 	}
 	return checkbox(
 		{
-			message: "Select repos to include",
+			message: "Repos:",
 			choices: repos.map((name) => ({ name, value: name })),
 			validate: (selected) => (selected.length > 0 ? true : "At least one repo must be selected."),
 			pageSize: 20,
