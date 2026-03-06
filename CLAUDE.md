@@ -87,5 +87,5 @@ After each change, check whether the following need updating:
 - **Documentation** — For user-facing changes, always update the relevant file under `docs/`. Update `README.md` for important changes to behavior, CLI usage, configuration, or workflows.
 - **Command help text** — If the change modifies a command's options, arguments, or behavior, update `.description()` and `.option()` help strings in `src/commands/`.
 - **Shell tab completion** — If the change adds, removes, or renames a command option or subcommand, update both `shell/arb.bash` and `shell/arb.zsh`.
-- **Integration tests** — Always add new tests when changes affect CLI behavior.
+- **Integration tests** — Always add new tests when changes affect CLI behavior. If any existing integration tests fail after a change, report the failure to the user with the reason, and explain what you plan to do before making fixes.
 - **Decision records** — If the change involved a significant design decision, write a `decisions/NNNN-*.md`. See `decisions/README.md` for the template. Existing records must never be modified.

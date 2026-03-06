@@ -62,6 +62,7 @@ export const StatusJsonRepoSchema = z.object({
 		toPush: z.number().nullable(),
 		toPull: z.number().nullable(),
 		rebased: z.number().nullable(),
+		replaced: z.number().nullable(),
 	}),
 	predictions: z
 		.object({

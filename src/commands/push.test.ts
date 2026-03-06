@@ -65,7 +65,15 @@ describe("assessPushRepo", () => {
 	test("skips gone+merged without force", () => {
 		const a = assessPushRepo(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -90,7 +98,15 @@ describe("assessPushRepo", () => {
 	test("will-push gone+merged with includeMerged (recreate)", () => {
 		const a = assessPushRepo(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -115,7 +131,15 @@ describe("assessPushRepo", () => {
 	test("will-push gone+not-merged (recreate)", () => {
 		const a = assessPushRepo(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -163,7 +187,15 @@ describe("assessPushRepo", () => {
 	test("uses merged-new-work skip flag when gone+merged with new commits", () => {
 		const a = assessPushRepo(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -214,7 +246,15 @@ describe("assessPushRepo", () => {
 	test("uses already-merged skip flag for standard merged branch (no new commits)", () => {
 		const a = assessPushRepo(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -238,7 +278,15 @@ describe("assessPushRepo", () => {
 	test("will-push noRef with commits (new branch)", () => {
 		const a = assessPushRepo(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "noRef", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "noRef",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -262,7 +310,15 @@ describe("assessPushRepo", () => {
 	test("skips noRef with no commits", () => {
 		const a = assessPushRepo(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "noRef", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "noRef",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -286,7 +342,15 @@ describe("assessPushRepo", () => {
 	test("skips when only behind share", () => {
 		const a = assessPushRepo(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 3,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",
@@ -301,7 +365,15 @@ describe("assessPushRepo", () => {
 	test("will-force-push when diverged", () => {
 		const a = assessPushRepo(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 3, toPull: 2, rebased: 1 },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 3,
+					toPull: 2,
+					rebased: 1,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",
@@ -316,7 +388,15 @@ describe("assessPushRepo", () => {
 	test("will-push normal push", () => {
 		const a = assessPushRepo(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",
@@ -339,7 +419,15 @@ describe("assessPushRepo", () => {
 					baseMergedIntoDefault: null,
 					detectedPr: null,
 				},
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",
@@ -358,7 +446,15 @@ describe("assessPushRepo", () => {
 		const a = assessPushRepo(
 			makeRepo({
 				base: null,
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",
@@ -382,7 +478,15 @@ describe("assessPushRepo", () => {
 					baseMergedIntoDefault: null,
 					detectedPr: null,
 				},
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",

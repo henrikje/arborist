@@ -134,13 +134,16 @@ function remoteDiffParts(repo: RepoStatus): { push: string; pull: string; pullNe
 			if (rebased > 0) pushParts.push(`${rebased} rebased`);
 		}
 
-		// Pull side: outdated first (already incorporated), then new (genuinely new remote content)
+		// Pull side: outdated first (rebased + replaced), then new (genuinely new remote content)
 		const pullParts: string[] = [];
 		let pullNewText = "";
 		if (toPull > 0) {
-			const outdated = rebased > 0 ? Math.min(rebased, toPull) : 0;
-			const newPull = Math.max(0, toPull - rebased);
-			if (outdated > 0) pullParts.push(`${outdated} outdated`);
+			const outdatedFromRebased = rebased > 0 ? Math.min(rebased, toPull) : 0;
+			const replaced = repo.share.replaced ?? 0;
+			const outdatedFromReplaced = Math.min(replaced, toPull - outdatedFromRebased);
+			const totalOutdated = outdatedFromRebased + outdatedFromReplaced;
+			const newPull = Math.max(0, toPull - totalOutdated);
+			if (totalOutdated > 0) pullParts.push(`${totalOutdated} outdated`);
 			if (newPull > 0) {
 				pullNewText = `${newPull} new`;
 				pullParts.push(pullNewText);
@@ -200,10 +203,12 @@ export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags, hasPullCon
 
 	// Determine push-side attention
 	const rebased = repo.share.rebased ?? 0;
+	const replaced = repo.share.replaced ?? 0;
 	const toPush = repo.share.toPush ?? 0;
 	const baseAhead = repo.base?.ahead ?? toPush;
-	const newCount = Math.max(0, Math.min(baseAhead, toPush) - rebased);
-	const pushNeedsAttention = flags.isUnpushed && (rebased === 0 || newCount > 0);
+	const totalMatched = rebased + replaced;
+	const newCount = Math.max(0, Math.min(baseAhead, toPush) - totalMatched);
+	const pushNeedsAttention = flags.isUnpushed && (totalMatched === 0 || newCount > 0);
 	const pushSpans = pushSideSpans(pushText, pushNewText, pushNeedsAttention);
 
 	// Merged with new work — color only the push suffix portion

@@ -1,6 +1,7 @@
 import {
 	type FileChange,
 	detectRebasedCommits,
+	detectReplacedCommits,
 	getCommitsBetweenFull,
 	matchDivergedCommits,
 	parseGitStatusFiles,
@@ -151,13 +152,21 @@ export async function gatherVerboseDetail(repo: RepoStatus, wsDir: string): Prom
 			const detection = await detectRebasedCommits(repoDir, repo.share.ref);
 			rebasedRemoteHashes = detection?.rebasedRemoteHashes ?? null;
 		}
+		let replacedHashes: Set<string> | null = null;
+		if (repo.share.replaced != null && repo.share.replaced > 0) {
+			const branch = repo.identity.headMode.kind === "attached" ? repo.identity.headMode.branch : "";
+			if (branch) {
+				const result = await detectReplacedCommits(repoDir, repo.share.ref, branch, rebasedRemoteHashes ?? undefined);
+				replacedHashes = result?.replacedHashes ?? null;
+			}
+		}
 		const commits = await getCommitsBetweenFull(repoDir, "HEAD", repo.share.ref);
 		if (commits.length > 0) {
 			verbose.toPull = commits.map((c) => ({
 				hash: c.fullHash,
 				shortHash: c.shortHash,
 				subject: c.subject,
-				superseded: rebasedRemoteHashes?.has(c.fullHash) ?? false,
+				superseded: (rebasedRemoteHashes?.has(c.fullHash) ?? false) || (replacedHashes?.has(c.fullHash) ?? false),
 			}));
 		}
 	}

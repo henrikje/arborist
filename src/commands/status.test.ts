@@ -124,7 +124,15 @@ describe("plainRemoteDiff", () => {
 	test("shows gone+merged", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -143,7 +151,15 @@ describe("plainRemoteDiff", () => {
 	test("shows merged with PR number and gone", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -162,7 +178,15 @@ describe("plainRemoteDiff", () => {
 	test("shows merged with PR number without gone", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: "my-branch", refMode: "configured", toPush: 0, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "my-branch",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -181,7 +205,15 @@ describe("plainRemoteDiff", () => {
 	test("shows gone with ahead", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -200,7 +232,15 @@ describe("plainRemoteDiff", () => {
 	test("shows gone plain", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -219,7 +259,15 @@ describe("plainRemoteDiff", () => {
 	test("shows merged when toPull is 0", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -238,7 +286,15 @@ describe("plainRemoteDiff", () => {
 	test("shows pull count instead of merged when toPull > 0", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 3,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -257,7 +313,15 @@ describe("plainRemoteDiff", () => {
 	test("shows noRef with ahead", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "noRef", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "noRef",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -276,7 +340,15 @@ describe("plainRemoteDiff", () => {
 	test("shows not pushed for noRef with no ahead", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "noRef", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "noRef",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -300,7 +372,15 @@ describe("plainRemoteDiff", () => {
 	test("shows push/pull counts", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 3, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 3,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 		);
 		expect(text).toBe("2 to push → 3 to pull");
@@ -309,7 +389,15 @@ describe("plainRemoteDiff", () => {
 	test("shows rebased counts", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 3, toPull: 2, rebased: 2 },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 3,
+					toPull: 2,
+					rebased: 2,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -329,7 +417,15 @@ describe("plainRemoteDiff", () => {
 	test("shows rebased-only when all pushes are rebased", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 2, rebased: 2 },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 2,
+					rebased: 2,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -349,7 +445,15 @@ describe("plainRemoteDiff", () => {
 	test("shows merged with new commits to push (not gone)", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 1, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 1,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -369,7 +473,15 @@ describe("plainRemoteDiff", () => {
 	test("shows merged with PR and new commits to push (not gone)", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 1, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 1,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -389,7 +501,15 @@ describe("plainRemoteDiff", () => {
 	test("shows merged with new commits to push (gone)", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -409,7 +529,15 @@ describe("plainRemoteDiff", () => {
 	test("shows merged without push count when no new commits", () => {
 		const text = plainRemoteDiff(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",

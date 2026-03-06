@@ -71,7 +71,15 @@ describe("assessPullRepo", () => {
 		const a = assessPullRepo(
 			makeRepo({
 				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 3,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",
@@ -88,7 +96,15 @@ describe("assessPullRepo", () => {
 		const a = assessPullRepo(
 			makeRepo({
 				local: { staged: 0, modified: 2, untracked: 0, conflicts: 0 },
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 3,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",
@@ -105,7 +121,15 @@ describe("assessPullRepo", () => {
 		const a = assessPullRepo(
 			makeRepo({
 				local: { staged: 0, modified: 0, untracked: 5, conflicts: 0 },
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 3,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",
@@ -121,7 +145,15 @@ describe("assessPullRepo", () => {
 	test("skips when not pushed yet (noRef)", () => {
 		const a = assessPullRepo(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "noRef", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "noRef",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",
@@ -138,7 +170,15 @@ describe("assessPullRepo", () => {
 	test("skips when remote branch gone", () => {
 		const a = assessPullRepo(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",
@@ -217,7 +257,15 @@ describe("assessPullRepo", () => {
 					baseMergedIntoDefault: null,
 					detectedPr: null,
 				},
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",
@@ -244,7 +292,15 @@ describe("assessPullRepo", () => {
 					baseMergedIntoDefault: null,
 					detectedPr: null,
 				},
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 3,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",
@@ -260,7 +316,15 @@ describe("assessPullRepo", () => {
 	test("skips when rebased locally and rebased >= toPull", () => {
 		const a = assessPullRepo(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 3, toPull: 2, rebased: 2 },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 3,
+					toPull: 2,
+					rebased: 2,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",
@@ -278,7 +342,15 @@ describe("assessPullRepo", () => {
 	test("will-pull when commits behind", () => {
 		const a = assessPullRepo(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 5, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 5,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",
@@ -296,7 +368,15 @@ describe("assessPullRepo", () => {
 	test("will-pull with diverged (toPush and toPull)", () => {
 		const a = assessPullRepo(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 3, rebased: 1 },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 3,
+					rebased: 1,
+					replaced: null,
+				},
 			}),
 			DIR,
 			"feature",

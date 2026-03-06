@@ -82,7 +82,15 @@ describe("formatVerboseDetail", () => {
 				baseMergedIntoDefault: null,
 				detectedPr: null,
 			},
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 1, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 1,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		});
 		const verbose = {
 			aheadOfBase: [{ hash: "aaa", shortHash: "aaa1234", subject: "new commit" }],
@@ -94,7 +102,15 @@ describe("formatVerboseDetail", () => {
 
 	test("shows unpushed section when not merged even if commits overlap", () => {
 		const repo = makeRepo({
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 1, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 1,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		});
 		const verbose = {
 			aheadOfBase: [{ hash: "aaa", shortHash: "aaa1234", subject: "commit 1" }],
@@ -117,7 +133,15 @@ describe("formatVerboseDetail", () => {
 				baseMergedIntoDefault: null,
 				detectedPr: null,
 			},
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 2,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		});
 		const verbose = {
 			aheadOfBase: [{ hash: "aaa", shortHash: "aaa1234", subject: "new commit" }],
@@ -132,10 +156,18 @@ describe("formatVerboseDetail", () => {
 
 	test("unpushed label uses share.ref when available, falls back to remote", () => {
 		const repoWithRef = makeRepo({
-			share: { remote: "origin", ref: "origin/my-branch", refMode: "configured", toPush: 1, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/my-branch",
+				refMode: "configured",
+				toPush: 1,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		});
 		const repoNoRef = makeRepo({
-			share: { remote: "origin", ref: null, refMode: "noRef", toPush: 1, toPull: 0, rebased: null },
+			share: { remote: "origin", ref: null, refMode: "noRef", toPush: 1, toPull: 0, rebased: null, replaced: null },
 		});
 		const verbose = {
 			unpushed: [{ hash: "aaa", shortHash: "aaa1234", subject: "commit", rebased: false }],
@@ -403,7 +435,15 @@ describe("verboseDetailToNodes", () => {
 
 	test("unpushed commits produce section", () => {
 		const repo = makeRepo({
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 2,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		});
 		const verbose = {
 			unpushed: [
@@ -431,7 +471,15 @@ describe("verboseDetailToNodes", () => {
 				baseMergedIntoDefault: null,
 				detectedPr: null,
 			},
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 1, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 1,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		});
 		const verbose = {
 			aheadOfBase: [{ hash: "aaa", shortHash: "aaa1234", subject: "new commit" }],
@@ -496,7 +544,15 @@ describe("verboseDetailToNodes", () => {
 				baseMergedIntoDefault: null,
 				detectedPr: null,
 			},
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 1, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 1,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		});
 		const verbose = {
 			aheadOfBase: [{ hash: "aaa", shortHash: "aaa1234", subject: "commit 1" }],

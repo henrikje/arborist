@@ -26,6 +26,7 @@ export function makeRepo(overrides: Partial<RepoStatus> = {}): RepoStatus {
 			toPush: 0,
 			toPull: 0,
 			rebased: null,
+			replaced: null,
 		},
 		operation: null,
 		lastCommit: null,
