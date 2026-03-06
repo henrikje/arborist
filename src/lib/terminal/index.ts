@@ -27,4 +27,6 @@ export {
 	yellow,
 } from "./output";
 export { readNamesFromStdin } from "./stdin";
+export type { StdinSuppression } from "./suppress-stdin";
+export { suppressStdin } from "./suppress-stdin";
 export { isTTY } from "./tty";

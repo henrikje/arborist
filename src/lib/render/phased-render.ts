@@ -1,4 +1,5 @@
 import { clearLines, countLines, stderr } from "../terminal/output";
+import { suppressStdin } from "../terminal/suppress-stdin";
 
 export interface RenderPhase {
 	render: () => string | Promise<string>;
@@ -6,16 +7,21 @@ export interface RenderPhase {
 }
 
 export async function runPhasedRender(phases: RenderPhase[]): Promise<void> {
+	const { restore } = suppressStdin();
 	let prevOutput: string | undefined;
 
-	for (const phase of phases) {
-		const output = await phase.render();
-		if (prevOutput !== undefined) {
-			process.stderr.write("\r");
-			clearLines(countLines(prevOutput));
+	try {
+		for (const phase of phases) {
+			const output = await phase.render();
+			if (prevOutput !== undefined) {
+				process.stderr.write("\r");
+				clearLines(countLines(prevOutput, process.stderr.columns));
+			}
+			const write = phase.write ?? stderr;
+			write(output);
+			prevOutput = output;
 		}
-		const write = phase.write ?? stderr;
-		write(output);
-		prevOutput = output;
+	} finally {
+		restore();
 	}
 }
