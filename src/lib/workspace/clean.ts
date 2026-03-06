@@ -34,6 +34,98 @@ function readGitdirBackRef(worktreeEntryDir: string): string | null {
 }
 
 /**
+ * Extract the old project root from a gitdir path by finding the `/.arb/repos/`
+ * segment. Returns null if the segment is not found.
+ */
+function extractOldProjectRoot(gitdirPath: string): string | null {
+	const marker = "/.arb/repos/";
+	const idx = gitdirPath.lastIndexOf(marker);
+	if (idx === -1) return null;
+	return gitdirPath.slice(0, idx);
+}
+
+/**
+ * Detect if the project directory has been moved by comparing old project roots
+ * (embedded in worktree forward refs) with the current project root.
+ * Returns the old root if a move is detected, null otherwise.
+ *
+ * Safety: only reports a move if the old root does NOT exist on disk, avoiding
+ * false positives from symlink setups.
+ */
+function detectProjectMove(wsDir: string, arbRootDir: string): string | null {
+	const repoDirs = workspaceRepoDirs(wsDir);
+	for (const repoDir of repoDirs) {
+		const gitdirPath = readGitdirFromWorktree(repoDir);
+		if (!gitdirPath) continue;
+
+		const oldRoot = extractOldProjectRoot(gitdirPath);
+		if (!oldRoot) continue;
+		if (oldRoot === arbRootDir) continue;
+
+		if (!existsSync(oldRoot)) {
+			return oldRoot;
+		}
+	}
+	return null;
+}
+
+/**
+ * Repair all worktree references after a project directory move. Iterates every
+ * canonical repo's worktree entries, computes the new worktree path by replacing
+ * the old root with the current root, and runs `git worktree repair` to fix both
+ * forward and backward refs.
+ */
+function repairProjectMove(arbRootDir: string, reposDir: string, oldRoot: string): void {
+	for (const repo of listRepos(reposDir)) {
+		const repoDir = join(reposDir, repo);
+		const worktreesDir = join(repoDir, ".git", "worktrees");
+		let entries: string[];
+		try {
+			entries = readdirSync(worktreesDir);
+		} catch {
+			continue;
+		}
+
+		for (const entry of entries) {
+			const entryDir = join(worktreesDir, entry);
+			const backRef = readGitdirBackRef(entryDir);
+			if (!backRef) continue;
+			if (!backRef.startsWith(oldRoot)) continue;
+
+			const newGitPath = arbRootDir + backRef.slice(oldRoot.length);
+			const gitSuffix = "/.git";
+			const worktreeDir = newGitPath.endsWith(gitSuffix) ? newGitPath.slice(0, -gitSuffix.length) : newGitPath;
+
+			if (!existsSync(worktreeDir)) continue;
+
+			Bun.spawnSync(["git", "worktree", "repair", worktreeDir], {
+				cwd: repoDir,
+				stdout: "ignore",
+				stderr: "ignore",
+			});
+		}
+	}
+}
+
+/**
+ * Detect and repair broken worktree references caused by moving the entire project
+ * directory. Must be called BEFORE `repairWorktreeRefs()` since forward refs are
+ * also broken in this scenario.
+ *
+ * Detection: reads a worktree's `.git` file, extracts the old project root from the
+ * `/.arb/repos/` segment, and compares with the current root. Only acts if the old
+ * root does not exist on disk (safety constraint for symlink setups).
+ *
+ * Repair: iterates all canonical repo worktree entries, computes new paths, and runs
+ * `git worktree repair` to fix both forward and backward refs.
+ */
+export function detectAndRepairProjectMove(wsDir: string, arbRootDir: string, reposDir: string): void {
+	const oldRoot = detectProjectMove(wsDir, arbRootDir);
+	if (!oldRoot) return;
+	repairProjectMove(arbRootDir, reposDir, oldRoot);
+}
+
+/**
  * Check if a workspace's worktree references are stale (e.g. after manual `mv`)
  * and repair them silently. Pure filesystem reads for detection; only spawns
  * `git worktree repair` when a mismatch is found.

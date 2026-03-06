@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { arb, git, withEnv } from "./helpers/env";
+import { arb, git, gitBelow230, withEnv } from "./helpers/env";
 
 describe("worktree integrity", () => {
 	test("scoped prune does not destroy other workspaces' entries", () =>
@@ -230,6 +230,84 @@ describe("worktree integrity", () => {
 				expect(victimGitNow).not.toBe(culpritGit);
 			}
 		}));
+
+	test.skipIf(gitBelow230)("project directory move is auto-repaired", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "ws-move", "repo-a"]);
+
+			// Verify worktree works before move
+			const beforeResult = await arb(env, ["-C", join(env.projectDir, "ws-move"), "status", "-N"]);
+			expect(beforeResult.exitCode).toBe(0);
+
+			// Move the entire project directory
+			const newProjectDir = join(env.testDir, "moved-project");
+			await rename(env.projectDir, newProjectDir);
+
+			// Run status from the moved location — should auto-repair
+			const result = await arb({ ...env, projectDir: newProjectDir }, [
+				"-C",
+				join(newProjectDir, "ws-move"),
+				"status",
+				"-N",
+			]);
+			expect(result.exitCode).toBe(0);
+
+			// Verify forward ref now points to new location
+			const gitContent = readFileSync(join(newProjectDir, "ws-move/repo-a/.git"), "utf-8").trim();
+			expect(gitContent).toContain(newProjectDir);
+			expect(gitContent).not.toContain(env.projectDir);
+
+			// Verify backward ref also points to new location
+			const gitdirPath = gitContent.slice("gitdir: ".length);
+			const backRef = readFileSync(join(gitdirPath, "gitdir"), "utf-8").trim();
+			expect(backRef).toBe(join(newProjectDir, "ws-move/repo-a/.git"));
+
+			// Update env so cleanup works
+			env.projectDir = newProjectDir;
+		}),
+	);
+
+	test.skipIf(gitBelow230)("arb clean repairs project move before stale detection", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "ws-a", "repo-a"]);
+			await arb(env, ["create", "ws-b", "repo-a"]);
+
+			const newProjectDir = join(env.testDir, "moved-project");
+			await rename(env.projectDir, newProjectDir);
+
+			// arb clean should repair, not show stale worktrees
+			const result = await arb({ ...env, projectDir: newProjectDir }, ["clean", "--dry-run"]);
+			expect(result.output).not.toContain("Stale worktree");
+
+			env.projectDir = newProjectDir;
+		}),
+	);
+
+	test.skipIf(gitBelow230)("project move detection is skipped when old path still exists", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "ws-safe", "repo-a"]);
+
+			// Copy (not move) the project — old path still exists
+			const copyDir = join(env.testDir, "copy-project");
+			await cp(env.projectDir, copyDir, { recursive: true });
+
+			// The copy's forward refs point to the original (which exists),
+			// so detection should NOT trigger
+			const origGitBefore = readFileSync(join(env.projectDir, "ws-safe/repo-a/.git"), "utf-8");
+
+			// Verify the copy's forward ref points to the original (not rewritten
+			// to the copy) — confirming detection was skipped before any command runs
+			const copyGit = readFileSync(join(copyDir, "ws-safe/repo-a/.git"), "utf-8").trim();
+			expect(copyGit).toContain(env.projectDir);
+			expect(copyGit).not.toContain(copyDir);
+
+			await arb({ ...env, projectDir: copyDir }, ["-C", join(copyDir, "ws-safe"), "status", "-N"]);
+
+			// Original refs stay untouched
+			const origGitAfter = readFileSync(join(env.projectDir, "ws-safe/repo-a/.git"), "utf-8");
+			expect(origGitAfter).toBe(origGitBefore);
+		}),
+	);
 
 	test("targeted stale entry removal unblocks worktree add", () =>
 		withEnv(async (env) => {
