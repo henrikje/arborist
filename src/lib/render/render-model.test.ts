@@ -256,7 +256,15 @@ describe("analyzeRemoteDiff", () => {
 
 	test("unpushed — attention", () => {
 		const repo = makeRepo({
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 3, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 3,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		});
 		const flags = computeFlags(repo, "feature");
 		const c = analyzeRemoteDiff(repo, flags);
@@ -276,7 +284,15 @@ describe("analyzeRemoteDiff", () => {
 				baseMergedIntoDefault: null,
 				detectedPr: null,
 			},
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 2, rebased: 2 },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 2,
+				toPull: 2,
+				rebased: 2,
+				replaced: null,
+			},
 		});
 		const flags = computeFlags(repo, "feature");
 		const c = analyzeRemoteDiff(repo, flags);
@@ -289,7 +305,15 @@ describe("analyzeRemoteDiff", () => {
 
 	test("merged with new work — multi-span", () => {
 		const repo = makeRepo({
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 1, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 1,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 			base: {
 				remote: "origin",
 				ref: "main",
@@ -313,7 +337,15 @@ describe("analyzeRemoteDiff", () => {
 
 	test("not pushed — default attention", () => {
 		const repo = makeRepo({
-			share: { remote: "origin", ref: null, refMode: "noRef", toPush: null, toPull: null, rebased: null },
+			share: {
+				remote: "origin",
+				ref: null,
+				refMode: "noRef",
+				toPush: null,
+				toPull: null,
+				rebased: null,
+				replaced: null,
+			},
 			base: {
 				remote: "origin",
 				ref: "main",
@@ -342,7 +374,15 @@ describe("analyzeRemoteDiff", () => {
 
 	test("behind share — default attention", () => {
 		const repo = makeRepo({
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 0,
+				toPull: 3,
+				rebased: null,
+				replaced: null,
+			},
 		});
 		const flags = computeFlags(repo, "feature");
 		const c = analyzeRemoteDiff(repo, flags);
@@ -453,7 +493,15 @@ describe("plainRemoteDiff", () => {
 		expect(
 			plainRemoteDiff(
 				makeRepo({
-					share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+					share: {
+						remote: "origin",
+						ref: null,
+						refMode: "gone",
+						toPush: null,
+						toPull: null,
+						rebased: null,
+						replaced: null,
+					},
 					base: {
 						remote: "origin",
 						ref: "main",

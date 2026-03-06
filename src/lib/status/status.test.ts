@@ -64,7 +64,15 @@ describe("computeFlags", () => {
 	test("isUnpushed when toPush > 0", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -74,7 +82,15 @@ describe("computeFlags", () => {
 	test("isUnpushed when noRef with base.ahead > 0", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "noRef", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "noRef",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -94,7 +110,15 @@ describe("computeFlags", () => {
 	test("not isUnpushed when gone even with base.ahead > 0", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -120,7 +144,15 @@ describe("computeFlags", () => {
 	test("not isUnpushed when share has no ref and no base ahead", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "noRef" as const, toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "noRef" as const,
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -130,7 +162,69 @@ describe("computeFlags", () => {
 	test("needsPull when toPull > 0", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 3,
+					rebased: null,
+					replaced: null,
+				},
+			}),
+			"feature",
+		);
+		expect(flags.needsPull).toBe(true);
+	});
+
+	test("needsPull is false when all pull commits are replaced", () => {
+		const flags = computeFlags(
+			makeRepo({
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 1,
+					toPull: 1,
+					rebased: 0,
+					replaced: 1,
+				},
+			}),
+			"feature",
+		);
+		expect(flags.needsPull).toBe(false);
+	});
+
+	test("needsPull is false when all pull commits are rebased + replaced", () => {
+		const flags = computeFlags(
+			makeRepo({
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 3,
+					toPull: 3,
+					rebased: 2,
+					replaced: 1,
+				},
+			}),
+			"feature",
+		);
+		expect(flags.needsPull).toBe(false);
+	});
+
+	test("needsPull is true when some pull commits are genuinely new despite replaced", () => {
+		const flags = computeFlags(
+			makeRepo({
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 3,
+					rebased: 0,
+					replaced: 1,
+				},
 			}),
 			"feature",
 		);
@@ -246,7 +340,15 @@ describe("computeFlags", () => {
 	test("isGone when refMode is gone", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -422,7 +524,15 @@ describe("isAtRisk", () => {
 	test("returns false when only needsPull (stale, not at-risk)", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 3,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -432,7 +542,15 @@ describe("isAtRisk", () => {
 	test("returns false when only isGone (lifecycle, not at-risk)", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -488,7 +606,15 @@ describe("flagLabels", () => {
 		const flags = computeFlags(
 			makeRepo({
 				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -568,7 +694,15 @@ describe("flagLabels", () => {
 					baseMergedIntoDefault: null,
 					detectedPr: null,
 				},
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -589,7 +723,15 @@ describe("flagLabels", () => {
 					baseMergedIntoDefault: null,
 					detectedPr: null,
 				},
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -691,7 +833,15 @@ describe("wouldLoseWork", () => {
 	test("returns true when isUnpushed", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -726,7 +876,15 @@ describe("wouldLoseWork", () => {
 	test("returns false when only needsPull", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 3,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -784,7 +942,15 @@ describe("wouldLoseWork", () => {
 	test("returns false when share has noRef and no base", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "noRef" as const, toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "noRef" as const,
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: null,
 			}),
 			"feature",
@@ -795,7 +961,15 @@ describe("wouldLoseWork", () => {
 	test("returns false when isGone (without unpushed commits)", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -899,7 +1073,17 @@ describe("repoMatchesWhere", () => {
 
 	test("matches with comma OR — second term matches", () => {
 		const flags = computeFlags(
-			makeRepo({ share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null } }),
+			makeRepo({
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
+			}),
 			"feature",
 		);
 		expect(repoMatchesWhere(flags, "dirty,gone")).toBe(true);
@@ -924,7 +1108,15 @@ describe("repoMatchesWhere", () => {
 		const flags = computeFlags(
 			makeRepo({
 				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -940,7 +1132,15 @@ describe("repoMatchesWhere", () => {
 		const flags = computeFlags(
 			makeRepo({
 				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -950,7 +1150,15 @@ describe("repoMatchesWhere", () => {
 	test("mixed AND/OR — second OR term matches", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -966,7 +1174,15 @@ describe("repoMatchesWhere", () => {
 		const flags = computeFlags(
 			makeRepo({
 				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -985,6 +1201,7 @@ describe("repoMatchesWhere", () => {
 						toPush: 2,
 						toPull: 0,
 						rebased: null,
+						replaced: null,
 					},
 				},
 			],
@@ -998,6 +1215,7 @@ describe("repoMatchesWhere", () => {
 						toPush: 0,
 						toPull: 3,
 						rebased: null,
+						replaced: null,
 					},
 				},
 			],
@@ -1038,7 +1256,20 @@ describe("repoMatchesWhere", () => {
 			["detached", { identity: { worktreeKind: "linked", headMode: { kind: "detached" }, shallow: false } }],
 			["operation", { operation: "rebase" }],
 
-			["gone", { share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null } }],
+			[
+				"gone",
+				{
+					share: {
+						remote: "origin",
+						ref: null,
+						refMode: "gone",
+						toPush: null,
+						toPull: null,
+						rebased: null,
+						replaced: null,
+					},
+				},
+			],
 			[
 				"shallow",
 				{ identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "feature" }, shallow: true } },
@@ -1115,7 +1346,15 @@ describe("workspaceMatchesWhere", () => {
 			makeRepo({ name: "clean-repo" }),
 			makeRepo({
 				name: "gone-repo",
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 		];
 		expect(workspaceMatchesWhere(repos, "feature", "at-risk")).toBe(false);
@@ -1126,7 +1365,15 @@ describe("workspaceMatchesWhere", () => {
 			makeRepo({ name: "repo-a", local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }),
 			makeRepo({
 				name: "repo-b",
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 		];
 		expect(workspaceMatchesWhere(repos, "feature", "dirty+unpushed")).toBe(false);
@@ -1138,7 +1385,15 @@ describe("workspaceMatchesWhere", () => {
 			makeRepo({
 				name: "dirty-unpushed-repo",
 				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 		];
 		expect(workspaceMatchesWhere(repos, "feature", "dirty+unpushed")).toBe(true);
@@ -1171,7 +1426,15 @@ describe("isWorkspaceSafe", () => {
 		const repos = [
 			makeRepo({
 				name: "unpushed",
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 		];
 		expect(isWorkspaceSafe(repos, "feature")).toBe(false);
@@ -1181,7 +1444,15 @@ describe("isWorkspaceSafe", () => {
 		const repos = [
 			makeRepo({
 				name: "noref-with-commits",
-				share: { remote: "origin", ref: null, refMode: "noRef" as const, toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "noRef" as const,
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 				base: {
 					remote: "origin",
 					ref: "main",
@@ -1220,7 +1491,15 @@ describe("isWorkspaceSafe", () => {
 		const repos = [
 			makeRepo({
 				name: "gone",
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 		];
 		expect(isWorkspaceSafe(repos, "feature")).toBe(true);
@@ -1273,7 +1552,15 @@ describe("computeSummaryAggregates decoupled display gate", () => {
 					baseMergedIntoDefault: null,
 					detectedPr: null,
 				},
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 		];
 		const result = computeSummaryAggregates(repos, "feature");
@@ -1307,7 +1594,15 @@ describe("computeSummaryAggregates decoupled display gate", () => {
 		const repos = [
 			makeRepo({
 				name: "gone-repo",
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 		];
 		const result = computeSummaryAggregates(repos, "feature");
@@ -1331,7 +1626,15 @@ describe("computeSummaryAggregates decoupled display gate", () => {
 					baseMergedIntoDefault: null,
 					detectedPr: null,
 				},
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			// Non-merged repo: behind base should be kept
 			makeRepo({
@@ -1393,7 +1696,15 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
 		const repos = [
 			makeRepo({
 				name: "a",
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 		];
 		const result = computeSummaryAggregates(repos, "feature");
@@ -1404,11 +1715,27 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
 		const repos = [
 			makeRepo({
 				name: "rebased-only",
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 2, rebased: 2 },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 2,
+					rebased: 2,
+					replaced: null,
+				},
 			}),
 			makeRepo({
 				name: "has-new",
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 3, toPull: 2, rebased: 2 },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 3,
+					toPull: 2,
+					rebased: 2,
+					replaced: null,
+				},
 			}),
 		];
 		const result = computeSummaryAggregates(repos, "feature");
@@ -1419,7 +1746,72 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
 		const repos = [
 			makeRepo({
 				name: "a",
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 2, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 2,
+					rebased: null,
+					replaced: null,
+				},
+			}),
+		];
+		const result = computeSummaryAggregates(repos, "feature");
+		expect(result.rebasedOnlyCount).toBe(0);
+	});
+
+	test("counts repos where all unpushed commits are replaced (no rebased)", () => {
+		const repos = [
+			makeRepo({
+				name: "a",
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 1,
+					toPull: 1,
+					rebased: 0,
+					replaced: 1,
+				},
+			}),
+		];
+		const result = computeSummaryAggregates(repos, "feature");
+		expect(result.rebasedOnlyCount).toBe(1);
+	});
+
+	test("counts repos where all unpushed commits are rebased + replaced combined", () => {
+		const repos = [
+			makeRepo({
+				name: "a",
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 3,
+					toPull: 3,
+					rebased: 2,
+					replaced: 1,
+				},
+			}),
+		];
+		const result = computeSummaryAggregates(repos, "feature");
+		expect(result.rebasedOnlyCount).toBe(1);
+	});
+
+	test("does not count repos where replaced + rebased < toPush", () => {
+		const repos = [
+			makeRepo({
+				name: "a",
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 5,
+					toPull: 2,
+					rebased: 1,
+					replaced: 1,
+				},
 			}),
 		];
 		const result = computeSummaryAggregates(repos, "feature");
@@ -1485,7 +1877,15 @@ describe("stale filter", () => {
 	test("matches needsPull", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 3,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -1560,7 +1960,15 @@ describe("positive filter terms", () => {
 	test("pushed does not match unpushed repo", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -1618,7 +2026,15 @@ describe("positive filter terms", () => {
 	test("synced-share does not match repo behind share", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 3,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -1638,7 +2054,15 @@ describe("positive filter terms", () => {
 	test("safe does not match unpushed repo", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 2,
+					toPull: 0,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -1672,7 +2096,15 @@ describe("positive filter terms", () => {
 	test("synced does not match repo behind share", () => {
 		const flags = computeFlags(
 			makeRepo({
-				share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3, rebased: null },
+				share: {
+					remote: "origin",
+					ref: "origin/feature",
+					refMode: "configured",
+					toPush: 0,
+					toPull: 3,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -1759,7 +2191,15 @@ describe("^ negation prefix", () => {
 		const flags = computeFlags(
 			makeRepo({
 				local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
-				share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+				share: {
+					remote: "origin",
+					ref: null,
+					refMode: "gone",
+					toPush: null,
+					toPull: null,
+					rebased: null,
+					replaced: null,
+				},
 			}),
 			"feature",
 		);
@@ -1872,7 +2312,15 @@ describe("shouldRunMergeDetection", () => {
 			},
 		}).base;
 		const shareStatus = makeRepo({
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 1, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 1,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		}).share;
 		expect(shouldRunMergeDetection(baseStatus, shareStatus, false, "feature")).toBe(true);
 	});
@@ -1891,7 +2339,15 @@ describe("shouldRunMergeDetection", () => {
 			},
 		}).base;
 		const shareStatus = makeRepo({
-			share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+			share: {
+				remote: "origin",
+				ref: null,
+				refMode: "gone",
+				toPush: null,
+				toPull: null,
+				rebased: null,
+				replaced: null,
+			},
 		}).share;
 		expect(shouldRunMergeDetection(baseStatus, shareStatus, false, "feature")).toBe(true);
 	});
@@ -1944,7 +2400,15 @@ describe("shouldRunMergeDetection", () => {
 			},
 		}).base;
 		const shareStatus = makeRepo({
-			share: { remote: "origin", ref: null, refMode: "noRef", toPush: null, toPull: null, rebased: null },
+			share: {
+				remote: "origin",
+				ref: null,
+				refMode: "noRef",
+				toPush: null,
+				toPull: null,
+				rebased: null,
+				replaced: null,
+			},
 		}).share;
 		expect(shouldRunMergeDetection(baseStatus, shareStatus, false, "feature")).toBe(false);
 	});
@@ -1975,7 +2439,15 @@ describe("computeMergeDetectionStrategy", () => {
 			},
 		});
 		const shareStatus = makeRepo({
-			share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null, rebased: null },
+			share: {
+				remote: "origin",
+				ref: null,
+				refMode: "gone",
+				toPush: null,
+				toPull: null,
+				rebased: null,
+				replaced: null,
+			},
 		}).share;
 		const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
 		expect(result.shouldCheckSquash).toBe(true);
@@ -1995,7 +2467,15 @@ describe("computeMergeDetectionStrategy", () => {
 			},
 		});
 		const shareStatus = makeRepo({
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 0,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		}).share;
 		const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
 		expect(result.shouldCheckSquash).toBe(true);
@@ -2015,7 +2495,15 @@ describe("computeMergeDetectionStrategy", () => {
 			},
 		});
 		const shareStatus = makeRepo({
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 2, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 2,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		}).share;
 		const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
 		expect(result.shouldCheckSquash).toBe(false);
@@ -2035,7 +2523,15 @@ describe("computeMergeDetectionStrategy", () => {
 			},
 		});
 		const shareStatus = makeRepo({
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 5, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 5,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		}).share;
 		const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
 		expect(result.shouldCheckPrefixes).toBe(true);
@@ -2055,7 +2551,15 @@ describe("computeMergeDetectionStrategy", () => {
 			},
 		});
 		const shareStatus = makeRepo({
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 5, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 5,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		}).share;
 		const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
 		expect(result.prefixLimit).toBe(5);
@@ -2075,7 +2579,15 @@ describe("computeMergeDetectionStrategy", () => {
 			},
 		});
 		const shareStatus = makeRepo({
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 20, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 20,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		}).share;
 		const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
 		expect(result.prefixLimit).toBe(10);
@@ -2095,7 +2607,15 @@ describe("computeMergeDetectionStrategy", () => {
 			},
 		});
 		const shareStatus = makeRepo({
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 0,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		}).share;
 		const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
 		expect(result.shouldCheckPrefixes).toBe(false);
@@ -2116,7 +2636,15 @@ describe("computeMergeDetectionStrategy", () => {
 			},
 		});
 		const shareStatus = makeRepo({
-			share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 0, rebased: null },
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 0,
+				toPull: 0,
+				rebased: null,
+				replaced: null,
+			},
 		}).share;
 		const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
 		expect(result.prefixLimit).toBe(0);

@@ -308,6 +308,7 @@ describe("analyzeRemoteName", () => {
 				toPush: 0,
 				toPull: 0,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -325,6 +326,7 @@ describe("analyzeRemoteName", () => {
 				toPush: 0,
 				toPull: 0,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -342,6 +344,7 @@ describe("analyzeRemoteName", () => {
 				toPush: null,
 				toPull: null,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -358,6 +361,7 @@ describe("analyzeRemoteName", () => {
 				toPush: null,
 				toPull: null,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -374,6 +378,7 @@ describe("analyzeRemoteName", () => {
 				toPush: 0,
 				toPull: 0,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		// expectedBranch is "main" but repo is on "feature" → drifted
@@ -392,6 +397,7 @@ describe("analyzeRemoteName", () => {
 				toPush: 0,
 				toPull: 0,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -423,6 +429,7 @@ describe("plainRemoteDiff", () => {
 				toPush: null,
 				toPull: null,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		expect(plainRemoteDiff(repo)).toBe("merged (#42), gone");
@@ -447,6 +454,7 @@ describe("plainRemoteDiff", () => {
 				toPush: null,
 				toPull: null,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		expect(plainRemoteDiff(repo)).toBe("gone, 3 to push");
@@ -471,6 +479,7 @@ describe("plainRemoteDiff", () => {
 				toPush: null,
 				toPull: null,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		expect(plainRemoteDiff(repo)).toBe("gone");
@@ -495,6 +504,7 @@ describe("plainRemoteDiff", () => {
 				toPush: null,
 				toPull: null,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		expect(plainRemoteDiff(repo)).toBe("5 to push");
@@ -519,6 +529,7 @@ describe("plainRemoteDiff", () => {
 				toPush: null,
 				toPull: null,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		expect(plainRemoteDiff(repo)).toBe("not pushed");
@@ -543,6 +554,7 @@ describe("plainRemoteDiff", () => {
 				toPush: 0,
 				toPull: 0,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		expect(plainRemoteDiff(repo)).toBe("merged (#99)");
@@ -572,6 +584,7 @@ describe("plainRemoteDiff", () => {
 				toPush: 7,
 				toPull: 3,
 				rebased: 2,
+				replaced: null,
 			},
 		});
 		// fromBase = 7-4 = 3, rebased = 2, newCount = 4-2 = 2; pull: outdated = 2, newPull = 3-2 = 1
@@ -587,6 +600,7 @@ describe("plainRemoteDiff", () => {
 				toPush: 3,
 				toPull: 0,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		expect(plainRemoteDiff(repo)).toBe("3 to push");
@@ -601,6 +615,7 @@ describe("plainRemoteDiff", () => {
 				toPush: 0,
 				toPull: 2,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		expect(plainRemoteDiff(repo)).toBe("2 to pull");
@@ -625,6 +640,7 @@ describe("plainRemoteDiff", () => {
 				toPush: 3,
 				toPull: 3,
 				rebased: 3,
+				replaced: null,
 			},
 		});
 		// fromBase = 3-3 = 0, rebased = 3, newCount = 3-3 = 0; pull: outdated = 3
@@ -650,6 +666,7 @@ describe("plainRemoteDiff", () => {
 				toPush: 5,
 				toPull: 2,
 				rebased: 2,
+				replaced: null,
 			},
 		});
 		// fromBase = 5-2 = 3, rebased = 2, newCount = 2-2 = 0; pull: outdated = 2
@@ -675,6 +692,7 @@ describe("plainRemoteDiff", () => {
 				toPush: 5,
 				toPull: 2,
 				rebased: 2,
+				replaced: null,
 			},
 		});
 		// fromBase = 5-5 = 0, rebased = 2, newCount = 5-2 = 3; pull: outdated = 2
@@ -700,9 +718,86 @@ describe("plainRemoteDiff", () => {
 				toPush: 1,
 				toPull: 1,
 				rebased: 0,
+				replaced: null,
 			},
 		});
 		expect(plainRemoteDiff(repo)).toBe("1 new → 1 new");
+	});
+
+	test("replaced commits show as outdated on pull side", () => {
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 2,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 1,
+				toPull: 1,
+				rebased: 0,
+				replaced: 1,
+			},
+		});
+		expect(plainRemoteDiff(repo)).toBe("1 new → 1 outdated");
+	});
+
+	test("rebased + replaced are merged into single outdated count", () => {
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 5,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 3,
+				toPull: 3,
+				rebased: 1,
+				replaced: 1,
+			},
+		});
+		// fromBase = 3-5 = 0, rebased = 1, newCount = 3-1 = 2; pull: outdated = 1+1 = 2, new = 1
+		expect(plainRemoteDiff(repo)).toBe("1 rebased, 2 new → 2 outdated, 1 new");
+	});
+
+	test("all pull commits replaced shows only outdated", () => {
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 3,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 2,
+				toPull: 2,
+				rebased: 0,
+				replaced: 2,
+			},
+		});
+		expect(plainRemoteDiff(repo)).toBe("2 new → 2 outdated");
 	});
 
 	test("base null fallback uses two-way split", () => {
@@ -715,6 +810,7 @@ describe("plainRemoteDiff", () => {
 				toPush: 5,
 				toPull: 3,
 				rebased: 2,
+				replaced: null,
 			},
 		});
 		// Fallback: newPush = 5-2 = 3; pull: outdated = 2, newPull = 3-2 = 1
@@ -740,6 +836,7 @@ describe("plainRemoteDiff", () => {
 				toPush: 5,
 				toPull: 2,
 				rebased: 2,
+				replaced: null,
 			},
 		});
 		// pull: outdated = 2
@@ -780,6 +877,7 @@ describe("analyzeRemoteDiff", () => {
 				toPush: 0,
 				toPull: 0,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -812,6 +910,7 @@ describe("analyzeRemoteDiff", () => {
 				toPush: 3,
 				toPull: 3,
 				rebased: 3,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -844,6 +943,7 @@ describe("analyzeRemoteDiff", () => {
 				toPush: 7,
 				toPull: 3,
 				rebased: 2,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -873,6 +973,7 @@ describe("analyzeRemoteDiff", () => {
 				toPush: 7,
 				toPull: 3,
 				rebased: 2,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -901,6 +1002,7 @@ describe("analyzeRemoteDiff", () => {
 				toPush: 7,
 				toPull: 0,
 				rebased: 2,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -931,6 +1033,7 @@ describe("analyzeRemoteDiff", () => {
 				toPush: 5,
 				toPull: 2,
 				rebased: 2,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -950,6 +1053,7 @@ describe("analyzeRemoteDiff", () => {
 				toPush: 5,
 				toPull: 3,
 				rebased: 0,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -970,6 +1074,7 @@ describe("analyzeRemoteDiff", () => {
 				toPush: 5,
 				toPull: 3,
 				rebased: 0,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -988,6 +1093,7 @@ describe("analyzeRemoteDiff", () => {
 				toPush: 5,
 				toPull: 1,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -1009,6 +1115,7 @@ describe("analyzeRemoteDiff", () => {
 				toPush: 0,
 				toPull: 4,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -1026,6 +1133,7 @@ describe("analyzeRemoteDiff", () => {
 				toPush: 3,
 				toPull: 0,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");
@@ -1041,6 +1149,98 @@ describe("analyzeRemoteDiff", () => {
 		const result = analyzeRemoteDiff(repo, flags);
 		expect(result.plain).toBe("up to date");
 		expect(result.spans[0]?.attention).toBe("default");
+	});
+
+	test("replaced-only push side gets default attention (no new work)", () => {
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 2,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 1,
+				toPull: 1,
+				rebased: 0,
+				replaced: 1,
+			},
+		});
+		const flags = computeFlags(repo, "feature");
+		const result = analyzeRemoteDiff(repo, flags);
+		expect(result.plain).toBe("1 new → 1 outdated");
+		// Push side should be default attention (all matched by replaced)
+		expect(result.spans[0]?.attention).toBe("default");
+		// Pull side "1 outdated" should be default
+		const pullSpan = result.spans.find((s) => s.text === "1 outdated");
+		expect(pullSpan?.attention).toBe("default");
+	});
+
+	test("mixed replaced + genuinely new pull shows outdated default and new default", () => {
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 5,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 3,
+				toPull: 3,
+				rebased: 1,
+				replaced: 1,
+			},
+		});
+		const flags = computeFlags(repo, "feature");
+		const result = analyzeRemoteDiff(repo, flags, false);
+		expect(result.plain).toBe("1 rebased, 2 new → 2 outdated, 1 new");
+		// Pull "1 new" should be default (no pull conflict)
+		const pullNew = result.spans.filter((s) => s.text === "1 new").at(-1);
+		expect(pullNew?.attention).toBe("default");
+	});
+
+	test("mixed replaced + genuinely new pull with conflict highlights new", () => {
+		const repo = makeRepo({
+			base: {
+				remote: "origin",
+				ref: "main",
+				configuredRef: null,
+				ahead: 5,
+				behind: 0,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+			share: {
+				remote: "origin",
+				ref: "origin/feature",
+				refMode: "configured",
+				toPush: 3,
+				toPull: 3,
+				rebased: 1,
+				replaced: 1,
+			},
+		});
+		const flags = computeFlags(repo, "feature");
+		const result = analyzeRemoteDiff(repo, flags, true);
+		expect(result.plain).toBe("1 rebased, 2 new → 2 outdated, 1 new");
+		// Pull "1 new" should be attention (pull conflict predicted)
+		const pullNew = result.spans.filter((s) => s.text === "1 new").at(-1);
+		expect(pullNew?.attention).toBe("attention");
 	});
 });
 
@@ -1196,6 +1396,7 @@ describe("flagLabels", () => {
 				toPush: null,
 				toPull: null,
 				rebased: null,
+				replaced: null,
 			},
 		});
 		const flags = computeFlags(repo, "feature");

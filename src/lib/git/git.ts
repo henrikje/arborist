@@ -773,6 +773,42 @@ export async function detectRebasedCommits(
 	return { count: rebasedLocalHashes.size, rebasedLocalHashes, rebasedRemoteHashes };
 }
 
+export async function detectReplacedCommits(
+	repoDir: string,
+	trackingRef: string,
+	branch: string,
+	excludeHashes?: Set<string>,
+): Promise<{ count: number; replacedHashes: Set<string> } | null> {
+	const start = isDebug() ? performance.now() : 0;
+	const [reflogResult, remoteResult] = await Promise.all([
+		git(repoDir, "log", "-g", "--format=%H", "-n", "200", branch),
+		git(repoDir, "log", "--format=%H", `HEAD..${trackingRef}`),
+	]);
+	if (isDebug()) {
+		const elapsed = performance.now() - start;
+		debugGit(`git -C ${repoDir} log -g --format=%H -n 200 ${branch}`, elapsed, reflogResult.exitCode);
+		debugGit(`git -C ${repoDir} log --format=%H HEAD..${trackingRef}`, elapsed, remoteResult.exitCode);
+	}
+
+	if (reflogResult.exitCode !== 0 || remoteResult.exitCode !== 0) return null;
+
+	const reflogHashes = new Set<string>();
+	for (const line of reflogResult.stdout.split("\n")) {
+		const hash = line.trim();
+		if (hash) reflogHashes.add(hash);
+	}
+
+	const replacedHashes = new Set<string>();
+	for (const line of remoteResult.stdout.split("\n")) {
+		const hash = line.trim();
+		if (hash && reflogHashes.has(hash) && !excludeHashes?.has(hash)) {
+			replacedHashes.add(hash);
+		}
+	}
+
+	return { count: replacedHashes.size, replacedHashes };
+}
+
 export async function getDiffShortstat(
 	repoDir: string,
 	ref1: string,

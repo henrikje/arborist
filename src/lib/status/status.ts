@@ -10,6 +10,7 @@ import {
 	detectBranchMerged,
 	detectOperation,
 	detectRebasedCommits,
+	detectReplacedCommits,
 	findMergeCommitForBranch,
 	findTicketReferencedCommit,
 	getHeadCommitDate,
@@ -63,6 +64,7 @@ export interface RepoStatus {
 		toPush: number | null; // null = unknown
 		toPull: number | null; // null = unknown
 		rebased: number | null; // count of patch-id-matched commits between push/pull sets
+		replaced: number | null; // count of remote-only commits found in local branch reflog
 	};
 	operation: GitOperation;
 	lastCommit: string | null;
@@ -148,8 +150,9 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 		isUnpushed = true;
 	}
 
-	// needsPull: share remote has commits to pull
-	const needsPull = repo.share.toPull !== null && repo.share.toPull > 0;
+	// needsPull: share remote has genuinely new commits (not just outdated/replaced)
+	const totalOutdatedPull = (repo.share.rebased ?? 0) + (repo.share.replaced ?? 0);
+	const needsPull = repo.share.toPull !== null && repo.share.toPull > 0 && repo.share.toPull > totalOutdatedPull;
 
 	// needsRebase: behind base branch
 	const needsRebase = repo.base !== null && repo.base.behind > 0;
@@ -412,8 +415,9 @@ export function computeSummaryAggregates(
 
 	let rebasedOnlyCount = 0;
 	for (const repo of repos) {
-		if (repo.share.rebased != null && repo.share.rebased > 0) {
-			const netNew = (repo.share.toPush ?? 0) - repo.share.rebased;
+		const totalMatched = (repo.share.rebased ?? 0) + (repo.share.replaced ?? 0);
+		if (totalMatched > 0) {
+			const netNew = (repo.share.toPush ?? 0) - totalMatched;
 			if (netNew <= 0) rebasedOnlyCount++;
 		}
 	}
@@ -517,9 +521,16 @@ export async function gatherRepoStatus(
 				toPush = right;
 			}
 			let rebased: number | null = null;
+			let replaced: number | null = null;
 			if (toPush !== null && toPush > 0 && toPull !== null && toPull > 0) {
-				const result = await detectRebasedCommits(repoDir, trackingRef);
-				rebased = result?.count ?? null;
+				const rebasedResult = await detectRebasedCommits(repoDir, trackingRef);
+				rebased = rebasedResult?.count ?? null;
+				const unmatchedPull = toPull - (rebased ?? 0);
+				if (unmatchedPull > 0) {
+					const rebasedRemoteHashes = rebasedResult?.rebasedRemoteHashes ?? new Set<string>();
+					const replacedResult = await detectReplacedCommits(repoDir, trackingRef, actualBranch, rebasedRemoteHashes);
+					replaced = replacedResult?.count ?? null;
+				}
 			}
 			shareStatus = {
 				remote: shareRemote,
@@ -528,6 +539,7 @@ export async function gatherRepoStatus(
 				toPush,
 				toPull,
 				rebased,
+				replaced,
 			};
 		} else if (await remoteBranchExists(repoDir, actualBranch, shareRemote)) {
 			// Step 2: No tracking config but remote ref exists → implicit
@@ -541,9 +553,16 @@ export async function gatherRepoStatus(
 				toPush = right;
 			}
 			let rebased: number | null = null;
+			let replaced: number | null = null;
 			if (toPush !== null && toPush > 0 && toPull !== null && toPull > 0) {
-				const result = await detectRebasedCommits(repoDir, implicitRef);
-				rebased = result?.count ?? null;
+				const rebasedResult = await detectRebasedCommits(repoDir, implicitRef);
+				rebased = rebasedResult?.count ?? null;
+				const unmatchedPull = toPull - (rebased ?? 0);
+				if (unmatchedPull > 0) {
+					const rebasedRemoteHashes = rebasedResult?.rebasedRemoteHashes ?? new Set<string>();
+					const replacedResult = await detectReplacedCommits(repoDir, implicitRef, actualBranch, rebasedRemoteHashes);
+					replaced = replacedResult?.count ?? null;
+				}
 			}
 			shareStatus = {
 				remote: shareRemote,
@@ -552,6 +571,7 @@ export async function gatherRepoStatus(
 				toPush,
 				toPull,
 				rebased,
+				replaced,
 			};
 		} else {
 			// Step 3: Check if tracking config exists (→ gone) or not (→ noRef)
@@ -564,6 +584,7 @@ export async function gatherRepoStatus(
 				toPush: null,
 				toPull: null,
 				rebased: null,
+				replaced: null,
 			};
 		}
 	} else {
@@ -575,6 +596,7 @@ export async function gatherRepoStatus(
 			toPush: null,
 			toPull: null,
 			rebased: null,
+			replaced: null,
 		};
 	}
 
