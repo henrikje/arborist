@@ -80,11 +80,34 @@ export function clearLines(count: number): void {
 	process.stderr.write(`\x1B[${count}A\x1B[J`);
 }
 
-export function countLines(text: string): number {
-	let count = 0;
-	for (let i = 0; i < text.length; i++) {
-		if (text[i] === "\n") count++;
+export function countLines(text: string, terminalWidth?: number): number {
+	if (!terminalWidth || terminalWidth <= 0) {
+		let count = 0;
+		for (let i = 0; i < text.length; i++) {
+			if (text[i] === "\n") count++;
+		}
+		return count;
 	}
+
+	const lines = text.split("\n");
+	// The last element after split is always empty when text ends with \n,
+	// and represents no visual line — exclude it.
+	if (lines.length > 0 && lines[lines.length - 1] === "") {
+		lines.pop();
+	}
+
+	let count = 0;
+	for (const line of lines) {
+		const visible = stripAnsi(line).length;
+		count += visible === 0 ? 1 : Math.ceil(visible / terminalWidth);
+	}
+
+	// When text doesn't end with \n, the cursor is still on the last content
+	// line. clearLines needs the number of upward moves, so subtract 1.
+	if (text.length > 0 && !text.endsWith("\n")) {
+		count--;
+	}
+
 	return count;
 }
 
