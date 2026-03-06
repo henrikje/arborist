@@ -56,6 +56,7 @@ When a feature or change involves weighing meaningful options, preserve the reas
 - **Yellow**: noteworthy or mildly risky — this that need attention or action. Unpushed commits, local changes, unexpected branches, skipped repos, operations with caveats.
 - **Red**: errors or immediate risks — failed operations, at-risk workspaces, fatal messages.
 - **Dim (gray)**: de-emphasized, supplementary — column headings, commit hashes, section labels.
+- **Cyan**: interactive-tool alignment — used to match the accent color of `@inquirer` prompts, keeping arb output visually consistent with interactive selections.
 - **Bold**: structural emphasis — section separators in `exec` (`==> repo <==`).
 - **Default (no color)**: normal, expected content. Repo names, branch names, inline progress results, informational counts.
 

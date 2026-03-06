@@ -201,7 +201,8 @@ export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags, hasPullCon
 	// Determine push-side attention
 	const rebased = repo.share.rebased ?? 0;
 	const toPush = repo.share.toPush ?? 0;
-	const newCount = toPush - rebased;
+	const baseAhead = repo.base?.ahead ?? toPush;
+	const newCount = Math.max(0, Math.min(baseAhead, toPush) - rebased);
 	const pushNeedsAttention = flags.isUnpushed && (rebased === 0 || newCount > 0);
 	const pushSpans = pushSideSpans(pushText, pushNewText, pushNeedsAttention);
 

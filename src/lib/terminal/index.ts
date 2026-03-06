@@ -4,7 +4,7 @@ export { debugGit, debugLog, enableDebug, getGitCallCount, isDebug } from "./deb
 export {
 	bold,
 	boldLine,
-	blue,
+	cyan,
 	clearLines,
 	clearScanProgress,
 	countLines,
