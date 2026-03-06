@@ -132,17 +132,30 @@ export async function integrate(
 		onPostFetch: () => cache.invalidateAfterFetch(),
 	});
 
-	// All-or-nothing check: when retarget is active, any non-local skipped repo blocks the entire retarget
+	// All-or-nothing check: when retarget is active, skipped repos block the entire retarget
+	// (except repos with no base branch or where the retarget target simply doesn't exist on their remote)
 	if (retarget) {
 		const hasRetargetWork = assessments.some((a) => a.retargetTo || a.retargetBlocked);
 		if (hasRetargetWork) {
-			const blockedRepos = assessments.filter((a) => a.outcome === "skip" && a.skipFlag !== "no-base-branch");
+			const blockedRepos = assessments.filter(
+				(a) => a.outcome === "skip" && a.skipFlag !== "no-base-branch" && a.skipFlag !== "retarget-target-not-found",
+			);
 			if (blockedRepos.length > 0) {
 				error("Cannot retarget: some repos are blocked. Fix these issues and retry:");
 				for (const a of blockedRepos) {
 					process.stderr.write(`  ${a.repo} — ${a.skipReason}\n`);
 				}
 				throw new ArbError("Cannot retarget: some repos are blocked.");
+			}
+			// Ensure at least one repo can actually retarget
+			const hasActualRetargetWork = assessments.some((a) => a.retargetTo);
+			if (!hasActualRetargetWork) {
+				const notFoundRepos = assessments.filter((a) => a.skipFlag === "retarget-target-not-found");
+				error("Cannot retarget: target branch not found on any repo.");
+				for (const a of notFoundRepos) {
+					process.stderr.write(`  ${a.repo} — ${a.skipReason}\n`);
+				}
+				throw new ArbError("Cannot retarget: target branch not found on any repo.");
 			}
 		}
 	}
