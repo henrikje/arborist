@@ -1,7 +1,7 @@
 import { isTTY } from "./tty";
 
 export interface StdinSuppression {
-	restore: () => void;
+  restore: () => void;
 }
 
 /**
@@ -11,44 +11,44 @@ export interface StdinSuppression {
  * No-op when stdin is not a TTY or when raw mode is already active.
  */
 export function suppressStdin(): StdinSuppression {
-	if (!process.stdin.isTTY || !isTTY()) {
-		return { restore: () => {} };
-	}
+  if (!process.stdin.isTTY || !isTTY()) {
+    return { restore: () => {} };
+  }
 
-	const stdin = process.stdin;
+  const stdin = process.stdin;
 
-	if (stdin.isRaw) {
-		return { restore: () => {} };
-	}
+  if (stdin.isRaw) {
+    return { restore: () => {} };
+  }
 
-	let restored = false;
+  let restored = false;
 
-	const restore = () => {
-		if (restored) return;
-		restored = true;
-		stdin.setRawMode(false);
-		stdin.removeListener("data", onData);
-		stdin.unref();
-		process.removeListener("exit", onExit);
-	};
+  const restore = () => {
+    if (restored) return;
+    restored = true;
+    stdin.setRawMode(false);
+    stdin.removeListener("data", onData);
+    stdin.unref();
+    process.removeListener("exit", onExit);
+  };
 
-	const onData = (data: Buffer) => {
-		if (data.length === 1 && data[0] === 0x03) {
-			restore();
-			process.kill(process.pid, "SIGINT");
-			return;
-		}
-	};
+  const onData = (data: Buffer) => {
+    if (data.length === 1 && data[0] === 0x03) {
+      restore();
+      process.kill(process.pid, "SIGINT");
+      return;
+    }
+  };
 
-	const onExit = () => {
-		restore();
-	};
+  const onExit = () => {
+    restore();
+  };
 
-	stdin.setRawMode(true);
-	stdin.resume();
-	stdin.on("data", onData);
-	stdin.unref();
-	process.on("exit", onExit);
+  stdin.setRawMode(true);
+  stdin.resume();
+  stdin.on("data", onData);
+  stdin.unref();
+  process.on("exit", onExit);
 
-	return { restore };
+  return { restore };
 }

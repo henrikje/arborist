@@ -9,9 +9,9 @@ import { whereFilterTopic } from "./where";
 const TOPICS: HelpTopic[] = [whereFilterTopic, remotesTopic, stackedTopic, templatesTopic, scriptingTopic];
 
 export function findTopic(name: string): HelpTopic | undefined {
-	return TOPICS.find((t) => t.name === name);
+  return TOPICS.find((t) => t.name === name);
 }
 
 export function allTopics(): HelpTopic[] {
-	return TOPICS;
+  return TOPICS;
 }

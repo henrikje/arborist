@@ -1,11 +1,11 @@
 import {
-	type FileChange,
-	detectRebasedCommits,
-	detectReplacedCommits,
-	getCommitsBetweenFull,
-	matchDivergedCommits,
-	parseGitStatusFiles,
-	verifySquashRange,
+  type FileChange,
+  detectRebasedCommits,
+  detectReplacedCommits,
+  getCommitsBetweenFull,
+  matchDivergedCommits,
+  parseGitStatusFiles,
+  verifySquashRange,
 } from "../git/git";
 import type { StatusJsonRepo } from "../json/json-types";
 import { type RepoStatus, baseRef } from "../status/status";
@@ -19,645 +19,645 @@ export const VERBOSE_COMMIT_LIMIT = 25;
 
 // Internal verbose type — carries shortHash for text display alongside fullHash for JSON
 interface VerboseCommit {
-	hash: string;
-	shortHash: string;
-	subject: string;
+  hash: string;
+  shortHash: string;
+  subject: string;
 }
 export interface VerboseDetail {
-	aheadOfBase?: (VerboseCommit & { matchedOnBase?: { hash: string; shortHash: string } })[];
-	behindBase?: (VerboseCommit & {
-		rebaseOf?: { hash: string; shortHash: string };
-		squashOf?: { hashes: string[]; shortHashes: string[] };
-	})[];
-	unpushed?: (VerboseCommit & { rebased: boolean })[];
-	toPull?: (VerboseCommit & { superseded: boolean })[];
-	staged?: NonNullable<StatusJsonRepo["verbose"]>["staged"];
-	unstaged?: NonNullable<StatusJsonRepo["verbose"]>["unstaged"];
-	untracked?: string[];
+  aheadOfBase?: (VerboseCommit & { matchedOnBase?: { hash: string; shortHash: string } })[];
+  behindBase?: (VerboseCommit & {
+    rebaseOf?: { hash: string; shortHash: string };
+    squashOf?: { hashes: string[]; shortHashes: string[] };
+  })[];
+  unpushed?: (VerboseCommit & { rebased: boolean })[];
+  toPull?: (VerboseCommit & { superseded: boolean })[];
+  staged?: NonNullable<StatusJsonRepo["verbose"]>["staged"];
+  unstaged?: NonNullable<StatusJsonRepo["verbose"]>["unstaged"];
+  untracked?: string[];
 }
 
 export async function gatherVerboseDetail(repo: RepoStatus, wsDir: string): Promise<VerboseDetail | undefined> {
-	const repoDir = `${wsDir}/${repo.name}`;
-	const verbose: VerboseDetail = {};
+  const repoDir = `${wsDir}/${repo.name}`;
+  const verbose: VerboseDetail = {};
 
-	// Ahead of base (suppress when base fell back — numbers are against the fallback, not the configured base)
-	if (repo.base && repo.base.ahead > 0 && !repo.base.configuredRef) {
-		const ref = baseRef(repo.base);
-		const commits = await getCommitsBetweenFull(repoDir, ref, "HEAD");
-		if (commits.length > 0) {
-			verbose.aheadOfBase = commits.map((c) => ({ hash: c.fullHash, shortHash: c.shortHash, subject: c.subject }));
-		}
-	}
+  // Ahead of base (suppress when base fell back — numbers are against the fallback, not the configured base)
+  if (repo.base && repo.base.ahead > 0 && !repo.base.configuredRef) {
+    const ref = baseRef(repo.base);
+    const commits = await getCommitsBetweenFull(repoDir, ref, "HEAD");
+    if (commits.length > 0) {
+      verbose.aheadOfBase = commits.map((c) => ({ hash: c.fullHash, shortHash: c.shortHash, subject: c.subject }));
+    }
+  }
 
-	// Behind base (suppress when base fell back)
-	if (repo.base && repo.base.behind > 0 && !repo.base.configuredRef) {
-		const ref = baseRef(repo.base);
-		const commits = await getCommitsBetweenFull(repoDir, "HEAD", ref);
-		if (commits.length > 0) {
-			// When diverged, match incoming commits against local commits
-			let rebaseMap: Map<string, string> | undefined;
-			let squashMatch: { incomingHash: string; localHashes: string[] } | undefined;
-			if (repo.base.ahead > 0) {
-				const matchResult = await matchDivergedCommits(repoDir, ref);
-				if (matchResult.rebaseMatches.size > 0) rebaseMap = matchResult.rebaseMatches;
-				if (matchResult.squashMatch) squashMatch = matchResult.squashMatch;
-			}
+  // Behind base (suppress when base fell back)
+  if (repo.base && repo.base.behind > 0 && !repo.base.configuredRef) {
+    const ref = baseRef(repo.base);
+    const commits = await getCommitsBetweenFull(repoDir, "HEAD", ref);
+    if (commits.length > 0) {
+      // When diverged, match incoming commits against local commits
+      let rebaseMap: Map<string, string> | undefined;
+      let squashMatch: { incomingHash: string; localHashes: string[] } | undefined;
+      if (repo.base.ahead > 0) {
+        const matchResult = await matchDivergedCommits(repoDir, ref);
+        if (matchResult.rebaseMatches.size > 0) rebaseMap = matchResult.rebaseMatches;
+        if (matchResult.squashMatch) squashMatch = matchResult.squashMatch;
+      }
 
-			// Build a local hash → shortHash lookup from aheadOfBase (already gathered)
-			const localHashToShort = new Map<string, string>();
-			if (verbose.aheadOfBase) {
-				for (const c of verbose.aheadOfBase) localHashToShort.set(c.hash, c.shortHash);
-			}
+      // Build a local hash → shortHash lookup from aheadOfBase (already gathered)
+      const localHashToShort = new Map<string, string>();
+      if (verbose.aheadOfBase) {
+        for (const c of verbose.aheadOfBase) localHashToShort.set(c.hash, c.shortHash);
+      }
 
-			verbose.behindBase = commits.map((c) => {
-				const entry: NonNullable<VerboseDetail["behindBase"]>[number] = {
-					hash: c.fullHash,
-					shortHash: c.shortHash,
-					subject: c.subject,
-				};
-				if (rebaseMap?.has(c.fullHash)) {
-					const localHash = rebaseMap.get(c.fullHash) ?? c.fullHash;
-					entry.rebaseOf = { hash: localHash, shortHash: localHashToShort.get(localHash) ?? localHash.slice(0, 7) };
-				} else if (squashMatch && c.fullHash === squashMatch.incomingHash) {
-					entry.squashOf = {
-						hashes: squashMatch.localHashes,
-						shortHashes: squashMatch.localHashes.map((h) => localHashToShort.get(h) ?? h.slice(0, 7)),
-					};
-				}
-				return entry;
-			});
-		}
-	}
+      verbose.behindBase = commits.map((c) => {
+        const entry: NonNullable<VerboseDetail["behindBase"]>[number] = {
+          hash: c.fullHash,
+          shortHash: c.shortHash,
+          subject: c.subject,
+        };
+        if (rebaseMap?.has(c.fullHash)) {
+          const localHash = rebaseMap.get(c.fullHash) ?? c.fullHash;
+          entry.rebaseOf = { hash: localHash, shortHash: localHashToShort.get(localHash) ?? localHash.slice(0, 7) };
+        } else if (squashMatch && c.fullHash === squashMatch.incomingHash) {
+          entry.squashOf = {
+            hashes: squashMatch.localHashes,
+            shortHashes: squashMatch.localHashes.map((h) => localHashToShort.get(h) ?? h.slice(0, 7)),
+          };
+        }
+        return entry;
+      });
+    }
+  }
 
-	// Cross-reference: annotate ahead commits that have a rebase match on base
-	if (verbose.aheadOfBase && verbose.behindBase) {
-		const localToIncoming = new Map<string, { hash: string; shortHash: string }>();
-		for (const c of verbose.behindBase) {
-			if (c.rebaseOf) localToIncoming.set(c.rebaseOf.hash, { hash: c.hash, shortHash: c.shortHash });
-		}
-		if (localToIncoming.size > 0) {
-			for (const c of verbose.aheadOfBase) {
-				const match = localToIncoming.get(c.hash);
-				if (match) c.matchedOnBase = match;
-			}
-		}
-	}
+  // Cross-reference: annotate ahead commits that have a rebase match on base
+  if (verbose.aheadOfBase && verbose.behindBase) {
+    const localToIncoming = new Map<string, { hash: string; shortHash: string }>();
+    for (const c of verbose.behindBase) {
+      if (c.rebaseOf) localToIncoming.set(c.rebaseOf.hash, { hash: c.hash, shortHash: c.shortHash });
+    }
+    if (localToIncoming.size > 0) {
+      for (const c of verbose.aheadOfBase) {
+        const match = localToIncoming.get(c.hash);
+        if (match) c.matchedOnBase = match;
+      }
+    }
+  }
 
-	// Verify and populate squashOf on the squash commit in behindBase
-	if (
-		verbose.aheadOfBase &&
-		verbose.behindBase &&
-		repo.base?.mergedIntoBase === "squash" &&
-		repo.base.mergeCommitHash &&
-		repo.base.newCommitsAfterMerge
-	) {
-		const n = repo.base.newCommitsAfterMerge;
-		const mergedCommits = verbose.aheadOfBase.slice(n);
-		const squashEntry = verbose.behindBase.find((c) => c.hash === repo.base?.mergeCommitHash && !c.squashOf);
-		if (squashEntry && mergedCommits.length > 1) {
-			const ref = baseRef(repo.base);
-			const verified = await verifySquashRange(repoDir, ref, repo.base.mergeCommitHash, n);
-			if (verified) {
-				const reversed = [...mergedCommits].reverse();
-				squashEntry.squashOf = {
-					hashes: reversed.map((m) => m.hash),
-					shortHashes: reversed.map((m) => m.shortHash),
-				};
-			}
-		}
-	}
+  // Verify and populate squashOf on the squash commit in behindBase
+  if (
+    verbose.aheadOfBase &&
+    verbose.behindBase &&
+    repo.base?.mergedIntoBase === "squash" &&
+    repo.base.mergeCommitHash &&
+    repo.base.newCommitsAfterMerge
+  ) {
+    const n = repo.base.newCommitsAfterMerge;
+    const mergedCommits = verbose.aheadOfBase.slice(n);
+    const squashEntry = verbose.behindBase.find((c) => c.hash === repo.base?.mergeCommitHash && !c.squashOf);
+    if (squashEntry && mergedCommits.length > 1) {
+      const ref = baseRef(repo.base);
+      const verified = await verifySquashRange(repoDir, ref, repo.base.mergeCommitHash, n);
+      if (verified) {
+        const reversed = [...mergedCommits].reverse();
+        squashEntry.squashOf = {
+          hashes: reversed.map((m) => m.hash),
+          shortHashes: reversed.map((m) => m.shortHash),
+        };
+      }
+    }
+  }
 
-	// Unpushed to remote
-	if (repo.share.toPush !== null && repo.share.toPush > 0 && repo.share.ref) {
-		let rebasedHashes: Set<string> | null = null;
-		if (repo.share.rebased != null && repo.share.rebased > 0) {
-			const detection = await detectRebasedCommits(repoDir, repo.share.ref);
-			rebasedHashes = detection?.rebasedLocalHashes ?? null;
-		}
-		const commits = await getCommitsBetweenFull(repoDir, repo.share.ref, "HEAD");
-		if (commits.length > 0) {
-			verbose.unpushed = commits.map((c) => ({
-				hash: c.fullHash,
-				shortHash: c.shortHash,
-				subject: c.subject,
-				rebased: rebasedHashes?.has(c.fullHash) ?? false,
-			}));
-		}
-	}
+  // Unpushed to remote
+  if (repo.share.toPush !== null && repo.share.toPush > 0 && repo.share.ref) {
+    let rebasedHashes: Set<string> | null = null;
+    if (repo.share.rebased != null && repo.share.rebased > 0) {
+      const detection = await detectRebasedCommits(repoDir, repo.share.ref);
+      rebasedHashes = detection?.rebasedLocalHashes ?? null;
+    }
+    const commits = await getCommitsBetweenFull(repoDir, repo.share.ref, "HEAD");
+    if (commits.length > 0) {
+      verbose.unpushed = commits.map((c) => ({
+        hash: c.fullHash,
+        shortHash: c.shortHash,
+        subject: c.subject,
+        rebased: rebasedHashes?.has(c.fullHash) ?? false,
+      }));
+    }
+  }
 
-	// To pull from remote
-	if (repo.share.toPull !== null && repo.share.toPull > 0 && repo.share.ref) {
-		let rebasedRemoteHashes: Set<string> | null = null;
-		if (repo.share.rebased != null && repo.share.rebased > 0) {
-			const detection = await detectRebasedCommits(repoDir, repo.share.ref);
-			rebasedRemoteHashes = detection?.rebasedRemoteHashes ?? null;
-		}
-		let replacedHashes: Set<string> | null = null;
-		if (repo.share.replaced != null && repo.share.replaced > 0) {
-			const branch = repo.identity.headMode.kind === "attached" ? repo.identity.headMode.branch : "";
-			if (branch) {
-				const result = await detectReplacedCommits(repoDir, repo.share.ref, branch, rebasedRemoteHashes ?? undefined);
-				replacedHashes = result?.replacedHashes ?? null;
-			}
-		}
-		const commits = await getCommitsBetweenFull(repoDir, "HEAD", repo.share.ref);
-		if (commits.length > 0) {
-			verbose.toPull = commits.map((c) => ({
-				hash: c.fullHash,
-				shortHash: c.shortHash,
-				subject: c.subject,
-				superseded: (rebasedRemoteHashes?.has(c.fullHash) ?? false) || (replacedHashes?.has(c.fullHash) ?? false),
-			}));
-		}
-	}
+  // To pull from remote
+  if (repo.share.toPull !== null && repo.share.toPull > 0 && repo.share.ref) {
+    let rebasedRemoteHashes: Set<string> | null = null;
+    if (repo.share.rebased != null && repo.share.rebased > 0) {
+      const detection = await detectRebasedCommits(repoDir, repo.share.ref);
+      rebasedRemoteHashes = detection?.rebasedRemoteHashes ?? null;
+    }
+    let replacedHashes: Set<string> | null = null;
+    if (repo.share.replaced != null && repo.share.replaced > 0) {
+      const branch = repo.identity.headMode.kind === "attached" ? repo.identity.headMode.branch : "";
+      if (branch) {
+        const result = await detectReplacedCommits(repoDir, repo.share.ref, branch, rebasedRemoteHashes ?? undefined);
+        replacedHashes = result?.replacedHashes ?? null;
+      }
+    }
+    const commits = await getCommitsBetweenFull(repoDir, "HEAD", repo.share.ref);
+    if (commits.length > 0) {
+      verbose.toPull = commits.map((c) => ({
+        hash: c.fullHash,
+        shortHash: c.shortHash,
+        subject: c.subject,
+        superseded: (rebasedRemoteHashes?.has(c.fullHash) ?? false) || (replacedHashes?.has(c.fullHash) ?? false),
+      }));
+    }
+  }
 
-	// File-level detail
-	if (repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0) {
-		const files = await parseGitStatusFiles(repoDir);
-		if (files.staged.length > 0) verbose.staged = files.staged;
-		if (files.unstaged.length > 0)
-			verbose.unstaged = files.unstaged.map((f) => ({
-				file: f.file,
-				type: f.type as "modified" | "deleted",
-			}));
-		if (files.untracked.length > 0) verbose.untracked = files.untracked;
-	}
+  // File-level detail
+  if (repo.local.staged > 0 || repo.local.modified > 0 || repo.local.untracked > 0 || repo.local.conflicts > 0) {
+    const files = await parseGitStatusFiles(repoDir);
+    if (files.staged.length > 0) verbose.staged = files.staged;
+    if (files.unstaged.length > 0)
+      verbose.unstaged = files.unstaged.map((f) => ({
+        file: f.file,
+        type: f.type as "modified" | "deleted",
+      }));
+    if (files.untracked.length > 0) verbose.untracked = files.untracked;
+  }
 
-	return Object.keys(verbose).length > 0 ? verbose : undefined;
+  return Object.keys(verbose).length > 0 ? verbose : undefined;
 }
 
 export function toJsonVerbose(
-	detail: VerboseDetail,
-	base?: { newCommitsAfterMerge?: number; mergeCommitHash?: string } | null,
+  detail: VerboseDetail,
+  base?: { newCommitsAfterMerge?: number; mergeCommitHash?: string } | null,
 ): StatusJsonRepo["verbose"] {
-	const { aheadOfBase, behindBase, unpushed, toPull, ...rest } = detail;
-	const stripShort = ({ hash, subject }: VerboseCommit) => ({ hash, subject });
-	const n = base?.newCommitsAfterMerge;
-	const mergeHash = base?.mergeCommitHash;
-	return {
-		...rest,
-		...(aheadOfBase && {
-			aheadOfBase: aheadOfBase.map((c, i) => ({
-				...stripShort(c),
-				...(c.matchedOnBase ? { mergedAs: c.matchedOnBase.hash } : {}),
-				...(n && n > 0 && i >= n && mergeHash && !c.matchedOnBase ? { mergedAs: mergeHash } : {}),
-			})),
-		}),
-		...(behindBase && {
-			behindBase: behindBase.map((c) => ({
-				hash: c.hash,
-				subject: c.subject,
-				...(c.rebaseOf && { rebaseOf: c.rebaseOf.hash }),
-				...(c.squashOf && { squashOf: c.squashOf.hashes }),
-			})),
-		}),
-		...(unpushed && { unpushed: unpushed.map(({ hash, subject, rebased }) => ({ hash, subject, rebased })) }),
-		...(toPull && { toPull: toPull.map(({ hash, subject, superseded }) => ({ hash, subject, superseded })) }),
-	};
+  const { aheadOfBase, behindBase, unpushed, toPull, ...rest } = detail;
+  const stripShort = ({ hash, subject }: VerboseCommit) => ({ hash, subject });
+  const n = base?.newCommitsAfterMerge;
+  const mergeHash = base?.mergeCommitHash;
+  return {
+    ...rest,
+    ...(aheadOfBase && {
+      aheadOfBase: aheadOfBase.map((c, i) => ({
+        ...stripShort(c),
+        ...(c.matchedOnBase ? { mergedAs: c.matchedOnBase.hash } : {}),
+        ...(n && n > 0 && i >= n && mergeHash && !c.matchedOnBase ? { mergedAs: mergeHash } : {}),
+      })),
+    }),
+    ...(behindBase && {
+      behindBase: behindBase.map((c) => ({
+        hash: c.hash,
+        subject: c.subject,
+        ...(c.rebaseOf && { rebaseOf: c.rebaseOf.hash }),
+        ...(c.squashOf && { squashOf: c.squashOf.hashes }),
+      })),
+    }),
+    ...(unpushed && { unpushed: unpushed.map(({ hash, subject, rebased }) => ({ hash, subject, rebased })) }),
+    ...(toPull && { toPull: toPull.map(({ hash, subject, superseded }) => ({ hash, subject, superseded })) }),
+  };
 }
 
 export function formatVerboseDetail(repo: RepoStatus, verbose: VerboseDetail | undefined): string {
-	const sections: string[] = [];
+  const sections: string[] = [];
 
-	// Merged into base
-	if (repo.base?.mergedIntoBase) {
-		const ref = baseRef(repo.base);
-		const strategy = repo.base.mergedIntoBase === "squash" ? "squash" : "merge";
-		let prSuffix = "";
-		if (repo.base.detectedPr) {
-			const commitSuffix = repo.base.detectedPr.mergeCommit ? ` [${repo.base.detectedPr.mergeCommit.slice(0, 7)}]` : "";
-			prSuffix = repo.base.detectedPr.url
-				? ` — detected PR #${repo.base.detectedPr.number} (${repo.base.detectedPr.url})${commitSuffix}`
-				: ` — detected PR #${repo.base.detectedPr.number}${commitSuffix}`;
-		}
-		sections.push(`\n${SECTION_INDENT}Branch merged into ${ref} (${strategy})${prSuffix}\n`);
-		if (repo.base.newCommitsAfterMerge && repo.base.newCommitsAfterMerge > 0) {
-			const n = repo.base.newCommitsAfterMerge;
-			sections.push(
-				`${SECTION_INDENT}${yellow(`${n} new ${n === 1 ? "commit" : "commits"} after merge — run 'arb rebase' to replay onto updated base`)}\n`,
-			);
-		}
-	}
+  // Merged into base
+  if (repo.base?.mergedIntoBase) {
+    const ref = baseRef(repo.base);
+    const strategy = repo.base.mergedIntoBase === "squash" ? "squash" : "merge";
+    let prSuffix = "";
+    if (repo.base.detectedPr) {
+      const commitSuffix = repo.base.detectedPr.mergeCommit ? ` [${repo.base.detectedPr.mergeCommit.slice(0, 7)}]` : "";
+      prSuffix = repo.base.detectedPr.url
+        ? ` — detected PR #${repo.base.detectedPr.number} (${repo.base.detectedPr.url})${commitSuffix}`
+        : ` — detected PR #${repo.base.detectedPr.number}${commitSuffix}`;
+    }
+    sections.push(`\n${SECTION_INDENT}Branch merged into ${ref} (${strategy})${prSuffix}\n`);
+    if (repo.base.newCommitsAfterMerge && repo.base.newCommitsAfterMerge > 0) {
+      const n = repo.base.newCommitsAfterMerge;
+      sections.push(
+        `${SECTION_INDENT}${yellow(`${n} new ${n === 1 ? "commit" : "commits"} after merge — run 'arb rebase' to replay onto updated base`)}\n`,
+      );
+    }
+  }
 
-	// Base branch merged into default
-	if (repo.base?.baseMergedIntoDefault) {
-		const strategy = repo.base.baseMergedIntoDefault === "squash" ? "squash" : "merge";
-		const baseName = repo.base.configuredRef ?? repo.base.ref;
-		sections.push(
-			`\n${SECTION_INDENT}Base branch ${baseName} has been merged into default (${strategy})\n${SECTION_INDENT}Run 'arb rebase --retarget' to rebase onto the default branch\n`,
-		);
-	}
+  // Base branch merged into default
+  if (repo.base?.baseMergedIntoDefault) {
+    const strategy = repo.base.baseMergedIntoDefault === "squash" ? "squash" : "merge";
+    const baseName = repo.base.configuredRef ?? repo.base.ref;
+    sections.push(
+      `\n${SECTION_INDENT}Base branch ${baseName} has been merged into default (${strategy})\n${SECTION_INDENT}Run 'arb rebase --retarget' to rebase onto the default branch\n`,
+    );
+  }
 
-	// Configured base not found (fell back to default) — skip when base merged already covers it
-	if (repo.base?.configuredRef && !repo.base.baseMergedIntoDefault) {
-		const remoteSuffix = repo.base.remote ? ` on ${repo.base.remote}` : "";
-		let section = `\n${SECTION_INDENT}Configured base branch ${repo.base.configuredRef} not found${remoteSuffix}\n`;
-		section += `${SECTION_INDENT}Run 'arb rebase --retarget' to rebase onto the default branch\n`;
-		sections.push(section);
-	}
+  // Configured base not found (fell back to default) — skip when base merged already covers it
+  if (repo.base?.configuredRef && !repo.base.baseMergedIntoDefault) {
+    const remoteSuffix = repo.base.remote ? ` on ${repo.base.remote}` : "";
+    let section = `\n${SECTION_INDENT}Configured base branch ${repo.base.configuredRef} not found${remoteSuffix}\n`;
+    section += `${SECTION_INDENT}Run 'arb rebase --retarget' to rebase onto the default branch\n`;
+    sections.push(section);
+  }
 
-	// Ahead of base
-	if (verbose?.aheadOfBase && repo.base) {
-		const ref = baseRef(repo.base);
-		const n = repo.base.newCommitsAfterMerge;
-		const total = verbose.aheadOfBase.length;
-		const matchedNewCount = n && n > 0 ? verbose.aheadOfBase.slice(0, n).filter((c) => c.matchedOnBase).length : 0;
-		const effectiveNew = n && n > 0 ? n - matchedNewCount : 0;
-		const mergedCount = n && n > 0 ? total - effectiveNew : 0;
-		const headerSuffix =
-			n && n > 0 && mergedCount > 0 ? ` ${dim(`(${effectiveNew} new, ${mergedCount} already merged)`)}` : "";
-		let section = `\n${SECTION_INDENT}Ahead of ${ref}:${headerSuffix}\n`;
-		const mergeHash = repo.base.mergeCommitHash;
-		const mergeTag = mergeHash ? dim(` (merged as ${mergeHash.slice(0, 7)})`) : dim(" (already merged)");
-		for (let i = 0; i < verbose.aheadOfBase.length; i++) {
-			const c = verbose.aheadOfBase[i];
-			if (!c) continue;
-			let tag: string;
-			if (c.matchedOnBase) {
-				tag = dim(` (same as ${c.matchedOnBase.shortHash})`);
-			} else if (n && n > 0 && i >= n) {
-				tag = mergeTag;
-			} else {
-				tag = "";
-			}
-			section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
-		}
-		sections.push(section);
-	}
+  // Ahead of base
+  if (verbose?.aheadOfBase && repo.base) {
+    const ref = baseRef(repo.base);
+    const n = repo.base.newCommitsAfterMerge;
+    const total = verbose.aheadOfBase.length;
+    const matchedNewCount = n && n > 0 ? verbose.aheadOfBase.slice(0, n).filter((c) => c.matchedOnBase).length : 0;
+    const effectiveNew = n && n > 0 ? n - matchedNewCount : 0;
+    const mergedCount = n && n > 0 ? total - effectiveNew : 0;
+    const headerSuffix =
+      n && n > 0 && mergedCount > 0 ? ` ${dim(`(${effectiveNew} new, ${mergedCount} already merged)`)}` : "";
+    let section = `\n${SECTION_INDENT}Ahead of ${ref}:${headerSuffix}\n`;
+    const mergeHash = repo.base.mergeCommitHash;
+    const mergeTag = mergeHash ? dim(` (merged as ${mergeHash.slice(0, 7)})`) : dim(" (already merged)");
+    for (let i = 0; i < verbose.aheadOfBase.length; i++) {
+      const c = verbose.aheadOfBase[i];
+      if (!c) continue;
+      let tag: string;
+      if (c.matchedOnBase) {
+        tag = dim(` (same as ${c.matchedOnBase.shortHash})`);
+      } else if (n && n > 0 && i >= n) {
+        tag = mergeTag;
+      } else {
+        tag = "";
+      }
+      section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
+    }
+    sections.push(section);
+  }
 
-	// Behind base
-	if (verbose?.behindBase && repo.base) {
-		const ref = baseRef(repo.base);
-		let section = `\n${SECTION_INDENT}Behind ${ref}:\n`;
-		for (const c of verbose.behindBase) {
-			let tag = "";
-			if (c.rebaseOf) {
-				tag = dim(` (same as ${c.rebaseOf.shortHash})`);
-			} else if (c.squashOf && c.squashOf.shortHashes.length > 1) {
-				const first = c.squashOf.shortHashes[0] ?? "";
-				const last = c.squashOf.shortHashes[c.squashOf.shortHashes.length - 1] ?? "";
-				tag = dim(` (squash of ${first}..${last})`);
-			}
-			section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
-		}
-		sections.push(section);
-	}
+  // Behind base
+  if (verbose?.behindBase && repo.base) {
+    const ref = baseRef(repo.base);
+    let section = `\n${SECTION_INDENT}Behind ${ref}:\n`;
+    for (const c of verbose.behindBase) {
+      let tag = "";
+      if (c.rebaseOf) {
+        tag = dim(` (same as ${c.rebaseOf.shortHash})`);
+      } else if (c.squashOf && c.squashOf.shortHashes.length > 1) {
+        const first = c.squashOf.shortHashes[0] ?? "";
+        const last = c.squashOf.shortHashes[c.squashOf.shortHashes.length - 1] ?? "";
+        tag = dim(` (squash of ${first}..${last})`);
+      }
+      section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
+    }
+    sections.push(section);
+  }
 
-	// Unpushed to remote — suppress when merged and all unpushed are already shown in ahead-of-base
-	if (verbose?.unpushed && repo.share) {
-		const aheadHashes = verbose?.aheadOfBase ? new Set(verbose.aheadOfBase.map((c) => c.hash)) : new Set();
-		const allCoveredByAhead = repo.base?.mergedIntoBase && verbose.unpushed.every((c) => aheadHashes.has(c.hash));
-		if (!allCoveredByAhead) {
-			const shareLabel = repo.share.ref ?? repo.share.remote;
-			let section = `\n${SECTION_INDENT}Unpushed to ${shareLabel}:\n`;
-			for (const c of verbose.unpushed) {
-				const tag = c.rebased ? dim(" (rebased)") : "";
-				section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
-			}
-			sections.push(section);
-		}
-	}
+  // Unpushed to remote — suppress when merged and all unpushed are already shown in ahead-of-base
+  if (verbose?.unpushed && repo.share) {
+    const aheadHashes = verbose?.aheadOfBase ? new Set(verbose.aheadOfBase.map((c) => c.hash)) : new Set();
+    const allCoveredByAhead = repo.base?.mergedIntoBase && verbose.unpushed.every((c) => aheadHashes.has(c.hash));
+    if (!allCoveredByAhead) {
+      const shareLabel = repo.share.ref ?? repo.share.remote;
+      let section = `\n${SECTION_INDENT}Unpushed to ${shareLabel}:\n`;
+      for (const c of verbose.unpushed) {
+        const tag = c.rebased ? dim(" (rebased)") : "";
+        section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
+      }
+      sections.push(section);
+    }
+  }
 
-	// To pull from remote
-	if (verbose?.toPull && repo.share) {
-		const shareLabel = repo.share.ref ?? repo.share.remote;
-		const allSuperseded = verbose.toPull.every((c) => c.superseded);
-		const safeSuffix = allSuperseded ? dim("  (safe to force push)") : "";
-		let section = `\n${SECTION_INDENT}To pull from ${shareLabel}:${safeSuffix}\n`;
-		for (const c of verbose.toPull) {
-			const tag = c.superseded ? dim(" (rebased locally)") : "";
-			section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
-		}
-		sections.push(section);
-	}
+  // To pull from remote
+  if (verbose?.toPull && repo.share) {
+    const shareLabel = repo.share.ref ?? repo.share.remote;
+    const allSuperseded = verbose.toPull.every((c) => c.superseded);
+    const safeSuffix = allSuperseded ? dim("  (safe to force push)") : "";
+    let section = `\n${SECTION_INDENT}To pull from ${shareLabel}:${safeSuffix}\n`;
+    for (const c of verbose.toPull) {
+      const tag = c.superseded ? dim(" (rebased locally)") : "";
+      section += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
+    }
+    sections.push(section);
+  }
 
-	// File-level detail
-	if (verbose?.staged) {
-		let section = `\n${SECTION_INDENT}Changes to be committed:\n`;
-		for (const f of verbose.staged) {
-			section += `${ITEM_INDENT}${formatFileChange(f)}\n`;
-		}
-		sections.push(section);
-	}
+  // File-level detail
+  if (verbose?.staged) {
+    let section = `\n${SECTION_INDENT}Changes to be committed:\n`;
+    for (const f of verbose.staged) {
+      section += `${ITEM_INDENT}${formatFileChange(f)}\n`;
+    }
+    sections.push(section);
+  }
 
-	if (verbose?.unstaged) {
-		let section = `\n${SECTION_INDENT}Changes not staged for commit:\n`;
-		for (const f of verbose.unstaged) {
-			section += `${ITEM_INDENT}${formatFileChange(f)}\n`;
-		}
-		sections.push(section);
-	}
+  if (verbose?.unstaged) {
+    let section = `\n${SECTION_INDENT}Changes not staged for commit:\n`;
+    for (const f of verbose.unstaged) {
+      section += `${ITEM_INDENT}${formatFileChange(f)}\n`;
+    }
+    sections.push(section);
+  }
 
-	if (verbose?.untracked) {
-		let section = `\n${SECTION_INDENT}Untracked files:\n`;
-		for (const f of verbose.untracked) {
-			section += `${ITEM_INDENT}${f}\n`;
-		}
-		sections.push(section);
-	}
+  if (verbose?.untracked) {
+    let section = `\n${SECTION_INDENT}Untracked files:\n`;
+    for (const f of verbose.untracked) {
+      section += `${ITEM_INDENT}${f}\n`;
+    }
+    sections.push(section);
+  }
 
-	return sections.join("");
+  return sections.join("");
 }
 
 // ── Render-model verbose detail (OutputNode[]) ──
 
 export function verboseDetailToNodes(repo: RepoStatus, verbose: VerboseDetail | undefined): OutputNode[] {
-	const nodes: OutputNode[] = [];
+  const nodes: OutputNode[] = [];
 
-	// Merged into base
-	if (repo.base?.mergedIntoBase) {
-		const ref = baseRef(repo.base);
-		const strategy = repo.base.mergedIntoBase === "squash" ? "squash" : "merge";
-		let headerText = `Branch merged into ${ref} (${strategy})`;
-		if (repo.base.detectedPr) {
-			const commitSuffix = repo.base.detectedPr.mergeCommit ? ` [${repo.base.detectedPr.mergeCommit.slice(0, 7)}]` : "";
-			headerText += repo.base.detectedPr.url
-				? ` — detected PR #${repo.base.detectedPr.number} (${repo.base.detectedPr.url})${commitSuffix}`
-				: ` — detected PR #${repo.base.detectedPr.number}${commitSuffix}`;
-		}
-		nodes.push({ kind: "gap" }, { kind: "section", header: cell(headerText), items: [] });
+  // Merged into base
+  if (repo.base?.mergedIntoBase) {
+    const ref = baseRef(repo.base);
+    const strategy = repo.base.mergedIntoBase === "squash" ? "squash" : "merge";
+    let headerText = `Branch merged into ${ref} (${strategy})`;
+    if (repo.base.detectedPr) {
+      const commitSuffix = repo.base.detectedPr.mergeCommit ? ` [${repo.base.detectedPr.mergeCommit.slice(0, 7)}]` : "";
+      headerText += repo.base.detectedPr.url
+        ? ` — detected PR #${repo.base.detectedPr.number} (${repo.base.detectedPr.url})${commitSuffix}`
+        : ` — detected PR #${repo.base.detectedPr.number}${commitSuffix}`;
+    }
+    nodes.push({ kind: "gap" }, { kind: "section", header: cell(headerText), items: [] });
 
-		if (repo.base.newCommitsAfterMerge && repo.base.newCommitsAfterMerge > 0) {
-			const n = repo.base.newCommitsAfterMerge;
-			nodes.push({
-				kind: "section",
-				header: cell(
-					`${n} new ${n === 1 ? "commit" : "commits"} after merge — run 'arb rebase' to replay onto updated base`,
-					"attention",
-				),
-				items: [],
-			});
-		}
-	}
+    if (repo.base.newCommitsAfterMerge && repo.base.newCommitsAfterMerge > 0) {
+      const n = repo.base.newCommitsAfterMerge;
+      nodes.push({
+        kind: "section",
+        header: cell(
+          `${n} new ${n === 1 ? "commit" : "commits"} after merge — run 'arb rebase' to replay onto updated base`,
+          "attention",
+        ),
+        items: [],
+      });
+    }
+  }
 
-	// Base branch merged into default
-	if (repo.base?.baseMergedIntoDefault) {
-		const strategy = repo.base.baseMergedIntoDefault === "squash" ? "squash" : "merge";
-		const baseName = repo.base.configuredRef ?? repo.base.ref;
-		nodes.push(
-			{ kind: "gap" },
-			{
-				kind: "section",
-				header: cell(`Base branch ${baseName} has been merged into default (${strategy})`),
-				items: [],
-			},
-			{ kind: "section", header: cell("Run 'arb rebase --retarget' to rebase onto the default branch"), items: [] },
-		);
-	}
+  // Base branch merged into default
+  if (repo.base?.baseMergedIntoDefault) {
+    const strategy = repo.base.baseMergedIntoDefault === "squash" ? "squash" : "merge";
+    const baseName = repo.base.configuredRef ?? repo.base.ref;
+    nodes.push(
+      { kind: "gap" },
+      {
+        kind: "section",
+        header: cell(`Base branch ${baseName} has been merged into default (${strategy})`),
+        items: [],
+      },
+      { kind: "section", header: cell("Run 'arb rebase --retarget' to rebase onto the default branch"), items: [] },
+    );
+  }
 
-	// Configured base not found (fell back to default) — skip when base merged already covers it
-	if (repo.base?.configuredRef && !repo.base.baseMergedIntoDefault) {
-		const remoteSuffix = repo.base.remote ? ` on ${repo.base.remote}` : "";
-		nodes.push(
-			{ kind: "gap" },
-			{
-				kind: "section",
-				header: cell(`Configured base branch ${repo.base.configuredRef} not found${remoteSuffix}`),
-				items: [],
-			},
-			{ kind: "section", header: cell("Run 'arb rebase --retarget' to rebase onto the default branch"), items: [] },
-		);
-	}
+  // Configured base not found (fell back to default) — skip when base merged already covers it
+  if (repo.base?.configuredRef && !repo.base.baseMergedIntoDefault) {
+    const remoteSuffix = repo.base.remote ? ` on ${repo.base.remote}` : "";
+    nodes.push(
+      { kind: "gap" },
+      {
+        kind: "section",
+        header: cell(`Configured base branch ${repo.base.configuredRef} not found${remoteSuffix}`),
+        items: [],
+      },
+      { kind: "section", header: cell("Run 'arb rebase --retarget' to rebase onto the default branch"), items: [] },
+    );
+  }
 
-	// Ahead of base
-	if (verbose?.aheadOfBase && repo.base) {
-		const ref = baseRef(repo.base);
-		const n = repo.base.newCommitsAfterMerge;
-		const total = verbose.aheadOfBase.length;
-		const matchedNewCount = n && n > 0 ? verbose.aheadOfBase.slice(0, n).filter((c) => c.matchedOnBase).length : 0;
-		const effectiveNew = n && n > 0 ? n - matchedNewCount : 0;
-		const mergedCount = n && n > 0 ? total - effectiveNew : 0;
+  // Ahead of base
+  if (verbose?.aheadOfBase && repo.base) {
+    const ref = baseRef(repo.base);
+    const n = repo.base.newCommitsAfterMerge;
+    const total = verbose.aheadOfBase.length;
+    const matchedNewCount = n && n > 0 ? verbose.aheadOfBase.slice(0, n).filter((c) => c.matchedOnBase).length : 0;
+    const effectiveNew = n && n > 0 ? n - matchedNewCount : 0;
+    const mergedCount = n && n > 0 ? total - effectiveNew : 0;
 
-		let header: Cell;
-		if (n && n > 0 && mergedCount > 0) {
-			header = spans(
-				{ text: `Ahead of ${ref}:`, attention: "default" },
-				{ text: ` (${effectiveNew} new, ${mergedCount} already merged)`, attention: "muted" },
-			);
-		} else {
-			header = cell(`Ahead of ${ref}:`);
-		}
+    let header: Cell;
+    if (n && n > 0 && mergedCount > 0) {
+      header = spans(
+        { text: `Ahead of ${ref}:`, attention: "default" },
+        { text: ` (${effectiveNew} new, ${mergedCount} already merged)`, attention: "muted" },
+      );
+    } else {
+      header = cell(`Ahead of ${ref}:`);
+    }
 
-		const mergeHash = repo.base.mergeCommitHash;
-		const mergeTag = mergeHash ? ` (merged as ${mergeHash.slice(0, 7)})` : " (already merged)";
-		const items: Cell[] = [];
-		for (let i = 0; i < verbose.aheadOfBase.length; i++) {
-			const c = verbose.aheadOfBase[i];
-			if (!c) continue;
-			let commitCell = spans(
-				{ text: c.shortHash, attention: "muted" },
-				{ text: ` ${c.subject}`, attention: "default" },
-			);
-			if (c.matchedOnBase) {
-				commitCell = suffix(commitCell, ` (same as ${c.matchedOnBase.shortHash})`, "muted");
-			} else if (n && n > 0 && i >= n) {
-				commitCell = suffix(commitCell, mergeTag, "muted");
-			}
-			items.push(commitCell);
-		}
+    const mergeHash = repo.base.mergeCommitHash;
+    const mergeTag = mergeHash ? ` (merged as ${mergeHash.slice(0, 7)})` : " (already merged)";
+    const items: Cell[] = [];
+    for (let i = 0; i < verbose.aheadOfBase.length; i++) {
+      const c = verbose.aheadOfBase[i];
+      if (!c) continue;
+      let commitCell = spans(
+        { text: c.shortHash, attention: "muted" },
+        { text: ` ${c.subject}`, attention: "default" },
+      );
+      if (c.matchedOnBase) {
+        commitCell = suffix(commitCell, ` (same as ${c.matchedOnBase.shortHash})`, "muted");
+      } else if (n && n > 0 && i >= n) {
+        commitCell = suffix(commitCell, mergeTag, "muted");
+      }
+      items.push(commitCell);
+    }
 
-		nodes.push({ kind: "gap" }, { kind: "section", header, items });
-	}
+    nodes.push({ kind: "gap" }, { kind: "section", header, items });
+  }
 
-	// Behind base
-	if (verbose?.behindBase && repo.base) {
-		const ref = baseRef(repo.base);
-		const items: Cell[] = [];
-		for (const c of verbose.behindBase) {
-			let commitCell = spans(
-				{ text: c.shortHash, attention: "muted" },
-				{ text: ` ${c.subject}`, attention: "default" },
-			);
-			if (c.rebaseOf) {
-				commitCell = suffix(commitCell, ` (same as ${c.rebaseOf.shortHash})`, "muted");
-			} else if (c.squashOf && c.squashOf.shortHashes.length > 1) {
-				const first = c.squashOf.shortHashes[0] ?? "";
-				const last = c.squashOf.shortHashes[c.squashOf.shortHashes.length - 1] ?? "";
-				commitCell = suffix(commitCell, ` (squash of ${first}..${last})`, "muted");
-			}
-			items.push(commitCell);
-		}
+  // Behind base
+  if (verbose?.behindBase && repo.base) {
+    const ref = baseRef(repo.base);
+    const items: Cell[] = [];
+    for (const c of verbose.behindBase) {
+      let commitCell = spans(
+        { text: c.shortHash, attention: "muted" },
+        { text: ` ${c.subject}`, attention: "default" },
+      );
+      if (c.rebaseOf) {
+        commitCell = suffix(commitCell, ` (same as ${c.rebaseOf.shortHash})`, "muted");
+      } else if (c.squashOf && c.squashOf.shortHashes.length > 1) {
+        const first = c.squashOf.shortHashes[0] ?? "";
+        const last = c.squashOf.shortHashes[c.squashOf.shortHashes.length - 1] ?? "";
+        commitCell = suffix(commitCell, ` (squash of ${first}..${last})`, "muted");
+      }
+      items.push(commitCell);
+    }
 
-		nodes.push({ kind: "gap" }, { kind: "section", header: cell(`Behind ${ref}:`), items });
-	}
+    nodes.push({ kind: "gap" }, { kind: "section", header: cell(`Behind ${ref}:`), items });
+  }
 
-	// Unpushed to remote — suppress when merged and all unpushed are already shown in ahead-of-base
-	if (verbose?.unpushed && repo.share) {
-		const aheadHashes = verbose?.aheadOfBase ? new Set(verbose.aheadOfBase.map((c) => c.hash)) : new Set();
-		const allCoveredByAhead = repo.base?.mergedIntoBase && verbose.unpushed.every((c) => aheadHashes.has(c.hash));
-		if (!allCoveredByAhead) {
-			const shareLabel = repo.share.ref ?? repo.share.remote;
-			const items: Cell[] = [];
-			for (const c of verbose.unpushed) {
-				let commitCell = spans(
-					{ text: c.shortHash, attention: "muted" },
-					{ text: ` ${c.subject}`, attention: "default" },
-				);
-				if (c.rebased) {
-					commitCell = suffix(commitCell, " (rebased)", "muted");
-				}
-				items.push(commitCell);
-			}
+  // Unpushed to remote — suppress when merged and all unpushed are already shown in ahead-of-base
+  if (verbose?.unpushed && repo.share) {
+    const aheadHashes = verbose?.aheadOfBase ? new Set(verbose.aheadOfBase.map((c) => c.hash)) : new Set();
+    const allCoveredByAhead = repo.base?.mergedIntoBase && verbose.unpushed.every((c) => aheadHashes.has(c.hash));
+    if (!allCoveredByAhead) {
+      const shareLabel = repo.share.ref ?? repo.share.remote;
+      const items: Cell[] = [];
+      for (const c of verbose.unpushed) {
+        let commitCell = spans(
+          { text: c.shortHash, attention: "muted" },
+          { text: ` ${c.subject}`, attention: "default" },
+        );
+        if (c.rebased) {
+          commitCell = suffix(commitCell, " (rebased)", "muted");
+        }
+        items.push(commitCell);
+      }
 
-			nodes.push({ kind: "gap" }, { kind: "section", header: cell(`Unpushed to ${shareLabel}:`), items });
-		}
-	}
+      nodes.push({ kind: "gap" }, { kind: "section", header: cell(`Unpushed to ${shareLabel}:`), items });
+    }
+  }
 
-	// To pull from remote
-	if (verbose?.toPull && repo.share) {
-		const shareLabel = repo.share.ref ?? repo.share.remote;
-		const allSuperseded = verbose.toPull.every((c) => c.superseded);
-		const header: Cell = allSuperseded
-			? spans(
-					{ text: `To pull from ${shareLabel}:`, attention: "default" },
-					{ text: "  (safe to force push)", attention: "muted" },
-				)
-			: cell(`To pull from ${shareLabel}:`);
-		const items: Cell[] = verbose.toPull.map((c) => {
-			let commitCell = spans(
-				{ text: c.shortHash, attention: "muted" },
-				{ text: ` ${c.subject}`, attention: "default" },
-			);
-			if (c.superseded) {
-				commitCell = suffix(commitCell, " (rebased locally)", "muted");
-			}
-			return commitCell;
-		});
-		nodes.push({ kind: "gap" }, { kind: "section", header, items });
-	}
+  // To pull from remote
+  if (verbose?.toPull && repo.share) {
+    const shareLabel = repo.share.ref ?? repo.share.remote;
+    const allSuperseded = verbose.toPull.every((c) => c.superseded);
+    const header: Cell = allSuperseded
+      ? spans(
+          { text: `To pull from ${shareLabel}:`, attention: "default" },
+          { text: "  (safe to force push)", attention: "muted" },
+        )
+      : cell(`To pull from ${shareLabel}:`);
+    const items: Cell[] = verbose.toPull.map((c) => {
+      let commitCell = spans(
+        { text: c.shortHash, attention: "muted" },
+        { text: ` ${c.subject}`, attention: "default" },
+      );
+      if (c.superseded) {
+        commitCell = suffix(commitCell, " (rebased locally)", "muted");
+      }
+      return commitCell;
+    });
+    nodes.push({ kind: "gap" }, { kind: "section", header, items });
+  }
 
-	// File-level detail
-	if (verbose?.staged) {
-		const items: Cell[] = verbose.staged.map((f) => cell(formatFileChange(f)));
-		nodes.push({ kind: "gap" }, { kind: "section", header: cell("Changes to be committed:"), items });
-	}
+  // File-level detail
+  if (verbose?.staged) {
+    const items: Cell[] = verbose.staged.map((f) => cell(formatFileChange(f)));
+    nodes.push({ kind: "gap" }, { kind: "section", header: cell("Changes to be committed:"), items });
+  }
 
-	if (verbose?.unstaged) {
-		const items: Cell[] = verbose.unstaged.map((f) => cell(formatFileChange(f)));
-		nodes.push({ kind: "gap" }, { kind: "section", header: cell("Changes not staged for commit:"), items });
-	}
+  if (verbose?.unstaged) {
+    const items: Cell[] = verbose.unstaged.map((f) => cell(formatFileChange(f)));
+    nodes.push({ kind: "gap" }, { kind: "section", header: cell("Changes not staged for commit:"), items });
+  }
 
-	if (verbose?.untracked) {
-		const items: Cell[] = verbose.untracked.map((f) => cell(f));
-		nodes.push({ kind: "gap" }, { kind: "section", header: cell("Untracked files:"), items });
-	}
+  if (verbose?.untracked) {
+    const items: Cell[] = verbose.untracked.map((f) => cell(f));
+    nodes.push({ kind: "gap" }, { kind: "section", header: cell("Untracked files:"), items });
+  }
 
-	// Trailing gap for row separation
-	if (nodes.length > 0) {
-		nodes.push({ kind: "gap" });
-	}
+  // Trailing gap for row separation
+  if (nodes.length > 0) {
+    nodes.push({ kind: "gap" });
+  }
 
-	return nodes;
+  return nodes;
 }
 
 export function formatVerboseCommits(
-	commits: { shortHash: string; subject: string; rebaseOf?: string; squashOf?: string[] }[],
-	totalCommits: number,
-	label: string,
-	options?: {
-		diffStats?: { files: number; insertions: number; deletions: number };
-		conflictCommits?: { shortHash: string; files: string[] }[];
-	},
+  commits: { shortHash: string; subject: string; rebaseOf?: string; squashOf?: string[] }[],
+  totalCommits: number,
+  label: string,
+  options?: {
+    diffStats?: { files: number; insertions: number; deletions: number };
+    conflictCommits?: { shortHash: string; files: string[] }[];
+  },
 ): string {
-	let displayLabel = label;
-	if (options?.diffStats) {
-		const { files, insertions, deletions } = options.diffStats;
-		displayLabel = `${label.replace(/:$/, "")} (${files} ${files === 1 ? "file" : "files"} changed, +${insertions}, -${deletions}):`;
-	}
-	let out = `\n${SECTION_INDENT}${dim(displayLabel)}\n`;
-	// Build a lookup for conflict commits
-	const conflictMap = new Map<string, string[]>();
-	if (options?.conflictCommits) {
-		for (const cc of options.conflictCommits) {
-			conflictMap.set(cc.shortHash, cc.files);
-		}
-	}
+  let displayLabel = label;
+  if (options?.diffStats) {
+    const { files, insertions, deletions } = options.diffStats;
+    displayLabel = `${label.replace(/:$/, "")} (${files} ${files === 1 ? "file" : "files"} changed, +${insertions}, -${deletions}):`;
+  }
+  let out = `\n${SECTION_INDENT}${dim(displayLabel)}\n`;
+  // Build a lookup for conflict commits
+  const conflictMap = new Map<string, string[]>();
+  if (options?.conflictCommits) {
+    for (const cc of options.conflictCommits) {
+      conflictMap.set(cc.shortHash, cc.files);
+    }
+  }
 
-	for (const c of commits) {
-		let tag = "";
-		if (c.rebaseOf) {
-			tag = dim(` (same as ${c.rebaseOf})`);
-		} else if (c.squashOf && c.squashOf.length > 1) {
-			const first = c.squashOf[0] ?? "";
-			const last = c.squashOf[c.squashOf.length - 1] ?? "";
-			tag = dim(` (squash of ${first}..${last})`);
-		}
-		const conflictFiles = conflictMap.get(c.shortHash);
-		if (conflictFiles) {
-			tag += yellow("  (conflict)");
-		}
-		out += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
-		if (conflictFiles && conflictFiles.length > 0) {
-			out += `${ITEM_INDENT}    ${dim(conflictFiles.join(", "))}\n`;
-		}
-	}
-	if (totalCommits > commits.length) {
-		out += `${ITEM_INDENT}${dim(`... and ${totalCommits - commits.length} more`)}\n`;
-	}
-	out += "\n";
-	return out;
+  for (const c of commits) {
+    let tag = "";
+    if (c.rebaseOf) {
+      tag = dim(` (same as ${c.rebaseOf})`);
+    } else if (c.squashOf && c.squashOf.length > 1) {
+      const first = c.squashOf[0] ?? "";
+      const last = c.squashOf[c.squashOf.length - 1] ?? "";
+      tag = dim(` (squash of ${first}..${last})`);
+    }
+    const conflictFiles = conflictMap.get(c.shortHash);
+    if (conflictFiles) {
+      tag += yellow("  (conflict)");
+    }
+    out += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
+    if (conflictFiles && conflictFiles.length > 0) {
+      out += `${ITEM_INDENT}    ${dim(conflictFiles.join(", "))}\n`;
+    }
+  }
+  if (totalCommits > commits.length) {
+    out += `${ITEM_INDENT}${dim(`... and ${totalCommits - commits.length} more`)}\n`;
+  }
+  out += "\n";
+  return out;
 }
 
 function formatFileChange(fc: FileChange): string {
-	const typeWidth = 12;
-	return `${`${fc.type}:`.padEnd(typeWidth)}${fc.file}`;
+  const typeWidth = 12;
+  return `${`${fc.type}:`.padEnd(typeWidth)}${fc.file}`;
 }
 
 // ── Render-model verbose commits (OutputNode[]) ──
 
 export function verboseCommitsToNodes(
-	commits: { shortHash: string; subject: string; rebaseOf?: string; squashOf?: string[] }[],
-	totalCommits: number,
-	label: string,
-	options?: {
-		diffStats?: { files: number; insertions: number; deletions: number };
-		conflictCommits?: { shortHash: string; files: string[] }[];
-	},
+  commits: { shortHash: string; subject: string; rebaseOf?: string; squashOf?: string[] }[],
+  totalCommits: number,
+  label: string,
+  options?: {
+    diffStats?: { files: number; insertions: number; deletions: number };
+    conflictCommits?: { shortHash: string; files: string[] }[];
+  },
 ): OutputNode[] {
-	// Build header cell
-	let displayLabel = label;
-	if (options?.diffStats) {
-		const { files, insertions, deletions } = options.diffStats;
-		displayLabel = `${label.replace(/:$/, "")} (${files} ${files === 1 ? "file" : "files"} changed, +${insertions}, -${deletions}):`;
-	}
-	const header = cell(displayLabel, "muted");
+  // Build header cell
+  let displayLabel = label;
+  if (options?.diffStats) {
+    const { files, insertions, deletions } = options.diffStats;
+    displayLabel = `${label.replace(/:$/, "")} (${files} ${files === 1 ? "file" : "files"} changed, +${insertions}, -${deletions}):`;
+  }
+  const header = cell(displayLabel, "muted");
 
-	// Build a lookup for conflict commits
-	const conflictMap = new Map<string, string[]>();
-	if (options?.conflictCommits) {
-		for (const cc of options.conflictCommits) {
-			conflictMap.set(cc.shortHash, cc.files);
-		}
-	}
+  // Build a lookup for conflict commits
+  const conflictMap = new Map<string, string[]>();
+  if (options?.conflictCommits) {
+    for (const cc of options.conflictCommits) {
+      conflictMap.set(cc.shortHash, cc.files);
+    }
+  }
 
-	// Build item cells
-	const items: Cell[] = [];
-	for (const c of commits) {
-		let commitCell = spans({ text: c.shortHash, attention: "muted" }, { text: ` ${c.subject}`, attention: "default" });
+  // Build item cells
+  const items: Cell[] = [];
+  for (const c of commits) {
+    let commitCell = spans({ text: c.shortHash, attention: "muted" }, { text: ` ${c.subject}`, attention: "default" });
 
-		if (c.rebaseOf) {
-			commitCell = suffix(commitCell, ` (same as ${c.rebaseOf})`, "muted");
-		} else if (c.squashOf && c.squashOf.length > 1) {
-			const first = c.squashOf[0] ?? "";
-			const last = c.squashOf[c.squashOf.length - 1] ?? "";
-			commitCell = suffix(commitCell, ` (squash of ${first}..${last})`, "muted");
-		}
+    if (c.rebaseOf) {
+      commitCell = suffix(commitCell, ` (same as ${c.rebaseOf})`, "muted");
+    } else if (c.squashOf && c.squashOf.length > 1) {
+      const first = c.squashOf[0] ?? "";
+      const last = c.squashOf[c.squashOf.length - 1] ?? "";
+      commitCell = suffix(commitCell, ` (squash of ${first}..${last})`, "muted");
+    }
 
-		const conflictFiles = conflictMap.get(c.shortHash);
-		if (conflictFiles) {
-			commitCell = suffix(commitCell, "  (conflict)", "attention");
-		}
-		items.push(commitCell);
+    const conflictFiles = conflictMap.get(c.shortHash);
+    if (conflictFiles) {
+      commitCell = suffix(commitCell, "  (conflict)", "attention");
+    }
+    items.push(commitCell);
 
-		// Conflict file sub-item
-		if (conflictFiles && conflictFiles.length > 0) {
-			items.push(cell(`    ${conflictFiles.join(", ")}`, "muted"));
-		}
-	}
+    // Conflict file sub-item
+    if (conflictFiles && conflictFiles.length > 0) {
+      items.push(cell(`    ${conflictFiles.join(", ")}`, "muted"));
+    }
+  }
 
-	if (totalCommits > commits.length) {
-		items.push(cell(`... and ${totalCommits - commits.length} more`, "muted"));
-	}
+  if (totalCommits > commits.length) {
+    items.push(cell(`... and ${totalCommits - commits.length} more`, "muted"));
+  }
 
-	return [{ kind: "gap" }, { kind: "section", header, items }, { kind: "gap" }];
+  return [{ kind: "gap" }, { kind: "section", header, items }, { kind: "gap" }];
 }

@@ -6,425 +6,425 @@ import { error } from "../terminal/output";
 export type GitOperation = "rebase" | "merge" | "cherry-pick" | "revert" | "bisect" | "am" | null;
 
 export async function detectOperation(repoDir: string): Promise<GitOperation> {
-	const gitDirResult = await git(repoDir, "rev-parse", "--git-dir");
-	if (gitDirResult.exitCode !== 0) return null;
-	const gitDir = gitDirResult.stdout.trim();
-	const absGitDir = gitDir.startsWith("/") ? gitDir : `${repoDir}/${gitDir}`;
-	if (existsSync(`${absGitDir}/rebase-merge`)) return "rebase";
-	if (existsSync(`${absGitDir}/rebase-apply`)) {
-		// Distinguish am (git am) from rebase: am sets an "applying" sentinel
-		if (existsSync(`${absGitDir}/rebase-apply/applying`)) return "am";
-		return "rebase";
-	}
-	if (existsSync(`${absGitDir}/MERGE_HEAD`)) return "merge";
-	if (existsSync(`${absGitDir}/CHERRY_PICK_HEAD`)) return "cherry-pick";
-	if (existsSync(`${absGitDir}/REVERT_HEAD`)) return "revert";
-	if (existsSync(`${absGitDir}/BISECT_LOG`)) return "bisect";
-	return null;
+  const gitDirResult = await git(repoDir, "rev-parse", "--git-dir");
+  if (gitDirResult.exitCode !== 0) return null;
+  const gitDir = gitDirResult.stdout.trim();
+  const absGitDir = gitDir.startsWith("/") ? gitDir : `${repoDir}/${gitDir}`;
+  if (existsSync(`${absGitDir}/rebase-merge`)) return "rebase";
+  if (existsSync(`${absGitDir}/rebase-apply`)) {
+    // Distinguish am (git am) from rebase: am sets an "applying" sentinel
+    if (existsSync(`${absGitDir}/rebase-apply/applying`)) return "am";
+    return "rebase";
+  }
+  if (existsSync(`${absGitDir}/MERGE_HEAD`)) return "merge";
+  if (existsSync(`${absGitDir}/CHERRY_PICK_HEAD`)) return "cherry-pick";
+  if (existsSync(`${absGitDir}/REVERT_HEAD`)) return "revert";
+  if (existsSync(`${absGitDir}/BISECT_LOG`)) return "bisect";
+  return null;
 }
 
 export async function isShallowRepo(repoDir: string): Promise<boolean> {
-	const result = await git(repoDir, "rev-parse", "--is-shallow-repository");
-	return result.exitCode === 0 && result.stdout.trim() === "true";
+  const result = await git(repoDir, "rev-parse", "--is-shallow-repository");
+  return result.exitCode === 0 && result.stdout.trim() === "true";
 }
 
 export function isLinkedWorktree(repoDir: string): boolean {
-	try {
-		const stat = statSync(`${repoDir}/.git`);
-		// Linked worktrees have a .git file (not directory) pointing to the main repo's worktrees dir
-		return !stat.isDirectory();
-	} catch {
-		// .git doesn't exist — not a valid git repo at all
-		return false;
-	}
+  try {
+    const stat = statSync(`${repoDir}/.git`);
+    // Linked worktrees have a .git file (not directory) pointing to the main repo's worktrees dir
+    return !stat.isDirectory();
+  } catch {
+    // .git doesn't exist — not a valid git repo at all
+    return false;
+  }
 }
 
 export async function git(
-	repoDir: string,
-	...args: string[]
+  repoDir: string,
+  ...args: string[]
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-	const start = isDebug() ? performance.now() : 0;
-	const proc = Bun.spawn(["git", "-C", repoDir, ...args], {
-		cwd: repoDir,
-		stdin: "ignore",
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
-	await proc.exited;
-	const exitCode = proc.exitCode ?? 1;
-	if (isDebug()) {
-		debugGit(`git -C ${repoDir} ${args.join(" ")}`, performance.now() - start, exitCode);
-	}
-	return { exitCode, stdout, stderr };
+  const start = isDebug() ? performance.now() : 0;
+  const proc = Bun.spawn(["git", "-C", repoDir, ...args], {
+    cwd: repoDir,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+  await proc.exited;
+  const exitCode = proc.exitCode ?? 1;
+  if (isDebug()) {
+    debugGit(`git -C ${repoDir} ${args.join(" ")}`, performance.now() - start, exitCode);
+  }
+  return { exitCode, stdout, stderr };
 }
 
 export async function getShortHead(repoDir: string): Promise<string> {
-	const result = await git(repoDir, "rev-parse", "--short", "HEAD");
-	return result.exitCode === 0 ? result.stdout.trim() : "";
+  const result = await git(repoDir, "rev-parse", "--short", "HEAD");
+  return result.exitCode === 0 ? result.stdout.trim() : "";
 }
 
 export async function getMergeBase(repoDir: string, ref1: string, ref2: string): Promise<string | null> {
-	const result = await git(repoDir, "merge-base", ref1, ref2);
-	if (result.exitCode !== 0) return null;
-	const full = result.stdout.trim();
-	if (!full) return null;
-	const short = await git(repoDir, "rev-parse", "--short", full);
-	return short.exitCode === 0 ? short.stdout.trim() : full.slice(0, 7);
+  const result = await git(repoDir, "merge-base", ref1, ref2);
+  if (result.exitCode !== 0) return null;
+  const full = result.stdout.trim();
+  if (!full) return null;
+  const short = await git(repoDir, "rev-parse", "--short", full);
+  return short.exitCode === 0 ? short.stdout.trim() : full.slice(0, 7);
 }
 
 export async function getDefaultBranch(repoDir: string, remote: string): Promise<string | null> {
-	// Try remote HEAD first
-	const symRef = await git(repoDir, "symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`);
-	if (symRef.exitCode === 0) {
-		return symRef.stdout.trim().replace(new RegExp(`^${remote}/`), "");
-	}
-	// No remote HEAD — use the repo's own HEAD branch
-	const headRef = await git(repoDir, "symbolic-ref", "--short", "HEAD");
-	if (headRef.exitCode === 0) {
-		return headRef.stdout.trim();
-	}
-	return null;
+  // Try remote HEAD first
+  const symRef = await git(repoDir, "symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`);
+  if (symRef.exitCode === 0) {
+    return symRef.stdout.trim().replace(new RegExp(`^${remote}/`), "");
+  }
+  // No remote HEAD — use the repo's own HEAD branch
+  const headRef = await git(repoDir, "symbolic-ref", "--short", "HEAD");
+  if (headRef.exitCode === 0) {
+    return headRef.stdout.trim();
+  }
+  return null;
 }
 
 export function validateBranchName(name: string): boolean {
-	const start = isDebug() ? performance.now() : 0;
-	const result = Bun.spawnSync(["git", "check-ref-format", "--branch", name]);
-	if (isDebug()) {
-		debugGit(`git check-ref-format --branch ${name}`, performance.now() - start, result.exitCode);
-	}
-	return result.exitCode === 0;
+  const start = isDebug() ? performance.now() : 0;
+  const result = Bun.spawnSync(["git", "check-ref-format", "--branch", name]);
+  if (isDebug()) {
+    debugGit(`git check-ref-format --branch ${name}`, performance.now() - start, result.exitCode);
+  }
+  return result.exitCode === 0;
 }
 
 export function validateWorkspaceName(name: string): string | null {
-	if (name.startsWith(".")) {
-		return `Invalid workspace name '${name}': must not start with '.'`;
-	}
-	if (name.includes("/")) {
-		return `Invalid workspace name '${name}': must not contain '/'`;
-	}
-	if (name.includes("..")) {
-		return `Invalid workspace name '${name}': must not contain '..'`;
-	}
-	if (/\s/.test(name)) {
-		return `Invalid workspace name '${name}': must not contain whitespace`;
-	}
-	return null;
+  if (name.startsWith(".")) {
+    return `Invalid workspace name '${name}': must not start with '.'`;
+  }
+  if (name.includes("/")) {
+    return `Invalid workspace name '${name}': must not contain '/'`;
+  }
+  if (name.includes("..")) {
+    return `Invalid workspace name '${name}': must not contain '..'`;
+  }
+  if (/\s/.test(name)) {
+    return `Invalid workspace name '${name}': must not contain whitespace`;
+  }
+  return null;
 }
 
 export async function checkBranchMatch(
-	repoDir: string,
-	expected: string,
+  repoDir: string,
+  expected: string,
 ): Promise<{ matches: boolean; actual: string }> {
-	const result = await git(repoDir, "symbolic-ref", "--short", "HEAD");
-	const actual = result.exitCode === 0 ? result.stdout.trim() : "?";
-	return { matches: actual === expected, actual };
+  const result = await git(repoDir, "symbolic-ref", "--short", "HEAD");
+  const actual = result.exitCode === 0 ? result.stdout.trim() : "?";
+  return { matches: actual === expected, actual };
 }
 
 export async function branchExistsLocally(repoDir: string, branch: string): Promise<boolean> {
-	const result = await git(repoDir, "show-ref", "--verify", "--quiet", `refs/heads/${branch}`);
-	return result.exitCode === 0;
+  const result = await git(repoDir, "show-ref", "--verify", "--quiet", `refs/heads/${branch}`);
+  return result.exitCode === 0;
 }
 
 export async function branchIsInWorktree(repoDir: string, branch: string): Promise<boolean> {
-	const result = await git(repoDir, "worktree", "list", "--porcelain");
-	if (result.exitCode !== 0) return false;
-	const target = `branch refs/heads/${branch}`;
-	return result.stdout.split("\n").some((line) => line === target);
+  const result = await git(repoDir, "worktree", "list", "--porcelain");
+  if (result.exitCode !== 0) return false;
+  const target = `branch refs/heads/${branch}`;
+  return result.stdout.split("\n").some((line) => line === target);
 }
 
 export async function remoteBranchExists(repoDir: string, branch: string, remote: string): Promise<boolean> {
-	const result = await git(repoDir, "show-ref", "--verify", "--quiet", `refs/remotes/${remote}/${branch}`);
-	return result.exitCode === 0;
+  const result = await git(repoDir, "show-ref", "--verify", "--quiet", `refs/remotes/${remote}/${branch}`);
+  return result.exitCode === 0;
 }
 
 /** List all branch names on a given remote (from locally cached refs). */
 export async function listRemoteBranches(repoDir: string, remote: string): Promise<string[]> {
-	const prefix = `refs/remotes/${remote}/`;
-	const result = await git(repoDir, "for-each-ref", "--format=%(refname)", prefix);
-	if (result.exitCode !== 0 || !result.stdout.trim()) return [];
-	return result.stdout
-		.trim()
-		.split("\n")
-		.filter(Boolean)
-		.map((ref) => ref.slice(prefix.length))
-		.filter((name) => name !== "HEAD");
+  const prefix = `refs/remotes/${remote}/`;
+  const result = await git(repoDir, "for-each-ref", "--format=%(refname)", prefix);
+  if (result.exitCode !== 0 || !result.stdout.trim()) return [];
+  return result.stdout
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((ref) => ref.slice(prefix.length))
+    .filter((name) => name !== "HEAD");
 }
 
 export async function isRepoDirty(repoDir: string): Promise<boolean> {
-	const result = await git(repoDir, "status", "--porcelain");
-	return result.exitCode !== 0 || !!result.stdout.trim();
+  const result = await git(repoDir, "status", "--porcelain");
+  return result.exitCode !== 0 || !!result.stdout.trim();
 }
 
 export async function parseGitStatus(
-	repoDir: string,
+  repoDir: string,
 ): Promise<{ staged: number; modified: number; untracked: number; conflicts: number }> {
-	const result = await git(repoDir, "status", "--porcelain");
-	if (result.exitCode !== 0) return { staged: 0, modified: 0, untracked: 0, conflicts: 0 };
-	return result.stdout
-		.split("\n")
-		.filter(Boolean)
-		.reduce(
-			(acc, line) => {
-				const x = line[0];
-				const y = line[1];
-				if (x === "?") acc.untracked++;
-				else if (x === "U" || y === "U" || (x === "A" && y === "A") || (x === "D" && y === "D")) {
-					acc.conflicts++;
-				} else {
-					if (x !== " " && x !== "?") acc.staged++;
-					if (y !== " " && y !== "?") acc.modified++;
-				}
-				return acc;
-			},
-			{ staged: 0, modified: 0, untracked: 0, conflicts: 0 },
-		);
+  const result = await git(repoDir, "status", "--porcelain");
+  if (result.exitCode !== 0) return { staged: 0, modified: 0, untracked: 0, conflicts: 0 };
+  return result.stdout
+    .split("\n")
+    .filter(Boolean)
+    .reduce(
+      (acc, line) => {
+        const x = line[0];
+        const y = line[1];
+        if (x === "?") acc.untracked++;
+        else if (x === "U" || y === "U" || (x === "A" && y === "A") || (x === "D" && y === "D")) {
+          acc.conflicts++;
+        } else {
+          if (x !== " " && x !== "?") acc.staged++;
+          if (y !== " " && y !== "?") acc.modified++;
+        }
+        return acc;
+      },
+      { staged: 0, modified: 0, untracked: 0, conflicts: 0 },
+    );
 }
 
 export interface FileChange {
-	file: string;
-	type: "new file" | "modified" | "deleted" | "renamed" | "copied";
+  file: string;
+  type: "new file" | "modified" | "deleted" | "renamed" | "copied";
 }
 
 function stagedType(code: string): FileChange["type"] {
-	switch (code) {
-		case "A":
-			return "new file";
-		case "M":
-			return "modified";
-		case "D":
-			return "deleted";
-		case "R":
-			return "renamed";
-		case "C":
-			return "copied";
-		default:
-			return "modified";
-	}
+  switch (code) {
+    case "A":
+      return "new file";
+    case "M":
+      return "modified";
+    case "D":
+      return "deleted";
+    case "R":
+      return "renamed";
+    case "C":
+      return "copied";
+    default:
+      return "modified";
+  }
 }
 
 function unstagedType(code: string): FileChange["type"] {
-	switch (code) {
-		case "D":
-			return "deleted";
-		default:
-			return "modified";
-	}
+  switch (code) {
+    case "D":
+      return "deleted";
+    default:
+      return "modified";
+  }
 }
 
 export async function parseGitStatusFiles(
-	repoDir: string,
+  repoDir: string,
 ): Promise<{ staged: FileChange[]; unstaged: FileChange[]; untracked: string[] }> {
-	const result = await git(repoDir, "status", "--porcelain");
-	const staged: FileChange[] = [];
-	const unstaged: FileChange[] = [];
-	const untracked: string[] = [];
-	if (result.exitCode !== 0) return { staged, unstaged, untracked };
-	for (const line of result.stdout.split("\n").filter(Boolean)) {
-		const x = line[0];
-		const y = line[1];
-		const file = line.slice(3);
-		if (x === "?") {
-			untracked.push(file);
-		} else {
-			if (x && x !== " " && x !== "?") staged.push({ file, type: stagedType(x) });
-			if (y && y !== " " && y !== "?") unstaged.push({ file, type: unstagedType(y) });
-		}
-	}
-	return { staged, unstaged, untracked };
+  const result = await git(repoDir, "status", "--porcelain");
+  const staged: FileChange[] = [];
+  const unstaged: FileChange[] = [];
+  const untracked: string[] = [];
+  if (result.exitCode !== 0) return { staged, unstaged, untracked };
+  for (const line of result.stdout.split("\n").filter(Boolean)) {
+    const x = line[0];
+    const y = line[1];
+    const file = line.slice(3);
+    if (x === "?") {
+      untracked.push(file);
+    } else {
+      if (x && x !== " " && x !== "?") staged.push({ file, type: stagedType(x) });
+      if (y && y !== " " && y !== "?") unstaged.push({ file, type: unstagedType(y) });
+    }
+  }
+  return { staged, unstaged, untracked };
 }
 
 export async function getHeadCommitDate(repoDir: string): Promise<string | null> {
-	const result = await git(repoDir, "log", "-1", "--format=%aI", "HEAD");
-	if (result.exitCode !== 0) return null;
-	const date = result.stdout.trim();
-	return date || null;
+  const result = await git(repoDir, "log", "-1", "--format=%aI", "HEAD");
+  if (result.exitCode !== 0) return null;
+  const date = result.stdout.trim();
+  return date || null;
 }
 
 export async function predictMergeConflict(
-	repoDir: string,
-	ref: string,
+  repoDir: string,
+  ref: string,
 ): Promise<{ hasConflict: boolean; files: string[] } | null> {
-	const result = await git(repoDir, "merge-tree", "--write-tree", "--name-only", "HEAD", ref);
-	if (result.exitCode === 0) return { hasConflict: false, files: [] };
-	if (result.exitCode === 1) {
-		// Exit 1 with stdout = conflict detected (stdout has tree hash + file list)
-		// Exit 1 without stdout = error (e.g. invalid ref — error goes to stderr)
-		if (!result.stdout.trim()) return null;
-		// Skip first line (tree hash), filter CONFLICT/Auto-merging info lines
-		const files = result.stdout
-			.split("\n")
-			.slice(1)
-			.filter((line) => line && !line.startsWith("Auto-merging") && !line.startsWith("CONFLICT"));
-		return { hasConflict: true, files };
-	}
-	return null; // unexpected error or old git without merge-tree support
+  const result = await git(repoDir, "merge-tree", "--write-tree", "--name-only", "HEAD", ref);
+  if (result.exitCode === 0) return { hasConflict: false, files: [] };
+  if (result.exitCode === 1) {
+    // Exit 1 with stdout = conflict detected (stdout has tree hash + file list)
+    // Exit 1 without stdout = error (e.g. invalid ref — error goes to stderr)
+    if (!result.stdout.trim()) return null;
+    // Skip first line (tree hash), filter CONFLICT/Auto-merging info lines
+    const files = result.stdout
+      .split("\n")
+      .slice(1)
+      .filter((line) => line && !line.startsWith("Auto-merging") && !line.startsWith("CONFLICT"));
+    return { hasConflict: true, files };
+  }
+  return null; // unexpected error or old git without merge-tree support
 }
 
 export async function getCommitsBetween(
-	repoDir: string,
-	ref1: string,
-	ref2: string,
+  repoDir: string,
+  ref1: string,
+  ref2: string,
 ): Promise<{ hash: string; subject: string }[]> {
-	const result = await git(repoDir, "log", "--oneline", `${ref1}..${ref2}`);
-	if (result.exitCode !== 0) return [];
-	return result.stdout
-		.split("\n")
-		.filter(Boolean)
-		.map((line) => {
-			const spaceIdx = line.indexOf(" ");
-			return {
-				hash: line.slice(0, spaceIdx),
-				subject: line.slice(spaceIdx + 1),
-			};
-		});
+  const result = await git(repoDir, "log", "--oneline", `${ref1}..${ref2}`);
+  if (result.exitCode !== 0) return [];
+  return result.stdout
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const spaceIdx = line.indexOf(" ");
+      return {
+        hash: line.slice(0, spaceIdx),
+        subject: line.slice(spaceIdx + 1),
+      };
+    });
 }
 
 export async function getCommitsBetweenFull(
-	repoDir: string,
-	ref1: string,
-	ref2: string,
+  repoDir: string,
+  ref1: string,
+  ref2: string,
 ): Promise<{ shortHash: string; fullHash: string; subject: string }[]> {
-	const result = await git(repoDir, "log", "--format=%h %H %s", `${ref1}..${ref2}`);
-	if (result.exitCode !== 0) return [];
-	return result.stdout
-		.split("\n")
-		.filter(Boolean)
-		.map((line) => {
-			const first = line.indexOf(" ");
-			const second = line.indexOf(" ", first + 1);
-			return {
-				shortHash: line.slice(0, first),
-				fullHash: line.slice(first + 1, second),
-				subject: line.slice(second + 1),
-			};
-		});
+  const result = await git(repoDir, "log", "--format=%h %H %s", `${ref1}..${ref2}`);
+  if (result.exitCode !== 0) return [];
+  return result.stdout
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const first = line.indexOf(" ");
+      const second = line.indexOf(" ", first + 1);
+      return {
+        shortHash: line.slice(0, first),
+        fullHash: line.slice(first + 1, second),
+        subject: line.slice(second + 1),
+      };
+    });
 }
 
 export function parseGitNumstat(output: string): { file: string; insertions: number; deletions: number }[] {
-	return output
-		.split("\n")
-		.filter(Boolean)
-		.map((line) => {
-			const parts = line.split("\t");
-			if (parts.length < 3) return null;
-			const [ins, del, ...fileParts] = parts;
-			const file = fileParts.join("\t"); // Handle filenames with tabs (renames show as "old => new")
-			// Binary files show as "-\t-\tfile"
-			return {
-				file: file ?? "",
-				insertions: ins === "-" ? 0 : Number.parseInt(ins ?? "0", 10),
-				deletions: del === "-" ? 0 : Number.parseInt(del ?? "0", 10),
-			};
-		})
-		.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  return output
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split("\t");
+      if (parts.length < 3) return null;
+      const [ins, del, ...fileParts] = parts;
+      const file = fileParts.join("\t"); // Handle filenames with tabs (renames show as "old => new")
+      // Binary files show as "-\t-\tfile"
+      return {
+        file: file ?? "",
+        insertions: ins === "-" ? 0 : Number.parseInt(ins ?? "0", 10),
+        deletions: del === "-" ? 0 : Number.parseInt(del ?? "0", 10),
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 }
 
 export interface MergeDetectionResult {
-	kind: "merge" | "squash";
-	/** The commit on the base branch that represents the merge/squash. */
-	matchingCommit?: { hash: string; subject: string };
-	/** Number of new commits on top of the merged branch (0 or undefined = exact match). */
-	newCommitsAfterMerge?: number;
+  kind: "merge" | "squash";
+  /** The commit on the base branch that represents the merge/squash. */
+  matchingCommit?: { hash: string; subject: string };
+  /** Number of new commits on top of the merged branch (0 or undefined = exact match). */
+  newCommitsAfterMerge?: number;
 }
 
 /** Check if a branch range matches a squash commit on the base via cumulative patch-id. */
 async function checkSquashMatch(
-	repoDir: string,
-	baseBranchRef: string,
-	branchRef: string,
-	commitLimit: number,
+  repoDir: string,
+  baseBranchRef: string,
+  branchRef: string,
+  commitLimit: number,
 ): Promise<MergeDetectionResult | null> {
-	const mergeBaseResult = await git(repoDir, "merge-base", branchRef, baseBranchRef);
-	if (mergeBaseResult.exitCode !== 0) return null;
-	const mergeBase = mergeBaseResult.stdout.trim();
-	if (!mergeBase) return null;
+  const mergeBaseResult = await git(repoDir, "merge-base", branchRef, baseBranchRef);
+  if (mergeBaseResult.exitCode !== 0) return null;
+  const mergeBase = mergeBaseResult.stdout.trim();
+  if (!mergeBase) return null;
 
-	// Cumulative patch-id for the entire branch range
-	const cumulativeStart = isDebug() ? performance.now() : 0;
-	const cumulativeResult = await Bun.$`git -C ${repoDir} diff ${mergeBase}..${branchRef} | git patch-id --stable`
-		.quiet()
-		.nothrow();
-	if (isDebug()) {
-		debugGit(
-			`git -C ${repoDir} diff ${mergeBase}..${branchRef} | git patch-id --stable`,
-			performance.now() - cumulativeStart,
-			cumulativeResult.exitCode,
-		);
-	}
-	if (cumulativeResult.exitCode !== 0) return null;
-	const cumulativeLine = cumulativeResult.text().trim();
-	if (!cumulativeLine) return null;
-	const cumulativePatchId = cumulativeLine.split(" ")[0];
-	if (!cumulativePatchId) return null;
+  // Cumulative patch-id for the entire branch range
+  const cumulativeStart = isDebug() ? performance.now() : 0;
+  const cumulativeResult = await Bun.$`git -C ${repoDir} diff ${mergeBase}..${branchRef} | git patch-id --stable`
+    .quiet()
+    .nothrow();
+  if (isDebug()) {
+    debugGit(
+      `git -C ${repoDir} diff ${mergeBase}..${branchRef} | git patch-id --stable`,
+      performance.now() - cumulativeStart,
+      cumulativeResult.exitCode,
+    );
+  }
+  if (cumulativeResult.exitCode !== 0) return null;
+  const cumulativeLine = cumulativeResult.text().trim();
+  if (!cumulativeLine) return null;
+  const cumulativePatchId = cumulativeLine.split(" ")[0];
+  if (!cumulativePatchId) return null;
 
-	// Per-commit patch-ids for recent base commits
-	const perCommitStart = isDebug() ? performance.now() : 0;
-	const perCommitResult =
-		await Bun.$`git -C ${repoDir} log -p --max-count=${commitLimit} ${mergeBase}..${baseBranchRef} | git patch-id --stable`
-			.quiet()
-			.nothrow();
-	if (isDebug()) {
-		debugGit(
-			`git -C ${repoDir} log -p --max-count=${commitLimit} ${mergeBase}..${baseBranchRef} | git patch-id --stable`,
-			performance.now() - perCommitStart,
-			perCommitResult.exitCode,
-		);
-	}
-	if (perCommitResult.exitCode !== 0) return null;
+  // Per-commit patch-ids for recent base commits
+  const perCommitStart = isDebug() ? performance.now() : 0;
+  const perCommitResult =
+    await Bun.$`git -C ${repoDir} log -p --max-count=${commitLimit} ${mergeBase}..${baseBranchRef} | git patch-id --stable`
+      .quiet()
+      .nothrow();
+  if (isDebug()) {
+    debugGit(
+      `git -C ${repoDir} log -p --max-count=${commitLimit} ${mergeBase}..${baseBranchRef} | git patch-id --stable`,
+      performance.now() - perCommitStart,
+      perCommitResult.exitCode,
+    );
+  }
+  if (perCommitResult.exitCode !== 0) return null;
 
-	for (const line of perCommitResult.text().split("\n")) {
-		const parts = line.split(" ");
-		const patchId = parts[0];
-		const commitHash = parts[1];
-		if (patchId === cumulativePatchId && commitHash) {
-			// Retrieve the commit subject for PR number extraction
-			const subjectResult = await git(repoDir, "log", "-1", "--format=%s", commitHash);
-			const subject = subjectResult.exitCode === 0 ? subjectResult.stdout.trim() : "";
-			return { kind: "squash", matchingCommit: { hash: commitHash, subject } };
-		}
-	}
+  for (const line of perCommitResult.text().split("\n")) {
+    const parts = line.split(" ");
+    const patchId = parts[0];
+    const commitHash = parts[1];
+    if (patchId === cumulativePatchId && commitHash) {
+      // Retrieve the commit subject for PR number extraction
+      const subjectResult = await git(repoDir, "log", "-1", "--format=%s", commitHash);
+      const subject = subjectResult.exitCode === 0 ? subjectResult.stdout.trim() : "";
+      return { kind: "squash", matchingCommit: { hash: commitHash, subject } };
+    }
+  }
 
-	return null;
+  return null;
 }
 
 export async function detectBranchMerged(
-	repoDir: string,
-	baseBranchRef: string,
-	commitLimit = 200,
-	branchRef = "HEAD",
-	prefixLimit = 0,
+  repoDir: string,
+  baseBranchRef: string,
+  commitLimit = 200,
+  branchRef = "HEAD",
+  prefixLimit = 0,
 ): Promise<MergeDetectionResult | null> {
-	// Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
-	const ancestor = await git(repoDir, "merge-base", "--is-ancestor", branchRef, baseBranchRef);
-	if (ancestor.exitCode === 0) return { kind: "merge" };
+  // Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
+  const ancestor = await git(repoDir, "merge-base", "--is-ancestor", branchRef, baseBranchRef);
+  if (ancestor.exitCode === 0) return { kind: "merge" };
 
-	// Phase 2: Squash check on full range
-	const squashResult = await checkSquashMatch(repoDir, baseBranchRef, branchRef, commitLimit);
-	if (squashResult) return squashResult;
+  // Phase 2: Squash check on full range
+  const squashResult = await checkSquashMatch(repoDir, baseBranchRef, branchRef, commitLimit);
+  if (squashResult) return squashResult;
 
-	// Phase 3: Prefix loop — check HEAD~1, HEAD~2, ..., HEAD~prefixLimit
-	// Detects branches that were merged but have new commits on top.
-	for (let k = 1; k <= prefixLimit; k++) {
-		const prefixRef = `${branchRef}~${k}`;
-		// Validate the prefix ref resolves
-		const verifyResult = await git(repoDir, "rev-parse", "--verify", prefixRef);
-		if (verifyResult.exitCode !== 0) break;
+  // Phase 3: Prefix loop — check HEAD~1, HEAD~2, ..., HEAD~prefixLimit
+  // Detects branches that were merged but have new commits on top.
+  for (let k = 1; k <= prefixLimit; k++) {
+    const prefixRef = `${branchRef}~${k}`;
+    // Validate the prefix ref resolves
+    const verifyResult = await git(repoDir, "rev-parse", "--verify", prefixRef);
+    if (verifyResult.exitCode !== 0) break;
 
-		// Phase 1 on prefix: ancestor check
-		const prefixAncestor = await git(repoDir, "merge-base", "--is-ancestor", prefixRef, baseBranchRef);
-		if (prefixAncestor.exitCode === 0) {
-			return { kind: "merge", newCommitsAfterMerge: k };
-		}
+    // Phase 1 on prefix: ancestor check
+    const prefixAncestor = await git(repoDir, "merge-base", "--is-ancestor", prefixRef, baseBranchRef);
+    if (prefixAncestor.exitCode === 0) {
+      return { kind: "merge", newCommitsAfterMerge: k };
+    }
 
-		// Phase 2 on prefix: squash check
-		const prefixSquash = await checkSquashMatch(repoDir, baseBranchRef, prefixRef, commitLimit);
-		if (prefixSquash) {
-			return { ...prefixSquash, newCommitsAfterMerge: k };
-		}
-	}
+    // Phase 2 on prefix: squash check
+    const prefixSquash = await checkSquashMatch(repoDir, baseBranchRef, prefixRef, commitLimit);
+    if (prefixSquash) {
+      return { ...prefixSquash, newCommitsAfterMerge: k };
+    }
+  }
 
-	return null;
+  return null;
 }
 
 /**
@@ -437,49 +437,49 @@ export async function detectBranchMerged(
  *    (fallback for --no-ff merges with edited/generic subjects)
  */
 export async function findMergeCommitForBranch(
-	repoDir: string,
-	baseBranchRef: string,
-	branchName: string,
-	commitLimit = 50,
-	afterRef?: string,
+  repoDir: string,
+  baseBranchRef: string,
+  branchName: string,
+  commitLimit = 50,
+  afterRef?: string,
 ): Promise<{ hash: string; subject: string } | null> {
-	// Resolve afterRef to a full hash for parentage comparison
-	let resolvedAfterRef: string | undefined;
-	if (afterRef) {
-		const revParse = await git(repoDir, "rev-parse", afterRef);
-		if (revParse.exitCode === 0) resolvedAfterRef = revParse.stdout.trim();
-	}
+  // Resolve afterRef to a full hash for parentage comparison
+  let resolvedAfterRef: string | undefined;
+  if (afterRef) {
+    const revParse = await git(repoDir, "rev-parse", afterRef);
+    if (revParse.exitCode === 0) resolvedAfterRef = revParse.stdout.trim();
+  }
 
-	const range = afterRef ? `${afterRef}..${baseBranchRef}` : baseBranchRef;
-	const result = await git(repoDir, "log", "--merges", "--format=%H %P%x09%s", `--max-count=${commitLimit}`, range);
-	if (result.exitCode !== 0) return null;
+  const range = afterRef ? `${afterRef}..${baseBranchRef}` : baseBranchRef;
+  const result = await git(repoDir, "log", "--merges", "--format=%H %P%x09%s", `--max-count=${commitLimit}`, range);
+  if (result.exitCode !== 0) return null;
 
-	let parentageMatch: { hash: string; subject: string } | null = null;
+  let parentageMatch: { hash: string; subject: string } | null = null;
 
-	for (const line of result.stdout.split("\n")) {
-		if (!line.trim()) continue;
-		const tabIdx = line.indexOf("\t");
-		if (tabIdx < 0) continue;
-		const hashAndParents = line.slice(0, tabIdx).split(" ");
-		const hash = hashAndParents[0];
-		if (!hash) continue;
-		const subject = line.slice(tabIdx + 1);
+  for (const line of result.stdout.split("\n")) {
+    if (!line.trim()) continue;
+    const tabIdx = line.indexOf("\t");
+    if (tabIdx < 0) continue;
+    const hashAndParents = line.slice(0, tabIdx).split(" ");
+    const hash = hashAndParents[0];
+    if (!hash) continue;
+    const subject = line.slice(tabIdx + 1);
 
-		// Strategy 1: branch-name match (immediate return)
-		if (subject.includes(branchName)) {
-			return { hash, subject };
-		}
+    // Strategy 1: branch-name match (immediate return)
+    if (subject.includes(branchName)) {
+      return { hash, subject };
+    }
 
-		// Strategy 2: parentage match (remember first hit, continue looking for name match)
-		if (resolvedAfterRef && !parentageMatch) {
-			const nonFirstParents = hashAndParents.slice(2); // skip commit hash and first parent
-			if (nonFirstParents.includes(resolvedAfterRef)) {
-				parentageMatch = { hash, subject };
-			}
-		}
-	}
+    // Strategy 2: parentage match (remember first hit, continue looking for name match)
+    if (resolvedAfterRef && !parentageMatch) {
+      const nonFirstParents = hashAndParents.slice(2); // skip commit hash and first parent
+      if (nonFirstParents.includes(resolvedAfterRef)) {
+        parentageMatch = { hash, subject };
+      }
+    }
+  }
 
-	return parentageMatch;
+  return parentageMatch;
 }
 
 /**
@@ -490,143 +490,143 @@ export async function findMergeCommitForBranch(
  * individual commits were merged via separate PRs instead of a single branch merge.
  */
 export async function findTicketReferencedCommit(
-	repoDir: string,
-	ticketKey: string,
-	commitLimit = 100,
+  repoDir: string,
+  ticketKey: string,
+  commitLimit = 100,
 ): Promise<{ hash: string; subject: string } | null> {
-	const result = await git(
-		repoDir,
-		"log",
-		"--format=%H %s",
-		`--grep=${ticketKey}`,
-		"-i",
-		`--max-count=${commitLimit}`,
-		"HEAD",
-	);
-	if (result.exitCode !== 0) return null;
+  const result = await git(
+    repoDir,
+    "log",
+    "--format=%H %s",
+    `--grep=${ticketKey}`,
+    "-i",
+    `--max-count=${commitLimit}`,
+    "HEAD",
+  );
+  if (result.exitCode !== 0) return null;
 
-	for (const line of result.stdout.split("\n")) {
-		if (!line.trim()) continue;
-		const spaceIdx = line.indexOf(" ");
-		if (spaceIdx < 0) continue;
-		const hash = line.slice(0, spaceIdx);
-		const subject = line.slice(spaceIdx + 1);
-		return { hash, subject };
-	}
-	return null;
+  for (const line of result.stdout.split("\n")) {
+    if (!line.trim()) continue;
+    const spaceIdx = line.indexOf(" ");
+    if (spaceIdx < 0) continue;
+    const hash = line.slice(0, spaceIdx);
+    const subject = line.slice(spaceIdx + 1);
+    return { hash, subject };
+  }
+  return null;
 }
 
 export async function predictStashPopConflict(repoDir: string, ref: string): Promise<{ overlapping: string[] }> {
-	// Get dirty file paths (unstaged + staged)
-	const [unstaged, staged] = await Promise.all([
-		git(repoDir, "diff", "--name-only"),
-		git(repoDir, "diff", "--name-only", "--cached"),
-	]);
-	const dirtyFiles = new Set<string>();
-	for (const line of unstaged.stdout.split("\n").filter(Boolean)) dirtyFiles.add(line);
-	for (const line of staged.stdout.split("\n").filter(Boolean)) dirtyFiles.add(line);
+  // Get dirty file paths (unstaged + staged)
+  const [unstaged, staged] = await Promise.all([
+    git(repoDir, "diff", "--name-only"),
+    git(repoDir, "diff", "--name-only", "--cached"),
+  ]);
+  const dirtyFiles = new Set<string>();
+  for (const line of unstaged.stdout.split("\n").filter(Boolean)) dirtyFiles.add(line);
+  for (const line of staged.stdout.split("\n").filter(Boolean)) dirtyFiles.add(line);
 
-	if (dirtyFiles.size === 0) return { overlapping: [] };
+  if (dirtyFiles.size === 0) return { overlapping: [] };
 
-	// Get incoming change paths (three-dot diff)
-	const incoming = await git(repoDir, "diff", "--name-only", `HEAD...${ref}`);
-	const incomingFiles = new Set<string>();
-	if (incoming.exitCode === 0) {
-		for (const line of incoming.stdout.split("\n").filter(Boolean)) incomingFiles.add(line);
-	}
+  // Get incoming change paths (three-dot diff)
+  const incoming = await git(repoDir, "diff", "--name-only", `HEAD...${ref}`);
+  const incomingFiles = new Set<string>();
+  if (incoming.exitCode === 0) {
+    for (const line of incoming.stdout.split("\n").filter(Boolean)) incomingFiles.add(line);
+  }
 
-	const overlapping = [...dirtyFiles].filter((f) => incomingFiles.has(f));
-	return { overlapping };
+  const overlapping = [...dirtyFiles].filter((f) => incomingFiles.has(f));
+  return { overlapping };
 }
 
 export interface CommitMatchResult {
-	rebaseMatches: Map<string, string>; // incomingHash → localHash
-	squashMatch: { incomingHash: string; localHashes: string[] } | null;
+  rebaseMatches: Map<string, string>; // incomingHash → localHash
+  squashMatch: { incomingHash: string; localHashes: string[] } | null;
 }
 
 export interface ReplayPlanAnalysis {
-	totalLocal: number;
-	alreadyOnTarget: number;
-	toReplay: number;
-	contiguous: boolean;
-	boundaryRef?: string;
+  totalLocal: number;
+  alreadyOnTarget: number;
+  toReplay: number;
+  contiguous: boolean;
+  boundaryRef?: string;
 }
 
 export async function matchDivergedCommits(repoDir: string, baseRef: string): Promise<CommitMatchResult> {
-	const result: CommitMatchResult = { rebaseMatches: new Map(), squashMatch: null };
+  const result: CommitMatchResult = { rebaseMatches: new Map(), squashMatch: null };
 
-	// Phase 1: 1:1 rebase matching (same algorithm as detectRebasedCommits)
-	const matchStart = isDebug() ? performance.now() : 0;
-	const [localResult, incomingResult] = await Promise.all([
-		Bun.$`git -C ${repoDir} log -p ${baseRef}..HEAD | git patch-id --stable`.quiet().nothrow(),
-		Bun.$`git -C ${repoDir} log -p HEAD..${baseRef} | git patch-id --stable`.quiet().nothrow(),
-	]);
-	if (isDebug()) {
-		const elapsed = performance.now() - matchStart;
-		debugGit(`git -C ${repoDir} log -p ${baseRef}..HEAD | git patch-id --stable`, elapsed, localResult.exitCode);
-		debugGit(`git -C ${repoDir} log -p HEAD..${baseRef} | git patch-id --stable`, elapsed, incomingResult.exitCode);
-	}
+  // Phase 1: 1:1 rebase matching (same algorithm as detectRebasedCommits)
+  const matchStart = isDebug() ? performance.now() : 0;
+  const [localResult, incomingResult] = await Promise.all([
+    Bun.$`git -C ${repoDir} log -p ${baseRef}..HEAD | git patch-id --stable`.quiet().nothrow(),
+    Bun.$`git -C ${repoDir} log -p HEAD..${baseRef} | git patch-id --stable`.quiet().nothrow(),
+  ]);
+  if (isDebug()) {
+    const elapsed = performance.now() - matchStart;
+    debugGit(`git -C ${repoDir} log -p ${baseRef}..HEAD | git patch-id --stable`, elapsed, localResult.exitCode);
+    debugGit(`git -C ${repoDir} log -p HEAD..${baseRef} | git patch-id --stable`, elapsed, incomingResult.exitCode);
+  }
 
-	if (localResult.exitCode !== 0 || incomingResult.exitCode !== 0) return result;
+  if (localResult.exitCode !== 0 || incomingResult.exitCode !== 0) return result;
 
-	const parse = (text: string) => {
-		const map = new Map<string, string>(); // patchId → commitHash
-		for (const line of text.split("\n")) {
-			const [patchId, hash] = line.split(" ");
-			if (patchId && hash) map.set(patchId, hash);
-		}
-		return map;
-	};
+  const parse = (text: string) => {
+    const map = new Map<string, string>(); // patchId → commitHash
+    for (const line of text.split("\n")) {
+      const [patchId, hash] = line.split(" ");
+      if (patchId && hash) map.set(patchId, hash);
+    }
+    return map;
+  };
 
-	const localMap = parse(localResult.text()); // patchId → localHash
-	const incomingMap = parse(incomingResult.text()); // patchId → incomingHash
+  const localMap = parse(localResult.text()); // patchId → localHash
+  const incomingMap = parse(incomingResult.text()); // patchId → incomingHash
 
-	const localPatchIds = new Set(localMap.keys());
-	for (const [patchId, incomingHash] of incomingMap) {
-		if (localPatchIds.has(patchId)) {
-			const localHash = localMap.get(patchId);
-			if (localHash) result.rebaseMatches.set(incomingHash, localHash);
-		}
-	}
+  const localPatchIds = new Set(localMap.keys());
+  for (const [patchId, incomingHash] of incomingMap) {
+    if (localPatchIds.has(patchId)) {
+      const localHash = localMap.get(patchId);
+      if (localHash) result.rebaseMatches.set(incomingHash, localHash);
+    }
+  }
 
-	// Phase 2: Full-range squash detection (only when local has > 1 commit and unmatched incoming exist)
-	const localCommitCount = localMap.size;
-	const unmatchedIncoming = [...incomingMap.entries()].filter(([, hash]) => !result.rebaseMatches.has(hash));
+  // Phase 2: Full-range squash detection (only when local has > 1 commit and unmatched incoming exist)
+  const localCommitCount = localMap.size;
+  const unmatchedIncoming = [...incomingMap.entries()].filter(([, hash]) => !result.rebaseMatches.has(hash));
 
-	if (localCommitCount > 1 && unmatchedIncoming.length > 0) {
-		const mergeBaseResult = await git(repoDir, "merge-base", "HEAD", baseRef);
-		if (mergeBaseResult.exitCode === 0) {
-			const mergeBase = mergeBaseResult.stdout.trim();
-			if (mergeBase) {
-				const squashStart = isDebug() ? performance.now() : 0;
-				const cumulativeResult = await Bun.$`git -C ${repoDir} diff ${mergeBase}..HEAD | git patch-id --stable`
-					.quiet()
-					.nothrow();
-				if (isDebug()) {
-					debugGit(
-						`git -C ${repoDir} diff ${mergeBase}..HEAD | git patch-id --stable`,
-						performance.now() - squashStart,
-						cumulativeResult.exitCode,
-					);
-				}
-				if (cumulativeResult.exitCode === 0) {
-					const cumulativeLine = cumulativeResult.text().trim();
-					const cumulativePatchId = cumulativeLine.split(" ")[0];
-					if (cumulativePatchId) {
-						for (const [patchId, incomingHash] of unmatchedIncoming) {
-							if (patchId === cumulativePatchId) {
-								const allLocalHashes = [...localMap.values()];
-								result.squashMatch = { incomingHash, localHashes: allLocalHashes };
-								break;
-							}
-						}
-					}
-				}
-			}
-		}
-	}
+  if (localCommitCount > 1 && unmatchedIncoming.length > 0) {
+    const mergeBaseResult = await git(repoDir, "merge-base", "HEAD", baseRef);
+    if (mergeBaseResult.exitCode === 0) {
+      const mergeBase = mergeBaseResult.stdout.trim();
+      if (mergeBase) {
+        const squashStart = isDebug() ? performance.now() : 0;
+        const cumulativeResult = await Bun.$`git -C ${repoDir} diff ${mergeBase}..HEAD | git patch-id --stable`
+          .quiet()
+          .nothrow();
+        if (isDebug()) {
+          debugGit(
+            `git -C ${repoDir} diff ${mergeBase}..HEAD | git patch-id --stable`,
+            performance.now() - squashStart,
+            cumulativeResult.exitCode,
+          );
+        }
+        if (cumulativeResult.exitCode === 0) {
+          const cumulativeLine = cumulativeResult.text().trim();
+          const cumulativePatchId = cumulativeLine.split(" ")[0];
+          if (cumulativePatchId) {
+            for (const [patchId, incomingHash] of unmatchedIncoming) {
+              if (patchId === cumulativePatchId) {
+                const allLocalHashes = [...localMap.values()];
+                result.squashMatch = { incomingHash, localHashes: allLocalHashes };
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 
-	return result;
+  return result;
 }
 
 /**
@@ -634,66 +634,66 @@ export async function matchDivergedCommits(repoDir: string, baseRef: string): Pr
  * Contiguous=true means already-on-target commits are an older prefix and replay commits are a top suffix.
  */
 export async function analyzeReplayPlan(repoDir: string, baseRef: string): Promise<ReplayPlanAnalysis | null> {
-	const localCommits = await getCommitsBetweenFull(repoDir, baseRef, "HEAD");
-	const totalLocal = localCommits.length;
-	if (totalLocal === 0) {
-		return { totalLocal: 0, alreadyOnTarget: 0, toReplay: 0, contiguous: true };
-	}
+  const localCommits = await getCommitsBetweenFull(repoDir, baseRef, "HEAD");
+  const totalLocal = localCommits.length;
+  if (totalLocal === 0) {
+    return { totalLocal: 0, alreadyOnTarget: 0, toReplay: 0, contiguous: true };
+  }
 
-	const matchResult = await matchDivergedCommits(repoDir, baseRef);
-	const matchedLocal = new Set<string>(matchResult.rebaseMatches.values());
-	if (matchResult.squashMatch) {
-		for (const hash of matchResult.squashMatch.localHashes) matchedLocal.add(hash);
-	}
+  const matchResult = await matchDivergedCommits(repoDir, baseRef);
+  const matchedLocal = new Set<string>(matchResult.rebaseMatches.values());
+  if (matchResult.squashMatch) {
+    for (const hash of matchResult.squashMatch.localHashes) matchedLocal.add(hash);
+  }
 
-	// Fallback: detect merged prefix when new commits sit on top of already-merged work.
-	if (matchedLocal.size === 0 && totalLocal > 1) {
-		const prefixLimit = Math.min(totalLocal - 1, 10);
-		const merged = await detectBranchMerged(repoDir, baseRef, 200, "HEAD", prefixLimit);
-		if (merged?.newCommitsAfterMerge && merged.newCommitsAfterMerge > 0 && merged.newCommitsAfterMerge <= totalLocal) {
-			const toReplay = merged.newCommitsAfterMerge;
-			const alreadyOnTarget = totalLocal - toReplay;
-			return {
-				totalLocal,
-				alreadyOnTarget,
-				toReplay,
-				contiguous: true,
-				boundaryRef: `HEAD~${toReplay}`,
-			};
-		}
-	}
+  // Fallback: detect merged prefix when new commits sit on top of already-merged work.
+  if (matchedLocal.size === 0 && totalLocal > 1) {
+    const prefixLimit = Math.min(totalLocal - 1, 10);
+    const merged = await detectBranchMerged(repoDir, baseRef, 200, "HEAD", prefixLimit);
+    if (merged?.newCommitsAfterMerge && merged.newCommitsAfterMerge > 0 && merged.newCommitsAfterMerge <= totalLocal) {
+      const toReplay = merged.newCommitsAfterMerge;
+      const alreadyOnTarget = totalLocal - toReplay;
+      return {
+        totalLocal,
+        alreadyOnTarget,
+        toReplay,
+        contiguous: true,
+        boundaryRef: `HEAD~${toReplay}`,
+      };
+    }
+  }
 
-	const localOldestToNewest = [...localCommits].reverse().map((c) => c.fullHash);
-	const firstUnmatched = localOldestToNewest.findIndex((hash) => !matchedLocal.has(hash));
+  const localOldestToNewest = [...localCommits].reverse().map((c) => c.fullHash);
+  const firstUnmatched = localOldestToNewest.findIndex((hash) => !matchedLocal.has(hash));
 
-	if (firstUnmatched === -1) {
-		return {
-			totalLocal,
-			alreadyOnTarget: totalLocal,
-			toReplay: 0,
-			contiguous: true,
-		};
-	}
+  if (firstUnmatched === -1) {
+    return {
+      totalLocal,
+      alreadyOnTarget: totalLocal,
+      toReplay: 0,
+      contiguous: true,
+    };
+  }
 
-	const hasMatchedAfterBoundary = localOldestToNewest.slice(firstUnmatched + 1).some((hash) => matchedLocal.has(hash));
-	if (hasMatchedAfterBoundary) {
-		const alreadyOnTarget = [...localOldestToNewest].filter((hash) => matchedLocal.has(hash)).length;
-		return {
-			totalLocal,
-			alreadyOnTarget,
-			toReplay: Math.max(0, totalLocal - alreadyOnTarget),
-			contiguous: false,
-		};
-	}
+  const hasMatchedAfterBoundary = localOldestToNewest.slice(firstUnmatched + 1).some((hash) => matchedLocal.has(hash));
+  if (hasMatchedAfterBoundary) {
+    const alreadyOnTarget = [...localOldestToNewest].filter((hash) => matchedLocal.has(hash)).length;
+    return {
+      totalLocal,
+      alreadyOnTarget,
+      toReplay: Math.max(0, totalLocal - alreadyOnTarget),
+      contiguous: false,
+    };
+  }
 
-	const toReplay = totalLocal - firstUnmatched;
-	return {
-		totalLocal,
-		alreadyOnTarget: firstUnmatched,
-		toReplay,
-		contiguous: true,
-		...(toReplay > 0 ? { boundaryRef: `HEAD~${toReplay}` } : {}),
-	};
+  const toReplay = totalLocal - firstUnmatched;
+  return {
+    totalLocal,
+    alreadyOnTarget: firstUnmatched,
+    toReplay,
+    contiguous: true,
+    ...(toReplay > 0 ? { boundaryRef: `HEAD~${toReplay}` } : {}),
+  };
 }
 
 /**
@@ -701,237 +701,237 @@ export async function analyzeReplayPlan(repoDir: string, baseRef: string): Promi
  * Compares cumulative patch-id of local commits (excluding new ones) against the squash commit's patch-id.
  */
 export async function verifySquashRange(
-	repoDir: string,
-	baseBranchRef: string,
-	squashHash: string,
-	newCommitsAfterMerge: number,
+  repoDir: string,
+  baseBranchRef: string,
+  squashHash: string,
+  newCommitsAfterMerge: number,
 ): Promise<boolean> {
-	try {
-		const localRef = `HEAD~${newCommitsAfterMerge}`;
-		const mergeBaseResult = await git(repoDir, "merge-base", localRef, baseBranchRef);
-		if (mergeBaseResult.exitCode !== 0) return false;
-		const mergeBase = mergeBaseResult.stdout.trim();
-		if (!mergeBase) return false;
+  try {
+    const localRef = `HEAD~${newCommitsAfterMerge}`;
+    const mergeBaseResult = await git(repoDir, "merge-base", localRef, baseBranchRef);
+    if (mergeBaseResult.exitCode !== 0) return false;
+    const mergeBase = mergeBaseResult.stdout.trim();
+    if (!mergeBase) return false;
 
-		const [cumulativeResult, squashResult] = await Promise.all([
-			Bun.$`git -C ${repoDir} diff ${mergeBase}..${localRef} | git patch-id --stable`.quiet().nothrow(),
-			Bun.$`git -C ${repoDir} diff-tree -p ${squashHash} | git patch-id --stable`.quiet().nothrow(),
-		]);
+    const [cumulativeResult, squashResult] = await Promise.all([
+      Bun.$`git -C ${repoDir} diff ${mergeBase}..${localRef} | git patch-id --stable`.quiet().nothrow(),
+      Bun.$`git -C ${repoDir} diff-tree -p ${squashHash} | git patch-id --stable`.quiet().nothrow(),
+    ]);
 
-		if (cumulativeResult.exitCode !== 0 || squashResult.exitCode !== 0) return false;
-		const cumulativePatchId = cumulativeResult.text().trim().split(" ")[0];
-		const squashPatchId = squashResult.text().trim().split(" ")[0];
-		if (!cumulativePatchId || !squashPatchId) return false;
+    if (cumulativeResult.exitCode !== 0 || squashResult.exitCode !== 0) return false;
+    const cumulativePatchId = cumulativeResult.text().trim().split(" ")[0];
+    const squashPatchId = squashResult.text().trim().split(" ")[0];
+    if (!cumulativePatchId || !squashPatchId) return false;
 
-		return cumulativePatchId === squashPatchId;
-	} catch {
-		return false;
-	}
+    return cumulativePatchId === squashPatchId;
+  } catch {
+    return false;
+  }
 }
 
 export async function detectRebasedCommits(
-	repoDir: string,
-	trackingRef: string,
+  repoDir: string,
+  trackingRef: string,
 ): Promise<{ count: number; rebasedLocalHashes: Set<string>; rebasedRemoteHashes: Set<string> } | null> {
-	const rebaseStart = isDebug() ? performance.now() : 0;
-	const [localResult, remoteResult] = await Promise.all([
-		Bun.$`git -C ${repoDir} log -p ${trackingRef}..HEAD | git patch-id --stable`.quiet().nothrow(),
-		Bun.$`git -C ${repoDir} log -p HEAD..${trackingRef} | git patch-id --stable`.quiet().nothrow(),
-	]);
-	if (isDebug()) {
-		const elapsed = performance.now() - rebaseStart;
-		debugGit(`git -C ${repoDir} log -p ${trackingRef}..HEAD | git patch-id --stable`, elapsed, localResult.exitCode);
-		debugGit(`git -C ${repoDir} log -p HEAD..${trackingRef} | git patch-id --stable`, elapsed, remoteResult.exitCode);
-	}
+  const rebaseStart = isDebug() ? performance.now() : 0;
+  const [localResult, remoteResult] = await Promise.all([
+    Bun.$`git -C ${repoDir} log -p ${trackingRef}..HEAD | git patch-id --stable`.quiet().nothrow(),
+    Bun.$`git -C ${repoDir} log -p HEAD..${trackingRef} | git patch-id --stable`.quiet().nothrow(),
+  ]);
+  if (isDebug()) {
+    const elapsed = performance.now() - rebaseStart;
+    debugGit(`git -C ${repoDir} log -p ${trackingRef}..HEAD | git patch-id --stable`, elapsed, localResult.exitCode);
+    debugGit(`git -C ${repoDir} log -p HEAD..${trackingRef} | git patch-id --stable`, elapsed, remoteResult.exitCode);
+  }
 
-	if (localResult.exitCode !== 0 || remoteResult.exitCode !== 0) return null;
+  if (localResult.exitCode !== 0 || remoteResult.exitCode !== 0) return null;
 
-	const parse = (text: string) => {
-		const map = new Map<string, string>(); // patchId → commitHash
-		for (const line of text.split("\n")) {
-			const [patchId, hash] = line.split(" ");
-			if (patchId && hash) map.set(patchId, hash);
-		}
-		return map;
-	};
+  const parse = (text: string) => {
+    const map = new Map<string, string>(); // patchId → commitHash
+    for (const line of text.split("\n")) {
+      const [patchId, hash] = line.split(" ");
+      if (patchId && hash) map.set(patchId, hash);
+    }
+    return map;
+  };
 
-	const localMap = parse(localResult.text());
-	const remoteMap = parse(remoteResult.text());
+  const localMap = parse(localResult.text());
+  const remoteMap = parse(remoteResult.text());
 
-	const rebasedLocalHashes = new Set<string>();
-	const remoteIds = new Set(remoteMap.keys());
-	for (const [patchId, hash] of localMap) {
-		if (remoteIds.has(patchId)) rebasedLocalHashes.add(hash);
-	}
+  const rebasedLocalHashes = new Set<string>();
+  const remoteIds = new Set(remoteMap.keys());
+  for (const [patchId, hash] of localMap) {
+    if (remoteIds.has(patchId)) rebasedLocalHashes.add(hash);
+  }
 
-	const rebasedRemoteHashes = new Set<string>();
-	const localPatchIds = new Set(localMap.keys());
-	for (const [patchId, hash] of remoteMap) {
-		if (localPatchIds.has(patchId)) rebasedRemoteHashes.add(hash);
-	}
+  const rebasedRemoteHashes = new Set<string>();
+  const localPatchIds = new Set(localMap.keys());
+  for (const [patchId, hash] of remoteMap) {
+    if (localPatchIds.has(patchId)) rebasedRemoteHashes.add(hash);
+  }
 
-	return { count: rebasedLocalHashes.size, rebasedLocalHashes, rebasedRemoteHashes };
+  return { count: rebasedLocalHashes.size, rebasedLocalHashes, rebasedRemoteHashes };
 }
 
 export async function detectReplacedCommits(
-	repoDir: string,
-	trackingRef: string,
-	branch: string,
-	excludeHashes?: Set<string>,
+  repoDir: string,
+  trackingRef: string,
+  branch: string,
+  excludeHashes?: Set<string>,
 ): Promise<{ count: number; replacedHashes: Set<string> } | null> {
-	const start = isDebug() ? performance.now() : 0;
-	const [reflogResult, remoteResult] = await Promise.all([
-		git(repoDir, "log", "-g", "--format=%H", "-n", "200", branch),
-		git(repoDir, "log", "--format=%H", `HEAD..${trackingRef}`),
-	]);
-	if (isDebug()) {
-		const elapsed = performance.now() - start;
-		debugGit(`git -C ${repoDir} log -g --format=%H -n 200 ${branch}`, elapsed, reflogResult.exitCode);
-		debugGit(`git -C ${repoDir} log --format=%H HEAD..${trackingRef}`, elapsed, remoteResult.exitCode);
-	}
+  const start = isDebug() ? performance.now() : 0;
+  const [reflogResult, remoteResult] = await Promise.all([
+    git(repoDir, "log", "-g", "--format=%H", "-n", "200", branch),
+    git(repoDir, "log", "--format=%H", `HEAD..${trackingRef}`),
+  ]);
+  if (isDebug()) {
+    const elapsed = performance.now() - start;
+    debugGit(`git -C ${repoDir} log -g --format=%H -n 200 ${branch}`, elapsed, reflogResult.exitCode);
+    debugGit(`git -C ${repoDir} log --format=%H HEAD..${trackingRef}`, elapsed, remoteResult.exitCode);
+  }
 
-	if (reflogResult.exitCode !== 0 || remoteResult.exitCode !== 0) return null;
+  if (reflogResult.exitCode !== 0 || remoteResult.exitCode !== 0) return null;
 
-	const reflogHashes = new Set<string>();
-	for (const line of reflogResult.stdout.split("\n")) {
-		const hash = line.trim();
-		if (hash) reflogHashes.add(hash);
-	}
+  const reflogHashes = new Set<string>();
+  for (const line of reflogResult.stdout.split("\n")) {
+    const hash = line.trim();
+    if (hash) reflogHashes.add(hash);
+  }
 
-	const replacedHashes = new Set<string>();
-	for (const line of remoteResult.stdout.split("\n")) {
-		const hash = line.trim();
-		if (hash && reflogHashes.has(hash) && !excludeHashes?.has(hash)) {
-			replacedHashes.add(hash);
-		}
-	}
+  const replacedHashes = new Set<string>();
+  for (const line of remoteResult.stdout.split("\n")) {
+    const hash = line.trim();
+    if (hash && reflogHashes.has(hash) && !excludeHashes?.has(hash)) {
+      replacedHashes.add(hash);
+    }
+  }
 
-	return { count: replacedHashes.size, replacedHashes };
+  return { count: replacedHashes.size, replacedHashes };
 }
 
 export async function getDiffShortstat(
-	repoDir: string,
-	ref1: string,
-	ref2: string,
+  repoDir: string,
+  ref1: string,
+  ref2: string,
 ): Promise<{ files: number; insertions: number; deletions: number } | null> {
-	const result = await git(repoDir, "diff", "--shortstat", `${ref1}...${ref2}`);
-	if (result.exitCode !== 0) return null;
-	return parseDiffShortstat(result.stdout);
+  const result = await git(repoDir, "diff", "--shortstat", `${ref1}...${ref2}`);
+  if (result.exitCode !== 0) return null;
+  return parseDiffShortstat(result.stdout);
 }
 
 export async function predictRebaseConflictCommits(
-	repoDir: string,
-	targetRef: string,
+  repoDir: string,
+  targetRef: string,
 ): Promise<{ shortHash: string; files: string[] }[]> {
-	// List incoming commits (commits on targetRef not on HEAD), in chronological order
-	const logResult = await git(repoDir, "log", "--format=%H %h", "--reverse", `HEAD..${targetRef}`);
-	if (logResult.exitCode !== 0) return [];
-	const commits = logResult.stdout
-		.split("\n")
-		.filter(Boolean)
-		.map((line) => {
-			const spaceIdx = line.indexOf(" ");
-			return { hash: line.slice(0, spaceIdx), shortHash: line.slice(spaceIdx + 1) };
-		});
-	if (commits.length === 0) return [];
+  // List incoming commits (commits on targetRef not on HEAD), in chronological order
+  const logResult = await git(repoDir, "log", "--format=%H %h", "--reverse", `HEAD..${targetRef}`);
+  if (logResult.exitCode !== 0) return [];
+  const commits = logResult.stdout
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const spaceIdx = line.indexOf(" ");
+      return { hash: line.slice(0, spaceIdx), shortHash: line.slice(spaceIdx + 1) };
+    });
+  if (commits.length === 0) return [];
 
-	const conflicting: { shortHash: string; files: string[] }[] = [];
-	for (const commit of commits) {
-		// Simulate cherry-picking this commit onto HEAD by using merge-tree
-		// merge-base is commit's parent, ours is HEAD, theirs is the commit
-		const result = await git(
-			repoDir,
-			"merge-tree",
-			"--write-tree",
-			"--name-only",
-			`--merge-base=${commit.hash}~1`,
-			"HEAD",
-			commit.hash,
-		);
-		if (result.exitCode === 1 && result.stdout.trim()) {
-			// Conflict detected — parse file list (skip tree hash + info lines)
-			const files = result.stdout
-				.split("\n")
-				.slice(1)
-				.filter((line) => line && !line.startsWith("Auto-merging") && !line.startsWith("CONFLICT"));
-			conflicting.push({ shortHash: commit.shortHash, files });
-		}
-		// exit 0 = clean, exit >1 = error (e.g. first commit has no parent) — skip
-	}
-	return conflicting;
+  const conflicting: { shortHash: string; files: string[] }[] = [];
+  for (const commit of commits) {
+    // Simulate cherry-picking this commit onto HEAD by using merge-tree
+    // merge-base is commit's parent, ours is HEAD, theirs is the commit
+    const result = await git(
+      repoDir,
+      "merge-tree",
+      "--write-tree",
+      "--name-only",
+      `--merge-base=${commit.hash}~1`,
+      "HEAD",
+      commit.hash,
+    );
+    if (result.exitCode === 1 && result.stdout.trim()) {
+      // Conflict detected — parse file list (skip tree hash + info lines)
+      const files = result.stdout
+        .split("\n")
+        .slice(1)
+        .filter((line) => line && !line.startsWith("Auto-merging") && !line.startsWith("CONFLICT"));
+      conflicting.push({ shortHash: commit.shortHash, files });
+    }
+    // exit 0 = clean, exit >1 = error (e.g. first commit has no parent) — skip
+  }
+  return conflicting;
 }
 
 export async function analyzeRetargetReplay(
-	repoDir: string,
-	oldBaseRef: string,
-	newBaseRef: string,
+  repoDir: string,
+  oldBaseRef: string,
+  newBaseRef: string,
 ): Promise<{ totalLocal: number; alreadyOnTarget: number; toReplay: number } | null> {
-	const [localResult, newBaseResult] = await Promise.all([
-		Bun.$`git -C ${repoDir} log -p ${oldBaseRef}..HEAD | git patch-id --stable`.quiet().nothrow(),
-		Bun.$`git -C ${repoDir} log -p ${oldBaseRef}..${newBaseRef} | git patch-id --stable`.quiet().nothrow(),
-	]);
+  const [localResult, newBaseResult] = await Promise.all([
+    Bun.$`git -C ${repoDir} log -p ${oldBaseRef}..HEAD | git patch-id --stable`.quiet().nothrow(),
+    Bun.$`git -C ${repoDir} log -p ${oldBaseRef}..${newBaseRef} | git patch-id --stable`.quiet().nothrow(),
+  ]);
 
-	if (localResult.exitCode !== 0 || newBaseResult.exitCode !== 0) return null;
+  if (localResult.exitCode !== 0 || newBaseResult.exitCode !== 0) return null;
 
-	const parse = (text: string) => {
-		const map = new Map<string, string>();
-		for (const line of text.split("\n")) {
-			const [patchId, hash] = line.split(" ");
-			if (patchId && hash) map.set(patchId, hash);
-		}
-		return map;
-	};
+  const parse = (text: string) => {
+    const map = new Map<string, string>();
+    for (const line of text.split("\n")) {
+      const [patchId, hash] = line.split(" ");
+      if (patchId && hash) map.set(patchId, hash);
+    }
+    return map;
+  };
 
-	const localMap = parse(localResult.text());
-	const newBaseIds = new Set(parse(newBaseResult.text()).keys());
+  const localMap = parse(localResult.text());
+  const newBaseIds = new Set(parse(newBaseResult.text()).keys());
 
-	let alreadyOnTarget = 0;
-	for (const patchId of localMap.keys()) {
-		if (newBaseIds.has(patchId)) alreadyOnTarget++;
-	}
-	const totalLocal = localMap.size;
-	return { totalLocal, alreadyOnTarget, toReplay: totalLocal - alreadyOnTarget };
+  let alreadyOnTarget = 0;
+  for (const patchId of localMap.keys()) {
+    if (newBaseIds.has(patchId)) alreadyOnTarget++;
+  }
+  const totalLocal = localMap.size;
+  return { totalLocal, alreadyOnTarget, toReplay: totalLocal - alreadyOnTarget };
 }
 
 export function parseDiffShortstat(output: string): { files: number; insertions: number; deletions: number } | null {
-	const trimmed = output.trim();
-	if (!trimmed) return null;
-	const files = trimmed.match(/(\d+) files? changed/);
-	const ins = trimmed.match(/(\d+) insertions?\(\+\)/);
-	const del = trimmed.match(/(\d+) deletions?\(-\)/);
-	if (!files) return null;
-	return {
-		files: Number.parseInt(files[1] ?? "0", 10),
-		insertions: ins ? Number.parseInt(ins[1] ?? "0", 10) : 0,
-		deletions: del ? Number.parseInt(del[1] ?? "0", 10) : 0,
-	};
+  const trimmed = output.trim();
+  if (!trimmed) return null;
+  const files = trimmed.match(/(\d+) files? changed/);
+  const ins = trimmed.match(/(\d+) insertions?\(\+\)/);
+  const del = trimmed.match(/(\d+) deletions?\(-\)/);
+  if (!files) return null;
+  return {
+    files: Number.parseInt(files[1] ?? "0", 10),
+    insertions: ins ? Number.parseInt(ins[1] ?? "0", 10) : 0,
+    deletions: del ? Number.parseInt(del[1] ?? "0", 10) : 0,
+  };
 }
 
 export interface GitVersion {
-	major: number;
-	minor: number;
-	patch: number;
+  major: number;
+  minor: number;
+  patch: number;
 }
 
 export function parseGitVersion(output: string): GitVersion | null {
-	const match = output.match(/git version (\d+)\.(\d+)\.(\d+)/);
-	if (!match) return null;
-	const major = match[1];
-	const minor = match[2];
-	const patch = match[3];
-	if (!major || !minor || !patch) return null;
-	return {
-		major: Number.parseInt(major, 10),
-		minor: Number.parseInt(minor, 10),
-		patch: Number.parseInt(patch, 10),
-	};
+  const match = output.match(/git version (\d+)\.(\d+)\.(\d+)/);
+  if (!match) return null;
+  const major = match[1];
+  const minor = match[2];
+  const patch = match[3];
+  if (!major || !minor || !patch) return null;
+  return {
+    major: Number.parseInt(major, 10),
+    minor: Number.parseInt(minor, 10),
+    patch: Number.parseInt(patch, 10),
+  };
 }
 
 export async function assertMinimumGitVersion(cache: { getGitVersion(): Promise<GitVersion> }): Promise<void> {
-	const version = await cache.getGitVersion();
-	if (version.major < 2 || (version.major === 2 && version.minor < 17)) {
-		const msg = `Arborist requires Git 2.17 or later (you have ${version.major}.${version.minor}.${version.patch}).`;
-		error(msg);
-		throw new ArbError(msg);
-	}
+  const version = await cache.getGitVersion();
+  if (version.major < 2 || (version.major === 2 && version.minor < 17)) {
+    const msg = `Arborist requires Git 2.17 or later (you have ${version.major}.${version.minor}.${version.patch}).`;
+    error(msg);
+    throw new ArbError(msg);
+  }
 }
