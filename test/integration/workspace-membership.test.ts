@@ -159,9 +159,8 @@ describe("create", () => {
 		withEnv(async (env) => {
 			const result = await arb(env, ["create", "--branch", "claude/improve-arb-create-ux-Ipru1", "--all-repos"]);
 			expect(result.exitCode).toBe(0);
-			expect(result.output).toContain(
-				"! Workspace name: improve-arb-create-ux-Ipru1 (derived from claude/improve-arb-create-ux-Ipru1)",
-			);
+			expect(result.output).toContain("Workspace: improve-arb-create-ux-Ipru1");
+			expect(result.output).toContain("derived from branch");
 			const wsDir = join(env.projectDir, "improve-arb-create-ux-Ipru1");
 			expect(existsSync(wsDir)).toBe(true);
 			expect(existsSync(join(wsDir, "repo-a"))).toBe(true);

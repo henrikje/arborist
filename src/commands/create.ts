@@ -61,8 +61,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 			) => {
 				const ctx = getCtx();
 				const isInteractive = process.stdin.isTTY === true;
-				const isBareGuidedCreate =
-					isInteractive && !nameArg && repoArgs.length === 0 && !options.branch && !options.base && !options.allRepos;
+				const isBareGuidedCreate = isInteractive && !nameArg && repoArgs.length === 0 && !options.branch;
 				const allKnownRepos = listRepos(ctx.reposDir);
 
 				if (allKnownRepos.length === 0) {
@@ -89,7 +88,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 					}
 					name = await input(
 						{
-							message: "Workspace name:",
+							message: "Workspace:",
 							validate: (v) => {
 								const formatError = validateWorkspaceName(v);
 								if (formatError) return formatError;
@@ -137,8 +136,34 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 					error(msg);
 					throw new ArbError(msg);
 				}
-				if (isDerivedFromBranch) {
-					info(`${cyan("!")} ${bold("Workspace name")}: ${cyan(name)} (derived from ${options.branch})`);
+				const nameWasPrompted = !nameArg && !isDerivedFromBranch;
+				if (!isBareGuidedCreate) {
+					// Workspace (skip if just prompted interactively)
+					if (!nameWasPrompted) {
+						if (isDerivedFromBranch) {
+							info(`${cyan("›")} ${bold("Workspace")}: ${cyan(name)} (derived from branch)`);
+						} else {
+							info(`${cyan("›")} ${bold("Workspace")}: ${cyan(name)}`);
+						}
+					}
+					// Branch
+					if (options.branch) {
+						info(`${cyan("›")} ${bold("Branch")}: ${cyan(options.branch)}`);
+					} else {
+						info(`${cyan("›")} ${bold("Branch")}: ${cyan(name)} (same as workspace, use --branch to override)`);
+					}
+					// Base branch
+					if (options.base) {
+						info(`${cyan("›")} ${bold("Base")}: ${cyan(options.base)}`);
+					} else {
+						info(`${cyan("›")} ${bold("Base")}: ${cyan("repo default")} (use --base to override)`);
+					}
+					// Repos (only when known from args/flags, not pending interactive selection)
+					if (options.allRepos) {
+						info(`${cyan("›")} ${bold("Repos")}: ${cyan("all")}`);
+					} else if (repoArgs.length > 0) {
+						info(`${cyan("›")} ${bold("Repos")}: ${cyan(repoArgs.join(", "))}`);
+					}
 				}
 
 				// 2. Repo selection (moved before branch)
@@ -244,7 +269,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 						if (isBareGuidedCreate) {
 							branch = await input(
 								{
-									message: "Branch name:",
+									message: "Branch:",
 									validate: (v) => (validateBranchName(v) ? true : "Invalid branch name"),
 								},
 								{ output: process.stderr },

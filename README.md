@@ -97,10 +97,16 @@ With the repos cloned, create a workspace. Let's say you're adding dark mode.
 arb create add-dark-mode
 ```
 
+```
+› Workspace: add-dark-mode
+› Branch: add-dark-mode (same as workspace, use --branch to override)
+› Base: repo default (use --base to override)
+```
+
 Without repo arguments, Arborist prompts you to pick which repos to include. Not every feature touches every repo — picking just the ones you need keeps the workspace focused.
 
 ```
-? Select repos to include
+? Repos:
   ◉ backend
 ❯ ◉ frontend
   ◯ shared
@@ -130,6 +136,13 @@ Then a bug report comes in: logins are crashing! You need to fix it now, but you
 
 ```bash
 arb create fix-login-crash frontend
+```
+
+```
+› Workspace: fix-login-crash
+› Branch: fix-login-crash (same as workspace, use --branch to override)
+› Base: repo default (use --base to override)
+› Repos: frontend
 ```
 
 Passing repos inline skips the interactive prompt — useful when you know exactly what you need.
