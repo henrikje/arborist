@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { z } from "zod";
 import type { RepoStatus, WorkspaceSummary } from "../status/status";
 import {
 	BranchJsonOutputSchema,
@@ -22,10 +23,15 @@ describe("json-types structural compatibility", () => {
 		expect(true).toBe(true);
 	});
 
-	test("WorkspaceSummary is assignable to StatusJsonOutput", () => {
-		const summary: WorkspaceSummary = {} as WorkspaceSummary;
-		const _json: Parameters<typeof StatusJsonOutputSchema.parse>[0] = summary;
-		expect(true).toBe(true);
+	test("StatusJsonOutput extends WorkspaceSummary with prediction counts", () => {
+		// WorkspaceSummary is the base data; StatusJsonOutput adds baseConflictCount
+		// and pullConflictCount (computed at command level, not during gathering).
+		// This test documents that divergence is intentional.
+		type OutputKeys = keyof z.infer<typeof StatusJsonOutputSchema>;
+		type SummaryKeys = keyof WorkspaceSummary;
+		type AddedKeys = Exclude<OutputKeys, SummaryKeys>;
+		const _check: AddedKeys extends "baseConflictCount" | "pullConflictCount" ? true : false = true;
+		expect(_check).toBe(true);
 	});
 });
 
@@ -57,6 +63,40 @@ describe("json-types zod validation", () => {
 				toPull: 0,
 				rebased: null,
 			},
+			operation: null,
+			lastCommit: "2025-01-15T10:30:00Z",
+		};
+		expect(() => StatusJsonRepoSchema.parse(repo)).not.toThrow();
+	});
+
+	test("StatusJsonRepoSchema parses repo with predictions", () => {
+		const repo = {
+			name: "api",
+			identity: {
+				worktreeKind: "linked" as const,
+				headMode: { kind: "attached" as const, branch: "feat-x" },
+				shallow: false,
+			},
+			local: { staged: 0, modified: 0, untracked: 0, conflicts: 0 },
+			base: {
+				remote: "upstream",
+				ref: "upstream/main",
+				configuredRef: null,
+				ahead: 3,
+				behind: 2,
+				mergedIntoBase: null,
+				baseMergedIntoDefault: null,
+				detectedPr: null,
+			},
+			share: {
+				remote: "origin",
+				ref: "origin/feat-x",
+				refMode: "implicit" as const,
+				toPush: 2,
+				toPull: 1,
+				rebased: null,
+			},
+			predictions: { baseConflict: true, pullConflict: false },
 			operation: null,
 			lastCommit: "2025-01-15T10:30:00Z",
 		};
@@ -95,6 +135,8 @@ describe("json-types zod validation", () => {
 			repos: [],
 			total: 0,
 			atRiskCount: 0,
+			baseConflictCount: 0,
+			pullConflictCount: 0,
 			rebasedOnlyCount: 0,
 			statusLabels: [],
 			statusCounts: [],

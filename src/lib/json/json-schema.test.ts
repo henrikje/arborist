@@ -35,6 +35,8 @@ describe("json-schema stability", () => {
 				"repos",
 				"total",
 				"atRiskCount",
+				"baseConflictCount",
+				"pullConflictCount",
 				"rebasedOnlyCount",
 				"statusLabels",
 				"statusCounts",

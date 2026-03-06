@@ -8,6 +8,7 @@ import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
 import { type RenderContext, render, runPhasedRender } from "../lib/render";
 import { type VerboseDetail, buildStatusView, gatherVerboseDetail, toJsonVerbose } from "../lib/render";
 import {
+	type RepoStatus,
 	type WorkspaceSummary,
 	baseRef,
 	computeFlags,
@@ -204,13 +205,23 @@ async function runStatus(
 
 	// JSON output
 	if (options.json) {
+		const { baseConflictRepos, pullConflictRepos } = await predictConflicts(filteredSummary.repos, wsDir);
+		const reposWithPredictions = filteredSummary.repos.map((repo) => {
+			const baseConflict = baseConflictRepos.has(repo.name);
+			const pullConflict = pullConflictRepos.has(repo.name);
+			if (!baseConflict && !pullConflict) return repo;
+			return { ...repo, predictions: { baseConflict, pullConflict } };
+		});
 		let output: StatusJsonOutput = {
 			...filteredSummary,
+			repos: reposWithPredictions,
+			baseConflictCount: baseConflictRepos.size,
+			pullConflictCount: pullConflictRepos.size,
 			statusCounts: filteredSummary.statusCounts.map(({ label, count }) => ({ label, count })),
 		};
 		if (options.verbose) {
 			const reposWithVerbose = await Promise.all(
-				filteredSummary.repos.map(async (repo) => {
+				reposWithPredictions.map(async (repo) => {
 					const detail = await gatherVerboseDetail(repo, wsDir);
 					if (!detail) return repo;
 					return { ...repo, verbose: toJsonVerbose(detail, repo.base) };
@@ -227,6 +238,37 @@ async function runStatus(
 	process.stdout.write(tableOutput);
 }
 
+async function predictConflicts(
+	repos: RepoStatus[],
+	wsDir: string,
+): Promise<{ baseConflictRepos: Set<string>; pullConflictRepos: Set<string> }> {
+	const baseConflictRepos = new Set<string>();
+	const pullConflictRepos = new Set<string>();
+	await Promise.all([
+		Promise.all(
+			repos
+				.filter((r) => r.base !== null && r.base.ahead > 0 && r.base.behind > 0)
+				.map(async (r) => {
+					const base = r.base;
+					if (!base) return;
+					const prediction = await predictMergeConflict(`${wsDir}/${r.name}`, baseRef(base));
+					if (prediction?.hasConflict) baseConflictRepos.add(r.name);
+				}),
+		),
+		Promise.all(
+			repos
+				.filter((r) => (r.share.toPush ?? 0) > 0 && (r.share.toPull ?? 0) > 0 && r.share.ref !== null)
+				.map(async (r) => {
+					const trackingRef = r.share.ref;
+					if (!trackingRef) return;
+					const prediction = await predictMergeConflict(`${wsDir}/${r.name}`, trackingRef);
+					if (prediction?.hasConflict) pullConflictRepos.add(r.name);
+				}),
+		),
+	]);
+	return { baseConflictRepos, pullConflictRepos };
+}
+
 async function renderStatusTable(
 	filteredSummary: WorkspaceSummary,
 	wsDir: string,
@@ -238,41 +280,12 @@ async function renderStatusTable(
 		return "  (no repos)\n";
 	}
 
-	// Predict base conflicts for repos diverged from base.
-	const baseConflictRepos = new Set<string>();
-	const baseConflictPromise = Promise.all(
-		repos
-			.filter((r) => r.base !== null && r.base.ahead > 0 && r.base.behind > 0)
-			.map(async (r) => {
-				const repoDir = `${wsDir}/${r.name}`;
-				const base = r.base;
-				if (!base) return;
-				const prediction = await predictMergeConflict(repoDir, baseRef(base));
-				if (prediction?.hasConflict) {
-					baseConflictRepos.add(r.name);
-				}
-			}),
-	);
-
-	// Predict pull conflicts for repos diverged from the share tracking ref.
-	const pullConflictRepos = new Set<string>();
-	const pullConflictPromise = Promise.all(
-		repos
-			.filter((r) => (r.share.toPush ?? 0) > 0 && (r.share.toPull ?? 0) > 0 && r.share.ref !== null)
-			.map(async (r) => {
-				const repoDir = `${wsDir}/${r.name}`;
-				const trackingRef = r.share.ref;
-				if (!trackingRef) return;
-				const prediction = await predictMergeConflict(repoDir, trackingRef);
-				if (prediction?.hasConflict) {
-					pullConflictRepos.add(r.name);
-				}
-			}),
-	);
-	const conflictPredictionsPromise = Promise.all([baseConflictPromise, pullConflictPromise]);
+	const conflictPredictionsPromise = predictConflicts(repos, wsDir);
 
 	// Gather verbose detail in parallel (when verbose mode is on)
 	let verboseData: Map<string, VerboseDetail | undefined> | undefined;
+	let baseConflictRepos: Set<string>;
+	let pullConflictRepos: Set<string>;
 	if (options.verbose) {
 		const verbosePromise = Promise.all(
 			repos.map(async (repo) => {
@@ -280,10 +293,14 @@ async function renderStatusTable(
 				return [repo.name, detail] as const;
 			}),
 		);
-		const [, verboseEntries] = await Promise.all([conflictPredictionsPromise, verbosePromise]);
+		const [conflicts, verboseEntries] = await Promise.all([conflictPredictionsPromise, verbosePromise]);
+		baseConflictRepos = conflicts.baseConflictRepos;
+		pullConflictRepos = conflicts.pullConflictRepos;
 		verboseData = new Map(verboseEntries);
 	} else {
-		await conflictPredictionsPromise;
+		const conflicts = await conflictPredictionsPromise;
+		baseConflictRepos = conflicts.baseConflictRepos;
+		pullConflictRepos = conflicts.pullConflictRepos;
 	}
 
 	// Detect current repo from cwd
