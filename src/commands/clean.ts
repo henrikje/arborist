@@ -9,8 +9,14 @@ import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { confirmOrExit } from "../lib/sync";
 import { dryRunNotice, error, info, isTTY, plural, success, yellow } from "../lib/terminal";
-import { findOrphanedBranches, findStaleWorktrees, pruneWorktrees, repairAllWorktreeRefs } from "../lib/workspace";
-import { listNonWorkspaces, listWorkspaces, selectInteractive } from "../lib/workspace";
+import {
+	detectAndRepairProjectMove,
+	findOrphanedBranches,
+	findStaleWorktrees,
+	pruneWorktrees,
+	repairAllWorktreeRefs,
+} from "../lib/workspace";
+import { listNonWorkspaces, listWorkspaces, selectInteractive, workspaceRepoDirs } from "../lib/workspace";
 import { workspaceBranch } from "../lib/workspace";
 
 function describeContents(dirPath: string): string {
@@ -87,6 +93,17 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
 				targetDirs = nameArgs;
 			} else {
 				targetDirs = allNonWorkspaces;
+			}
+
+			// ── Repair project move before detecting stale refs ─────────
+			// If the entire project directory was moved, forward refs are also broken.
+			// Detect by sampling any workspace and repair all repos globally.
+			for (const ws of listWorkspaces(ctx.arbRootDir)) {
+				const wsDir = join(ctx.arbRootDir, ws);
+				if (workspaceRepoDirs(wsDir).length > 0) {
+					detectAndRepairProjectMove(wsDir, ctx.arbRootDir, ctx.reposDir);
+					break;
+				}
 			}
 
 			// ── Repair renamed workspaces before detecting stale refs ──
