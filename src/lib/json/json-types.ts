@@ -63,6 +63,12 @@ export const StatusJsonRepoSchema = z.object({
 		toPull: z.number().nullable(),
 		rebased: z.number().nullable(),
 	}),
+	predictions: z
+		.object({
+			baseConflict: z.boolean(),
+			pullConflict: z.boolean(),
+		})
+		.optional(),
 	operation: GitOperationSchema,
 	lastCommit: z.string().nullable(),
 	verbose: z
@@ -109,6 +115,8 @@ export const StatusJsonOutputSchema = z.object({
 	repos: z.array(StatusJsonRepoSchema),
 	total: z.number(),
 	atRiskCount: z.number(),
+	baseConflictCount: z.number(),
+	pullConflictCount: z.number(),
 	rebasedOnlyCount: z.number(),
 	statusLabels: z.array(z.string()),
 	statusCounts: z.array(z.object({ label: z.string(), count: z.number() })),

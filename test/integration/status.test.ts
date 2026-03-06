@@ -562,6 +562,56 @@ describe.skipIf(gitBelow238)("status conflict prediction", () => {
 			expect(result.output).toContain("1 behind");
 		}));
 
+	test("arb status --json includes predictions for diverged repo with conflict", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "my-feature", "repo-a"]);
+
+			// Create a shared file on main
+			const repoA = join(env.projectDir, ".arb/repos/repo-a");
+			await write(join(repoA, "shared.txt"), "original");
+			await git(repoA, ["add", "shared.txt"]);
+			await git(repoA, ["commit", "-m", "add shared"]);
+			await git(repoA, ["push"]);
+
+			// Pull the shared file into the feature branch
+			await fetchAllRepos(env);
+			await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+
+			// Conflicting change on feature branch
+			const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+			await write(join(wtRepoA, "shared.txt"), "feature version");
+			await git(wtRepoA, ["add", "shared.txt"]);
+			await git(wtRepoA, ["commit", "-m", "feature change"]);
+			await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
+
+			// Conflicting change on main
+			await write(join(repoA, "shared.txt"), "main version");
+			await git(repoA, ["add", "shared.txt"]);
+			await git(repoA, ["commit", "-m", "main change"]);
+			await git(repoA, ["push"]);
+
+			await fetchAllRepos(env);
+			const result = await arb(env, ["status", "--no-fetch", "--json"], {
+				cwd: join(env.projectDir, "my-feature"),
+			});
+			const json = JSON.parse(result.stdout);
+			expect(json.baseConflictCount).toBe(1);
+			expect(json.pullConflictCount).toBe(0);
+			expect(json.repos[0].predictions).toEqual({ baseConflict: true, pullConflict: false });
+		}));
+
+	test("arb status --json omits predictions when no conflicts", () =>
+		withEnv(async (env) => {
+			await arb(env, ["create", "my-feature", "repo-a"]);
+			const result = await arb(env, ["status", "--no-fetch", "--json"], {
+				cwd: join(env.projectDir, "my-feature"),
+			});
+			const json = JSON.parse(result.stdout);
+			expect(json.baseConflictCount).toBe(0);
+			expect(json.pullConflictCount).toBe(0);
+			expect(json.repos[0].predictions).toBeUndefined();
+		}));
+
 	test("arb status with mixed diverged and non-diverged repos", () =>
 		withEnv(async (env) => {
 			await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
