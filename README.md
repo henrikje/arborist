@@ -258,7 +258,7 @@ Rebasing, squash-merging, and force-pushing all rewrite history, making it hard 
   shared   2 hours        origin/main  2 ahead, 3 behind    origin/feat  2 new → 1 new                        1 change
 ```
 
-When the "new" count is zero, every remote-only commit is already reflected in yours — a force push won't overwrite any collaborator work. `arb push` uses this to block pushes of already-merged branches, and `arb rebase` replays only the genuinely new work.
+When the "new" count is zero, every remote-only commit is already reflected in yours — a force push won't overwrite any collaborator work. `arb push` uses this to auto-push after rebase, amend, or squash without requiring `--force`, and to block pushes of already-merged branches. `arb rebase` replays only the genuinely new work.
 
 ### Filter by status
 

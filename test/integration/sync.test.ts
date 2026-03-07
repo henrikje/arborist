@@ -249,7 +249,7 @@ describe("push [repos...] and --force", () => {
       expect(result.output).not.toContain("repo-b");
     }));
 
-  test("arb push --force pushes diverged repo after rebase", () =>
+  test("arb push after rebase auto-pushes when all remote commits are outdated", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       await write(join(env.projectDir, "my-feature/repo-a/file.txt"), "feature");
@@ -267,37 +267,14 @@ describe("push [repos...] and --force", () => {
       // Rebase the feature branch (auto-fetches)
       await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
 
-      // Now push with --force
-      const result = await arb(env, ["push", "--force", "--yes"], {
+      // Push without --force — all remote commits are rebased (outdated), so auto-push works
+      const result = await arb(env, ["push", "--yes"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("force");
+      expect(result.output).toContain("replaces");
+      expect(result.output).not.toContain("diverged");
       expect(result.output).toContain("Pushed");
-    }));
-
-  test("arb push skips diverged repo without --force", () =>
-    withEnv(async (env) => {
-      await arb(env, ["create", "my-feature", "repo-a"]);
-      await write(join(env.projectDir, "my-feature/repo-a/file.txt"), "feature");
-      await git(join(env.projectDir, "my-feature/repo-a"), ["add", "file.txt"]);
-      await git(join(env.projectDir, "my-feature/repo-a"), ["commit", "-m", "feature"]);
-      await git(join(env.projectDir, "my-feature/repo-a"), ["push", "-u", "origin", "my-feature"]);
-
-      // Push upstream change and rebase (auto-fetches)
-      const mainRepo = join(env.projectDir, ".arb/repos/repo-a");
-      await write(join(mainRepo, "upstream.txt"), "upstream");
-      await git(mainRepo, ["add", "upstream.txt"]);
-      await git(mainRepo, ["commit", "-m", "upstream"]);
-      await git(mainRepo, ["push"]);
-
-      await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
-
-      // Push without --force should skip
-      const result = await arb(env, ["push", "--yes"], { cwd: join(env.projectDir, "my-feature") });
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("diverged from origin");
-      expect(result.output).toContain("--force");
     }));
 
   test("arb push -f short flag works", () =>
@@ -346,6 +323,98 @@ describe("push [repos...] and --force", () => {
       });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("Pushed");
+    }));
+
+  test("arb push auto-pushes when remote commits are all outdated (squash scenario)", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Make 3 commits and push
+      await write(join(repoA, "a.txt"), "a");
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "commit a"]);
+      await write(join(repoA, "b.txt"), "b");
+      await git(repoA, ["add", "b.txt"]);
+      await git(repoA, ["commit", "-m", "commit b"]);
+      await write(join(repoA, "c.txt"), "c");
+      await git(repoA, ["add", "c.txt"]);
+      await git(repoA, ["commit", "-m", "commit c"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Squash all 3 commits into 1
+      await git(repoA, ["reset", "--soft", "HEAD~3"]);
+      await git(repoA, ["commit", "-m", "squashed: a + b + c"]);
+
+      // Fetch so arb sees the remote state
+      await fetchAllRepos(env);
+
+      // Push without --force — should succeed because all remote commits are outdated
+      const result = await arb(env, ["push", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("replaces");
+      expect(result.output).not.toContain("diverged");
+      expect(result.output).toContain("Pushed");
+    }));
+
+  test("arb push --force still works on outdated repo", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+      await write(join(repoA, "file.txt"), "feature");
+      await git(repoA, ["add", "file.txt"]);
+      await git(repoA, ["commit", "-m", "feature"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Advance main and rebase (creates outdated remote commits)
+      const mainRepo = join(env.projectDir, ".arb/repos/repo-a");
+      await write(join(mainRepo, "upstream.txt"), "upstream");
+      await git(mainRepo, ["add", "upstream.txt"]);
+      await git(mainRepo, ["commit", "-m", "upstream"]);
+      await git(mainRepo, ["push"]);
+      await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+
+      // Push with --force on an outdated repo — should still succeed
+      const result = await arb(env, ["push", "--force", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Pushed");
+    }));
+
+  test("arb push skips genuinely diverged repo without --force", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+      await write(join(repoA, "file.txt"), "feature");
+      await git(repoA, ["add", "file.txt"]);
+      await git(repoA, ["commit", "-m", "feature"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Simulate someone else pushing a new commit to the remote branch
+      const bare = join(env.originDir, "repo-a.git");
+      const tmp = join(env.testDir, "tmp-diverge");
+      await git(env.testDir, ["clone", bare, tmp]);
+      await git(tmp, ["checkout", "my-feature"]);
+      await write(join(tmp, "other.txt"), "someone else's work");
+      await git(tmp, ["add", "other.txt"]);
+      await git(tmp, ["commit", "-m", "other commit"]);
+      await git(tmp, ["push", "origin", "my-feature"]);
+
+      // Make a new local commit (diverging from remote)
+      await write(join(repoA, "local.txt"), "local work");
+      await git(repoA, ["add", "local.txt"]);
+      await git(repoA, ["commit", "-m", "local commit"]);
+
+      // Push without --force should skip — remote has a genuinely new commit
+      const result = await arb(env, ["push", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("diverged from origin");
+      expect(result.output).toContain("--force");
     }));
 
   test("arb pull skips rebased repo", () =>
@@ -510,7 +579,7 @@ describe("merged branch detection", () => {
       expect(result.output).toContain("--include-merged");
     }));
 
-  test("arb push --include-merged does not push diverged repo", () =>
+  test("arb push --include-merged auto-pushes when all remote commits are outdated after rebase", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "diverged-include-merged", "repo-a"]);
       await write(join(env.projectDir, "diverged-include-merged/repo-a/file.txt"), "feature");
@@ -535,8 +604,8 @@ describe("merged branch detection", () => {
         cwd: join(env.projectDir, "diverged-include-merged"),
       });
       expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("diverged from origin");
-      expect(result.output).toContain("--force");
+      expect(result.output).toContain("replaces");
+      expect(result.output).toContain("Pushed");
     }));
 
   test("arb status --json includes mergedIntoBase field", () =>
