@@ -328,4 +328,76 @@ describe("worktree integrity", () => {
       const backRef = readFileSync(join(gitdirPath, "gitdir"), "utf-8").trim();
       expect(backRef).toBe(join(env.projectDir, "ws-stale/repo-a/.git"));
     }));
+
+  test("attach re-links when directory has files and no .git", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "ws-relink", "repo-a"]);
+
+      const repoDir = join(env.projectDir, "ws-relink/repo-a");
+
+      // Write a local file (simulate uncommitted user work)
+      writeFileSync(join(repoDir, "local-change.txt"), "important work");
+
+      // Remove the .git file and prune entries (simulate post-auto-repair state)
+      await rm(join(repoDir, ".git"));
+      await git(join(env.projectDir, ".arb/repos/repo-a"), ["worktree", "prune"]);
+
+      // Attach — should re-link in place instead of failing
+      const result = await arb(env, ["attach", "repo-a"], { cwd: join(env.projectDir, "ws-relink") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("re-linking stale worktree in place —");
+
+      // Worktree should have valid bidirectional references
+      const gitContent = readFileSync(join(repoDir, ".git"), "utf-8").trim();
+      expect(gitContent.startsWith("gitdir: ")).toBe(true);
+      const gitdirPath = gitContent.slice("gitdir: ".length);
+      const backRef = readFileSync(join(gitdirPath, "gitdir"), "utf-8").trim();
+      expect(backRef).toBe(join(repoDir, ".git"));
+
+      // User's file should still be there
+      expect(readFileSync(join(repoDir, "local-change.txt"), "utf-8")).toBe("important work");
+    }));
+
+  test("attach re-links after shared-entry auto-repair", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "ws-one", "repo-a"]);
+      await arb(env, ["create", "ws-two", "repo-a"]);
+
+      const wsOneRepo = join(env.projectDir, "ws-one/repo-a");
+      const wsTwoRepo = join(env.projectDir, "ws-two/repo-a");
+
+      // Write a file in ws-one (simulate user work)
+      writeFileSync(join(wsOneRepo, "local-change.txt"), "my changes");
+
+      // Corrupt ws-one to point to ws-two's worktree entry (shared entry scenario)
+      const wsTwoGitContent = readFileSync(join(wsTwoRepo, ".git"), "utf-8").trim();
+      writeFileSync(join(wsOneRepo, ".git"), wsTwoGitContent);
+
+      // Run status in ws-one — triggers auto-repair (removes stale .git)
+      const statusResult = await arb(env, ["-C", join(env.projectDir, "ws-one"), "status", "-N"]);
+      expect(statusResult.output).toContain("removed stale worktree reference");
+      expect(existsSync(join(wsOneRepo, ".git"))).toBe(false);
+
+      // Attach repo-a to ws-one — should re-link in place
+      const attachResult = await arb(env, ["attach", "repo-a"], { cwd: join(env.projectDir, "ws-one") });
+      expect(attachResult.exitCode).toBe(0);
+      expect(attachResult.output).toContain("re-linking stale worktree in place —");
+
+      // ws-one should have its own valid worktree entry
+      const wsOneGit = readFileSync(join(wsOneRepo, ".git"), "utf-8").trim();
+      expect(wsOneGit.startsWith("gitdir: ")).toBe(true);
+      const wsOneGitdir = wsOneGit.slice("gitdir: ".length);
+      const wsOneBackRef = readFileSync(join(wsOneGitdir, "gitdir"), "utf-8").trim();
+      expect(wsOneBackRef).toBe(join(wsOneRepo, ".git"));
+
+      // ws-two should still be valid and independent
+      const wsTwoGit = readFileSync(join(wsTwoRepo, ".git"), "utf-8").trim();
+      const wsTwoGitdir = wsTwoGit.slice("gitdir: ".length);
+      const wsTwoBackRef = readFileSync(join(wsTwoGitdir, "gitdir"), "utf-8").trim();
+      expect(wsTwoBackRef).toBe(join(wsTwoRepo, ".git"));
+      expect(wsOneGit).not.toBe(wsTwoGit);
+
+      // User's file should be preserved
+      expect(readFileSync(join(wsOneRepo, "local-change.txt"), "utf-8")).toBe("my changes");
+    }));
 });
