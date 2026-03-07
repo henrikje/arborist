@@ -1,7 +1,7 @@
 import { git } from "../git/git";
 
 /** Regex matching Jira/Linear-style ticket keys: PROJ-123, ACME-208, etc. */
-const TICKET_PATTERN = /[A-Z][A-Z0-9]+-\d+/gi;
+const TICKET_PATTERN = /\b[A-Z][A-Z0-9]+-\d+\b/gi;
 
 /**
  * Prefixes that structurally cannot be ticket project keys.
