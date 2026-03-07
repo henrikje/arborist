@@ -232,21 +232,33 @@ Now you're ready to create new workspaces to tackle new tasks!
 
 The tour covered the essentials. Here are more capabilities worth knowing about.
 
-### Conflict prediction and recovery
+### Conflict prediction
 
-Before a rebase, merge, or pull runs, Arborist performs a trial three-way merge in memory (using the same algorithm Git uses) against each repo to identify actual file-level conflicts. It can identify when earlier commits have been merged, rebased, and even squash merged. The result appears in the plan:
+Before a rebase, merge, or pull runs, Arborist performs a trial three-way merge in memory (using the same algorithm Git uses) to predict file-level conflicts per repo. The plan shows "conflict unlikely" or "conflict likely" so you can decide before anything runs. For repos with uncommitted changes, Arborist suggests `--autostash` and predicts whether re-applying the stash will also conflict.
 
 ```
   api        rebase add-auth onto origin/main — 4 behind, 3 ahead (conflict unlikely) (autostash)
-  frontend   replay 1 commit onto origin/main (was squash-merged)
+  payments   rebase fix-checkout onto origin/main — 6 behind, 2 ahead (conflict likely)
   shared     up to date
 ```
 
-You see which repos will conflict before you commit to the operation. Arborist also suggests options to handle possibly dangerous situations, such as `--autostash` to operate on a repo with uncommitted changes without manual stashing.
+If a rebase or merge does hit a conflict, Arborist continues with the remaining repos and reports per-repo conflict details and resolution instructions in a single pass. One conflicting repo never blocks the others.
 
-If a rebase or merge does hit a conflict, Arborist continues with the remaining repos and reports everything at the end. One conflicting repo never blocks the others. You see per-repo conflict details and resolution instructions in a single pass.
+For `arb pull --merge`, if the remote was rewritten and you have no unique commits, Arborist resets to the rewritten tip instead of attempting a three-way merge.
 
-For `arb pull --merge`, Arborist can also detect rebased/force-pushed remote history and, when local has no unique commits to preserve, show a safe reset action in the plan and reset to the rewritten remote tip instead of running a three-way merge.
+### Commit matching
+
+Rebasing, squash-merging, and force-pushing all rewrite history, making it hard to tell genuinely new work from commits you've already seen. Arborist uses patch identity and reflog analysis to match them — so the plan and status display tell you what's actually happening.
+
+`arb status` breaks push and pull counts down by identity — "outdated" for remote commits already reflected in your local history, "new" for genuinely new remote work:
+
+```
+  REPO     LAST COMMIT    BASE                              SHARE                                             LOCAL
+  api      1 hour         origin/main  2 ahead              origin/feat  1 from main, 2 rebased → 2 outdated  clean
+  shared   2 hours        origin/main  2 ahead, 3 behind    origin/feat  2 new → 1 new                        1 change
+```
+
+When the "new" count is zero, every remote-only commit is already reflected in yours — a force push won't overwrite any collaborator work. `arb push` uses this to block pushes of already-merged branches, and `arb rebase` replays only the genuinely new work.
 
 ### Filter by status
 
