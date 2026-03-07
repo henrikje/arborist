@@ -193,7 +193,7 @@ __arb_complete_repo() {
     done
 
     if ((COMP_CWORD == sub_pos)); then
-        COMPREPLY=($(compgen -W "clone list remove" -- "$cur"))
+        COMPREPLY=($(compgen -W "clone list remove default" -- "$cur"))
         return
     fi
 
@@ -216,6 +216,15 @@ __arb_complete_repo() {
             ;;
         list)
             COMPREPLY=($(compgen -W "-q --quiet -v --verbose --json --schema" -- "$cur"))
+            ;;
+        default)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "-r --remove" -- "$cur"))
+            else
+                local repo_names
+                repo_names=$(__arb_repo_names "$base_dir")
+                COMPREPLY=($(compgen -W "$repo_names" -- "$cur"))
+            fi
             ;;
     esac
 }

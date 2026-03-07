@@ -8,7 +8,7 @@ import { parallelFetch, reportFetchFailures } from "../lib/sync";
 import { error, info, plural, success, warn } from "../lib/terminal";
 import { readNamesFromStdin } from "../lib/terminal";
 import { isTTY } from "../lib/terminal";
-import { listRepos, selectInteractive, workspaceRepoDirs } from "../lib/workspace";
+import { listDefaultRepos, listRepos, selectInteractive, workspaceRepoDirs } from "../lib/workspace";
 import { requireBranch, requireWorkspace } from "../lib/workspace";
 import { addWorktrees } from "../lib/workspace";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/workspace";
@@ -56,7 +56,8 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
           error("All repos are already in this workspace.");
           throw new ArbError("All repos are already in this workspace.");
         }
-        repos = await selectInteractive(available, "Select repos to attach");
+        const defaults = listDefaultRepos(ctx.arbRootDir);
+        repos = await selectInteractive(available, "Select repos to attach", defaults);
         if (repos.length === 0) {
           error("No repos selected.");
           throw new ArbError("No repos selected.");

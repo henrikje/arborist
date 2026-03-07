@@ -14,6 +14,7 @@ export { requireBranch, requireWorkspace } from "./context";
 export {
   collectRepo,
   findRepoUsage,
+  listDefaultRepos,
   listNonWorkspaces,
   listRepos,
   listWorkspaces,

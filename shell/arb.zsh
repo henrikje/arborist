@@ -292,6 +292,7 @@ _arb() {
                             'clone:Clone a repo into .arb/repos/'
                             'list:List cloned repos'
                             'remove:Remove canonical repos from .arb/repos/'
+                            'default:Manage default repo selection'
                         )
                         _describe 'repo command' repo_subcmds
                     else
@@ -318,6 +319,12 @@ _arb() {
                                     '(-v --verbose -q --quiet --json --schema)'{-v,--verbose}'[Show remote URLs alongside names]' \
                                     '(--json -q --quiet -v --verbose --schema)--json[Output structured JSON]' \
                                     '(--schema --json -q --quiet -v --verbose)--schema[Print JSON Schema for --json output]'
+                                ;;
+                            default)
+                                shift words; (( CURRENT-- ))
+                                _arguments \
+                                    '(-r --remove)'{-r,--remove}'[Remove repos from defaults]' \
+                                    '*:repo:($repo_names)'
                                 ;;
                         esac
                     fi

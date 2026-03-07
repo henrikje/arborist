@@ -1,5 +1,5 @@
 export { loadArbIgnore } from "./arbignore";
-export { configGet, writeConfig } from "./config";
+export { configGet, configGetList, configSetList, writeConfig } from "./config";
 export { ArbAbort, ArbError } from "./errors";
 export {
   type LastCommitWidths,

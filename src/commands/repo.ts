@@ -2,7 +2,7 @@ import { existsSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Command } from "commander";
 import { z } from "zod";
-import { ArbError } from "../lib/core";
+import { ArbError, configGetList, configSetList } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, assertMinimumGitVersion, git } from "../lib/git";
 import { printSchema } from "../lib/json";
@@ -331,5 +331,74 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
       // Summarize
       process.stderr.write("\n");
       success(`Removed ${plural(repos.length, "repo")}`);
+    });
+
+  // ── repo default ────────────────────────────────────────────────
+
+  repo
+    .command("default [names...]")
+    .option("-r, --remove", "Remove repos from defaults")
+    .summary("Manage default repo selection")
+    .description(
+      "Mark repos as defaults for workspace creation. Default repos are pre-selected in interactive pickers and used as the fallback repo set when no repos are specified in non-interactive mode.\n\nWith no arguments, lists current defaults. With repo names, adds them to defaults. With --remove, removes them from defaults.\n\nStored in .arb/config as a comma-separated list under the 'defaults' key.",
+    )
+    .action(async (nameArgs: string[], options: { remove?: boolean }) => {
+      const ctx = getCtx();
+      const configFile = join(ctx.arbRootDir, ".arb", "config");
+      const allRepos = listRepos(ctx.reposDir);
+
+      // List mode
+      if (nameArgs.length === 0 && !options.remove) {
+        const defaults = configGetList(configFile, "defaults");
+        if (defaults.length === 0) {
+          info("No default repos configured. Add with: arb repo default <names...>");
+          return;
+        }
+        for (const name of defaults) {
+          process.stdout.write(`${name}\n`);
+        }
+        return;
+      }
+
+      if (nameArgs.length === 0) {
+        const msg = "No repos specified.";
+        error(msg);
+        throw new ArbError(msg);
+      }
+
+      const currentDefaults = configGetList(configFile, "defaults");
+
+      if (options.remove) {
+        for (const name of nameArgs) {
+          if (!currentDefaults.includes(name)) {
+            const msg = `Repo '${name}' is not a default.`;
+            error(msg);
+            throw new ArbError(msg);
+          }
+        }
+        const updated = currentDefaults.filter((d) => !nameArgs.includes(d));
+        configSetList(configFile, "defaults", updated);
+        success(`Removed ${plural(nameArgs.length, "repo")} from defaults`);
+      } else {
+        // Validate repo names exist (only for add — remove tolerates stale entries)
+        for (const name of nameArgs) {
+          if (!allRepos.includes(name)) {
+            const msg = `Repo '${name}' is not cloned.`;
+            error(msg);
+            throw new ArbError(msg);
+          }
+        }
+        const toAdd = nameArgs.filter((n) => !currentDefaults.includes(n));
+        const alreadyDefault = nameArgs.length - toAdd.length;
+        const updated = [...currentDefaults, ...toAdd];
+        configSetList(configFile, "defaults", updated);
+        if (alreadyDefault > 0) {
+          success(
+            `Added ${plural(toAdd.length, "repo")} to defaults (${plural(alreadyDefault, "repo")} already ${alreadyDefault === 1 ? "was" : "were"} default)`,
+          );
+        } else {
+          success(`Added ${plural(toAdd.length, "repo")} to defaults`);
+        }
+      }
     });
 }

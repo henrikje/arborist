@@ -2,6 +2,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import checkbox from "@inquirer/checkbox";
 import confirm from "@inquirer/confirm";
+import { configGetList } from "../core/config";
 import { ArbError } from "../core/errors";
 import { error } from "../terminal/output";
 
@@ -30,6 +31,11 @@ export function listRepos(reposDir: string): string[] {
     .sort();
 }
 
+export function listDefaultRepos(arbRootDir: string): Set<string> {
+  const configFile = join(arbRootDir, ".arb", "config");
+  return new Set(configGetList(configFile, "defaults"));
+}
+
 export function workspaceRepoDirs(wsDir: string): string[] {
   if (!existsSync(wsDir)) return [];
   return readdirSync(wsDir)
@@ -40,7 +46,7 @@ export function workspaceRepoDirs(wsDir: string): string[] {
     .sort();
 }
 
-export async function selectInteractive(items: string[], message: string): Promise<string[]> {
+export async function selectInteractive(items: string[], message: string, defaults?: Set<string>): Promise<string[]> {
   if (items.length === 0) {
     throw new Error("No items to select");
   }
@@ -59,7 +65,7 @@ export async function selectInteractive(items: string[], message: string): Promi
   return checkbox(
     {
       message,
-      choices: items.map((name) => ({ name, value: name })),
+      choices: items.map((name) => ({ name, value: name, checked: defaults?.has(name) ?? false })),
       pageSize: 20,
       loop: false,
     },
@@ -67,7 +73,7 @@ export async function selectInteractive(items: string[], message: string): Promi
   );
 }
 
-export async function selectReposInteractive(reposDir: string): Promise<string[]> {
+export async function selectReposInteractive(reposDir: string, defaults?: Set<string>): Promise<string[]> {
   const repos = listRepos(reposDir);
   if (repos.length === 0) {
     throw new Error("No repos found. Clone a repo first: arb repo clone <url>");
@@ -75,7 +81,7 @@ export async function selectReposInteractive(reposDir: string): Promise<string[]
   return checkbox(
     {
       message: "Repos:",
-      choices: repos.map((name) => ({ name, value: name })),
+      choices: repos.map((name) => ({ name, value: name, checked: defaults?.has(name) ?? false })),
       validate: (selected) => (selected.length > 0 ? true : "At least one repo must be selected."),
       pageSize: 20,
       loop: false,
