@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, rmSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { branchExistsLocally, git, isRepoDirty, remoteBranchExists } from "../git/git";
 import { GitCache } from "../git/git-cache";
@@ -39,6 +39,7 @@ export async function addWorktrees(
       continue;
     }
 
+    let needsRelink = false;
     if (existsSync(`${wsDir}/${repo}`)) {
       if (isWorktreeRefValid(join(wsDir, repo))) {
         warn(`  [${repo}] already exists — skipping`);
@@ -48,15 +49,20 @@ export async function addWorktrees(
       // Stale worktree reference — check if directory has user files
       const entries = readdirSync(`${wsDir}/${repo}`).filter((e) => e !== ".git");
       if (entries.length > 0) {
-        error(
-          `  [${repo}] directory exists with stale worktree reference and contains files — remove it manually or back up your changes first`,
-        );
-        result.failed.push(repo);
-        continue;
+        // Directory has user files — will re-link in place using a temp worktree
+        warn(`  [${repo}] re-linking stale worktree in place — existing files will appear as uncommitted changes`);
+        const staleGitFile = join(wsDir, repo, ".git");
+        if (existsSync(staleGitFile)) unlinkSync(staleGitFile);
+        removeWorktreeEntriesForPath(repoPath, `${wsDir}/${repo}`);
+        // Clean up leftover temp dir from a previously interrupted re-link
+        const tmpPath = `${wsDir}/${repo}.__arb_relink__`;
+        if (existsSync(tmpPath)) rmSync(tmpPath, { recursive: true });
+        needsRelink = true;
+      } else {
+        // Empty directory (or just .git) — safe to remove and recreate
+        warn(`  [${repo}] stale worktree reference — recreating`);
+        rmSync(`${wsDir}/${repo}`, { recursive: true });
       }
-      // Empty directory (or just .git) — safe to remove and recreate
-      warn(`  [${repo}] stale worktree reference — recreating`);
-      rmSync(`${wsDir}/${repo}`, { recursive: true });
     }
 
     if (await isRepoDirty(repoPath)) {
@@ -102,15 +108,23 @@ export async function addWorktrees(
 
     const branchExists = await branchExistsLocally(repoPath, branch);
 
+    // When re-linking, create the worktree at a temp path so we can transplant
+    // the .git file back to the real directory without touching user files.
+    const wtTarget = needsRelink ? `${wsDir}/${repo}.__arb_relink__` : `${wsDir}/${repo}`;
+
     // Remove the specific stale worktree entry at the exact path we're about to
     // use, if one exists. This is more surgical than pruning all stale entries in
     // the workspace — it only removes the single entry that would block the
     // upcoming `git worktree add`.
-    await removeStaleEntryAtPath(repoPath, `${wsDir}/${repo}`);
+    await removeStaleEntryAtPath(repoPath, wtTarget);
+
+    // When re-linking, skip checkout — we only need the worktree entry and .git
+    // file, not a full working tree (the real directory already has files).
+    const noCheckout = needsRelink ? ["--no-checkout"] : [];
 
     if (branchExists) {
       inlineStart(repo, `attaching branch ${branch}`);
-      const wt = await git(repoPath, "worktree", "add", `${wsDir}/${repo}`, branch);
+      const wt = await git(repoPath, "worktree", "add", ...noCheckout, wtTarget, branch);
       if (wt.exitCode !== 0) {
         inlineResult(repo, "failed");
         const errText = wt.stderr.trim();
@@ -122,7 +136,7 @@ export async function addWorktrees(
     } else if (shareRemote && (await remoteBranchExists(repoPath, branch, shareRemote))) {
       const startPoint = `${shareRemote}/${branch}`;
       inlineStart(repo, `checking out branch ${branch} from ${startPoint}`);
-      const wt = await git(repoPath, "worktree", "add", "--track", "-b", branch, `${wsDir}/${repo}`, startPoint);
+      const wt = await git(repoPath, "worktree", "add", ...noCheckout, "--track", "-b", branch, wtTarget, startPoint);
       if (wt.exitCode !== 0) {
         inlineResult(repo, "failed");
         const errText = wt.stderr.trim();
@@ -139,7 +153,17 @@ export async function addWorktrees(
       // branching from a remote ref. We rely on tracking config being absent for fresh
       // branches and present only after `arb push -u`, so we can detect "gone" branches
       // (pushed, merged, remote branch deleted) vs never-pushed branches.
-      const wt = await git(repoPath, "worktree", "add", "--no-track", "-b", branch, `${wsDir}/${repo}`, startPoint);
+      const wt = await git(
+        repoPath,
+        "worktree",
+        "add",
+        ...noCheckout,
+        "--no-track",
+        "-b",
+        branch,
+        wtTarget,
+        startPoint,
+      );
       if (wt.exitCode !== 0) {
         inlineResult(repo, "failed");
         const errText = wt.stderr.trim();
@@ -149,6 +173,16 @@ export async function addWorktrees(
       }
       inlineResult(repo, `branch ${branch} created from ${startPoint}`);
       result.createdBranches.push(repo);
+    }
+
+    // Transplant the .git file from the temp worktree to the real directory
+    if (needsRelink) {
+      if (!relinkWorktreeInPlace(wtTarget, `${wsDir}/${repo}`)) {
+        error(`  [${repo}] failed to re-link worktree in place`);
+        await git(repoPath, "worktree", "remove", "--force", wtTarget);
+        result.failed.push(repo);
+        continue;
+      }
     }
 
     // After creating the worktree, clean up stale `.git` files in other workspaces
@@ -230,6 +264,80 @@ async function removeStaleEntryAtPath(repoPath: string, targetPath: string): Pro
     }
   }
   return false;
+}
+
+/**
+ * Remove worktree entries in the canonical repo whose `gitdir` back-reference
+ * points to `targetPath/.git`. Unlike `removeStaleEntryAtPath` (which bails when
+ * the target directory exists on disk), this operates on the entry's content and
+ * works even when the target directory is present but has a missing/stale `.git`.
+ */
+function removeWorktreeEntriesForPath(repoPath: string, targetPath: string): void {
+  const worktreesDir = join(repoPath, ".git", "worktrees");
+  let entries: string[];
+  try {
+    entries = readdirSync(worktreesDir);
+  } catch {
+    return;
+  }
+
+  const targetGitPath = join(targetPath, ".git");
+  for (const entry of entries) {
+    const entryDir = join(worktreesDir, entry);
+    const gitdirFile = join(entryDir, "gitdir");
+    try {
+      const content = readFileSync(gitdirFile, "utf-8").trim();
+      if (content === targetGitPath) {
+        rmSync(entryDir, { recursive: true });
+      }
+    } catch {}
+  }
+}
+
+/**
+ * Transplant a worktree's `.git` reference from a temporary path to the real
+ * directory. Updates the canonical repo's back-reference first (safe ordering:
+ * the temp worktree remains functional if the second write fails), then writes
+ * the `.git` file into the real directory, and finally removes the temp directory.
+ */
+function relinkWorktreeInPlace(tmpPath: string, realPath: string): boolean {
+  const tmpGitFile = join(tmpPath, ".git");
+  const realGitFile = join(realPath, ".git");
+
+  let gitdirContent: string;
+  try {
+    gitdirContent = readFileSync(tmpGitFile, "utf-8").trim();
+  } catch {
+    return false;
+  }
+  if (!gitdirContent.startsWith("gitdir: ")) return false;
+
+  const entryDir = gitdirContent.slice("gitdir: ".length);
+  const gitdirBackRef = join(entryDir, "gitdir");
+
+  // Step 1: Update the canonical entry's back-reference to point to the real path.
+  // Safe to do first — the temp worktree still has its .git file.
+  try {
+    writeFileSync(gitdirBackRef, `${realGitFile}\n`);
+  } catch {
+    return false;
+  }
+
+  // Step 2: Write the .git file into the real directory.
+  try {
+    writeFileSync(realGitFile, `${gitdirContent}\n`);
+  } catch {
+    // Revert step 1 so the temp worktree stays functional
+    try {
+      writeFileSync(gitdirBackRef, `${tmpGitFile}\n`);
+    } catch {}
+    return false;
+  }
+
+  // Step 3: Remove the temp directory (best-effort — the re-link is already done)
+  rmSync(tmpPath, { recursive: true, force: true });
+
+  return true;
 }
 
 /**
