@@ -385,6 +385,120 @@ describe("assessPushRepo", () => {
     expect(a.rebased).toBe(1);
   });
 
+  test("will-force-push-outdated when all remote commits are replaced (squash scenario)", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 1,
+          toPull: 3,
+          rebased: 0,
+          replaced: 3,
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("will-force-push-outdated");
+    expect(a.ahead).toBe(1);
+    expect(a.behind).toBe(3);
+    expect(a.replaced).toBe(3);
+  });
+
+  test("will-force-push-outdated when all remote commits are rebased", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 3,
+          toPull: 3,
+          rebased: 3,
+          replaced: null,
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("will-force-push-outdated");
+    expect(a.ahead).toBe(3);
+    expect(a.behind).toBe(3);
+    expect(a.rebased).toBe(3);
+  });
+
+  test("will-force-push-outdated when rebased + replaced covers all remote commits", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 2,
+          toPull: 3,
+          rebased: 2,
+          replaced: 1,
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("will-force-push-outdated");
+    expect(a.ahead).toBe(2);
+    expect(a.behind).toBe(3);
+  });
+
+  test("will-force-push when rebased and replaced are both null (no reflog)", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 1,
+          toPull: 3,
+          rebased: null,
+          replaced: null,
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("will-force-push");
+    expect(a.ahead).toBe(1);
+    expect(a.behind).toBe(3);
+    expect(a.rebased).toBe(0);
+    expect(a.replaced).toBe(0);
+  });
+
+  test("will-force-push when not all remote commits are accounted for", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 2,
+          toPull: 3,
+          rebased: 1,
+          replaced: 0,
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("will-force-push");
+    expect(a.ahead).toBe(2);
+    expect(a.behind).toBe(3);
+  });
+
   test("will-push normal push", () => {
     const a = assessPushRepo(
       makeRepo({
@@ -529,6 +643,7 @@ describe("formatPushPlan", () => {
       ahead: 2,
       behind: 0,
       rebased: 0,
+      replaced: 0,
       baseAhead: 0,
       baseRef: "main",
       branch: "feature",
@@ -597,6 +712,26 @@ describe("formatPushPlan", () => {
     );
     expect(plan).toContain("(force");
     expect(plan).toContain("2 behind origin");
+  });
+
+  test("shows outdated count for will-force-push-outdated (squash scenario)", () => {
+    const plan = formatPushPlan(
+      [makeAssessment({ outcome: "will-force-push-outdated", ahead: 1, behind: 3, rebased: 0, replaced: 3 })],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("1 commit to push");
+    expect(plan).toContain("replaces 3 outdated on origin");
+    expect(plan).not.toContain("force");
+  });
+
+  test("shows outdated with rebased count for will-force-push-outdated (rebase scenario)", () => {
+    const plan = formatPushPlan(
+      [makeAssessment({ outcome: "will-force-push-outdated", ahead: 3, behind: 3, rebased: 3, baseAhead: 3 })],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("3 rebased");
+    expect(plan).toContain("replaces 3 outdated on origin");
+    expect(plan).not.toContain("force");
   });
 
   test("shows up-to-date", () => {

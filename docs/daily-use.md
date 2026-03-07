@@ -113,12 +113,14 @@ arb pull
 arb pull --rebase     # pull with rebase instead of the default merge
 arb pull --merge      # pull with merge commit
 arb push
-arb push --force      # after rebasing (prompts for confirmation)
+arb push --force      # when genuinely diverged from remote (prompts for confirmation)
 ```
+
+After a rebase, amend, or squash, `arb push` detects that all remote commits are outdated (already reflected in your local history) and pushes automatically with `--force-with-lease` — no `--force` flag needed. Use `--force` only when the remote has genuinely new commits from someone else.
 
 When a collaborator force-pushes a rebased branch and you have no unique local commits to preserve, `arb pull --merge` shows a **safe reset** action in the plan and resets to the rewritten remote tip instead of attempting a three-way merge.
 
-If you add commits to a branch that was already merged (squash or regular), Arborist detects it and blocks `arb push` with a warning. Run `arb rebase` to replay only the new commits onto the updated base, then `arb push --force` and create a new PR.
+If you add commits to a branch that was already merged (squash or regular), Arborist detects it and blocks `arb push` with a warning. Run `arb rebase` to replay only the new commits onto the updated base, then `arb push` and create a new PR.
 
 If you intentionally want to push an already merged branch anyway (for example to restore a deleted remote branch), use `arb push --include-merged`.
 

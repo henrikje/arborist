@@ -5,7 +5,7 @@
 Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, `merge`, `branch rename`, `delete`, and `clean`. Without this flag, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
 
 ```bash
-arb rebase --yes && arb push --force --yes
+arb rebase --yes && arb push --yes
 ```
 
 ## Dry run

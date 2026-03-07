@@ -17,12 +17,13 @@ import { requireBranch, requireWorkspace, resolveRepoSelection, workspaceRepoDir
 export interface PushAssessment {
   repo: string;
   repoDir: string;
-  outcome: "will-push" | "will-force-push" | "up-to-date" | "skip";
+  outcome: "will-push" | "will-force-push" | "will-force-push-outdated" | "up-to-date" | "skip";
   skipReason?: string;
   skipFlag?: SkipFlag;
   ahead: number;
   behind: number;
   rebased: number;
+  replaced: number;
   baseAhead: number;
   baseRef: string;
   branch: string;
@@ -48,7 +49,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
     .option("-w, --where <filter>", "Only push repos matching status filter (comma = OR, + = AND, ^ = negate)")
     .summary("Push the feature branch to the share remote")
     .description(
-      "Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos with no commits to push, or whose branches have been merged into the base branch unless --include-merged is used. If a remote branch was deleted after merge, use --include-merged to recreate it. Use --force after rebase or amend to force push with lease. Use --verbose to show the outgoing commits for each repo in the plan. Fetches before push by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
+      "Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos with no commits to push, or whose branches have been merged into the base branch unless --include-merged is used. If a remote branch was deleted after merge, use --include-merged to recreate it. After rebase, amend, or squash, Arborist detects that all remote commits are outdated and pushes automatically with --force-with-lease. Use --force when the remote has genuinely new commits that you want to overwrite. Use --verbose to show the outgoing commits for each repo in the plan. Fetches before push by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
     )
     .action(
       async (
@@ -128,7 +129,10 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
           onPostFetch: () => cache.invalidateAfterFetch(),
         });
 
-        const willPush = assessments.filter((a) => a.outcome === "will-push" || a.outcome === "will-force-push");
+        const willPush = assessments.filter(
+          (a) =>
+            a.outcome === "will-push" || a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated",
+        );
         const upToDate = assessments.filter((a) => a.outcome === "up-to-date");
         const skipped = assessments.filter((a) => a.outcome === "skip");
 
@@ -156,7 +160,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
         for (const a of willPush) {
           inlineStart(a.repo, "pushing");
           const pushArgs =
-            a.outcome === "will-force-push"
+            a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated"
               ? ["push", "-u", "--force-with-lease", a.shareRemote, a.branch]
               : ["push", "-u", a.shareRemote, a.branch];
           const pushResult = await git(a.repoDir, ...pushArgs);
@@ -217,7 +221,7 @@ export function buildPushPlanNodes(
 
   const rows = assessments.map((a) => {
     let actionCell: Cell;
-    if (a.outcome === "will-push" || a.outcome === "will-force-push") {
+    if (a.outcome === "will-push" || a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated") {
       actionCell = pushActionCell(a, remotesMap);
     } else if (a.outcome === "up-to-date") {
       actionCell = upToDateCell();
@@ -228,7 +232,7 @@ export function buildPushPlanNodes(
     let afterRow: OutputNode[] | undefined;
     if (
       verbose &&
-      (a.outcome === "will-push" || a.outcome === "will-force-push") &&
+      (a.outcome === "will-push" || a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated") &&
       a.commits &&
       a.commits.length > 0
     ) {
@@ -252,7 +256,9 @@ export function buildPushPlanNodes(
   });
 
   const behindBaseCount = assessments.filter(
-    (a) => (a.outcome === "will-push" || a.outcome === "will-force-push") && a.behindBase > 0,
+    (a) =>
+      (a.outcome === "will-push" || a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated") &&
+      a.behindBase > 0,
   ).length;
   if (behindBaseCount > 0) {
     nodes.push({
@@ -299,6 +305,32 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
     return base;
   }
 
+  // will-force-push-outdated — all remote commits are accounted for (rebased or replaced)
+  if (a.outcome === "will-force-push-outdated") {
+    const outdatedSuffix = ` (replaces ${a.behind} outdated on ${a.shareRemote})`;
+    if (a.rebased > 0) {
+      const fromBase = Math.max(0, a.ahead - a.baseAhead);
+      const newCount = Math.max(0, a.baseAhead - a.rebased);
+      const parts: string[] = [];
+      if (fromBase > 0) parts.push(`${fromBase} from ${a.baseRef}`);
+      if (a.rebased > 0) parts.push(`${a.rebased} rebased`);
+      if (newCount > 0) parts.push(`${newCount} new`);
+      const desc = parts.join(" + ");
+      let base = cell(`${desc} to push${outdatedSuffix}`);
+      if (a.behindBase > 0) {
+        base = suffix(base, ` (${a.behindBase} behind base)`, "attention");
+      }
+      if (a.headSha) base = suffix(base, `  (HEAD ${a.headSha})`, "muted");
+      return base;
+    }
+    let base = cell(`${plural(a.ahead, "commit")} to push${outdatedSuffix}`);
+    if (a.behindBase > 0) {
+      base = suffix(base, ` (${a.behindBase} behind base)`, "attention");
+    }
+    if (a.headSha) base = suffix(base, `  (HEAD ${a.headSha})`, "muted");
+    return base;
+  }
+
   // will-force-push
   if (a.rebased > 0) {
     const fromBase = Math.max(0, a.ahead - a.baseAhead);
@@ -331,7 +363,9 @@ async function gatherPushVerboseCommits(
 ): Promise<void> {
   await Promise.all(
     assessments
-      .filter((a) => a.outcome === "will-push" || a.outcome === "will-force-push")
+      .filter(
+        (a) => a.outcome === "will-push" || a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated",
+      )
       .map(async (a) => {
         const shareRemote = remotesMap.get(a.repo)?.share;
         if (!shareRemote) return;
@@ -367,6 +401,7 @@ export function assessPushRepo(
     ahead: 0,
     behind: 0,
     rebased: 0,
+    replaced: 0,
     baseAhead: status.base?.ahead ?? 0,
     baseRef: status.base?.ref ?? "base",
     branch,
@@ -466,7 +501,12 @@ export function assessPushRepo(
 
   if (toPush > 0 && toPull > 0) {
     const rebased = status.share.rebased ?? 0;
-    return { ...base, outcome: "will-force-push", ahead: toPush, behind: toPull, rebased };
+    const replaced = status.share.replaced ?? 0;
+    const allOutdated = rebased + replaced >= toPull;
+    if (allOutdated) {
+      return { ...base, outcome: "will-force-push-outdated", ahead: toPush, behind: toPull, rebased, replaced };
+    }
+    return { ...base, outcome: "will-force-push", ahead: toPush, behind: toPull, rebased, replaced };
   }
 
   return { ...base, outcome: "will-push", ahead: toPush };
