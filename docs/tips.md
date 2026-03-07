@@ -71,3 +71,34 @@ Use `arb list` with `--fetch` and `--where` to triage across all workspaces:
 arb list --fetch --where at-risk      # which workspaces might lose work?
 arb list --where stale                # which workspaces haven't been touched lately?
 ```
+
+## Recovering commits accidentally added to a merged branch
+
+After a PR is merged and the remote branch is deleted, `arb status` marks the workspace as `gone`. If you accidentally commit new work to that merged branch instead of starting fresh, `arb rebase` detects the situation automatically and replays only the new commits onto the base.
+
+Run `arb rebase` — it identifies which commits were part of the merged PR and which are genuinely new, and shows you a plan:
+
+```
+  REPO   ACTION
+  api    rebase onto origin/main (merged) — rebase 2 new commits
+  web    rebase onto origin/main (merged) — rebase 1 new commit
+```
+
+The `(merged)` marker means Arborist detected that the branch was already merged and will use `rebase --onto` to graft only the new commits onto `origin/main`, discarding everything that was already merged. Confirm to proceed.
+
+If you have uncommitted changes in any repo, pass `--autostash` to stash them before the rebase and restore them after:
+
+```
+  REPO   ACTION
+  api    rebase onto origin/main (merged) — rebase 2 new commits (autostash)
+  web    rebase onto origin/main (merged) — rebase 1 new commit (autostash)
+```
+
+`arb rebase` handles both the committed and uncommitted work in a single step.
+
+Once the commits are in the right place, rename the workspace branch and push:
+
+```bash
+arb branch rename feat/PROJ-456      # give the new work its own branch name
+arb push                             # push the new branch to the remote
+```
