@@ -9,6 +9,7 @@ import { registerCreateCommand } from "./commands/create";
 import { registerDeleteCommand } from "./commands/delete";
 import { registerDetachCommand } from "./commands/detach";
 import { registerDiffCommand } from "./commands/diff";
+import { registerDumpCommand } from "./commands/dump";
 import { registerExecCommand } from "./commands/exec";
 import { registerHelpCommand } from "./commands/help";
 import { registerInitCommand } from "./commands/init";
@@ -228,6 +229,7 @@ registerMergeCommand(program, getCtx);
 registerExecCommand(program, getCtx);
 registerLogCommand(program, getCtx);
 registerDiffCommand(program, getCtx);
+registerDumpCommand(program, getCtx);
 registerOpenCommand(program, getCtx);
 registerTemplateCommand(program, getCtx);
 

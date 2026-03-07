@@ -51,7 +51,7 @@ Organized into semantic subdirectories. Each directory has a barrel `index.ts` r
 
 ### Code Style
 
-- Indent with tabs (not spaces). Biome enforces: tabs, 120 char line width, double quotes, always semicolons
+- Indent with spaces (2-space). Biome enforces: spaces, 120 char line width, double quotes, always semicolons
 - Conventional commits enforced via commitlint
 - Use `PROJ-xxx` as the example ticket key prefix in documentation and examples. Use `ACME-xxx` when a second distinct prefix is needed
 - Strict TypeScript with `noUncheckedIndexedAccess`
