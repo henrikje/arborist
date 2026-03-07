@@ -8,14 +8,14 @@ Based on [Git worktrees](https://git-scm.com/docs/git-worktree), Arborist comple
 
 ## Mental model
 
-Git worktrees make it possible to check out multiple branches of the same repository at the same time, each in its own directory. Arborist builds on this by keeping a stable canonical clone of each repository and creating temporary workspaces for actual development.
+Git worktrees make it possible to check out multiple branches of the same repository at the same time, each in its own directory. Arborist builds on this by keeping a stable reference clone (a clean, unchanged copy of the repository that is never directly modified) of each repository and creating temporary workspaces for actual development.
 
 Here's what that looks like on disk:
 
 ```
 ~/my-project/
 ├── .arb/repos/
-│   ├── frontend/           ← canonical clones, managed by Arborist
+│   ├── frontend/           ← reference clones, managed by Arborist
 │   ├── backend/
 │   └── shared/
 │
@@ -27,7 +27,7 @@ Here's what that looks like on disk:
     └── frontend/
 ```
 
-You work in the workspaces. Each workspace represents one feature or issue. It contains a working copy of each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete. The canonical clones under `.arb/` are managed by Arborist — you never touch them directly.
+You work in the workspaces. Each workspace represents one feature or issue. It contains a working copy of each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete. The reference clones under `.arb/` are managed by Arborist — you never touch them directly.
 
 Keeping your work in sync involves two axes:
 
