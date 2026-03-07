@@ -7,6 +7,7 @@ Arb uses marker directories and Git worktrees — no database, no daemon, no con
 ```
 ~/my-project/
 ├── .arb/
+│   ├── config                   # project-level settings (e.g. default repos)
 │   └── repos/
 │       ├── frontend/            # canonical clone
 │       ├── backend/

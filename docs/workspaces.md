@@ -104,6 +104,34 @@ arb delete fix-login
 
 This shows the status of each repo and walks you through deletion. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before deleting the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-safe` to batch-delete every workspace with safe status. Combine `--all-safe --where gone` to target merged-and-safe workspaces specifically. See `arb delete --help` for all options.
 
+## Default repos
+
+If you always include the same repos when creating workspaces, mark them as defaults:
+
+```bash
+arb repo default frontend backend shared
+```
+
+Default repos are pre-selected in the interactive repo picker when running `arb create` or `arb attach`. You can still uncheck them — defaults are suggestions, not mandates.
+
+In non-interactive mode (CI, scripts), defaults are used as the fallback repo set when no repos are specified via arguments, stdin, or `--all-repos`:
+
+```bash
+arb create my-feature                    # uses default repos
+arb create my-feature api shared         # explicit repos override defaults
+arb create my-feature --all-repos        # --all-repos overrides defaults
+```
+
+Manage defaults with `arb repo default`:
+
+```bash
+arb repo default                         # list current defaults
+arb repo default api                     # add api to defaults
+arb repo default -r api                  # remove api from defaults
+```
+
+Defaults are stored in `.arb/config` and can be committed to version control so the team shares the same project-level configuration. Removing a repo with `arb repo remove` automatically cleans up its default entry.
+
 ## List repos
 
 To see which repositories have been cloned into the project:

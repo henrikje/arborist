@@ -20,6 +20,7 @@ import {
   applyRepoTemplates,
   applyWorkspaceTemplates,
   displayOverlaySummary,
+  listDefaultRepos,
   listRepos,
   rollbackWorktrees,
   selectReposInteractive,
@@ -187,9 +188,15 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
           }
         }
 
+        const defaults = listDefaultRepos(ctx.arbRootDir);
+
+        if (repos.length === 0 && !process.stdin.isTTY && defaults.size > 0) {
+          repos = [...defaults].filter((r) => allKnownRepos.includes(r));
+        }
+
         if (repos.length === 0 && process.stdin.isTTY) {
           try {
-            repos = await selectReposInteractive(ctx.reposDir);
+            repos = await selectReposInteractive(ctx.reposDir, defaults);
           } catch (e) {
             error((e as Error).message);
             throw new ArbError((e as Error).message);
