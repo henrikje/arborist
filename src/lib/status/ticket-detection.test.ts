@@ -53,6 +53,14 @@ describe("detectTicketFromName", () => {
     expect(detectTicketFromName("42-fix")).toBeNull();
   });
 
+  test("does not match when digits are followed by letters", () => {
+    expect(detectTicketFromName("add-debug-command-60ZRQ")).toBeNull();
+  });
+
+  test("does not match when prefix is preceded by a digit", () => {
+    expect(detectTicketFromName("fix-0COMMAND-60")).toBeNull();
+  });
+
   test("PR-prefixed token is skipped", () => {
     expect(detectTicketFromName("svc-riskman-pr-74")).toBeNull();
   });
