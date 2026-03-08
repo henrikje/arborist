@@ -156,6 +156,61 @@ describe("create with defaults", () => {
     }));
 });
 
+// ── create --yes ────────────────────────────────────────────────
+
+describe("create --yes", () => {
+  test("arb create --yes uses default repos", () =>
+    withEnv(async (env) => {
+      await arb(env, ["repo", "default", "repo-a"]);
+      const result = await arb(env, ["create", "my-feature", "--yes"]);
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(join(env.projectDir, "my-feature/repo-a"))).toBe(true);
+      expect(existsSync(join(env.projectDir, "my-feature/repo-b"))).toBe(false);
+    }));
+
+  test("arb create -y uses default repos", () =>
+    withEnv(async (env) => {
+      await arb(env, ["repo", "default", "repo-a", "repo-b"]);
+      const result = await arb(env, ["create", "my-feature", "-y"]);
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(join(env.projectDir, "my-feature/repo-a"))).toBe(true);
+      expect(existsSync(join(env.projectDir, "my-feature/repo-b"))).toBe(true);
+    }));
+
+  test("arb create --yes fails when no defaults configured", () =>
+    withEnv(async (env) => {
+      const result = await arb(env, ["create", "my-feature", "--yes"]);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("No default repos configured");
+    }));
+
+  test("arb create --yes with no name fails", () =>
+    withEnv(async (env) => {
+      await arb(env, ["repo", "default", "repo-a"]);
+      const result = await arb(env, ["create", "--yes"]);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Usage:");
+    }));
+
+  test("arb create --yes with explicit repos ignores defaults", () =>
+    withEnv(async (env) => {
+      await arb(env, ["repo", "default", "repo-a"]);
+      const result = await arb(env, ["create", "my-feature", "repo-b", "--yes"]);
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(join(env.projectDir, "my-feature/repo-a"))).toBe(false);
+      expect(existsSync(join(env.projectDir, "my-feature/repo-b"))).toBe(true);
+    }));
+
+  test("arb create --yes with --all-repos includes all repos", () =>
+    withEnv(async (env) => {
+      await arb(env, ["repo", "default", "repo-a"]);
+      const result = await arb(env, ["create", "my-feature", "--yes", "--all-repos"]);
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(join(env.projectDir, "my-feature/repo-a"))).toBe(true);
+      expect(existsSync(join(env.projectDir, "my-feature/repo-b"))).toBe(true);
+    }));
+});
+
 // ── repo remove leaves defaults unchanged ────────────────────────
 
 describe("repo remove leaves defaults unchanged", () => {

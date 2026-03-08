@@ -270,6 +270,7 @@ _arb() {
                         '(-b --branch)'{-b,--branch}'[Branch name]:branch:' \
                         '--base[Base branch to branch from]:branch:' \
                         '(-a --all-repos)'{-a,--all-repos}'[Include all repos in this root]' \
+                        '(-y --yes)'{-y,--yes}'[Skip interactive prompts and use configured defaults]' \
                         '(-N --fetch --no-fetch)--fetch[Fetch before creating (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-fetch]' \
                         '1:name:' \

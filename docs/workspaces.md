@@ -113,10 +113,11 @@ arb repo default frontend backend shared
 
 Default repos are pre-selected in the interactive repo picker when running `arb create` or `arb attach`. You can still uncheck them — defaults are suggestions, not mandates.
 
-In non-interactive mode (CI, scripts), defaults are used as the fallback repo set when no repos are specified via arguments, stdin, or `--all-repos`:
+Use `--yes` (`-y`) to skip the interactive repo picker and use defaults directly. In non-interactive mode (CI, scripts), defaults are used automatically as the fallback repo set when no repos are specified via arguments, stdin, or `--all-repos`:
 
 ```bash
-arb create my-feature                    # uses default repos
+arb create my-feature --yes              # skip prompt, use default repos
+arb create my-feature                    # uses default repos (non-interactive)
 arb create my-feature api shared         # explicit repos override defaults
 arb create my-feature --all-repos        # --all-repos overrides defaults
 ```

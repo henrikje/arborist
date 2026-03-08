@@ -50,6 +50,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
     .option("-b, --branch <branch>", "Branch name")
     .option("--base <branch>", "Base branch to branch from")
     .option("-a, --all-repos", "Include all repos")
+    .option("-y, --yes", "Skip interactive prompts and use configured defaults")
     .option("--fetch", "Fetch before creating (default)")
     .option("-N, --no-fetch", "Skip pre-fetch")
     .summary("Create a new workspace")
@@ -60,11 +61,12 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
       async (
         nameArg: string | undefined,
         repoArgs: string[],
-        options: { branch?: string; base?: string; allRepos?: boolean; fetch?: boolean },
+        options: { branch?: string; base?: string; allRepos?: boolean; yes?: boolean; fetch?: boolean },
       ) => {
         const ctx = getCtx();
         const isInteractive = process.stdin.isTTY === true;
-        const isBareGuidedCreate = isInteractive && !nameArg && repoArgs.length === 0 && !options.branch;
+        const isBareGuidedCreate =
+          isInteractive && !nameArg && repoArgs.length === 0 && !options.branch && !options.yes;
         const allKnownRepos = listRepos(ctx.reposDir);
 
         if (allKnownRepos.length === 0) {
@@ -84,7 +86,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 
         let name = nameArg ?? derivedName ?? undefined;
         if (!name) {
-          if (!process.stdin.isTTY) {
+          if (!process.stdin.isTTY || options.yes) {
             const msg = "Usage: arb create <name> [repos...]";
             error(msg);
             throw new ArbError(msg);
@@ -192,8 +194,14 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 
         const defaults = listDefaultRepos(ctx.arbRootDir);
 
-        if (repos.length === 0 && !process.stdin.isTTY && defaults.size > 0) {
+        if (repos.length === 0 && (!process.stdin.isTTY || options.yes) && defaults.size > 0) {
           repos = [...defaults].filter((r) => allKnownRepos.includes(r));
+        }
+
+        if (repos.length === 0 && options.yes) {
+          const msg = "No default repos configured. Set defaults with: arb repo default <repo>";
+          error(msg);
+          throw new ArbError(msg);
         }
 
         if (repos.length === 0 && process.stdin.isTTY) {
