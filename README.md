@@ -36,7 +36,7 @@ Keeping your work in sync involves two axes:
 | **Integration** | `rebase`, `merge` | Keep your feature branch up to date with the base branch     |
 | **Sharing**     | `push`, `pull`    | Share your feature branch with collaborators                 |
 
-Arborist's synchronization commands handle this across all repos at once.
+Arborist's synchronization commands handle this across all repos at once. Under the hood, Arborist tracks the identity and state of commits across both axes — detecting rebases, squash merges, and conflicts before they happen — so its commands can tell you what's safe before you act.
 
 ## Install
 
