@@ -2,26 +2,26 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { arb, git, initBareRepo, withEnv, write } from "./helpers/env";
+import { arb, git, initBareRepo, withBareEnv, withEnv, write } from "./helpers/env";
 
 // ── version & help ───────────────────────────────────────────────
 
 describe("version & help", () => {
   test("arb --version outputs version number", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["--version"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toMatch(/^Arborist (dev\.[0-9a-f]+|[0-9]+\.[0-9]+\.[0-9]+)/);
     }));
 
   test("arb version is treated as unknown command", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["version"]);
       expect(result.exitCode).not.toBe(0);
     }));
 
   test("arb -v outputs version number", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["-v"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toMatch(/^Arborist (dev\.[0-9a-f]+|[0-9]+\.[0-9]+\.[0-9]+)/);
@@ -32,7 +32,7 @@ describe("version & help", () => {
 
 describe("bare arb (shows help)", () => {
   test("bare arb shows help with usage and commands", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, []);
       expect(result.output).toContain("Usage:");
       expect(result.output).toContain("Commands:");
@@ -97,7 +97,7 @@ describe("repo list", () => {
     }));
 
   test("arb repo list outside project fails", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["repo", "list"], { cwd: "/tmp" });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("Not inside a project");
@@ -108,7 +108,7 @@ describe("repo list", () => {
 
 describe("help", () => {
   test("arb help shows full usage text", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["help"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("Usage:");
@@ -116,21 +116,21 @@ describe("help", () => {
     }));
 
   test("arb --help shows usage", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["--help"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("Usage:");
     }));
 
   test("arb -h shows usage", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["-h"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("Usage:");
     }));
 
   test("arb help where shows filter syntax reference", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["help", "where"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("WHERE FILTER SYNTAX");
@@ -141,7 +141,7 @@ describe("help", () => {
     }));
 
   test("arb help status shows status command help", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["help", "status"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("arb status");
@@ -149,49 +149,49 @@ describe("help", () => {
     }));
 
   test("arb help remotes shows remote roles reference", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["help", "remotes"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("REMOTE ROLES");
     }));
 
   test("arb help stacked shows stacked workspaces reference", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["help", "stacked"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("STACKED WORKSPACES");
     }));
 
   test("arb help templates shows template reference", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["help", "templates"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("TEMPLATE");
     }));
 
   test("arb help scripting shows scripting reference", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["help", "scripting"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("SCRIPTING");
     }));
 
   test("arb help nonexistent shows error", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["help", "nonexistent"]);
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("Unknown command or topic");
     }));
 
   test("unknown command shows error", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["nonsense"]);
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("unknown command");
     }));
 
   test("commands outside project fail with helpful message", () =>
-    withEnv(async (env) => {
+    withBareEnv(async (env) => {
       const result = await arb(env, ["list"], { cwd: "/tmp" });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("Not inside a project");
