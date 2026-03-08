@@ -207,7 +207,7 @@ __arb_complete_repo() {
             ;;
         remove)
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--all-repos --yes -n --dry-run" -- "$cur"))
+                COMPREPLY=($(compgen -W "-a --all-repos -y --yes -n --dry-run" -- "$cur"))
             else
                 local repo_names
                 repo_names=$(__arb_repo_names "$base_dir")
@@ -232,7 +232,7 @@ __arb_complete_repo() {
 __arb_complete_create() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-b --branch --base -a --all-repos" -- "$cur"))
+        COMPREPLY=($(compgen -W "-b --branch --base -a --all-repos --fetch -N --no-fetch" -- "$cur"))
         return
     fi
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
@@ -362,7 +362,7 @@ __arb_complete_cd() {
 __arb_complete_attach() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-a --all-repos" -- "$cur"))
+        COMPREPLY=($(compgen -W "-a --all-repos --fetch -N --no-fetch" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
@@ -478,10 +478,10 @@ __arb_complete_push() {
         __arb_complete_where_value "$cur"
         return
     fi
-	if [[ "$cur" == -* ]]; then
-		COMPREPLY=($(compgen -W "-f --force --include-merged --fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -w --where" -- "$cur"))
-		return
-	fi
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "-f --force --include-merged --fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -w --where" -- "$cur"))
+        return
+    fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
 }
 

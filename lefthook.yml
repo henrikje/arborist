@@ -2,7 +2,7 @@ pre-commit:
   parallel: true
   commands:
     check:
-      glob: "*.{ts,json}"
+      glob: "**/*.{ts,json}"
       run: bun run lint --staged {staged_files}
     typecheck:
       run: bun run typecheck

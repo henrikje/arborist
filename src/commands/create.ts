@@ -50,15 +50,17 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
     .option("-b, --branch <branch>", "Branch name")
     .option("--base <branch>", "Base branch to branch from")
     .option("-a, --all-repos", "Include all repos")
+    .option("--fetch", "Fetch before creating (default)")
+    .option("-N, --no-fetch", "Skip pre-fetch")
     .summary("Create a new workspace")
     .description(
-      "Create a workspace for a feature or issue. Creates a working copy of each selected repo on a shared feature branch, with isolated working directories. Automatically seeds files from .arb/templates/ into the new workspace. Running with no arguments opens a guided flow; providing args or flags uses sensible defaults and prompts only for missing required values.\n\nIf the branch already exists locally or on the share remote, arb checks it out instead of creating a new one. This lets you resume work on an existing feature, collaborate on a shared branch, or set up a local workspace for a branch someone else started.\n\nIf any repo fails to attach (for example, the branch is already checked out in another workspace), the entire operation is aborted and any partially created worktrees are rolled back. Use 'arb attach' to add repos individually if partial success is acceptable.\n\nSee 'arb help stacked' for stacking workspaces on feature branches.",
+      "Create a workspace for a feature or issue. Creates a working copy of each selected repo on a shared feature branch, with isolated working directories. Fetches the selected repos before creating worktrees for fresh remote state (skip with -N/--no-fetch). Automatically seeds files from .arb/templates/ into the new workspace. Running with no arguments opens a guided flow; providing args or flags uses sensible defaults and prompts only for missing required values.\n\nIf the branch already exists locally or on the share remote, arb checks it out instead of creating a new one. This lets you resume work on an existing feature, collaborate on a shared branch, or set up a local workspace for a branch someone else started.\n\nIf any repo fails to attach (for example, the branch is already checked out in another workspace), the entire operation is aborted and any partially created worktrees are rolled back. Use 'arb attach' to add repos individually if partial success is acceptable.\n\nSee 'arb help stacked' for stacking workspaces on feature branches.",
     )
     .action(
       async (
         nameArg: string | undefined,
         repoArgs: string[],
-        options: { branch?: string; base?: string; allRepos?: boolean },
+        options: { branch?: string; base?: string; allRepos?: boolean; fetch?: boolean },
       ) => {
         const ctx = getCtx();
         const isInteractive = process.stdin.isTTY === true;
@@ -222,10 +224,12 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
           if (isBareGuidedCreate) {
             // Fetch selected repos so branch list is up-to-date
             remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
-            const fetchDirs = repos.map((r) => `${ctx.reposDir}/${r}`);
-            const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
-            reportFetchFailures(repos, fetchResults);
-            cache.invalidateAfterFetch();
+            if (options.fetch !== false) {
+              const fetchDirs = repos.map((r) => `${ctx.reposDir}/${r}`);
+              const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
+              reportFetchFailures(repos, fetchResults);
+              cache.invalidateAfterFetch();
+            }
             alreadyFetched = true;
 
             // Discover remote branches from selected repos
@@ -309,8 +313,8 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
           remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
         }
 
-        // Fetch repos (skip if interactive branch selector already fetched)
-        if (!alreadyFetched) {
+        // Fetch repos (skip if interactive branch selector already fetched, or --no-fetch)
+        if (!alreadyFetched && options.fetch !== false) {
           const fetchDirs = repos.map((r) => `${ctx.reposDir}/${r}`);
           const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
           reportFetchFailures(repos, fetchResults);
