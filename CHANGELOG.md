@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.104.1](https://github.com/henrikje/arborist/compare/v0.104.0...v0.104.1) (2026-03-08)
+
+
+### Bug Fixes
+
+* clarify "merged with new work" messaging in push output ([2b7ea1a](https://github.com/henrikje/arborist/commit/2b7ea1a4c50a2ece78ba3f8eb73fc99147749ec6))
+
 ## [0.104.0](https://github.com/henrikje/arborist/compare/v0.103.0...v0.104.0) (2026-03-08)
 
 Improves workspace creation and everyday Git workflows with a more guided arb create, smarter push behavior, and clearer status reporting with conflict predictions. This release also significantly strengthens resilience by automatically detecting and repairing moved projects, renamed workspaces, and corrupted worktree references.
