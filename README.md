@@ -279,7 +279,7 @@ arb exec --dirty git stash
 arb open code
 ```
 
-`arb exec` runs any command in each repo, using the repo directory as working directory. `arb open` does the same but passes all repo paths as arguments — useful for editors like VS Code or IntelliJ. Combine with `--dirty` or `--where` to narrow the scope.
+`arb exec` runs any command in each repo, using the repo directory as working directory. `arb open` passes all repo paths as arguments to the given command, useful for editors like VS Code or IntelliJ. Combine with `--dirty` or `--where` to narrow the scope.
 
 ### Know when you're done
 
