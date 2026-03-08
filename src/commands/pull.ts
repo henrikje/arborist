@@ -9,6 +9,8 @@ import {
   getDiffShortstat,
   getShortHead,
   git,
+  gitWithTimeout,
+  networkTimeout,
   predictMergeConflict,
   predictRebaseConflictCommits,
   predictStashPopConflict,
@@ -39,6 +41,7 @@ type PullStrategy = "rebase-pull" | "merge-pull" | "safe-reset";
 
 interface PullFailure {
   assessment: PullAssessment;
+  exitCode: number;
   stdout: string;
   stderr: string;
   action: string;
@@ -192,6 +195,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 
         // Phase 4: execute
         let pullOk = 0;
+        const pullTimeout = networkTimeout("ARB_PULL_TIMEOUT", 120);
         const conflicted: { assessment: PullAssessment; stdout: string; stderr: string }[] = [];
         const failed: PullFailure[] = [];
         const stashPopFailed: PullAssessment[] = [];
@@ -207,7 +211,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
             const pullArgs = a.needsStash
               ? ["pull", "--rebase", "--autostash", pullRemote, branch]
               : ["pull", "--rebase", pullRemote, branch];
-            const pullResult = await git(a.repoDir, ...pullArgs);
+            const pullResult = await gitWithTimeout(a.repoDir, pullTimeout, pullArgs);
             if (pullResult.exitCode === 0) {
               inlineResult(a.repo, `pulled ${plural(a.behind, "commit")} (${a.pullMode})`);
               pullOk++;
@@ -219,6 +223,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
                 inlineResult(a.repo, yellow("failed"));
                 failed.push({
                   assessment: a,
+                  exitCode: pullResult.exitCode,
                   stdout: pullResult.stdout,
                   stderr: pullResult.stderr,
                   action: "pull --rebase",
@@ -251,6 +256,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
               inlineResult(a.repo, yellow("failed"));
               failed.push({
                 assessment: a,
+                exitCode: resetResult.exitCode,
                 stdout: resetResult.stdout,
                 stderr: resetResult.stderr,
                 action: `reset --hard ${target}`,
@@ -261,7 +267,12 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
             if (a.needsStash) {
               await git(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
             }
-            const pullResult = await git(a.repoDir, "pull", "--no-rebase", pullRemote, branch);
+            const pullResult = await gitWithTimeout(a.repoDir, pullTimeout, [
+              "pull",
+              "--no-rebase",
+              pullRemote,
+              branch,
+            ]);
             if (pullResult.exitCode === 0) {
               let stashPopOk = true;
               if (a.needsStash) {
@@ -286,6 +297,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
                 inlineResult(a.repo, yellow("failed"));
                 failed.push({
                   assessment: a,
+                  exitCode: pullResult.exitCode,
                   stdout: pullResult.stdout,
                   stderr: pullResult.stderr,
                   action: "pull --no-rebase",
@@ -769,6 +781,10 @@ function buildPullFailureReport(entries: PullFailure[]): OutputNode[] {
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
+    const hint =
+      entry.exitCode === 124
+        ? "# check your network, then re-run: arb pull (adjust timeout with ARB_PULL_TIMEOUT)"
+        : "# fix the issue, then re-run: arb pull";
     nodes.push(
       { kind: "gap" },
       {
@@ -778,7 +794,7 @@ function buildPullFailureReport(entries: PullFailure[]): OutputNode[] {
           cell(`pull failed during ${entry.action}`),
           ...combined.slice(0, 3).map((line) => cell(line, "muted")),
           cell(`cd ${entry.assessment.repo}`),
-          cell("# fix the issue, then re-run: arb pull"),
+          cell(hint),
         ],
       },
     );
