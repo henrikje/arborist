@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import input from "@inquirer/input";
 import select, { Separator } from "@inquirer/select";
 import type { Command } from "commander";
-import { ArbError, writeConfig } from "../lib/core";
+import { ArbError, configGet, writeConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import {
   GitCache,
@@ -22,12 +22,15 @@ import {
   displayOverlaySummary,
   listDefaultRepos,
   listRepos,
+  listWorkspaces,
   rollbackWorktrees,
   selectReposInteractive,
 } from "../lib/workspace";
 
 const CREATE_DEFAULT = "\0create-default";
 const CREATE_CUSTOM = "\0create-custom";
+const BASE_DEFAULT = "\0base-default";
+const BASE_CUSTOM = "\0base-custom";
 
 export function deriveWorkspaceNameFromBranch(branch: string): string | null {
   const tail = branch.split("/").filter(Boolean).at(-1);
@@ -228,6 +231,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
         // 3. Branch selection
         const defaultBranch = name;
         let branch = options.branch;
+        let discoveredBranches: string[] = [];
         if (!branch) {
           if (isBareGuidedCreate) {
             // Fetch selected repos so branch list is up-to-date
@@ -252,6 +256,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
               }),
             );
             const allBranches = [...new Set(branchSets.flat())].sort();
+            discoveredBranches = allBranches;
 
             if (allBranches.length > 0) {
               const defaultIsExisting = allBranches.includes(defaultBranch);
@@ -305,8 +310,59 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
           throw new ArbError(msg);
         }
 
-        // 4. Base branch (flag-only)
-        const base = options.base;
+        // 4. Base branch
+        let base = options.base;
+        if (!base && isBareGuidedCreate) {
+          // Build workspace branch lookup for annotations
+          const workspaceBranchMap = new Map<string, string>();
+          for (const ws of listWorkspaces(ctx.arbRootDir)) {
+            const wsBranch = configGet(`${ctx.arbRootDir}/${ws}/.arbws/config`, "branch");
+            if (wsBranch) workspaceBranchMap.set(wsBranch, ws);
+          }
+
+          // Merge remote branches with workspace branches (which may not be pushed yet)
+          const baseCandidates = [...new Set([...discoveredBranches, ...workspaceBranchMap.keys()])]
+            .filter((b) => b !== branch)
+            .sort();
+
+          if (baseCandidates.length > 0) {
+            // Sort: workspace branches first, then alphabetical
+            const wsbranches = baseCandidates.filter((b) => workspaceBranchMap.has(b));
+            const otherBranches = baseCandidates.filter((b) => !workspaceBranchMap.has(b));
+
+            const branchChoices = [...wsbranches, ...otherBranches].map((b) => {
+              const ws = workspaceBranchMap.get(b);
+              return { name: ws ? `${b} (workspace: ${ws})` : b, value: b };
+            });
+
+            const selected = await select(
+              {
+                message: "Base branch:",
+                choices: [
+                  { name: "No base (track repo default)", value: BASE_DEFAULT },
+                  { name: "Enter a custom branch name...", value: BASE_CUSTOM },
+                  new Separator(),
+                  ...branchChoices,
+                ],
+                pageSize: 20,
+                loop: false,
+              },
+              { output: process.stderr },
+            );
+
+            if (selected === BASE_CUSTOM) {
+              base = await input(
+                {
+                  message: "Base branch:",
+                  validate: (v) => (validateBranchName(v) ? true : "Invalid branch name"),
+                },
+                { output: process.stderr },
+              );
+            } else if (selected !== BASE_DEFAULT) {
+              base = selected;
+            }
+          }
+        }
         if (base && !validateBranchName(base)) {
           const msg = `Invalid base branch name: ${base}`;
           error(msg);
