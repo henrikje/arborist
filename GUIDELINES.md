@@ -53,7 +53,7 @@ When a feature or change involves weighing meaningful options, preserve the reas
 ### Color semantics
 
 - **Green**: success confirmation only — the final summary line ("Pushed 3 repos"). Used sparingly.
-- **Yellow**: noteworthy or mildly risky — this that need attention or action. Unpushed commits, local changes, unexpected branches, skipped repos, operations with caveats.
+- **Yellow**: noteworthy or mildly risky — things that need attention or action. Unpushed commits, local changes, unexpected branches, skipped repos, operations with caveats.
 - **Red**: errors or immediate risks — failed operations, at-risk workspaces, fatal messages.
 - **Dim (gray)**: de-emphasized, supplementary — column headings, commit hashes, section labels.
 - **Cyan**: interactive-tool alignment — used to match the accent color of `@inquirer` prompts, keeping arb output visually consistent with interactive selections.
@@ -78,7 +78,9 @@ When multiple operations manage the same `.arb/` subsystem (repos, templates), g
 
 ### Fetch behavior
 
-**Sync commands** (`push`, `rebase`, `merge`) and **dashboard commands** (`status`, `list`) fetch by default. `-N, --no-fetch` skips the pre-fetch when refs are fresh. Dashboard commands use phased rendering for instant feedback. Short-option assignments: `-N` → `--no-fetch` (common action), `-f` → `--force` (conventional), `--fetch` has no short option (infrequent — fetch is the default).
+**Sync commands** (`push`, `rebase`, `merge`), **dashboard commands** (`status`, `list`), and **membership commands** (`attach`, `create`) fetch by default. `-N, --no-fetch` skips the pre-fetch when refs are fresh. Dashboard commands use phased rendering for instant feedback. Short-option assignments: `-N` → `--no-fetch` (common action), `-f` → `--force` (conventional), `--fetch` has no short option (infrequent — fetch is the default).
+
+**`pull`** always fetches — it inherently needs fresh remote state to assess what to pull. It does not offer `--no-fetch`.
 
 **Content commands** (`log`, `diff`) do not fetch by default — stale content is less confusing. `--fetch` opts in.
 
@@ -122,7 +124,7 @@ Recovery depends on whether failures are independent or systemic.
 
 ### Table spacing convention
 
-**Plan commands** (state-changing: `rebase`, `merge`, `push`, `pull`, `delete`, `rebranch`, `clean`): blank line before and after the table. The blank lines separate the plan from fetch output above and the confirmation prompt below.
+**Plan commands** (state-changing: `rebase`, `merge`, `push`, `pull`, `delete`, `branch rename`, `clean`): blank line before and after the table. The blank lines separate the plan from fetch output above and the confirmation prompt below.
 
 **Overview commands** (read-only: `status`, `list`, `branch`, `repo list`, `template list`): no surrounding blank lines. The table is the entire output; extra padding wastes screen real estate.
 

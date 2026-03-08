@@ -157,7 +157,7 @@ _arb() {
                 'init:Initialize a new project'
                 'repo:Manage canonical repos'
                 'create:Create a new workspace'
-                'delete:Remove a workspace'
+                'delete:Delete one or more workspaces'
                 'clean:Clean up non-workspace directories and stale git state'
                 'list:List all workspaces'
                 'path:Print the path to the project root or a workspace'
@@ -172,8 +172,8 @@ _arb() {
                 'merge:Merge the base branch into feature branches'
                 'log:Show feature branch commits across repos'
                 'diff:Show feature branch diff across repos'
-                'exec:Run a command in each worktree'
-                'open:Open worktrees in an application'
+                'exec:Run a command in each repo'
+                'open:Open repos in an application'
                 'template:Manage workspace templates'
                 'help:Show help'
             )
@@ -270,12 +270,16 @@ _arb() {
                         '(-b --branch)'{-b,--branch}'[Branch name]:branch:' \
                         '--base[Base branch to branch from]:branch:' \
                         '(-a --all-repos)'{-a,--all-repos}'[Include all repos in this root]' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch before creating (default)]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-fetch]' \
                         '1:name:' \
                         '*:repo:($repo_names)'
                     ;;
                 attach)
                     _arguments \
                         '(-a --all-repos)'{-a,--all-repos}'[Add all remaining repos]' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch before attaching (default)]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-fetch]' \
                         '*:repo:($repo_names)'
                     ;;
                 detach)
@@ -496,7 +500,7 @@ _arb() {
                         'init:Initialize a new project'
                         'repo:Manage canonical repos'
                         'create:Create a new workspace'
-                        'delete:Remove a workspace'
+                        'delete:Delete one or more workspaces'
                         'clean:Clean up non-workspace directories and stale git state'
                         'list:List all workspaces'
                         'path:Print the path to the project root or a workspace'
@@ -511,8 +515,8 @@ _arb() {
                         'merge:Merge the base branch into feature branches'
                         'log:Show feature branch commits across repos'
                         'diff:Show feature branch diff across repos'
-                        'exec:Run a command in each worktree'
-                        'open:Open worktrees in an application'
+                        'exec:Run a command in each repo'
+                        'open:Open repos in an application'
                         'template:Manage workspace templates'
                     )
                     _describe 'command or topic' help_completions

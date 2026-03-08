@@ -94,7 +94,7 @@ Arborist also detects ticket keys (like `PROJ-208` or `ACME-42`) from branch nam
 
 ## Stay in sync
 
-Arborist's synchronization commands — `push`, `rebase`, and `merge` — keep your workspace current. They automatically fetch all repos before operating, so you always work against the latest remote state. Use `--no-fetch` to skip when refs are known to be fresh. `pull` always fetches (no `--no-fetch`). Overview commands (`status`, `log`, `diff`, `list`) accept `--fetch` to opt in to a pre-fetch.
+Arborist's synchronization commands — `push`, `rebase`, and `merge` — keep your workspace current. They automatically fetch all repos before operating, so you always work against the latest remote state. Use `--no-fetch` (`-N`) to skip when refs are known to be fresh. `pull` always fetches. Dashboard commands (`status`, `list`) also fetch by default. Content commands (`log`, `diff`) do not fetch by default — use `--fetch` to opt in.
 
 **Integration axis** — when the base branch has moved forward (e.g. teammates merged PRs to `main`), rebase your feature branches onto it:
 

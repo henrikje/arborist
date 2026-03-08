@@ -67,6 +67,14 @@ The full list of filter terms:
 | `base-missing` | the configured base branch no longer exists (fell back to default) |
 | `at-risk` | the repo has unpushed commits, local changes, or is in a dirty operation state |
 | `stale` | the repo needs pulling, rebasing, or has diverged from base |
+| `clean` | no uncommitted changes (inverse of `dirty`) |
+| `pushed` | no unpushed commits (inverse of `unpushed`) |
+| `synced-base` | up to date with the base branch (not behind-base or diverged) |
+| `synced-share` | up to date with the share remote (not behind-share) |
+| `synced` | up to date with both base and share |
+| `safe` | no at-risk flags and not stale — safe to delete |
+
+Prefix any term with `^` to negate it: `^behind-base` matches repos that are _not_ behind the base branch. Negation works with composites too: `^at-risk` matches repos without any at-risk flags.
 
 ## Quiet output
 
