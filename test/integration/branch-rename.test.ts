@@ -407,7 +407,7 @@ describe("remote", () => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       await git(join(env.projectDir, "my-feature/repo-a"), ["push", "-u", "origin", "my-feature"]);
 
-      const result = await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--keep-workspace-name"], {
+      const result = await arb(env, ["branch", "rename", "feat/new-name", "--yes"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
@@ -420,10 +420,27 @@ describe("remote", () => {
 // ── workspace rename ─────────────────────────────────────────────
 
 describe.skipIf(gitBelow230)("workspace rename", () => {
-  test("arb branch rename auto-renames workspace when names match", () =>
+  test("arb branch rename does not rename workspace by default", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       const result = await arb(env, ["branch", "rename", "short-name", "--yes", "--no-fetch"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      // Workspace directory NOT renamed
+      expect(existsSync(join(env.projectDir, "my-feature"))).toBe(true);
+      expect(existsSync(join(env.projectDir, "short-name"))).toBe(false);
+      // Branch still renamed
+      const branchA = (
+        await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
+      ).trim();
+      expect(branchA).toBe("short-name");
+    }));
+
+  test("arb branch rename --rename-workspace renames workspace when names match", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const result = await arb(env, ["branch", "rename", "short-name", "--yes", "--no-fetch", "--rename-workspace"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
@@ -446,46 +463,25 @@ describe.skipIf(gitBelow230)("workspace rename", () => {
       expect(result.output).toContain(join(env.projectDir, "short-name"));
     }));
 
-  test("arb branch rename warns when branch has slash (invalid workspace name)", () =>
+  test("arb branch rename --rename-workspace warns when branch has slash (invalid workspace name)", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
-      const result = await arb(env, ["branch", "rename", "feat/new", "--yes", "--no-fetch"], {
+      const result = await arb(env, ["branch", "rename", "feat/new", "--yes", "--no-fetch", "--rename-workspace"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
       // Workspace NOT renamed (slash in branch name)
       expect(existsSync(join(env.projectDir, "my-feature"))).toBe(true);
       expect(result.output).toContain("not a valid workspace name");
-      expect(result.output).toContain("--workspace-name");
+      expect(result.output).toContain("--rename-workspace");
     }));
 
-  test("arb branch rename --keep-workspace-name prevents workspace rename", () =>
+  test("arb branch rename --rename-workspace <name> renames workspace explicitly", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const result = await arb(
         env,
-        ["branch", "rename", "short-name", "--yes", "--no-fetch", "--keep-workspace-name"],
-        {
-          cwd: join(env.projectDir, "my-feature"),
-        },
-      );
-      expect(result.exitCode).toBe(0);
-      // Workspace NOT renamed
-      expect(existsSync(join(env.projectDir, "my-feature"))).toBe(true);
-      expect(existsSync(join(env.projectDir, "short-name"))).toBe(false);
-      // Branch still renamed
-      const branchA = (
-        await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
-      ).trim();
-      expect(branchA).toBe("short-name");
-    }));
-
-  test("arb branch rename --workspace-name renames workspace explicitly", () =>
-    withEnv(async (env) => {
-      await arb(env, ["create", "my-feature", "repo-a"]);
-      const result = await arb(
-        env,
-        ["branch", "rename", "feat/new", "--yes", "--no-fetch", "--workspace-name", "feat-new"],
+        ["branch", "rename", "feat/new", "--yes", "--no-fetch", "--rename-workspace", "feat-new"],
         {
           cwd: join(env.projectDir, "my-feature"),
         },
@@ -501,12 +497,12 @@ describe.skipIf(gitBelow230)("workspace rename", () => {
       expect(result.output).toContain(join(env.projectDir, "feat-new"));
     }));
 
-  test("arb branch rename --workspace-name rejects invalid name", () =>
+  test("arb branch rename --rename-workspace <name> rejects invalid name", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const result = await arb(
         env,
-        ["branch", "rename", "short-name", "--yes", "--no-fetch", "--workspace-name", "bad/name"],
+        ["branch", "rename", "short-name", "--yes", "--no-fetch", "--rename-workspace", "bad/name"],
         {
           cwd: join(env.projectDir, "my-feature"),
         },
@@ -517,42 +513,19 @@ describe.skipIf(gitBelow230)("workspace rename", () => {
       expect(existsSync(join(env.projectDir, "my-feature"))).toBe(true);
     }));
 
-  test("arb branch rename --workspace-name rejects existing directory", () =>
+  test("arb branch rename --rename-workspace <name> rejects existing directory", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       await arb(env, ["create", "other-ws", "repo-b"]);
       const result = await arb(
         env,
-        ["branch", "rename", "short-name", "--yes", "--no-fetch", "--workspace-name", "other-ws"],
+        ["branch", "rename", "short-name", "--yes", "--no-fetch", "--rename-workspace", "other-ws"],
         {
           cwd: join(env.projectDir, "my-feature"),
         },
       );
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("already exists");
-    }));
-
-  test("arb branch rename --workspace-name conflicts with --keep-workspace-name", () =>
-    withEnv(async (env) => {
-      await arb(env, ["create", "my-feature", "repo-a"]);
-      const result = await arb(
-        env,
-        [
-          "branch",
-          "rename",
-          "short-name",
-          "--yes",
-          "--no-fetch",
-          "--workspace-name",
-          "new-ws",
-          "--keep-workspace-name",
-        ],
-        {
-          cwd: join(env.projectDir, "my-feature"),
-        },
-      );
-      expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("Cannot combine");
     }));
 
   test("arb branch rename does not rename workspace when names differ", () =>
@@ -570,26 +543,30 @@ describe.skipIf(gitBelow230)("workspace rename", () => {
       expect(branchA).toBe("short-name");
     }));
 
-  test("arb branch rename warns when target workspace directory exists", () =>
+  test("arb branch rename --rename-workspace warns when target workspace directory exists", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       await mkdir(join(env.projectDir, "short-name"), { recursive: true });
-      const result = await arb(env, ["branch", "rename", "short-name", "--yes", "--no-fetch"], {
+      const result = await arb(env, ["branch", "rename", "short-name", "--yes", "--no-fetch", "--rename-workspace"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
       // Workspace NOT renamed (target exists)
       expect(existsSync(join(env.projectDir, "my-feature"))).toBe(true);
       expect(result.output).toContain("already exists");
-      expect(result.output).toContain("--workspace-name");
+      expect(result.output).toContain("--rename-workspace");
     }));
 
-  test("arb branch rename --dry-run does not rename workspace", () =>
+  test("arb branch rename --rename-workspace --dry-run does not rename workspace", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
-      const result = await arb(env, ["branch", "rename", "short-name", "--dry-run", "--no-fetch"], {
-        cwd: join(env.projectDir, "my-feature"),
-      });
+      const result = await arb(
+        env,
+        ["branch", "rename", "short-name", "--dry-run", "--no-fetch", "--rename-workspace"],
+        {
+          cwd: join(env.projectDir, "my-feature"),
+        },
+      );
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("Dry run");
       // Workspace NOT renamed
@@ -597,20 +574,34 @@ describe.skipIf(gitBelow230)("workspace rename", () => {
       expect(existsSync(join(env.projectDir, "short-name"))).toBe(false);
     }));
 
-  test("arb branch rename shows workspace rename in plan", () =>
+  test("arb branch rename shows hint about --rename-workspace in plan", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const result = await arb(env, ["branch", "rename", "short-name", "--dry-run", "--no-fetch"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("--rename-workspace");
+    }));
+
+  test("arb branch rename --rename-workspace shows workspace rename in plan", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const result = await arb(
+        env,
+        ["branch", "rename", "short-name", "--dry-run", "--no-fetch", "--rename-workspace"],
+        {
+          cwd: join(env.projectDir, "my-feature"),
+        },
+      );
+      expect(result.exitCode).toBe(0);
       expect(result.output).toContain("Renaming workspace");
     }));
 
-  test("arb branch rename standalone workspace rename via same branch + --workspace-name", () =>
+  test("arb branch rename standalone workspace rename via same branch + --rename-workspace <name>", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
-      const result = await arb(env, ["branch", "rename", "my-feature", "--workspace-name", "new-ws"], {
+      const result = await arb(env, ["branch", "rename", "my-feature", "--rename-workspace", "new-ws"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
@@ -639,7 +630,7 @@ describe("tracking cleanup", () => {
       ).trim();
       expect(merge).toBe("refs/heads/my-feature");
 
-      const result = await arb(env, ["branch", "rename", "new-name", "--yes", "--keep-workspace-name"], {
+      const result = await arb(env, ["branch", "rename", "new-name", "--yes", "--no-fetch"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
@@ -665,7 +656,7 @@ describe("tracking cleanup", () => {
       // Push old branch
       await git(join(env.projectDir, "my-feature/repo-a"), ["push", "-u", "origin", "my-feature"]);
 
-      await arb(env, ["branch", "rename", "new-name", "--yes", "--keep-workspace-name"], {
+      await arb(env, ["branch", "rename", "new-name", "--yes", "--no-fetch"], {
         cwd: join(env.projectDir, "my-feature"),
       });
 
@@ -714,7 +705,7 @@ describe("tracking cleanup", () => {
       await git(join(env.projectDir, "my-feature/repo-a"), ["commit", "--allow-empty", "-m", "test"]);
       await git(join(env.projectDir, "my-feature/repo-a"), ["push", "-u", "origin", "my-feature"]);
 
-      await arb(env, ["branch", "rename", "new-name", "--yes", "--delete-remote", "--keep-workspace-name"], {
+      await arb(env, ["branch", "rename", "new-name", "--yes", "--delete-remote", "--no-fetch"], {
         cwd: join(env.projectDir, "my-feature"),
       });
 
@@ -737,7 +728,7 @@ describe("tracking cleanup", () => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       await git(join(env.projectDir, "my-feature/repo-a"), ["push", "-u", "origin", "my-feature"]);
 
-      const result = await arb(env, ["branch", "rename", "new-name", "--dry-run", "--keep-workspace-name"], {
+      const result = await arb(env, ["branch", "rename", "new-name", "--dry-run", "--no-fetch"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
