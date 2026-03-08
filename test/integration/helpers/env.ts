@@ -1,14 +1,16 @@
 /**
  * Integration test environment.
  *
- * Each test gets a fresh temporary directory with:
+ * A golden template is built once at module load via `createTestEnv()`.
+ * Each test gets a fast copy of that template (via `fs.cp` + path fixup)
+ * with its own isolated temporary directory containing:
  *   - An initialized arb root at `project/`
  *   - Two bare origin repos (`origin/repo-a.git`, `origin/repo-b.git`)
  *   - Clones in `.arb/repos/` with an initial commit pushed to origin
  */
 
 import { realpathSync } from "node:fs";
-import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -140,14 +142,16 @@ export async function createTestEnv(): Promise<TestEnv> {
   // Initialize arb root
   await exec([ARB_BIN, "init"], { cwd: projectDir });
 
-  // Create bare origin repos and clone into .arb/repos/
-  for (const name of ["repo-a", "repo-b"]) {
-    await initBareRepo(testDir, join(originDir, `${name}.git`), "main");
-    await git(testDir, ["clone", join(originDir, `${name}.git`), join(projectDir, `.arb/repos/${name}`)]);
-    const repoDir = join(projectDir, `.arb/repos/${name}`);
-    await git(repoDir, ["commit", "--allow-empty", "-m", "init"]);
-    await git(repoDir, ["push"]);
-  }
+  // Create bare origin repos and clone into .arb/repos/ (parallelized)
+  await Promise.all(
+    ["repo-a", "repo-b"].map(async (name) => {
+      await initBareRepo(testDir, join(originDir, `${name}.git`), "main");
+      await git(testDir, ["clone", join(originDir, `${name}.git`), join(projectDir, `.arb/repos/${name}`)]);
+      const repoDir = join(projectDir, `.arb/repos/${name}`);
+      await git(repoDir, ["commit", "--allow-empty", "-m", "init"]);
+      await git(repoDir, ["push"]);
+    }),
+  );
 
   return { testDir, projectDir, originDir };
 }
@@ -155,6 +159,57 @@ export async function createTestEnv(): Promise<TestEnv> {
 /** Remove the test environment. */
 export async function cleanupTestEnv(env: TestEnv): Promise<void> {
   await rm(env.testDir, { recursive: true, force: true });
+}
+
+// ── Template-based env creation ──────────────────────────────────
+
+/** Lazily-created golden template — built once, copied for each test. */
+const templatePromise: Promise<TestEnv> = createTestEnv().catch((err) => {
+  throw new Error(`Failed to create test env template: ${err.message}`, { cause: err });
+});
+
+/** Create a test env by copying the golden template (much faster than creating from scratch). */
+async function createTestEnvFromTemplate(): Promise<TestEnv> {
+  const template = await templatePromise;
+  const testDir = realpathSync(await mkdtemp(join(tmpdir(), "arb-test-")));
+
+  await cp(template.testDir, testDir, { recursive: true });
+
+  const projectDir = join(testDir, "project");
+  const originDir = join(testDir, "origin");
+
+  // Fix remote URLs: replace the template's testDir path with the new one
+  // in each repo's .git/config so remotes point to the copied origin repos.
+  await Promise.all(
+    ["repo-a", "repo-b"].map(async (name) => {
+      const configPath = join(projectDir, `.arb/repos/${name}/.git/config`);
+      const content = await readFile(configPath, "utf-8");
+      await writeFile(configPath, content.replaceAll(template.testDir, testDir));
+    }),
+  );
+
+  return { testDir, projectDir, originDir };
+}
+
+// ── Bare env (no arb init, no repos) ─────────────────────────────
+
+/** Create a minimal env with just a temp directory (no arb init, no repos). */
+export async function createBareEnv(): Promise<TestEnv> {
+  const testDir = realpathSync(await mkdtemp(join(tmpdir(), "arb-test-")));
+  const projectDir = join(testDir, "project");
+  const originDir = join(testDir, "origin");
+  await mkdir(projectDir, { recursive: true });
+  return { testDir, projectDir, originDir };
+}
+
+/** Run a test body with a bare env (no arb init, no repos). */
+export async function withBareEnv(fn: (env: TestEnv) => Promise<void>): Promise<void> {
+  const env = await createBareEnv();
+  try {
+    await fn(env);
+  } finally {
+    await cleanupTestEnv(env);
+  }
 }
 
 // ── Test helper utilities ────────────────────────────────────────
@@ -226,7 +281,7 @@ export async function deleteWorkspaceConfig(env: TestEnv, name: string): Promise
 
 /** Run a test body with a fresh, isolated TestEnv that is cleaned up afterwards. */
 export async function withEnv(fn: (env: TestEnv) => Promise<void>): Promise<void> {
-  const env = await createTestEnv();
+  const env = await createTestEnvFromTemplate();
   try {
     await fn(env);
   } finally {
