@@ -23,6 +23,8 @@ interface LogCommit {
   shortHash: string;
   fullHash: string;
   subject: string;
+  body?: string;
+  files?: string[];
 }
 
 type RepoLogStatus = "ok" | "detached" | "drifted" | "no-base" | "fallback-base";
@@ -45,11 +47,12 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
     .option("-n, --max-count <count>", "Limit commits shown per repo")
     .option("-d, --dirty", "Only log dirty repos (shorthand for --where dirty)")
     .option("-w, --where <filter>", "Only log repos matching status filter (comma = OR, + = AND, ^ = negate)")
+    .option("-v, --verbose", "Show commit bodies and changed files")
     .option("--json", "Output structured JSON to stdout")
     .option("--schema", "Print JSON Schema for this command's --json output and exit")
     .summary("Show feature branch commits across repos")
     .description(
-      "Show commits on the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what have I done in this workspace?' by showing only the commits that belong to the current feature.\n\nShows commits in the range base..HEAD for each repo. Use --fetch to fetch before showing log (default is no fetch). Use -n to limit how many commits are shown per repo. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line). Use --where to filter by status flags. See 'arb help where' for filter syntax. Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.\n\nSee 'arb help scripting' for output modes and piping.",
+      "Show commits on the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what have I done in this workspace?' by showing only the commits that belong to the current feature.\n\nShows commits in the range base..HEAD for each repo. Use --fetch to fetch before showing log (default is no fetch). Use -n to limit how many commits are shown per repo. Use -v/--verbose to also show commit bodies and changed files. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line). Use --where to filter by status flags. See 'arb help where' for filter syntax. Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.\n\nSee 'arb help scripting' for output modes and piping.",
     )
     .action(
       async (
@@ -61,6 +64,7 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
           dirty?: boolean;
           where?: string;
           fetch?: boolean;
+          verbose?: boolean;
         },
       ) => {
         if (options.schema) {
@@ -120,9 +124,11 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
         }
 
         if (!options.json && isTTY()) {
-          await outputTTY(repos, wsDir, branch, maxCount);
+          await outputTTY(repos, wsDir, branch, maxCount, options.verbose);
         } else {
-          const results = await Promise.all(repos.map((repo) => gatherRepoLog(repo, wsDir, branch, maxCount)));
+          const results = await Promise.all(
+            repos.map((repo) => gatherRepoLog(repo, wsDir, branch, maxCount, options.verbose)),
+          );
           if (options.json) {
             outputJson(summary.workspace, summary.branch, summary.base, results);
           } else {
@@ -135,7 +141,13 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 
 // ── TTY output: delegate to git for commit rendering ─────────────
 
-async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, maxCount?: number): Promise<void> {
+async function outputTTY(
+  repos: RepoStatus[],
+  wsDir: string,
+  branch: string,
+  maxCount?: number,
+  verbose?: boolean,
+): Promise<void> {
   let totalCommits = 0;
   const ctx: RenderContext = { tty: isTTY() };
 
@@ -179,10 +191,16 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, max
     process.stderr.write(render([repoHeaderNode(repo.name, note || undefined)], ctx));
 
     // Let git render the commits
-    const result = await git(repoDir, "log", "--oneline", "--no-decorate", "--color=always", ...gitArgs);
+    const logArgs = verbose
+      ? ["--no-decorate", "--color=always", "--stat"]
+      : ["--oneline", "--no-decorate", "--color=always"];
+    const result = await git(repoDir, "log", ...logArgs, ...gitArgs);
     if (result.exitCode === 0 && result.stdout.trim()) {
       stdout(result.stdout);
-      totalCommits += result.stdout.trim().split("\n").length;
+      // Count commits: in verbose mode match "commit <hash>" (ANSI codes may precede it); in oneline mode each line is one commit
+      totalCommits += verbose
+        ? (result.stdout.match(/commit [0-9a-f]{7,}/g) ?? []).length
+        : result.stdout.trim().split("\n").length;
     }
 
     if (i < repos.length - 1) {
@@ -201,6 +219,7 @@ async function gatherRepoLog(
   wsDir: string,
   branch: string,
   maxCount?: number,
+  verbose?: boolean,
 ): Promise<RepoLogResult> {
   const repoDir = `${wsDir}/${repo.name}`;
   const flags = computeFlags(repo, branch);
@@ -228,7 +247,10 @@ async function gatherRepoLog(
 
   if (!repo.base) {
     const limit = maxCount ?? NO_BASE_FALLBACK_LIMIT;
-    const commits = await getRecentCommits(repoDir, limit);
+    let commits = await getRecentCommits(repoDir, limit);
+    if (verbose) {
+      commits = await enrichWithVerboseDetail(repoDir, commits);
+    }
     return {
       name: repo.name,
       status: "no-base",
@@ -244,6 +266,10 @@ async function gatherRepoLog(
 
   if (maxCount !== undefined && commits.length > maxCount) {
     commits = commits.slice(0, maxCount);
+  }
+
+  if (verbose) {
+    commits = await enrichWithVerboseDetail(repoDir, commits);
   }
 
   let annotation: string;
@@ -285,6 +311,27 @@ async function getRecentCommits(repoDir: string, limit: number): Promise<LogComm
     });
 }
 
+async function getCommitVerboseDetail(repoDir: string, fullHash: string): Promise<{ body: string; files: string[] }> {
+  const result = await git(repoDir, "show", "--format=%b%x00", "--name-only", fullHash);
+  if (result.exitCode !== 0) return { body: "", files: [] };
+  const [bodyPart, filesPart] = result.stdout.split("\0", 2);
+  const body = (bodyPart ?? "").trim();
+  const files = (filesPart ?? "")
+    .split("\n")
+    .map((f) => f.trim())
+    .filter(Boolean);
+  return { body, files };
+}
+
+async function enrichWithVerboseDetail(repoDir: string, commits: LogCommit[]): Promise<LogCommit[]> {
+  return Promise.all(
+    commits.map(async (c) => {
+      const detail = await getCommitVerboseDetail(repoDir, c.fullHash);
+      return { ...c, body: detail.body, files: detail.files };
+    }),
+  );
+}
+
 // ── Pipe output ──────────────────────────────────────────────────
 
 function outputPipe(results: RepoLogResult[]): void {
@@ -315,6 +362,8 @@ function outputJson(workspace: string, branch: string, base: string | null, resu
         hash: c.fullHash,
         shortHash: c.shortHash,
         subject: c.subject,
+        ...(c.body !== undefined ? { body: c.body } : {}),
+        ...(c.files !== undefined ? { files: c.files } : {}),
       })),
     };
     if (r.reason) {

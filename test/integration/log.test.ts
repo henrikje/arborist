@@ -326,3 +326,73 @@ describe("pipe output", () => {
       expect(json.properties.totalCommits).toBeDefined();
     }));
 });
+
+// ── verbose mode ─────────────────────────────────────────────────
+
+describe("verbose mode", () => {
+  test("arb log --json --verbose includes body and files for commits with body", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      await write(join(env.projectDir, "my-feature/repo-a/file.txt"), "hello");
+      await git(join(env.projectDir, "my-feature/repo-a"), ["add", "file.txt"]);
+      await git(join(env.projectDir, "my-feature/repo-a"), [
+        "commit",
+        "-m",
+        "Add feature\n\nThis adds the feature body.",
+      ]);
+      const result = await arb(env, ["log", "--json", "--verbose"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      const repoA = json.repos.find((r: { name: string }) => r.name === "repo-a");
+      const commit = repoA.commits[0];
+      expect(commit.subject).toBe("Add feature");
+      expect(commit.body).toBe("This adds the feature body.");
+      expect(commit.files).toEqual(["file.txt"]);
+    }));
+
+  test("arb log --json --verbose includes files even for commits without body", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      await write(join(env.projectDir, "my-feature/repo-a/alpha.ts"), "a");
+      await write(join(env.projectDir, "my-feature/repo-a/beta.ts"), "b");
+      await git(join(env.projectDir, "my-feature/repo-a"), ["add", "alpha.ts", "beta.ts"]);
+      await git(join(env.projectDir, "my-feature/repo-a"), ["commit", "-m", "Add two files"]);
+      const result = await arb(env, ["log", "--json", "--verbose"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      const commit = json.repos[0].commits[0];
+      expect(commit.body).toBe("");
+      expect(commit.files).toContain("alpha.ts");
+      expect(commit.files).toContain("beta.ts");
+    }));
+
+  test("arb log --json --verbose with multiple files lists all changed files", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      await write(join(env.projectDir, "my-feature/repo-a/first.ts"), "x");
+      await write(join(env.projectDir, "my-feature/repo-a/second.ts"), "y");
+      await write(join(env.projectDir, "my-feature/repo-a/third.ts"), "z");
+      await git(join(env.projectDir, "my-feature/repo-a"), ["add", "first.ts", "second.ts", "third.ts"]);
+      await git(join(env.projectDir, "my-feature/repo-a"), [
+        "commit",
+        "-m",
+        "Add three files\n\nIntroduces three new modules.",
+      ]);
+      const result = await arb(env, ["log", "--json", "--verbose"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      const commit = json.repos[0].commits[0];
+      expect(commit.subject).toBe("Add three files");
+      expect(commit.body).toBe("Introduces three new modules.");
+      expect(commit.files).toHaveLength(3);
+      expect(commit.files).toContain("first.ts");
+      expect(commit.files).toContain("second.ts");
+      expect(commit.files).toContain("third.ts");
+    }));
+});

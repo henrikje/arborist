@@ -133,6 +133,8 @@ const LogJsonCommitSchema = z.object({
   hash: z.string(),
   shortHash: z.string(),
   subject: z.string(),
+  body: z.string().optional(),
+  files: z.array(z.string()).optional(),
 });
 
 export const LogJsonRepoSchema = z.object({

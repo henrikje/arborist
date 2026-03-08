@@ -437,7 +437,7 @@ __arb_complete_log() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -n --max-count --json --schema -d --dirty -w --where" -- "$cur"))
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -n --max-count -v --verbose --json --schema -d --dirty -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
