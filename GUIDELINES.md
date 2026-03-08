@@ -78,7 +78,7 @@ When multiple operations manage the same `.arb/` subsystem (repos, templates), g
 
 ### Fetch behavior
 
-**Sync commands** (`push`, `rebase`, `merge`), **dashboard commands** (`status`, `list`), and **membership commands** (`attach`, `create`) fetch by default. `-N, --no-fetch` skips the pre-fetch when refs are fresh. Dashboard commands use phased rendering for instant feedback. Short-option assignments: `-N` → `--no-fetch` (common action), `-f` → `--force` (conventional), `--fetch` has no short option (infrequent — fetch is the default).
+**Sync commands** (`push`, `rebase`, `merge`), **dashboard commands** (`status`, `list`), **membership commands** (`attach`, `create`, `detach`), and **plan commands** (`delete`, `clean`) fetch by default. `-N, --no-fetch` skips the pre-fetch when refs are fresh. Dashboard commands use phased rendering for instant feedback. Short-option assignments: `-N` → `--no-fetch` (common action), `-f` → `--force` (conventional), `--fetch` has no short option (infrequent — fetch is the default).
 
 **`pull`** always fetches — it inherently needs fresh remote state to assess what to pull. It does not offer `--no-fetch`.
 

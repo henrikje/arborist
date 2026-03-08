@@ -7,12 +7,13 @@ import { GitCache, assertMinimumGitVersion, git } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
-import { confirmOrExit } from "../lib/sync";
+import { confirmOrExit, parallelFetch, reportFetchFailures } from "../lib/sync";
 import { dryRunNotice, error, info, isTTY, plural, success, yellow } from "../lib/terminal";
 import {
   detectAndRepairProjectMove,
   findOrphanedBranches,
   findStaleWorktrees,
+  listRepos,
   pruneWorktrees,
   repairAllWorktreeRefs,
 } from "../lib/workspace";
@@ -56,204 +57,222 @@ export function registerCleanCommand(program: Command, getCtx: () => ArbContext)
     .option("-y, --yes", "Skip confirmation prompt")
     .option("-n, --dry-run", "Show what would happen without executing")
     .option("-f, --force", "Delete unmerged orphaned branches (by default only merged branches are deleted)")
+    .option("--fetch", "Fetch canonical repos before detecting orphaned branches (default)")
+    .option("-N, --no-fetch", "Skip fetching")
     .summary("Clean up non-workspace directories and stale git state")
     .description(
-      "Remove non-workspace directories, prune stale worktree references, and delete orphaned local branches from canonical repos.\n\nNon-workspace directories are top-level directories that lack .arbws/ — typically shell directories left behind by editors that recreate a directory after deletion (e.g. IntelliJ writing .idea/ on close). Use positional arguments to target specific directories, or run without arguments to scan and select interactively.\n\nStale worktree references and orphaned branches accumulate when workspace directories are manually removed or when arb delete partially fails. arb clean detects and removes both.\n\nCreate a .arbignore file in the project root to exclude directories from cleanup. List one directory name per line; lines starting with # are comments.",
+      "Remove non-workspace directories, prune stale worktree references, and delete orphaned local branches from canonical repos. Fetches canonical repos before detecting orphaned branches for fresh remote state (skip with -N/--no-fetch).\n\nNon-workspace directories are top-level directories that lack .arbws/ — typically shell directories left behind by editors that recreate a directory after deletion (e.g. IntelliJ writing .idea/ on close). Use positional arguments to target specific directories, or run without arguments to scan and select interactively.\n\nStale worktree references and orphaned branches accumulate when workspace directories are manually removed or when arb delete partially fails. arb clean detects and removes both.\n\nCreate a .arbignore file in the project root to exclude directories from cleanup. List one directory name per line; lines starting with # are comments.",
     )
-    .action(async (nameArgs: string[], options: { yes?: boolean; dryRun?: boolean; force?: boolean }) => {
-      const ctx = getCtx();
-      const skipPrompts = options.yes ?? false;
-      const forceOrphans = options.force ?? false;
+    .action(
+      async (nameArgs: string[], options: { yes?: boolean; dryRun?: boolean; force?: boolean; fetch?: boolean }) => {
+        const ctx = getCtx();
+        const skipPrompts = options.yes ?? false;
+        const forceOrphans = options.force ?? false;
 
-      // ── Section 1: Non-workspace directories ─────────────────
-      const ignored = loadArbIgnore(ctx.arbRootDir);
-      const allNonWorkspacesUnfiltered = listNonWorkspaces(ctx.arbRootDir);
-      const allNonWorkspaces = listNonWorkspaces(ctx.arbRootDir, ignored);
-      const ignoredCount = allNonWorkspacesUnfiltered.length - allNonWorkspaces.length;
+        // ── Section 1: Non-workspace directories ─────────────────
+        const ignored = loadArbIgnore(ctx.arbRootDir);
+        const allNonWorkspacesUnfiltered = listNonWorkspaces(ctx.arbRootDir);
+        const allNonWorkspaces = listNonWorkspaces(ctx.arbRootDir, ignored);
+        const ignoredCount = allNonWorkspacesUnfiltered.length - allNonWorkspaces.length;
 
-      // Validate positional args
-      let targetDirs: string[];
-      if (nameArgs.length > 0) {
-        for (const name of nameArgs) {
-          if (existsSync(join(ctx.arbRootDir, name, ".arbws"))) {
-            error(`'${name}' is a workspace. Use 'arb delete ${name}' instead.`);
-            throw new ArbError(`'${name}' is a workspace. Use 'arb delete ${name}' instead.`);
-          }
-          if (!allNonWorkspacesUnfiltered.includes(name)) {
-            if (!existsSync(join(ctx.arbRootDir, name))) {
-              const msg = `Directory '${name}' does not exist.`;
+        // Validate positional args
+        let targetDirs: string[];
+        if (nameArgs.length > 0) {
+          for (const name of nameArgs) {
+            if (existsSync(join(ctx.arbRootDir, name, ".arbws"))) {
+              error(`'${name}' is a workspace. Use 'arb delete ${name}' instead.`);
+              throw new ArbError(`'${name}' is a workspace. Use 'arb delete ${name}' instead.`);
+            }
+            if (!allNonWorkspacesUnfiltered.includes(name)) {
+              if (!existsSync(join(ctx.arbRootDir, name))) {
+                const msg = `Directory '${name}' does not exist.`;
+                error(msg);
+                throw new ArbError(msg);
+              }
+              const msg = `Directory '${name}' is not a non-workspace directory.`;
               error(msg);
               throw new ArbError(msg);
             }
-            const msg = `Directory '${name}' is not a non-workspace directory.`;
-            error(msg);
-            throw new ArbError(msg);
+          }
+          targetDirs = nameArgs;
+        } else {
+          targetDirs = allNonWorkspaces;
+        }
+
+        // ── Repair project move before detecting stale refs ─────────
+        // If the entire project directory was moved, forward refs are also broken.
+        // Detect by sampling any workspace and repair all repos globally.
+        for (const ws of listWorkspaces(ctx.arbRootDir)) {
+          const wsDir = join(ctx.arbRootDir, ws);
+          if (workspaceRepoDirs(wsDir).length > 0) {
+            detectAndRepairProjectMove(wsDir, ctx.arbRootDir, ctx.reposDir);
+            break;
           }
         }
-        targetDirs = nameArgs;
-      } else {
-        targetDirs = allNonWorkspaces;
-      }
 
-      // ── Repair project move before detecting stale refs ─────────
-      // If the entire project directory was moved, forward refs are also broken.
-      // Detect by sampling any workspace and repair all repos globally.
-      for (const ws of listWorkspaces(ctx.arbRootDir)) {
-        const wsDir = join(ctx.arbRootDir, ws);
-        if (workspaceRepoDirs(wsDir).length > 0) {
-          detectAndRepairProjectMove(wsDir, ctx.arbRootDir, ctx.reposDir);
-          break;
+        // ── Repair renamed workspaces before detecting stale refs ──
+        // On git 2.30+, repair succeeds and renamed entries disappear from stale
+        // detection. On older git, repair fails silently — the returned set lets
+        // us exclude those repos from both display and pruning to prevent data loss.
+        const unrepairedRenames = repairAllWorktreeRefs(ctx.arbRootDir, ctx.reposDir);
+
+        // ── Section 2: Stale worktree references (detect only) ───
+        const staleWorktreeRepos = (await findStaleWorktrees(ctx.reposDir)).filter(
+          (repo) => !unrepairedRenames.has(repo),
+        );
+
+        // ── Fetch canonical repos for fresh remote state ────────
+        const cache = new GitCache();
+        await assertMinimumGitVersion(cache);
+        if (options.fetch !== false) {
+          const repos = listRepos(ctx.reposDir);
+          if (repos.length > 0) {
+            const fetchDirs = repos.map((r) => join(ctx.reposDir, r));
+            const remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
+            const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
+            reportFetchFailures(repos, fetchResults);
+          }
         }
-      }
 
-      // ── Repair renamed workspaces before detecting stale refs ──
-      // On git 2.30+, repair succeeds and renamed entries disappear from stale
-      // detection. On older git, repair fails silently — the returned set lets
-      // us exclude those repos from both display and pruning to prevent data loss.
-      const unrepairedRenames = repairAllWorktreeRefs(ctx.arbRootDir, ctx.reposDir);
-
-      // ── Section 2: Stale worktree references (detect only) ───
-      const staleWorktreeRepos = (await findStaleWorktrees(ctx.reposDir)).filter(
-        (repo) => !unrepairedRenames.has(repo),
-      );
-
-      // ── Section 3: Orphaned local branches ───────────────────
-      const workspaces = listWorkspaces(ctx.arbRootDir);
-      const workspaceBranches = new Set<string>();
-      for (const ws of workspaces) {
-        const wb = await workspaceBranch(join(ctx.arbRootDir, ws));
-        if (wb) workspaceBranches.add(wb.branch);
-      }
-      const cache = new GitCache();
-      await assertMinimumGitVersion(cache);
-      const orphanedBranches = await findOrphanedBranches(ctx.reposDir, workspaceBranches, cache);
-
-      // ── Check if there's anything to do ──────────────────────
-      const hasDirs = targetDirs.length > 0;
-      const hasStale = staleWorktreeRepos.length > 0;
-      const hasOrphans = orphanedBranches.length > 0;
-
-      if (!hasDirs && !hasStale && !hasOrphans) {
-        info("Nothing to clean up.");
-        return;
-      }
-
-      // ── Display findings ─────────────────────────────────────
-      if (hasDirs) {
-        // Build table
-        const descriptions: string[] = targetDirs.map((name) => describeContents(join(ctx.arbRootDir, name)));
-        const nodes = buildCleanTableNodes(targetDirs, descriptions);
-        const rCtx: RenderContext = { tty: isTTY() };
-        process.stderr.write(`\n${render(nodes, rCtx)}\n`);
-
-        if (ignoredCount > 0 && nameArgs.length === 0) {
-          info(`  ${plural(ignoredCount, "directory", "directories")} excluded by .arbignore`);
-          process.stderr.write("\n");
+        // ── Section 3: Orphaned local branches ───────────────────
+        const workspaces = listWorkspaces(ctx.arbRootDir);
+        const workspaceBranches = new Set<string>();
+        for (const ws of workspaces) {
+          const wb = await workspaceBranch(join(ctx.arbRootDir, ws));
+          if (wb) workspaceBranches.add(wb.branch);
         }
-      }
+        const orphanedBranches = await findOrphanedBranches(ctx.reposDir, workspaceBranches, cache);
 
-      if (hasStale) {
-        info("  Stale worktree references:");
-        for (const repo of staleWorktreeRepos) {
-          info(`    ${repo}`);
-        }
-        process.stderr.write("\n");
-      }
+        // ── Check if there's anything to do ──────────────────────
+        const hasDirs = targetDirs.length > 0;
+        const hasStale = staleWorktreeRepos.length > 0;
+        const hasOrphans = orphanedBranches.length > 0;
 
-      if (hasOrphans) {
-        info("  Orphaned branches:");
-        const byRepo = new Map<string, { branch: string; mergeStatus: "merged" | "unmerged"; aheadCount: number }[]>();
-        for (const ob of orphanedBranches) {
-          const list = byRepo.get(ob.repo) ?? [];
-          list.push(ob);
-          byRepo.set(ob.repo, list);
-        }
-        for (const [repo, entries] of byRepo) {
-          const labels = entries.map((e) => {
-            if (e.mergeStatus === "merged") return `${e.branch} (merged)`;
-            return `${e.branch} ${yellow(`(${e.aheadCount} ahead)`)}`;
-          });
-          info(`    ${repo}: ${labels.join(", ")}`);
-        }
-        process.stderr.write("\n");
-      }
-
-      if (options.dryRun) {
-        dryRunNotice();
-        return;
-      }
-
-      // ── Interactive selection (TTY, no positional args, dirs only) ──
-      let selectedDirs = targetDirs;
-      if (hasDirs && nameArgs.length === 0 && !skipPrompts) {
-        if (!isTTY() || !process.stdin.isTTY) {
-          error("Not a terminal. Use --yes to skip confirmation.");
-          throw new ArbError("Not a terminal. Use --yes to skip confirmation.");
-        }
-        selectedDirs = await selectInteractive(targetDirs, "Select directories to remove");
-        if (selectedDirs.length === 0 && !hasStale && !hasOrphans) {
-          info("Nothing selected.");
+        if (!hasDirs && !hasStale && !hasOrphans) {
+          info("Nothing to clean up.");
           return;
         }
-      }
 
-      // ── Split orphaned branches by merge status ─────────────
-      const mergedOrphans = orphanedBranches.filter((ob) => ob.mergeStatus === "merged");
-      const unmergedOrphans = orphanedBranches.filter((ob) => ob.mergeStatus === "unmerged");
-      const orphansToDelete = forceOrphans ? orphanedBranches : mergedOrphans;
-      const hasOrphansToDelete = orphansToDelete.length > 0;
+        // ── Display findings ─────────────────────────────────────
+        if (hasDirs) {
+          // Build table
+          const descriptions: string[] = targetDirs.map((name) => describeContents(join(ctx.arbRootDir, name)));
+          const nodes = buildCleanTableNodes(targetDirs, descriptions);
+          const rCtx: RenderContext = { tty: isTTY() };
+          process.stderr.write(`\n${render(nodes, rCtx)}\n`);
 
-      // ── Confirm ──────────────────────────────────────────────
-      const parts: string[] = [];
-      if (selectedDirs.length > 0) parts.push(`remove ${plural(selectedDirs.length, "directory", "directories")}`);
-      if (hasStale) parts.push(`prune ${plural(staleWorktreeRepos.length, "stale worktree ref")}`);
-      if (hasOrphansToDelete)
-        parts.push(`delete ${plural(orphansToDelete.length, "orphaned branch", "orphaned branches")}`);
+          if (ignoredCount > 0 && nameArgs.length === 0) {
+            info(`  ${plural(ignoredCount, "directory", "directories")} excluded by .arbignore`);
+            process.stderr.write("\n");
+          }
+        }
 
-      if (parts.length === 0) {
+        if (hasStale) {
+          info("  Stale worktree references:");
+          for (const repo of staleWorktreeRepos) {
+            info(`    ${repo}`);
+          }
+          process.stderr.write("\n");
+        }
+
+        if (hasOrphans) {
+          info("  Orphaned branches:");
+          const byRepo = new Map<
+            string,
+            { branch: string; mergeStatus: "merged" | "unmerged"; aheadCount: number }[]
+          >();
+          for (const ob of orphanedBranches) {
+            const list = byRepo.get(ob.repo) ?? [];
+            list.push(ob);
+            byRepo.set(ob.repo, list);
+          }
+          for (const [repo, entries] of byRepo) {
+            const labels = entries.map((e) => {
+              if (e.mergeStatus === "merged") return `${e.branch} (merged)`;
+              return `${e.branch} ${yellow(`(${e.aheadCount} ahead)`)}`;
+            });
+            info(`    ${repo}: ${labels.join(", ")}`);
+          }
+          process.stderr.write("\n");
+        }
+
+        if (options.dryRun) {
+          dryRunNotice();
+          return;
+        }
+
+        // ── Interactive selection (TTY, no positional args, dirs only) ──
+        let selectedDirs = targetDirs;
+        if (hasDirs && nameArgs.length === 0 && !skipPrompts) {
+          if (!isTTY() || !process.stdin.isTTY) {
+            error("Not a terminal. Use --yes to skip confirmation.");
+            throw new ArbError("Not a terminal. Use --yes to skip confirmation.");
+          }
+          selectedDirs = await selectInteractive(targetDirs, "Select directories to remove");
+          if (selectedDirs.length === 0 && !hasStale && !hasOrphans) {
+            info("Nothing selected.");
+            return;
+          }
+        }
+
+        // ── Split orphaned branches by merge status ─────────────
+        const mergedOrphans = orphanedBranches.filter((ob) => ob.mergeStatus === "merged");
+        const unmergedOrphans = orphanedBranches.filter((ob) => ob.mergeStatus === "unmerged");
+        const orphansToDelete = forceOrphans ? orphanedBranches : mergedOrphans;
+        const hasOrphansToDelete = orphansToDelete.length > 0;
+
+        // ── Confirm ──────────────────────────────────────────────
+        const parts: string[] = [];
+        if (selectedDirs.length > 0) parts.push(`remove ${plural(selectedDirs.length, "directory", "directories")}`);
+        if (hasStale) parts.push(`prune ${plural(staleWorktreeRepos.length, "stale worktree ref")}`);
+        if (hasOrphansToDelete)
+          parts.push(`delete ${plural(orphansToDelete.length, "orphaned branch", "orphaned branches")}`);
+
+        if (parts.length === 0) {
+          if (unmergedOrphans.length > 0 && !forceOrphans) {
+            info(
+              `${plural(unmergedOrphans.length, "unmerged orphaned branch", "unmerged orphaned branches")} skipped (use --force to delete)`,
+            );
+          }
+          info("Nothing to do.");
+          return;
+        }
+
+        await confirmOrExit({
+          yes: skipPrompts,
+          message: `${parts.join(" and ")}?`,
+        });
+
+        // ── Execute ──────────────────────────────────────────────
+        for (const name of selectedDirs) {
+          rmSync(join(ctx.arbRootDir, name), { recursive: true, force: true });
+        }
+
+        if (hasStale) {
+          await pruneWorktrees(ctx.reposDir, unrepairedRenames);
+        }
+
+        for (const ob of orphansToDelete) {
+          // Use -D for all: our detectBranchMerged is smarter than git's -d
+          // (it detects squash merges via patch-id, which git -d would reject)
+          await git(join(ctx.reposDir, ob.repo), "branch", "-D", ob.branch);
+        }
+
+        // ── Summary ──────────────────────────────────────────────
+        const summaryParts: string[] = [];
+        if (selectedDirs.length > 0)
+          summaryParts.push(`Removed ${plural(selectedDirs.length, "directory", "directories")}`);
+        if (hasStale) summaryParts.push(`pruned ${plural(staleWorktreeRepos.length, "repo")}`);
+        if (orphansToDelete.length > 0)
+          summaryParts.push(`deleted ${plural(orphansToDelete.length, "orphaned branch", "orphaned branches")}`);
+        success(summaryParts.join(", "));
+
+        // Hint about skipped unmerged branches
         if (unmergedOrphans.length > 0 && !forceOrphans) {
           info(
             `${plural(unmergedOrphans.length, "unmerged orphaned branch", "unmerged orphaned branches")} skipped (use --force to delete)`,
           );
         }
-        info("Nothing to do.");
-        return;
-      }
-
-      await confirmOrExit({
-        yes: skipPrompts,
-        message: `${parts.join(" and ")}?`,
-      });
-
-      // ── Execute ──────────────────────────────────────────────
-      for (const name of selectedDirs) {
-        rmSync(join(ctx.arbRootDir, name), { recursive: true, force: true });
-      }
-
-      if (hasStale) {
-        await pruneWorktrees(ctx.reposDir, unrepairedRenames);
-      }
-
-      for (const ob of orphansToDelete) {
-        // Use -D for all: our detectBranchMerged is smarter than git's -d
-        // (it detects squash merges via patch-id, which git -d would reject)
-        await git(join(ctx.reposDir, ob.repo), "branch", "-D", ob.branch);
-      }
-
-      // ── Summary ──────────────────────────────────────────────
-      const summaryParts: string[] = [];
-      if (selectedDirs.length > 0)
-        summaryParts.push(`Removed ${plural(selectedDirs.length, "directory", "directories")}`);
-      if (hasStale) summaryParts.push(`pruned ${plural(staleWorktreeRepos.length, "repo")}`);
-      if (orphansToDelete.length > 0)
-        summaryParts.push(`deleted ${plural(orphansToDelete.length, "orphaned branch", "orphaned branches")}`);
-      success(summaryParts.join(", "));
-
-      // Hint about skipped unmerged branches
-      if (unmergedOrphans.length > 0 && !forceOrphans) {
-        info(
-          `${plural(unmergedOrphans.length, "unmerged orphaned branch", "unmerged orphaned branches")} skipped (use --force to delete)`,
-        );
-      }
-    });
+      },
+    );
 }

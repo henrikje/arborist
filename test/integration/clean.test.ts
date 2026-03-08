@@ -271,6 +271,15 @@ describe("git cleanup", () => {
       const mainBranchB = await git(join(env.projectDir, ".arb/repos/repo-b"), ["branch", "--list", "main"]);
       expect(mainBranchB).toContain("main");
     }));
+
+  test("arb clean -N skips fetch", () =>
+    withEnv(async (env) => {
+      await mkdir(join(env.projectDir, "leftover"), { recursive: true });
+      const result = await arb(env, ["clean", "--yes", "-N"]);
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Removed");
+      expect(existsSync(join(env.projectDir, "leftover"))).toBe(false);
+    }));
 });
 
 // ── workspace rename detection ──────────────────────────────────
