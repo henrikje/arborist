@@ -251,7 +251,7 @@ __arb_complete_delete() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-f --force -r --delete-remote -y --yes -a --all-safe -w --where -n --dry-run" -- "$cur"))
+        COMPREPLY=($(compgen -W "-f --force -r --delete-remote -y --yes -a --all-safe -w --where -n --dry-run --fetch -N --no-fetch" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_workspace_names "$base_dir")" -- "$cur"))
@@ -260,7 +260,7 @@ __arb_complete_delete() {
 __arb_complete_clean() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-y --yes -n --dry-run -f --force" -- "$cur"))
+        COMPREPLY=($(compgen -W "-y --yes -n --dry-run -f --force --fetch -N --no-fetch" -- "$cur"))
         return
     fi
     # Complete non-workspace directory names (top-level dirs without .arbws/)
@@ -371,7 +371,7 @@ __arb_complete_attach() {
 __arb_complete_detach() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-f --force -a --all-repos --delete-branch" -- "$cur"))
+        COMPREPLY=($(compgen -W "-f --force -a --all-repos --delete-branch -y --yes -n --dry-run --fetch -N --no-fetch" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))

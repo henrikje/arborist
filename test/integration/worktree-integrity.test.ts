@@ -128,7 +128,7 @@ describe("worktree integrity", () => {
       writeFileSync(join(env.projectDir, "ws-a/repo-a/.git"), wsBGitContent);
 
       // Detach from ws-a — auto-repair removes stale dir, detach sees "not in workspace"
-      await arb(env, ["detach", "repo-a", "--force"], { cwd: join(env.projectDir, "ws-a") });
+      await arb(env, ["detach", "repo-a", "--force", "--yes", "-N"], { cwd: join(env.projectDir, "ws-a") });
 
       // Attach to ws-a — should create a new, non-shared entry
       const attachResult = await arb(env, ["attach", "repo-a"], { cwd: join(env.projectDir, "ws-a") });
@@ -162,7 +162,7 @@ describe("worktree integrity", () => {
       await rm(join(env.projectDir, "ws-keep/repo-a"), { recursive: true });
 
       // Detach from ws-fix — the fallback should use scoped pruning
-      await arb(env, ["detach", "repo-a"], { cwd: join(env.projectDir, "ws-fix") });
+      await arb(env, ["detach", "repo-a", "--yes", "-N"], { cwd: join(env.projectDir, "ws-fix") });
 
       // ws-keep's worktree entry should still exist in the canonical repo
       // (global prune would have removed it since ws-keep/repo-a is gone)
@@ -179,7 +179,9 @@ describe("worktree integrity", () => {
       writeFileSync(join(env.projectDir, "ws-bad/repo-a/.git"), wsGoodGitContent);
 
       // Detach from ws-bad — should succeed (auto-repair removes stale dir first)
-      const result = await arb(env, ["detach", "repo-a", "--force"], { cwd: join(env.projectDir, "ws-bad") });
+      const result = await arb(env, ["detach", "repo-a", "--force", "--yes", "-N"], {
+        cwd: join(env.projectDir, "ws-bad"),
+      });
       expect(result.exitCode).toBe(0);
 
       // ws-good should still work fine (its entry was not touched)
@@ -200,7 +202,7 @@ describe("worktree integrity", () => {
       const victimGit = readFileSync(join(env.projectDir, "ws-victim/repo-a/.git"), "utf-8").trim();
 
       // Detach repo-a from ws-culprit
-      await arb(env, ["detach", "repo-a"], { cwd: join(env.projectDir, "ws-culprit") });
+      await arb(env, ["detach", "repo-a", "--yes", "-N"], { cwd: join(env.projectDir, "ws-culprit") });
 
       // Simulate the corruption scenario: prune ws-victim's entry, then recreate
       // a stale .git file that will collide when ws-culprit re-attaches

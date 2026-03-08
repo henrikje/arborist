@@ -1148,7 +1148,7 @@ describe("repo-aware templates (iteration)", () => {
       expect(before).toContain("repo-a");
       expect(before).toContain("repo-b");
 
-      const result = await arb(env, ["detach", "repo-b"], {
+      const result = await arb(env, ["detach", "--yes", "-N", "repo-b"], {
         cwd: join(env.projectDir, "tpl-detach-regen"),
       });
       expect(result.exitCode).toBe(0);
@@ -1250,7 +1250,7 @@ describe("repo-aware templates (iteration)", () => {
       expect(afterAttach).toContain("repo-b");
 
       // Detach repo-a
-      await arb(env, ["detach", "repo-a"], { cwd: join(env.projectDir, "tpl-seq") });
+      await arb(env, ["detach", "--yes", "-N", "repo-a"], { cwd: join(env.projectDir, "tpl-seq") });
       const afterDetach = await readFile(join(env.projectDir, "tpl-seq/repos.txt"), "utf8");
       expect(afterDetach).not.toContain("repo-a");
       expect(afterDetach).toContain("repo-b");
@@ -1545,7 +1545,7 @@ describe("unified display in lifecycle commands", () => {
       await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
       await write(join(env.projectDir, ".arb/templates/workspace/new-file.txt"), "NEW");
 
-      const result = await arb(env, ["detach", "repo-b"], {
+      const result = await arb(env, ["detach", "repo-b", "--yes", "-N"], {
         cwd: join(env.projectDir, "detach-seed"),
       });
       expect(result.exitCode).toBe(0);
@@ -1560,7 +1560,7 @@ describe("unified display in lifecycle commands", () => {
       await writeFile(join(env.projectDir, ".arb/templates/workspace/config.json.arbtemplate"), "{{ workspace.name }}");
 
       await arb(env, ["create", "detach-conflict", "repo-a", "repo-b"]);
-      const result = await arb(env, ["detach", "repo-b"], {
+      const result = await arb(env, ["detach", "repo-b", "--yes", "-N"], {
         cwd: join(env.projectDir, "detach-conflict"),
       });
       expect(result.exitCode).toBe(0);

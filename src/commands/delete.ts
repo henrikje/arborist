@@ -33,7 +33,7 @@ import {
   workspaceMatchesWhere,
   wouldLoseWork,
 } from "../lib/status";
-import { confirmOrExit } from "../lib/sync";
+import { confirmOrExit, parallelFetch, reportFetchFailures } from "../lib/sync";
 import {
   dryRunNotice,
   error,
@@ -321,9 +321,11 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
     )
     .option("-w, --where <filter>", "Filter workspaces by repo status flags (comma = OR, + = AND, ^ = negate)")
     .option("-n, --dry-run", "Show what would happen without executing")
+    .option("--fetch", "Fetch before assessing workspace status (default)")
+    .option("-N, --no-fetch", "Skip fetching")
     .summary("Delete one or more workspaces")
     .description(
-      "Delete one or more workspaces and their repos. Shows the status of each repo (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-delete all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Use --where <filter> to filter by status flags. When used without workspace names, --where selects all matching workspaces (e.g. arb delete --where gone deletes all gone workspaces). When combined with names, --where narrows the selection further (AND logic). Combine with --all-safe to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). See 'arb help where' for filter syntax.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.\n\nSee 'arb help stacked' for stacked workspace deletion.",
+      "Delete one or more workspaces and their repos. Fetches workspace repos before assessing for fresh remote state (skip with -N/--no-fetch). Shows the status of each repo (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-delete all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Use --where <filter> to filter by status flags. When used without workspace names, --where selects all matching workspaces (e.g. arb delete --where gone deletes all gone workspaces). When combined with names, --where narrows the selection further (AND logic). Combine with --all-safe to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). See 'arb help where' for filter syntax.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.\n\nSee 'arb help stacked' for stacked workspace deletion.",
     )
     .action(
       async (
@@ -335,6 +337,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
           allSafe?: boolean;
           where?: string;
           dryRun?: boolean;
+          fetch?: boolean;
         },
       ) => {
         const ctx = getCtx();
@@ -343,6 +346,26 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
         const deleteRemote = options.deleteRemote ?? false;
 
         const whereFilter = resolveWhereFilter(options);
+
+        // Pre-fetch repos across all candidate workspaces for fresh remote data
+        const fetchWorkspaceRepos = async (workspaceNames: string[]) => {
+          if (options.fetch === false) return;
+          const allRepoDirs = new Set<string>();
+          const allRepoNames = new Set<string>();
+          for (const ws of workspaceNames) {
+            const wsDir = `${ctx.arbRootDir}/${ws}`;
+            for (const repoDir of workspaceRepoDirs(wsDir)) {
+              allRepoDirs.add(repoDir);
+              allRepoNames.add(basename(repoDir));
+            }
+          }
+          if (allRepoDirs.size === 0) return;
+          const cache = new GitCache();
+          await assertMinimumGitVersion(cache);
+          const remotesMap = await cache.resolveRemotesMap([...allRepoNames], ctx.reposDir);
+          const fetchResults = await parallelFetch([...allRepoDirs], undefined, remotesMap);
+          reportFetchFailures([...allRepoNames], fetchResults);
+        };
 
         if (options.allSafe) {
           if (nameArgs.length > 0) {
@@ -357,6 +380,8 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
             info("No workspaces to check.");
             return;
           }
+
+          await fetchWorkspaceRepos(candidates);
 
           const safeEntries: WorkspaceAssessment[] = [];
           for (const ws of candidates) {
@@ -435,6 +460,9 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
             }
           }
         }
+
+        // Fetch repos for fresh remote state
+        await fetchWorkspaceRepos(names);
 
         // Assess all workspaces
         let assessments: WorkspaceAssessment[] = [];
