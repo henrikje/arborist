@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configGet, writeConfig } from "./config";
+import { configGet, configGetList, configSetList, writeConfig } from "./config";
 
 describe("config", () => {
   let tmpDir: string;
@@ -66,6 +66,81 @@ describe("config", () => {
       writeConfig(configFile, "my-branch", undefined);
       expect(readFileSync(configFile, "utf-8")).toBe("branch = my-branch\n");
       expect(configGet(configFile, "base")).toBeNull();
+    });
+
+    test("writes branchRenameFrom when provided", () => {
+      writeConfig(configFile, "new-name", "main", "old-name");
+      const content = readFileSync(configFile, "utf-8");
+      expect(content).toBe("branch = new-name\nbase = main\nbranch_rename_from = old-name\n");
+      expect(configGet(configFile, "branch_rename_from")).toBe("old-name");
+    });
+
+    test("omits branchRenameFrom when null", () => {
+      writeConfig(configFile, "my-branch", "main", null);
+      expect(readFileSync(configFile, "utf-8")).toBe("branch = my-branch\nbase = main\n");
+      expect(configGet(configFile, "branch_rename_from")).toBeNull();
+    });
+  });
+
+  describe("configGetList", () => {
+    test("returns empty array for missing file", () => {
+      expect(configGetList(join(tmpDir, "nonexistent"), "repos")).toEqual([]);
+    });
+
+    test("returns empty array for missing key", () => {
+      writeFileSync(configFile, "branch = main\n");
+      expect(configGetList(configFile, "repos")).toEqual([]);
+    });
+
+    test("returns parsed comma-separated values", () => {
+      writeFileSync(configFile, "repos = repo-a,repo-b,repo-c\n");
+      expect(configGetList(configFile, "repos")).toEqual(["repo-a", "repo-b", "repo-c"]);
+    });
+
+    test("trims whitespace from values", () => {
+      writeFileSync(configFile, "repos = repo-a , repo-b , repo-c\n");
+      expect(configGetList(configFile, "repos")).toEqual(["repo-a", "repo-b", "repo-c"]);
+    });
+
+    test("filters out empty values", () => {
+      writeFileSync(configFile, "repos = repo-a,,repo-b,\n");
+      expect(configGetList(configFile, "repos")).toEqual(["repo-a", "repo-b"]);
+    });
+  });
+
+  describe("configSetList", () => {
+    test("creates file with list value when file does not exist", () => {
+      configSetList(configFile, "repos", ["repo-a", "repo-b"]);
+      expect(readFileSync(configFile, "utf-8")).toBe("repos = repo-a,repo-b\n");
+    });
+
+    test("updates existing list value", () => {
+      writeFileSync(configFile, "branch = main\nrepos = old-repo\n");
+      configSetList(configFile, "repos", ["new-a", "new-b"]);
+      const content = readFileSync(configFile, "utf-8");
+      expect(content).toContain("repos = new-a,new-b");
+      expect(content).toContain("branch = main");
+    });
+
+    test("removes key when values array is empty", () => {
+      writeFileSync(configFile, "branch = main\nrepos = repo-a\n");
+      configSetList(configFile, "repos", []);
+      const content = readFileSync(configFile, "utf-8");
+      expect(content).not.toContain("repos");
+      expect(content).toContain("branch = main");
+    });
+
+    test("appends new key to existing file", () => {
+      writeFileSync(configFile, "branch = main\n");
+      configSetList(configFile, "repos", ["repo-a"]);
+      const content = readFileSync(configFile, "utf-8");
+      expect(content).toContain("branch = main");
+      expect(content).toContain("repos = repo-a");
+    });
+
+    test("does not create file when values are empty and file does not exist", () => {
+      configSetList(configFile, "repos", []);
+      expect(require("node:fs").existsSync(configFile)).toBe(false);
     });
   });
 });
