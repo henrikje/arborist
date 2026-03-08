@@ -2,6 +2,7 @@
 
 ## [0.104.0](https://github.com/henrikje/arborist/compare/v0.103.0...v0.104.0) (2026-03-08)
 
+Improves workspace creation and everyday Git workflows with a more guided arb create, smarter push behavior, and clearer status reporting with conflict predictions. This release also significantly strengthens resilience by automatically detecting and repairing moved projects, renamed workspaces, and corrupted worktree references.
 
 ### Features
 
