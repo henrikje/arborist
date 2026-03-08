@@ -29,8 +29,9 @@ COPY --from=builder /usr/local/bin/git* /usr/local/bin/
 COPY --from=builder /usr/local/libexec/git-core/ /usr/local/libexec/git-core/
 COPY --from=builder /usr/local/share/git-core/ /usr/local/share/git-core/
 
-# Install Bun
-RUN curl -fsSL https://bun.sh/install | bash
+# Install Bun (pinned for reproducibility)
+ARG BUN_VERSION=1.3.10
+RUN curl -fsSL https://bun.sh/install | BUN_INSTALL=/root/.bun bash -s "bun-v${BUN_VERSION}"
 ENV PATH="/root/.bun/bin:${PATH}"
 
 # Git config for tests

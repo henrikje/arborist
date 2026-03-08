@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      docker: ${{ steps.filter.outputs.docker }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -23,6 +24,8 @@ jobs:
               - '!**/*.md'
               - '!docs/**'
               - '!decisions/**'
+            docker:
+              - 'test/docker/**'
 
   static-analysis:
     name: Static analysis
@@ -96,18 +99,34 @@ jobs:
   integration-git217:
     name: Integration tests (git 2.17)
     needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     steps:
-      - name: Skip (no code changes)
-        if: needs.changes.outputs.code != 'true'
-        run: echo "No code changes detected, skipping tests"
       - uses: actions/checkout@v4
-        if: needs.changes.outputs.code == 'true'
+
+      - name: Compute image tag
+        id: tag
+        run: |
+          HASH=$(cat test/docker/git217.Dockerfile test/docker/entrypoint.sh | sha256sum | cut -c1-16)
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Pull pre-built image
+        id: pull
+        if: needs.changes.outputs.docker != 'true'
+        continue-on-error: true
+        run: |
+          docker pull "ghcr.io/${{ github.repository }}/git217:${{ steps.tag.outputs.hash }}"
+          docker tag "ghcr.io/${{ github.repository }}/git217:${{ steps.tag.outputs.hash }}" arb-git217:latest
+
       - name: Set up Docker Buildx
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.docker == 'true' || steps.pull.outcome == 'failure'
         uses: docker/setup-buildx-action@v3
+
       - name: Build Docker image
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.docker == 'true' || steps.pull.outcome == 'failure'
         uses: docker/build-push-action@v6
         with:
           context: test/docker/
@@ -116,6 +135,6 @@ jobs:
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
       - name: Integration tests (git 2.17)
-        if: needs.changes.outputs.code == 'true'
         run: docker run --rm -v "$PWD":/app -w /app arb-git217
