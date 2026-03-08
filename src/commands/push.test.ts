@@ -213,8 +213,8 @@ describe("assessPushRepo", () => {
       SHA,
     );
     expect(a.outcome).toBe("skip");
-    expect(a.skipReason).toContain("merged into main with 1 new commit");
-    expect(a.skipReason).toContain("rebase or --include-merged");
+    expect(a.skipReason).toContain("branch was merged into main, but has 1 new commit since");
+    expect(a.skipReason).toContain("rebase or use --include-merged to push");
     expect(a.skipFlag).toBe("merged-new-work");
   });
 
@@ -238,8 +238,8 @@ describe("assessPushRepo", () => {
       SHA,
     );
     expect(a.outcome).toBe("skip");
-    expect(a.skipReason).toContain("merged into main with 2 new commits");
-    expect(a.skipReason).toContain("rebase or --include-merged");
+    expect(a.skipReason).toContain("branch was merged into main, but has 2 new commits since");
+    expect(a.skipReason).toContain("rebase or use --include-merged to push");
     expect(a.skipFlag).toBe("merged-new-work");
   });
 
@@ -861,14 +861,15 @@ describe("formatPushPlan", () => {
       [
         makeAssessment({
           outcome: "skip",
-          skipReason: "merged into main with 1 new commit (rebase or --include-merged)",
+          skipReason:
+            "branch was merged into main, but has 1 new commit since (rebase or use --include-merged to push)",
           skipFlag: "merged-new-work",
         }),
       ],
       makeRemotesMap(["repo-a", {}]),
     );
     expect(plan).toContain("hint:");
-    expect(plan).toContain("merged with new commits");
+    expect(plan).toContain("was merged but has new commits since");
     expect(plan).toContain("arb rebase");
   });
 

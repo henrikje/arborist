@@ -285,8 +285,8 @@ export function buildPushPlanNodes(
     nodes.push({
       kind: "hint",
       cell: cell(
-        `  hint: ${plural(mergedNewWorkCount, "repo")} merged with new commits — run 'arb rebase' to replay onto updated base`,
-        "attention",
+        `  hint: ${plural(mergedNewWorkCount, "repo")} ${mergedNewWorkCount === 1 ? "was" : "were"} merged but ${mergedNewWorkCount === 1 ? "has" : "have"} new commits since — run 'arb rebase' first`,
+        "muted",
       ),
     });
   }
@@ -451,7 +451,7 @@ export function assessPushRepo(
       if (n && n > 0) {
         return {
           ...base,
-          skipReason: `merged into ${status.base.ref} with ${n} new ${n === 1 ? "commit" : "commits"} (rebase or --include-merged to recreate)`,
+          skipReason: `branch was merged into ${status.base.ref}, but has ${n} new ${n === 1 ? "commit" : "commits"} since (rebase or use --include-merged to push)`,
           skipFlag: "merged-new-work",
         };
       }
@@ -471,7 +471,7 @@ export function assessPushRepo(
     if (n && n > 0) {
       return {
         ...base,
-        skipReason: `merged into ${status.base.ref} with ${n} new ${n === 1 ? "commit" : "commits"} (rebase or --include-merged)`,
+        skipReason: `branch was merged into ${status.base.ref}, but has ${n} new ${n === 1 ? "commit" : "commits"} since (rebase or use --include-merged to push)`,
         skipFlag: "merged-new-work",
       };
     }
