@@ -189,7 +189,9 @@ _arb() {
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-a --all-safe)'{-a,--all-safe}'[Remove all safe workspaces]' \
                         '(-w --where)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
-                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]'
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch before assessing workspace status (default)]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching]'
                     ;;
                 clean)
                     # Complete non-workspace directory names
@@ -206,7 +208,9 @@ _arb() {
                         '*:directory:($non_ws_names)' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
-                        '(-f --force)'{-f,--force}'[Delete unmerged orphaned branches]'
+                        '(-f --force)'{-f,--force}'[Delete unmerged orphaned branches]' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch canonical repos before detecting orphaned branches (default)]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching]'
                     ;;
                 path)
                     # Detect if we're inside a workspace
@@ -288,6 +292,10 @@ _arb() {
                         '(-f --force)'{-f,--force}'[Force removal even with uncommitted changes]' \
                         '(-a --all-repos)'{-a,--all-repos}'[Drop all repos from the workspace]' \
                         '--delete-branch[Delete the local branch from the canonical repo]' \
+                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch before detaching (default)]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-fetch]' \
                         '*:repo:($repo_names)'
                     ;;
                 repo)

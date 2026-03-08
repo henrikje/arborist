@@ -442,7 +442,7 @@ describe("detach", () => {
   test("arb detach removes a repo from workspace", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
-      await arb(env, ["detach", "repo-b"], { cwd: join(env.projectDir, "my-feature") });
+      await arb(env, ["detach", "--yes", "-N", "repo-b"], { cwd: join(env.projectDir, "my-feature") });
       expect(existsSync(join(env.projectDir, "my-feature/repo-b"))).toBe(false);
       expect(existsSync(join(env.projectDir, "my-feature/repo-a"))).toBe(true);
     }));
@@ -451,7 +451,7 @@ describe("detach", () => {
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       await write(join(env.projectDir, "my-feature/repo-a/dirty.txt"), "dirty");
-      const result = await arb(env, ["detach", "repo-a"], { cwd: join(env.projectDir, "my-feature") });
+      const result = await arb(env, ["detach", "--yes", "-N", "repo-a"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.output).toContain("uncommitted changes");
       expect(existsSync(join(env.projectDir, "my-feature/repo-a"))).toBe(true);
     }));
@@ -460,7 +460,7 @@ describe("detach", () => {
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       await write(join(env.projectDir, "my-feature/repo-a/dirty.txt"), "dirty");
-      await arb(env, ["detach", "--force", "repo-a"], { cwd: join(env.projectDir, "my-feature") });
+      await arb(env, ["detach", "--force", "--yes", "-N", "repo-a"], { cwd: join(env.projectDir, "my-feature") });
       expect(existsSync(join(env.projectDir, "my-feature/repo-a"))).toBe(false);
     }));
 
@@ -468,14 +468,16 @@ describe("detach", () => {
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       await write(join(env.projectDir, "my-feature/repo-a/dirty.txt"), "dirty");
-      await arb(env, ["detach", "-f", "repo-a"], { cwd: join(env.projectDir, "my-feature") });
+      await arb(env, ["detach", "-f", "--yes", "-N", "repo-a"], { cwd: join(env.projectDir, "my-feature") });
       expect(existsSync(join(env.projectDir, "my-feature/repo-a"))).toBe(false);
     }));
 
   test("arb detach --delete-branch also deletes local branch", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
-      await arb(env, ["detach", "--delete-branch", "repo-b"], { cwd: join(env.projectDir, "my-feature") });
+      await arb(env, ["detach", "--delete-branch", "--yes", "-N", "repo-b"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
       expect(existsSync(join(env.projectDir, "my-feature/repo-b"))).toBe(false);
       const showRef = await git(join(env.projectDir, ".arb/repos/repo-b"), [
         "show-ref",
@@ -488,14 +490,14 @@ describe("detach", () => {
   test("arb detach skips repo not in workspace", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
-      const result = await arb(env, ["detach", "repo-b"], { cwd: join(env.projectDir, "my-feature") });
+      const result = await arb(env, ["detach", "--yes", "-N", "repo-b"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.output).toContain("not in this workspace");
     }));
 
   test("arb detach rejects unknown repos", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
-      const result = await arb(env, ["detach", "nonexistent"], { cwd: join(env.projectDir, "my-feature") });
+      const result = await arb(env, ["detach", "-N", "nonexistent"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("Unknown repos: nonexistent");
       expect(result.output).toContain("Not found in .arb/repos/");
@@ -513,7 +515,7 @@ describe("detach", () => {
   test("arb detach -a detaches all repos from workspace", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
-      const result = await arb(env, ["detach", "-a"], { cwd: join(env.projectDir, "my-feature") });
+      const result = await arb(env, ["detach", "-a", "--yes", "-N"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.exitCode).toBe(0);
       expect(existsSync(join(env.projectDir, "my-feature/repo-a"))).toBe(false);
       expect(existsSync(join(env.projectDir, "my-feature/repo-b"))).toBe(false);
@@ -522,7 +524,9 @@ describe("detach", () => {
   test("arb detach --all-repos detaches all repos from workspace", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
-      const result = await arb(env, ["detach", "--all-repos"], { cwd: join(env.projectDir, "my-feature") });
+      const result = await arb(env, ["detach", "--all-repos", "--yes", "-N"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
       expect(result.exitCode).toBe(0);
       expect(existsSync(join(env.projectDir, "my-feature/repo-a"))).toBe(false);
       expect(existsSync(join(env.projectDir, "my-feature/repo-b"))).toBe(false);
@@ -532,16 +536,40 @@ describe("detach", () => {
     withEnv(async (env) => {
       await mkdir(join(env.projectDir, "empty-ws/.arbws"), { recursive: true });
       await writeFile(join(env.projectDir, "empty-ws/.arbws/config"), "branch = empty");
-      const result = await arb(env, ["detach", "-a"], { cwd: join(env.projectDir, "empty-ws") });
+      const result = await arb(env, ["detach", "-a", "-N"], { cwd: join(env.projectDir, "empty-ws") });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("No repos in this workspace");
     }));
 
   test("arb detach without workspace context fails", () =>
     withEnv(async (env) => {
-      const result = await arb(env, ["detach", "repo-a"]);
+      const result = await arb(env, ["detach", "-N", "repo-a"]);
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("Not inside a workspace");
+    }));
+
+  test("arb detach --dry-run shows plan without executing", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const result = await arb(env, ["detach", "--dry-run", "-N", "repo-b"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("repo-b");
+      expect(result.output).toContain("detach");
+      expect(result.output).toContain("Dry run");
+      // Repo should still exist
+      expect(existsSync(join(env.projectDir, "my-feature/repo-b"))).toBe(true);
+    }));
+
+  test("arb detach without --yes in non-TTY errors", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const result = await arb(env, ["detach", "-N", "repo-b"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("--yes");
     }));
 });
 
@@ -904,5 +932,13 @@ describe("delete empty workspace", () => {
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("empty");
       expect(existsSync(join(env.projectDir, "ws-empty"))).toBe(false);
+    }));
+
+  test("arb delete -N skips fetch", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const result = await arb(env, ["delete", "my-feature", "--yes", "--force", "-N"]);
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(join(env.projectDir, "my-feature"))).toBe(false);
     }));
 });
