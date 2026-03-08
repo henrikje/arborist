@@ -404,7 +404,7 @@ __arb_complete_branch() {
     done
 
     local show_opts="-q --quiet -v --verbose --fetch -N --no-fetch --json --schema"
-    local rename_opts="--continue --abort -r --delete-remote --fetch -N --no-fetch -n --dry-run -y --yes --include-in-progress --workspace-name --keep-workspace-name"
+    local rename_opts="--continue --abort -r --delete-remote --fetch -N --no-fetch -n --dry-run -y --yes --include-in-progress --rename-workspace"
 
     if ((COMP_CWORD == sub_pos)); then
         # Complete subcommand name or show-options (since show is the default)

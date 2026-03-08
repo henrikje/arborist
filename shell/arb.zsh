@@ -398,8 +398,7 @@ _arb() {
                                     '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                                     '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                                     '--include-in-progress[Rename repos even if they have an in-progress git operation]' \
-                                    '--workspace-name[Rename the workspace directory]:name:' \
-                                    '--keep-workspace-name[Do not rename the workspace directory]' \
+                                    '--rename-workspace[Also rename the workspace directory]::name:' \
                                     '1:new-name:'
                                 ;;
                         esac
