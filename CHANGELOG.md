@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.104.0](https://github.com/henrikje/arborist/compare/v0.103.0...v0.104.0) (2026-03-08)
+
+Improves workspace creation and everyday Git workflows with a more guided arb create, smarter push behavior, and clearer status reporting with conflict predictions. This release also significantly strengthens resilience by automatically detecting and repairing moved projects, renamed workspaces, and corrupted worktree references.
+
+### Features
+
+* add --include-merged for merged branch pushes ([987b6c9](https://github.com/henrikje/arborist/commit/987b6c9e43b5922acd0bf49305051804c1b2a877))
+* add --yes flag to create command to skip interactive prompts ([20c827a](https://github.com/henrikje/arborist/commit/20c827a8e7545933d725538f40a1f62b6f69c096))
+* add arb dump command for capturing workspace state ([9a12988](https://github.com/henrikje/arborist/commit/9a12988423f3729629e77fd7e2e8f66302b5f8ab))
+* add default repos for workspace creation ([46e6e0d](https://github.com/henrikje/arborist/commit/46e6e0df63c51b92fe4bc7ea017626bbbecaf1b3))
+* add timeout protection for all git network operations ([027f761](https://github.com/henrikje/arborist/commit/027f761dea22e4b0bd8acd1cf01f722ee2bbdd97))
+* always print resolved values in arb create ([#233](https://github.com/henrikje/arborist/issues/233)) ([0f1b446](https://github.com/henrikje/arborist/commit/0f1b446d6b405d51646951771112283034fdc572))
+* auto-navigate to project root after deleting current workspace ([c59617a](https://github.com/henrikje/arborist/commit/c59617a0eca34c2b47f60c19e9c2cc46074651e6))
+* auto-repair worktree refs after workspace directory rename ([a01568e](https://github.com/henrikje/arborist/commit/a01568e8780ec3ad5a4578acd4a94d9ab82cafc1))
+* avoid unnecessary rebase replay for squash-equivalent commits ([#223](https://github.com/henrikje/arborist/issues/223)) ([8b2511d](https://github.com/henrikje/arborist/commit/8b2511da97e303bfe9dc374d1e3a0ee37d233ddc))
+* default confirmation prompts to yes ([6f7c727](https://github.com/henrikje/arborist/commit/6f7c727c2475f99a01ba5e7d34340ce6710cdb08))
+* detect and repair project directory moves ([f52f5ee](https://github.com/henrikje/arborist/commit/f52f5ee54d66850f5f0e0ea24c821e702f033862))
+* detect replaced commits via reflog for accurate share status ([#239](https://github.com/henrikje/arborist/issues/239)) ([b450086](https://github.com/henrikje/arborist/commit/b4500862346d7327b5eba0ddef007e6d5595f424))
+* enforce minimum Git 2.17 version requirement ([b4f75ee](https://github.com/henrikje/arborist/commit/b4f75ee01ac722222b414767070b0c7701ce5f12))
+* improve arb create UX with interactive branch selector ([618e3d0](https://github.com/henrikje/arborist/commit/618e3d03a4bdbbf5f080e0d5cc5e375d3a18babc))
+* improve network error handling for offline and degraded connectivity ([6f1ec5d](https://github.com/henrikje/arborist/commit/6f1ec5d0e58c61a77c8ec4bf4ce610e698226e40))
+* include conflict predictions in status --json output ([e43b1de](https://github.com/henrikje/arborist/commit/e43b1deab25b38ce0e65504c8cc3a5399c1737bc))
+* introduce "project" as primary user-facing term ([0bc8954](https://github.com/henrikje/arborist/commit/0bc89542f1ae92697bb4fea0f1757e4a1fd0b1cd))
+* **log:** add --verbose flag to show commit bodies and changed files ([#251](https://github.com/henrikje/arborist/issues/251)) ([e063ac4](https://github.com/henrikje/arborist/commit/e063ac474cd39bf3e97085888aaac57fea3b3f5e))
+* make workspace rename opt-in via --rename-workspace [name] ([1fd4fb6](https://github.com/henrikje/arborist/commit/1fd4fb6cd6f36aec191f62673ed3566aefcfeb91))
+* move rebranch into branch group as rename subcommand ([3a22498](https://github.com/henrikje/arborist/commit/3a22498b26200c0a08d6fdad36fbafc4f04a2d82))
+* predict pull conflicts for status share-side highlighting ([97991d6](https://github.com/henrikje/arborist/commit/97991d6718e1d02d726da46d5bb733456600f03b))
+* **push:** auto-push when all remote commits are outdated ([042e131](https://github.com/henrikje/arborist/commit/042e1314470e8846e18eb3fc677a8ddb367d9753))
+* refresh arb create adaptive interaction flow ([ddaefb5](https://github.com/henrikje/arborist/commit/ddaefb5cf83fd38d7366892bf6970d2440bf72d6))
+* safely reset pull on rebased remote without local work ([#222](https://github.com/henrikje/arborist/issues/222)) ([89189ca](https://github.com/henrikje/arborist/commit/89189ca608b729c68d2d5dcb0e3431211ee91bab))
+* show "to pull" commits in verbose status with arrow separator in SHARE cell ([24754c7](https://github.com/henrikje/arborist/commit/24754c7d2613f4bc5a181c58de71565eee6b9598))
+* show remote branch name in push plan for new/recreated branches ([f568196](https://github.com/henrikje/arborist/commit/f56819603c8434266242e8cf177b614ef20a9737))
+* three-way rebase status split (fromBase / rebased / new) ([1a992a6](https://github.com/henrikje/arborist/commit/1a992a6eafd98a9a778df4767e2a2bf82ab4b239))
+
+
+### Bug Fixes
+
+* abort and roll back workspace on failed worktree attach during create ([bce8a9e](https://github.com/henrikje/arborist/commit/bce8a9e2627fb5b0c35e30280648aaeb371a500f))
+* add word boundaries to ticket detection regex ([8c28a8c](https://github.com/henrikje/arborist/commit/8c28a8c607aa285b7bb85c4a049558f955bf38ed))
+* allow retarget when some repos lack the target branch ([b743b55](https://github.com/henrikje/arborist/commit/b743b556b14d35c814cd4f33a151cae5d1e42667))
+* auto-repair shared worktree entry corruption ([be9a122](https://github.com/henrikje/arborist/commit/be9a12206a350190956648820208a2aab4de7ee7))
+* auto-repair shared worktree entry corruption ([#228](https://github.com/henrikje/arborist/issues/228)) ([781862a](https://github.com/henrikje/arborist/commit/781862afe6a4417d8f287d77ce010dd8b57effb5))
+* **ci:** exclude root-level .md files from code change detection ([a84a6b6](https://github.com/henrikje/arborist/commit/a84a6b618f71f0b3b09a9e5a3268916ecf17456f))
+* derive workspace name from --branch in non-tty create ([de6ff28](https://github.com/henrikje/arborist/commit/de6ff28045f00c5d51d279bff02345cd570ac526))
+* disable looping in interactive selectors ([653cb38](https://github.com/henrikje/arborist/commit/653cb387a0ab1348ef474e7d2f28178c1a809506))
+* docs, completions, fetch flags, and stale references ([eff30ff](https://github.com/henrikje/arborist/commit/eff30ffa3a60e3c22ceba2ef472e86fb5544e8d1))
+* ensure base is changed on retarget when all repos are up to date ([bc6f7ab](https://github.com/henrikje/arborist/commit/bc6f7ab61dec2e114001532e132423ae4edfde3b))
+* guard isTTY against Bun epoll_ctl EEXIST on Linux ([28b1ec6](https://github.com/henrikje/arborist/commit/28b1ec64134961ae59a678fbbd9a0d7b7ad72ceb))
+* join merge and three-way wording in pull output ([1d70aeb](https://github.com/henrikje/arborist/commit/1d70aeb07450200495261ba19b5ddcd6d777be10))
+* prevent phased render from leaving stale output on screen ([#240](https://github.com/henrikje/arborist/issues/240)) ([3919057](https://github.com/henrikje/arborist/commit/3919057e44d57b7d5196d316aa1cafde1194dc7a))
+* prevent worktree entry corruption from cross-workspace prune ([9dad27b](https://github.com/henrikje/arborist/commit/9dad27b6fc49873c6a0bff67b4b4ed36438e5f28))
+* re-link worktree in place when directory has files with stale reference ([570bda1](https://github.com/henrikje/arborist/commit/570bda109f374ba78a381be26f1fb3084e7465a1))
+* require confirmation before deleting empty workspaces ([#238](https://github.com/henrikje/arborist/issues/238)) ([06c532a](https://github.com/henrikje/arborist/commit/06c532af6bf14317e71f336a1ab6c5bd2df9cf1d))
+
 ## [0.103.0](https://github.com/henrikje/arborist/compare/v0.102.0...v0.103.0) (2026-03-02)
 
 This release improves status and push protection for merged branches with new commits, adds local PR and ticket detection, and introduces an `arb branch` command with verbose per-repo tracking details.
