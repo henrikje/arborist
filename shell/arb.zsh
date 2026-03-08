@@ -468,6 +468,7 @@ _arb() {
                         '(-N --fetch --no-fetch)--fetch[Fetch before showing log]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching (default)]' \
                         '(-n --max-count)'{-n,--max-count}'[Limit commits shown per repo]:count:' \
+                        '(-v --verbose)'{-v,--verbose}'[Show commit bodies and files changed]' \
                         '(--json --schema)--json[Output structured JSON]' \
                         '(--schema --json)--schema[Print JSON Schema for --json output]' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only log dirty repos]' \
