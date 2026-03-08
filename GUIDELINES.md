@@ -86,6 +86,12 @@ When multiple operations manage the same `.arb/` subsystem (repos, templates), g
 
 See `decisions/0045-universal-fetch-flags.md`.
 
+### Network timeouts
+
+All git operations that contact the network (fetch, push, pull, clone) must have a timeout to prevent indefinite hangs. Use `gitWithTimeout()` from `src/lib/git/git.ts` for individual network calls, or `parallelFetch()` for batch fetches (which uses `gitWithTimeout()` internally with a shared global deadline).
+
+Timeout values follow a resolution hierarchy: operation-specific env var → `ARB_NETWORK_TIMEOUT` → built-in default. Use `networkTimeout(specificVar, defaultSeconds)` to resolve. Current defaults: fetch 120s, push 120s, pull 120s, clone 300s. Exit code 124 indicates timeout (matching Unix `timeout` convention).
+
 ### Progress feedback
 
 **Sequential commands** (push, pull, rebase, merge, detach, attach): in TTY mode, write `  [repo] verb...` as progress, then replace the line with `  [repo] <descriptive result>` on completion. Non-TTY: skip progress, write only results. `exec` uses `==> repo <==` section headers instead (supports interactive content).

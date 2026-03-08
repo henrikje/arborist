@@ -59,6 +59,83 @@ export async function git(
   return { exitCode, stdout, stderr };
 }
 
+export interface GitWithTimeoutOptions {
+  signal?: AbortSignal;
+  cwd?: string;
+}
+
+/**
+ * Run a git command with a timeout. Returns exit code 124 on timeout (matching Unix `timeout`).
+ * Accepts an optional AbortSignal for external cancellation (e.g. a shared deadline across fetches).
+ * Use `cwd` for commands that don't support `-C` (e.g. `git clone`).
+ */
+export async function gitWithTimeout(
+  repoDir: string,
+  timeoutSeconds: number,
+  args: string[],
+  options?: GitWithTimeoutOptions,
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const start = isDebug() ? performance.now() : 0;
+  const cmdLabel = options?.cwd ? `git ${args.join(" ")}` : `git -C ${repoDir} ${args.join(" ")}`;
+
+  const spawnArgs = options?.cwd ? ["git", ...args] : ["git", "-C", repoDir, ...args];
+  const proc = Bun.spawn(spawnArgs, {
+    cwd: options?.cwd ?? repoDir,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  // If an external signal is already aborted, kill immediately and bail
+  if (options?.signal?.aborted) {
+    proc.kill();
+    await proc.exited;
+    if (isDebug()) {
+      debugGit(cmdLabel, performance.now() - start, 124);
+    }
+    return { exitCode: 124, stdout: "", stderr: `timed out after ${timeoutSeconds}s` };
+  }
+
+  const controller = new AbortController();
+
+  const timeoutId = timeoutSeconds > 0 ? setTimeout(() => controller.abort(), timeoutSeconds * 1000) : undefined;
+
+  // If an external signal is provided, propagate it
+  if (options?.signal) {
+    options.signal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+
+  const abortPromise = new Promise<"aborted">((resolve) => {
+    controller.signal.addEventListener("abort", () => resolve("aborted"), { once: true });
+  });
+
+  const raceResult = await Promise.race([proc.exited, abortPromise]);
+
+  if (raceResult === "aborted") {
+    proc.kill();
+    await proc.exited;
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    if (isDebug()) {
+      debugGit(cmdLabel, performance.now() - start, 124);
+    }
+    return { exitCode: 124, stdout: "", stderr: `timed out after ${timeoutSeconds}s` };
+  }
+
+  if (timeoutId !== undefined) clearTimeout(timeoutId);
+
+  const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+  const exitCode = proc.exitCode ?? 1;
+  if (isDebug()) {
+    debugGit(cmdLabel, performance.now() - start, exitCode);
+  }
+  return { exitCode, stdout, stderr };
+}
+
+/** Resolve a network timeout: specific env var → ARB_NETWORK_TIMEOUT → default. */
+export function networkTimeout(specificVar: string, defaultSeconds: number): number {
+  return Number(process.env[specificVar]) || Number(process.env.ARB_NETWORK_TIMEOUT) || defaultSeconds;
+}
+
 export async function getShortHead(repoDir: string): Promise<string> {
   const result = await git(repoDir, "rev-parse", "--short", "HEAD");
   return result.exitCode === 0 ? result.stdout.trim() : "";

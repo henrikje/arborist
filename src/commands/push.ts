@@ -2,7 +2,14 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, configGet } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, assertMinimumGitVersion, getCommitsBetweenFull, getShortHead, git } from "../lib/git";
+import {
+  GitCache,
+  assertMinimumGitVersion,
+  getCommitsBetweenFull,
+  getShortHead,
+  gitWithTimeout,
+  networkTimeout,
+} from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -156,6 +163,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 
         // Phase 4: execute
         let pushOk = 0;
+        const pushTimeout = networkTimeout("ARB_PUSH_TIMEOUT", 120);
 
         for (const a of willPush) {
           inlineStart(a.repo, "pushing");
@@ -163,7 +171,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
             a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated"
               ? ["push", "-u", "--force-with-lease", a.shareRemote, a.branch]
               : ["push", "-u", a.shareRemote, a.branch];
-          const pushResult = await git(a.repoDir, ...pushArgs);
+          const pushResult = await gitWithTimeout(a.repoDir, pushTimeout, pushArgs);
           if (pushResult.exitCode === 0) {
             inlineResult(a.repo, `pushed ${plural(a.ahead, "commit")}`);
             pushOk++;
@@ -178,13 +186,15 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
             }
             const errorClass = classifyNetworkError(errText);
             const recoveryHint =
-              errorClass === "offline"
-                ? "Check your network connection, then re-run 'arb push' to continue."
-                : errorClass === "auth"
-                  ? "Check your credentials or token, then re-run 'arb push' to continue."
-                  : errorClass === "not-found"
-                    ? "Verify the remote URL is correct, then re-run 'arb push' to continue."
-                    : "To resolve, check the error above, then re-run 'arb push' to continue.";
+              pushResult.exitCode === 124
+                ? "Check your network connection, then re-run 'arb push' to continue. Adjust timeout with ARB_PUSH_TIMEOUT."
+                : errorClass === "offline"
+                  ? "Check your network connection, then re-run 'arb push' to continue."
+                  : errorClass === "auth"
+                    ? "Check your credentials or token, then re-run 'arb push' to continue."
+                    : errorClass === "not-found"
+                      ? "Verify the remote URL is correct, then re-run 'arb push' to continue."
+                      : "To resolve, check the error above, then re-run 'arb push' to continue.";
             process.stderr.write(`\n  ${recoveryHint}\n`);
             throw new ArbError(`Push failed for ${a.repo}`);
           }

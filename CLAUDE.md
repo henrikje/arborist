@@ -55,7 +55,8 @@ Organized into semantic subdirectories. Each directory has a barrel `index.ts` r
 - Conventional commits enforced via commitlint
 - Use `PROJ-xxx` as the example ticket key prefix in documentation and examples. Use `ACME-xxx` when a second distinct prefix is needed
 - Strict TypeScript with `noUncheckedIndexedAccess`
-- Uses the `git()` helper from `src/lib/git/git.ts` for git process spawning. Use `Bun.$` directly only for piped commands and `git clone` (which has no `-C` flag)
+- Uses the `git()` helper from `src/lib/git/git.ts` for git process spawning. Use `Bun.$` directly only for piped commands
+- Network-touching git operations (`push`, `pull`, `clone`, `fetch`) must use `gitWithTimeout()` or `parallelFetch()`, never bare `git()`. Use `networkTimeout()` to resolve timeout values from `ARB_*_TIMEOUT` → `ARB_NETWORK_TIMEOUT` → default
 
 ## Commands
 

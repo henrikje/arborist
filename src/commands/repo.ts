@@ -4,26 +4,14 @@ import type { Command } from "commander";
 import { z } from "zod";
 import { ArbError, configGetList, configSetList } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, assertMinimumGitVersion, git } from "../lib/git";
+import { GitCache, assertMinimumGitVersion, git, gitWithTimeout, networkTimeout } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type RepoListJsonEntry, RepoListJsonEntrySchema } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { confirmOrExit } from "../lib/sync";
-import {
-  debugGit,
-  dim,
-  dryRunNotice,
-  error,
-  info,
-  inlineResult,
-  inlineStart,
-  isDebug,
-  isTTY,
-  plural,
-  success,
-} from "../lib/terminal";
+import { dim, dryRunNotice, error, info, inlineResult, inlineStart, isTTY, plural, success } from "../lib/terminal";
 import { findRepoUsage, listRepos, selectInteractive } from "../lib/workspace";
 
 function buildRepoListNodes(entries: RepoListJsonEntry[], verbose: boolean): OutputNode[] {
@@ -108,14 +96,16 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
         throw new ArbError(`${repoName} is already cloned`);
       }
 
-      const cloneStart = isDebug() ? performance.now() : 0;
-      const result = await Bun.$`git clone ${url} ${target}`.cwd(ctx.reposDir).quiet().nothrow();
-      if (isDebug()) {
-        debugGit(`git clone ${url} ${target}`, performance.now() - cloneStart, result.exitCode);
-      }
+      const cloneTimeout = networkTimeout("ARB_CLONE_TIMEOUT", 300);
+      const result = await gitWithTimeout(target, cloneTimeout, ["clone", url, target], { cwd: ctx.reposDir });
       if (result.exitCode !== 0) {
-        error(`Clone failed: ${result.stderr.toString().trim()}`);
-        throw new ArbError(`Clone failed: ${result.stderr.toString().trim()}`);
+        if (result.exitCode === 124) {
+          // Clean up partial clone on timeout
+          if (existsSync(target)) rmSync(target, { recursive: true, force: true });
+        }
+        const errMsg = result.exitCode === 124 ? result.stderr : result.stderr.trim();
+        error(`Clone failed: ${errMsg}`);
+        throw new ArbError(`Clone failed: ${errMsg}`);
       }
 
       await git(target, "checkout", "--detach");
@@ -132,7 +122,8 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
         await git(target, "config", "remote.pushDefault", "origin");
 
         // Fetch upstream and auto-detect HEAD
-        const fetchResult = await git(target, "fetch", "upstream");
+        const fetchTimeout = networkTimeout("ARB_FETCH_TIMEOUT", 120);
+        const fetchResult = await gitWithTimeout(target, fetchTimeout, ["fetch", "upstream"]);
         if (fetchResult.exitCode !== 0) {
           error(`Failed to fetch upstream: ${fetchResult.stderr.trim()}`);
           throw new ArbError(`Failed to fetch upstream: ${fetchResult.stderr.trim()}`);

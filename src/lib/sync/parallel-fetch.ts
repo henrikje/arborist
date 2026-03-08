@@ -1,7 +1,6 @@
 import { basename } from "node:path";
-import { git } from "../git/git";
+import { git, gitWithTimeout, networkTimeout } from "../git/git";
 import type { RepoRemotes } from "../git/remotes";
-import { debugGit, isDebug } from "../terminal/debug";
 import { dim, plural, warn } from "../terminal/output";
 import { isTTY } from "../terminal/tty";
 import { classifyNetworkError, isNetworkError, networkErrorHint } from "./network-errors";
@@ -18,7 +17,7 @@ export async function parallelFetch(
   remotesMap?: Map<string, RepoRemotes>,
   options?: { silent?: boolean; signal?: AbortSignal },
 ): Promise<Map<string, FetchResult>> {
-  const fetchTimeout = timeout ?? (Number(process.env.ARB_FETCH_TIMEOUT) || 120);
+  const fetchTimeout = timeout ?? networkTimeout("ARB_FETCH_TIMEOUT", 120);
   const results = new Map<string, FetchResult>();
   const total = repoDirs.length;
 
@@ -37,6 +36,7 @@ export async function parallelFetch(
     }
   };
 
+  // Global deadline: one AbortController shared across all fetches
   const controller = new AbortController();
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
@@ -51,7 +51,6 @@ export async function parallelFetch(
   const fetchOne = async (repoDir: string): Promise<void> => {
     const repo = basename(repoDir);
     try {
-      // Determine which remotes to fetch
       const repoRemotes = remotesMap?.get(repo);
       const remotesToFetch = new Set<string>();
       if (repoRemotes) {
@@ -65,81 +64,42 @@ export async function parallelFetch(
 
       if (remotesToFetch.size > 0) {
         for (const remote of remotesToFetch) {
-          const fetchStart = isDebug() ? performance.now() : 0;
-          const proc = Bun.spawn(["git", "-C", repoDir, "fetch", "--prune", remote], {
-            cwd: repoDir,
-            stdout: "pipe",
-            stderr: "pipe",
+          const result = await gitWithTimeout(repoDir, 0, ["fetch", "--prune", remote], {
+            signal: controller.signal,
           });
 
-          // Race fetch against abort
-          const abortPromise = new Promise<"aborted">((resolve) => {
-            controller.signal.addEventListener("abort", () => resolve("aborted"), { once: true });
-          });
-
-          const raceResult = await Promise.race([proc.exited, abortPromise]);
-
-          if (raceResult === "aborted") {
-            proc.kill();
-            await proc.exited;
-            if (isDebug()) {
-              debugGit(`git -C ${repoDir} fetch --prune ${remote}`, performance.now() - fetchStart, 124);
-            }
+          if (result.exitCode === 124) {
             results.set(repo, { repo, exitCode: 124, output: `fetch timed out after ${fetchTimeout}s` });
             completed++;
             updateProgress();
             return;
           }
 
-          if (isDebug()) {
-            debugGit(`git -C ${repoDir} fetch --prune ${remote}`, performance.now() - fetchStart, raceResult);
+          if (result.stderr.trim()) {
+            allOutput += (allOutput ? "\n" : "") + result.stderr.trim();
           }
-
-          const stderrText = await new Response(proc.stderr).text();
-          if (stderrText.trim()) {
-            allOutput += (allOutput ? "\n" : "") + stderrText.trim();
-          }
-          if (raceResult !== 0) {
-            lastExitCode = raceResult;
+          if (result.exitCode !== 0) {
+            lastExitCode = result.exitCode;
           }
         }
       } else {
         // No resolved remotes — fetch all
-        const fetchAllStart = isDebug() ? performance.now() : 0;
-        const proc = Bun.spawn(["git", "-C", repoDir, "fetch", "--all", "--prune"], {
-          cwd: repoDir,
-          stdout: "pipe",
-          stderr: "pipe",
+        const result = await gitWithTimeout(repoDir, 0, ["fetch", "--all", "--prune"], {
+          signal: controller.signal,
         });
 
-        const abortPromise = new Promise<"aborted">((resolve) => {
-          controller.signal.addEventListener("abort", () => resolve("aborted"), { once: true });
-        });
-
-        const raceResult = await Promise.race([proc.exited, abortPromise]);
-
-        if (raceResult === "aborted") {
-          proc.kill();
-          await proc.exited;
-          if (isDebug()) {
-            debugGit(`git -C ${repoDir} fetch --all --prune`, performance.now() - fetchAllStart, 124);
-          }
+        if (result.exitCode === 124) {
           results.set(repo, { repo, exitCode: 124, output: `fetch timed out after ${fetchTimeout}s` });
           completed++;
           updateProgress();
           return;
         }
 
-        if (isDebug()) {
-          debugGit(`git -C ${repoDir} fetch --all --prune`, performance.now() - fetchAllStart, raceResult);
+        if (result.stderr.trim()) {
+          allOutput += result.stderr.trim();
         }
-
-        const stderrText = await new Response(proc.stderr).text();
-        if (stderrText.trim()) {
-          allOutput += stderrText.trim();
-        }
-        if (raceResult !== 0) {
-          lastExitCode = raceResult;
+        if (result.exitCode !== 0) {
+          lastExitCode = result.exitCode;
         }
       }
 
