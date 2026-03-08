@@ -232,7 +232,7 @@ __arb_complete_repo() {
 __arb_complete_create() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-b --branch --base -a --all-repos --fetch -N --no-fetch" -- "$cur"))
+        COMPREPLY=($(compgen -W "-b --branch --base -a --all-repos -y --yes --fetch -N --no-fetch" -- "$cur"))
         return
     fi
     local prev="${COMP_WORDS[COMP_CWORD-1]}"

@@ -12,7 +12,7 @@ arb create fix-login frontend backend
 
 This creates a `fix-login` workspace with only `frontend` and `backend` — not every feature touches every repo, and picking just the ones you need keeps the workspace focused and makes status, push, and rebase faster to scan. The branches are created if they do not exist. With the shell integration installed, your shell automatically `cd`s into the new workspace.
 
-Use `--branch` (`-b`) when the branch name differs from the workspace name, `--base` when you want to target a specific base branch (instead of each repo's default), and `--all-repos` (`-a`) to include every cloned repo:
+Use `--branch` (`-b`) when the branch name differs from the workspace name, `--base` when you want to target a specific base branch (instead of each repo's default), `--all-repos` (`-a`) to include every cloned repo, and `--yes` (`-y`) to skip the interactive repo picker and use your configured defaults (see `arb repo default`):
 
 ```bash
 arb create dark-mode --branch "feat/dark-mode" --base develop --all-repos
