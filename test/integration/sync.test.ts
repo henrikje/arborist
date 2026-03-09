@@ -438,6 +438,108 @@ describe("push [repos...] and --force", () => {
       const result = await arb(env, ["pull", "--yes"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.output).toContain("rebased locally");
       expect(result.output).toContain("push --force");
+      expect(result.output).toContain("pull --force");
+    }));
+
+  test("arb pull --force resets rebased repo to remote tip", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+      await write(join(repoA, "file.txt"), "feature");
+      await git(repoA, ["add", "file.txt"]);
+      await git(repoA, ["commit", "-m", "feature"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Record the remote HEAD before rebase
+      const remoteHead = (await git(repoA, ["rev-parse", "origin/my-feature"])).trim();
+
+      // Advance main and rebase locally
+      const mainRepo = join(env.projectDir, ".arb/repos/repo-a");
+      await write(join(mainRepo, "upstream.txt"), "upstream");
+      await git(mainRepo, ["add", "upstream.txt"]);
+      await git(mainRepo, ["commit", "-m", "upstream"]);
+      await git(mainRepo, ["push"]);
+
+      await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+
+      // Local HEAD should differ from remote after rebase
+      const localHeadAfterRebase = (await git(repoA, ["rev-parse", "HEAD"])).trim();
+      expect(localHeadAfterRebase).not.toBe(remoteHead);
+
+      // Pull --force should reset to remote tip
+      const result = await arb(env, ["pull", "--force", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("safe reset");
+      expect(result.output).toContain("discards local rebase");
+      expect(result.output).not.toContain("will be lost");
+
+      // HEAD should now match the original remote tip
+      const localHeadAfterPull = (await git(repoA, ["rev-parse", "HEAD"])).trim();
+      expect(localHeadAfterPull).toBe(remoteHead);
+    }));
+
+  test("arb pull --force shows forced-reset warning when net-new local commits exist", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+      await write(join(repoA, "file.txt"), "feature");
+      await git(repoA, ["add", "file.txt"]);
+      await git(repoA, ["commit", "-m", "feature"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Advance main and rebase locally
+      const mainRepo = join(env.projectDir, ".arb/repos/repo-a");
+      await write(join(mainRepo, "upstream.txt"), "upstream");
+      await git(mainRepo, ["add", "upstream.txt"]);
+      await git(mainRepo, ["commit", "-m", "upstream"]);
+      await git(mainRepo, ["push"]);
+
+      await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+
+      // Add a genuinely new local commit after rebase
+      await write(join(repoA, "new-local.txt"), "new work");
+      await git(repoA, ["add", "new-local.txt"]);
+      await git(repoA, ["commit", "-m", "new local work"]);
+
+      // Pull --force should show forced-reset with warning
+      const dryRun = await arb(env, ["pull", "--force", "--dry-run"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(dryRun.exitCode).toBe(0);
+      expect(dryRun.output).toContain("forced reset");
+      expect(dryRun.output).toContain("will be lost");
+      expect(dryRun.output).not.toContain("safe reset");
+    }));
+
+  test("arb pull --force does not override dirty skip", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+      await write(join(repoA, "file.txt"), "feature");
+      await git(repoA, ["add", "file.txt"]);
+      await git(repoA, ["commit", "-m", "feature"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Advance main and rebase locally
+      const mainRepo = join(env.projectDir, ".arb/repos/repo-a");
+      await write(join(mainRepo, "upstream.txt"), "upstream");
+      await git(mainRepo, ["add", "upstream.txt"]);
+      await git(mainRepo, ["commit", "-m", "upstream"]);
+      await git(mainRepo, ["push"]);
+
+      await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+
+      // Make the repo dirty with uncommitted changes
+      await write(join(repoA, "dirty.txt"), "uncommitted");
+
+      // Pull --force should still skip due to dirty state
+      const result = await arb(env, ["pull", "--force", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.output).toContain("uncommitted changes");
+      expect(result.output).not.toContain("reset");
     }));
 });
 
