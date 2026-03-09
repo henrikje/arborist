@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.105.0](https://github.com/henrikje/arborist/compare/v0.104.1...v0.105.0) (2026-03-09)
+
+
+### Features
+
+* **clean:** remove `arb clean` command ([d1a7d18](https://github.com/henrikje/arborist/commit/d1a7d187ce2c2cb064c59baf92939325d2aa417e))
+* **config:** replace INI config with JSON validated by Zod schemas ([1b80b7b](https://github.com/henrikje/arborist/commit/1b80b7b9020075f3a7832422b5a82ffe9dc513f2))
+* **create:** add interactive base branch selection to guided create ([b5ea052](https://github.com/henrikje/arborist/commit/b5ea0524ed26061e834a044da489b69e6a2c0754))
+* **detach:** add --yes/--dry-run to detach and --fetch/--no-fetch to detach, delete, clean ([49bfdd5](https://github.com/henrikje/arborist/commit/49bfdd5fbffa5783f3a200dc252ad795683e9661))
+* **pull:** add --force flag to arb pull ([e455424](https://github.com/henrikje/arborist/commit/e4554244fe88d249a83f2f0365af2b7a979f4597))
+* **pull:** distinguish forced-reset from safe-reset in pull --force ([ab28696](https://github.com/henrikje/arborist/commit/ab286967bb821e63e8cc520284452c8a1492909e))
+* **rename:** add `arb rename` as workspace lifecycle command ([ec6df04](https://github.com/henrikje/arborist/commit/ec6df049f5cc7dd764d75cd96ff6a5639031ace5))
+* **reset:** add `arb reset` command to reset repos to base branch ([204815e](https://github.com/henrikje/arborist/commit/204815e707b75b20b4c73ecf42764cc0c3902972))
+
+
+### Bug Fixes
+
+* **create:** improve base branch selector prompt and filtering ([725e53c](https://github.com/henrikje/arborist/commit/725e53c72c455dc30aaa5927003d57a5d53eb0e4))
+* **delete:** fetch each repo once across all candidate workspaces ([1348ee2](https://github.com/henrikje/arborist/commit/1348ee2e32f26eb99854d2e7bb601b97672ac630))
+* **install:** always add install dir to path ([100f18d](https://github.com/henrikje/arborist/commit/100f18df0b82c43cd31e145fda20b9ce56040173))
+* **pull:** show "no remote branch" instead of "not pushed yet" in pull skip message ([3e04a14](https://github.com/henrikje/arborist/commit/3e04a14935a6a5cd9d47d142bfbf1b003552a1f6))
+
 ## [0.104.1](https://github.com/henrikje/arborist/compare/v0.104.0...v0.104.1) (2026-03-08)
 
 
