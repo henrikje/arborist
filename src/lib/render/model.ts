@@ -77,7 +77,8 @@ export interface TableNode {
 export interface TableColumnDef {
   header: string;
   key: string;
-  show?: boolean;
+  /** undefined/true = always show, false = always hide, "auto" = hide if all row cells are empty */
+  show?: boolean | "auto";
   group?: string;
   align?: "left" | "right";
   truncate?: { min: number };
