@@ -420,6 +420,7 @@ describe("formatPullPlan", () => {
       toPush: 0,
       rebased: 0,
       rebasedKnown: true,
+      fromBaseCount: 0,
       pullMode: "merge",
       pullStrategy: "merge-pull",
       headSha: "abc1234",
@@ -538,6 +539,42 @@ describe("formatPullPlan", () => {
     expect(plan).toContain("safe reset to origin/feature");
     expect(plan).toContain("no local commits to preserve");
     expect(plan).not.toContain("three-way merge");
+  });
+
+  test("shows forced reset with unpushed commit warning when net-new commits exist", () => {
+    const plan = formatPullPlan(
+      [
+        makeAssessment({
+          pullStrategy: "forced-reset",
+          toPush: 3,
+          rebased: 2,
+          safeResetTarget: "origin/feature",
+          safeResetReason: "discards local rebase",
+        }),
+      ],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("forced reset to origin/feature");
+    expect(plan).not.toContain("safe reset");
+    expect(plan).toContain("1 unpushed commit will be lost");
+  });
+
+  test("shows safe reset without warning when no net-new commits", () => {
+    const plan = formatPullPlan(
+      [
+        makeAssessment({
+          pullStrategy: "safe-reset",
+          toPush: 2,
+          rebased: 2,
+          safeResetTarget: "origin/feature",
+          safeResetReason: "discards local rebase",
+        }),
+      ],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("safe reset to origin/feature");
+    expect(plan).not.toContain("forced reset");
+    expect(plan).not.toContain("will be lost");
   });
 
   test("no merge type annotation for rebase mode", () => {
@@ -668,6 +705,7 @@ describe("forceRebasedSkips", () => {
       toPush: 3,
       rebased: 2,
       rebasedKnown: true,
+      fromBaseCount: 0,
       pullMode: "merge",
       pullStrategy: "merge-pull",
       headSha: "abc1234",
@@ -685,19 +723,35 @@ describe("forceRebasedSkips", () => {
     return map;
   }
 
-  test("converts rebased-locally skip to will-pull with safe-reset", () => {
-    const assessments = [makeAssessment()];
+  test("converts rebased-locally skip to will-pull with forced-reset when net-new commits exist", () => {
+    const assessments = [makeAssessment({ toPush: 3, rebased: 2 })];
     forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]), "feature");
     expect(assessments[0]?.outcome).toBe("will-pull");
-    expect(assessments[0]?.pullStrategy).toBe("safe-reset");
+    expect(assessments[0]?.pullStrategy).toBe("forced-reset");
     expect(assessments[0]?.safeResetTarget).toBe("origin/feature");
     expect(assessments[0]?.safeResetReason).toBe("discards local rebase");
     expect(assessments[0]?.skipReason).toBeUndefined();
     expect(assessments[0]?.skipFlag).toBeUndefined();
   });
 
+  test("converts rebased-locally skip to will-pull with safe-reset when no net-new commits", () => {
+    const assessments = [makeAssessment({ toPush: 2, rebased: 2 })];
+    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]), "feature");
+    expect(assessments[0]?.outcome).toBe("will-pull");
+    expect(assessments[0]?.pullStrategy).toBe("safe-reset");
+    expect(assessments[0]?.safeResetTarget).toBe("origin/feature");
+    expect(assessments[0]?.safeResetReason).toBe("discards local rebase");
+  });
+
+  test("uses safe-reset when excess toPush is from-base commits", () => {
+    // toPush=3, rebased=2, fromBaseCount=1 → netNew = 3-2-1 = 0 → safe
+    const assessments = [makeAssessment({ toPush: 3, rebased: 2, fromBaseCount: 1 })];
+    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]), "feature");
+    expect(assessments[0]?.pullStrategy).toBe("safe-reset");
+  });
+
   test("works for rebase pull mode", () => {
-    const assessments = [makeAssessment({ pullMode: "rebase" })];
+    const assessments = [makeAssessment({ pullMode: "rebase", toPush: 2, rebased: 2 })];
     forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]), "feature");
     expect(assessments[0]?.outcome).toBe("will-pull");
     expect(assessments[0]?.pullStrategy).toBe("safe-reset");
