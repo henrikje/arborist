@@ -97,9 +97,13 @@ Current exceptions:
 
 When adding a new git feature above 2.17, document it in this list and write a decision record.
 
+### Config format and validation
+
+Workspace config (`.arbws/config.json`) and project config (`.arb/config.json`) are stored as JSON, validated at read/write time by Zod schemas in `core/config.ts`. Types are derived via `z.infer<>`, following the same pattern as JSON output schemas in `json-types.ts`. Legacy config files (old INI format or old `config` filename without `.json` extension) are auto-migrated on first read. See `decisions/0067-json-config-format.md`.
+
 ### In-progress state for partially-completing commands
 
-Commands that can fail partway through sequential multi-repo execution carry explicit in-progress state in `.arbws/config`. This enables `--continue` (resume) and `--abort` (roll back), modeled after git's own rebase/merge-in-progress pattern. See `decisions/0025-rebranch-migration-state.md`.
+Commands that can fail partway through sequential multi-repo execution carry explicit in-progress state in `.arbws/config.json`. This enables `--continue` (resume) and `--abort` (roll back), modeled after git's own rebase/merge-in-progress pattern. See `decisions/0025-rebranch-migration-state.md`.
 
 ---
 

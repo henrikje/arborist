@@ -154,7 +154,7 @@ arb repo default api                     # add api to defaults
 arb repo default -r api                  # remove api from defaults
 ```
 
-Defaults are stored in `.arb/config` and can be committed to version control so the team shares the same project-level configuration. Removing a repo with `arb repo remove` automatically cleans up its default entry.
+Defaults are stored in `.arb/config.json` and can be committed to version control so the team shares the same project-level configuration. Removing a repo with `arb repo remove` automatically cleans up its default entry.
 
 ## List repos
 

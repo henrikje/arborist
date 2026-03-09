@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import input from "@inquirer/input";
 import select, { Separator } from "@inquirer/select";
 import type { Command } from "commander";
-import { ArbError, configGet, writeConfig } from "../lib/core";
+import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import {
   GitCache,
@@ -317,7 +317,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
           // Build workspace branch lookup for annotations
           const workspaceBranchMap = new Map<string, string>();
           for (const ws of listWorkspaces(ctx.arbRootDir)) {
-            const wsBranch = configGet(`${ctx.arbRootDir}/${ws}/.arbws/config`, "branch");
+            const wsBranch = readWorkspaceConfig(`${ctx.arbRootDir}/${ws}/.arbws/config.json`)?.branch;
             if (wsBranch) workspaceBranchMap.set(wsBranch, ws);
           }
 
@@ -400,7 +400,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
 
         // 5. Create workspace
         mkdirSync(`${wsDir}/.arbws`, { recursive: true });
-        writeConfig(`${wsDir}/.arbws/config`, branch, base);
+        writeWorkspaceConfig(`${wsDir}/.arbws/config.json`, { branch, ...(base && { base }) });
 
         if (!remotesMap) {
           remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);

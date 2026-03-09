@@ -1120,8 +1120,8 @@ describe("maybeWriteRetargetConfig", () => {
     const wsDir = mkdtempSync(join(tmpdir(), "arb-retarget-dryrun-"));
     try {
       mkdirSync(join(wsDir, ".arbws"), { recursive: true });
-      const configFile = join(wsDir, ".arbws", "config");
-      writeFileSync(configFile, "branch = feature\nbase = feat/old\n");
+      const configFile = join(wsDir, ".arbws", "config.json");
+      writeFileSync(configFile, `${JSON.stringify({ branch: "feature", base: "feat/old" }, null, 2)}\n`);
 
       const wrote = await maybeWriteRetargetConfig({
         dryRun: true,
@@ -1133,7 +1133,9 @@ describe("maybeWriteRetargetConfig", () => {
       });
 
       expect(wrote).toBe(false);
-      expect(readFileSync(configFile, "utf-8")).toBe("branch = feature\nbase = feat/old\n");
+      expect(readFileSync(configFile, "utf-8")).toBe(
+        `${JSON.stringify({ branch: "feature", base: "feat/old" }, null, 2)}\n`,
+      );
     } finally {
       rmSync(wsDir, { recursive: true, force: true });
     }
@@ -1143,8 +1145,8 @@ describe("maybeWriteRetargetConfig", () => {
     const wsDir = mkdtempSync(join(tmpdir(), "arb-retarget-write-"));
     try {
       mkdirSync(join(wsDir, ".arbws"), { recursive: true });
-      const configFile = join(wsDir, ".arbws", "config");
-      writeFileSync(configFile, "branch = feature\nbase = feat/old\n");
+      const configFile = join(wsDir, ".arbws", "config.json");
+      writeFileSync(configFile, `${JSON.stringify({ branch: "feature", base: "feat/old" }, null, 2)}\n`);
 
       const wrote = await maybeWriteRetargetConfig({
         dryRun: false,
@@ -1156,7 +1158,7 @@ describe("maybeWriteRetargetConfig", () => {
       });
 
       expect(wrote).toBe(true);
-      expect(readFileSync(configFile, "utf-8")).toBe("branch = feature\n");
+      expect(JSON.parse(readFileSync(configFile, "utf-8"))).toEqual({ branch: "feature" });
     } finally {
       rmSync(wsDir, { recursive: true, force: true });
     }

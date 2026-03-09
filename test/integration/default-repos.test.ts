@@ -21,16 +21,16 @@ describe("repo default", () => {
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("Added");
 
-      const config = await readFile(join(env.projectDir, ".arb/config"), "utf8");
-      expect(config).toContain("defaults = repo-a");
+      const config = await readFile(join(env.projectDir, ".arb/config.json"), "utf8");
+      expect(JSON.parse(config).defaults).toEqual(["repo-a"]);
     }));
 
   test("arb repo default adds multiple repos", () =>
     withEnv(async (env) => {
       await arb(env, ["repo", "default", "repo-a", "repo-b"]);
 
-      const config = await readFile(join(env.projectDir, ".arb/config"), "utf8");
-      expect(config).toContain("defaults = repo-a,repo-b");
+      const config = await readFile(join(env.projectDir, ".arb/config.json"), "utf8");
+      expect(JSON.parse(config).defaults).toEqual(["repo-a", "repo-b"]);
     }));
 
   test("arb repo default incrementally adds repos", () =>
@@ -38,8 +38,8 @@ describe("repo default", () => {
       await arb(env, ["repo", "default", "repo-a"]);
       await arb(env, ["repo", "default", "repo-b"]);
 
-      const config = await readFile(join(env.projectDir, ".arb/config"), "utf8");
-      expect(config).toContain("defaults = repo-a,repo-b");
+      const config = await readFile(join(env.projectDir, ".arb/config.json"), "utf8");
+      expect(JSON.parse(config).defaults).toEqual(["repo-a", "repo-b"]);
     }));
 
   test("arb repo default skips already-added repos", () =>
@@ -49,10 +49,11 @@ describe("repo default", () => {
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("already");
 
-      const config = await readFile(join(env.projectDir, ".arb/config"), "utf8");
-      expect(config).toContain("defaults = repo-a");
+      const config = await readFile(join(env.projectDir, ".arb/config.json"), "utf8");
+      const parsed = JSON.parse(config);
+      expect(parsed.defaults).toEqual(["repo-a"]);
       // Should not have duplicates
-      expect(config).not.toContain("repo-a,repo-a");
+      expect(parsed.defaults.filter((r: string) => r === "repo-a").length).toBe(1);
     }));
 
   test("arb repo default lists current defaults", () =>
@@ -70,9 +71,8 @@ describe("repo default", () => {
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("Removed");
 
-      const config = await readFile(join(env.projectDir, ".arb/config"), "utf8");
-      expect(config).toContain("defaults = repo-b");
-      expect(config).not.toContain("repo-a");
+      const config = await readFile(join(env.projectDir, ".arb/config.json"), "utf8");
+      expect(JSON.parse(config).defaults).toEqual(["repo-b"]);
     }));
 
   test("arb repo default -r removes repos from defaults", () =>
@@ -80,8 +80,8 @@ describe("repo default", () => {
       await arb(env, ["repo", "default", "repo-a", "repo-b"]);
       await arb(env, ["repo", "default", "-r", "repo-b"]);
 
-      const config = await readFile(join(env.projectDir, ".arb/config"), "utf8");
-      expect(config).toContain("defaults = repo-a");
+      const config = await readFile(join(env.projectDir, ".arb/config.json"), "utf8");
+      expect(JSON.parse(config).defaults).toEqual(["repo-a"]);
     }));
 
   test("arb repo default rejects unknown repos", () =>

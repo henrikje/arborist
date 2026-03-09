@@ -15,10 +15,10 @@ describe("basic rename", () => {
       });
       expect(result.exitCode).toBe(0);
       // Config updated
-      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config"), "utf8");
-      expect(config).toContain("branch = feat/new-name");
+      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch).toBe("feat/new-name");
       // branch_rename_from cleared on success
-      expect(config).not.toContain("branch_rename_from");
+      expect(JSON.parse(config).branch_rename_from).toBeUndefined();
       // Both repos on new branch
       const branchA = (
         await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
@@ -47,8 +47,8 @@ describe("basic rename", () => {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
-      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config"), "utf8");
-      expect(config).toContain("base = main");
+      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).base).toBe("main");
     }));
 });
 
@@ -109,8 +109,8 @@ describe("dry-run", () => {
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("Dry run");
       // Config not changed
-      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config"), "utf8");
-      expect(config).toContain("branch = my-feature");
+      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch).toBe("my-feature");
       // Branch not renamed
       const branchA = (
         await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
@@ -235,8 +235,8 @@ describe("migration state", () => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       // Simulate partial failure: config updated but repo-b not yet renamed
       await writeFile(
-        join(env.projectDir, "my-feature/.arbws/config"),
-        "branch = feat/new-name\nbranch_rename_from = my-feature\n",
+        join(env.projectDir, "my-feature/.arbws/config.json"),
+        `${JSON.stringify({ branch: "feat/new-name", branch_rename_from: "my-feature" }, null, 2)}\n`,
       );
       // repo-a already renamed, repo-b still on old branch
       await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "-m", "my-feature", "feat/new-name"]);
@@ -255,8 +255,8 @@ describe("migration state", () => {
       expect(branchA).toBe("feat/new-name");
       expect(branchB).toBe("feat/new-name");
       // Migration state cleared
-      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config"), "utf8");
-      expect(config).not.toContain("branch_rename_from");
+      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch_rename_from).toBeUndefined();
     }));
 
   test("arb branch rename --abort rolls back partial rename", () =>
@@ -264,8 +264,8 @@ describe("migration state", () => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       // Simulate partial rename: repo-a done, repo-b still on old
       await writeFile(
-        join(env.projectDir, "my-feature/.arbws/config"),
-        "branch = feat/new-name\nbranch_rename_from = my-feature\n",
+        join(env.projectDir, "my-feature/.arbws/config.json"),
+        `${JSON.stringify({ branch: "feat/new-name", branch_rename_from: "my-feature" }, null, 2)}\n`,
       );
       await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "-m", "my-feature", "feat/new-name"]);
 
@@ -283,9 +283,9 @@ describe("migration state", () => {
       expect(branchA).toBe("my-feature");
       expect(branchB).toBe("my-feature");
       // Config restored
-      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config"), "utf8");
-      expect(config).toContain("branch = my-feature");
-      expect(config).not.toContain("branch_rename_from");
+      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch).toBe("my-feature");
+      expect(JSON.parse(config).branch_rename_from).toBeUndefined();
     }));
 
   test("arb branch rename --abort without migration state fails", () =>
@@ -313,8 +313,8 @@ describe("migration state", () => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       // Simulate migration in progress toward feat/new-name
       await writeFile(
-        join(env.projectDir, "my-feature/.arbws/config"),
-        "branch = feat/new-name\nbranch_rename_from = my-feature\n",
+        join(env.projectDir, "my-feature/.arbws/config.json"),
+        `${JSON.stringify({ branch: "feat/new-name", branch_rename_from: "my-feature" }, null, 2)}\n`,
       );
       // Try to start a rename to a DIFFERENT target
       const result = await arb(env, ["branch", "rename", "feat/other-name", "--yes", "--no-fetch"], {
@@ -329,8 +329,8 @@ describe("migration state", () => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       // Simulate partial: repo-a done, repo-b still on old
       await writeFile(
-        join(env.projectDir, "my-feature/.arbws/config"),
-        "branch = feat/new-name\nbranch_rename_from = my-feature\n",
+        join(env.projectDir, "my-feature/.arbws/config.json"),
+        `${JSON.stringify({ branch: "feat/new-name", branch_rename_from: "my-feature" }, null, 2)}\n`,
       );
       await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "-m", "my-feature", "feat/new-name"]);
 
@@ -353,8 +353,8 @@ describe("--abort dry-run", () => {
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       await writeFile(
-        join(env.projectDir, "my-feature/.arbws/config"),
-        "branch = feat/new-name\nbranch_rename_from = my-feature\n",
+        join(env.projectDir, "my-feature/.arbws/config.json"),
+        `${JSON.stringify({ branch: "feat/new-name", branch_rename_from: "my-feature" }, null, 2)}\n`,
       );
       await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "-m", "my-feature", "feat/new-name"]);
 
@@ -368,8 +368,8 @@ describe("--abort dry-run", () => {
         await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
       ).trim();
       expect(branchA).toBe("feat/new-name");
-      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config"), "utf8");
-      expect(config).toContain("branch_rename_from");
+      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch_rename_from).toBeDefined();
     }));
 });
 
@@ -529,8 +529,8 @@ describe("tracking cleanup", () => {
       // Simulate partial: repo-a manually renamed (tracking still stale)
       await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "-m", "my-feature", "new-name"]);
       await writeFile(
-        join(env.projectDir, "my-feature/.arbws/config"),
-        "branch = new-name\nbranch_rename_from = my-feature\n",
+        join(env.projectDir, "my-feature/.arbws/config.json"),
+        `${JSON.stringify({ branch: "new-name", branch_rename_from: "my-feature" }, null, 2)}\n`,
       );
 
       const result = await arb(env, ["branch", "rename", "--continue", "--yes", "--no-fetch"], {

@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError, configGet } from "../lib/core";
+import { ArbError, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import {
   GitCache,
@@ -125,7 +125,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
         const cache = new GitCache();
         await assertMinimumGitVersion(cache);
         const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
-        const configBase = configGet(`${wsDir}/.arbws/config`, "base");
+        const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
 
         // Phase 1: fetch
         const allFetchDirs = workspaceRepoDirs(wsDir);

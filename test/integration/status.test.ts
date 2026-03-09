@@ -450,7 +450,10 @@ describe("missing config recovery", () => {
   test("arb attach fails when config is missing and no worktrees exist", () =>
     withEnv(async (env) => {
       await mkdir(join(env.projectDir, "empty-ws/.arbws"), { recursive: true });
-      await writeFile(join(env.projectDir, "empty-ws/.arbws/config"), "branch = empty-ws");
+      await writeFile(
+        join(env.projectDir, "empty-ws/.arbws/config.json"),
+        `${JSON.stringify({ branch: "empty-ws" }, null, 2)}\n`,
+      );
       await deleteWorkspaceConfig(env, "empty-ws");
       const result = await arb(env, ["attach", "repo-a"], { cwd: join(env.projectDir, "empty-ws") });
       expect(result.exitCode).not.toBe(0);

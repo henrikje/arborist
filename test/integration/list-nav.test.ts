@@ -338,7 +338,10 @@ describe("list", () => {
   test("arb list --json handles empty workspace", () =>
     withEnv(async (env) => {
       await mkdir(join(env.projectDir, "empty-ws/.arbws"), { recursive: true });
-      await write(join(env.projectDir, "empty-ws/.arbws/config"), "branch = empty-ws");
+      await write(
+        join(env.projectDir, "empty-ws/.arbws/config.json"),
+        `${JSON.stringify({ branch: "empty-ws" }, null, 2)}\n`,
+      );
       const result = await arb(env, ["list", "--no-fetch", "--json"]);
       const data = JSON.parse(result.stdout);
       const ws = data.find((w: Record<string, unknown>) => w.workspace === "empty-ws");
@@ -743,7 +746,10 @@ describe("list quiet", () => {
   test("arb list -q includes empty workspaces", () =>
     withEnv(async (env) => {
       await mkdir(join(env.projectDir, "empty-ws/.arbws"), { recursive: true });
-      await write(join(env.projectDir, "empty-ws/.arbws/config"), "branch = empty-ws");
+      await write(
+        join(env.projectDir, "empty-ws/.arbws/config.json"),
+        `${JSON.stringify({ branch: "empty-ws" }, null, 2)}\n`,
+      );
       const result = await arb(env, ["list", "-q"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("empty-ws");

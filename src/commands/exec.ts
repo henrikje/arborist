@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError, configGet } from "../lib/core";
+import { ArbError, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, assertMinimumGitVersion } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
@@ -55,7 +55,7 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
       if (where) {
         const workspace = ctx.currentWorkspace ?? "";
         const branch = await requireBranch(wsDir, workspace);
-        const configBase = configGet(`${wsDir}/.arbws/config`, "base");
+        const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
         const cache = new GitCache();
         await assertMinimumGitVersion(cache);
         await Promise.all(

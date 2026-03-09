@@ -1,4 +1,11 @@
-export { configGet, configGetList, configSetList, writeConfig } from "./config";
+export {
+  type ProjectConfig,
+  type WorkspaceConfig,
+  readProjectConfig,
+  readWorkspaceConfig,
+  writeProjectConfig,
+  writeWorkspaceConfig,
+} from "./config";
 export { ArbAbort, ArbError } from "./errors";
 export {
   type LastCommitWidths,

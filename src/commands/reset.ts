@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { configGet } from "../lib/core";
+import { readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, assertMinimumGitVersion, getShortHead, git } from "../lib/git";
 import type { Cell, OutputNode } from "../lib/render";
@@ -211,7 +211,7 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
         const cache = new GitCache();
         await assertMinimumGitVersion(cache);
         const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
-        const configBase = configGet(`${wsDir}/.arbws/config`, "base");
+        const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
 
         // Phase 1: fetch
         const shouldFetch = options.fetch !== false;

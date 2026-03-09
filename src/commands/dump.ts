@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Command } from "commander";
 import type { ArbContext } from "../lib/core";
-import { configGet } from "../lib/core";
+import { readWorkspaceConfig } from "../lib/core";
 import { GitCache, assertMinimumGitVersion, getRemoteNames, getRemoteUrl } from "../lib/git";
 import { computeFlags, gatherWorkspaceSummary } from "../lib/status";
 import { listRepos, listWorkspaces, readGitdirFromWorktree, workspaceRepoDirs } from "../lib/workspace";
@@ -148,7 +148,7 @@ async function runDump(ctx: ArbContext): Promise<void> {
 
   const workspaceResults = await Promise.allSettled(
     allWorkspaceNames.map(async (ws) => {
-      const configFile = `${ctx.arbRootDir}/${ws}/.arbws/config`;
+      const configFile = `${ctx.arbRootDir}/${ws}/.arbws/config.json`;
       const wsDir = `${ctx.arbRootDir}/${ws}`;
 
       let repoDirs: string[] = [];
@@ -198,9 +198,10 @@ async function runDump(ctx: ArbContext): Promise<void> {
       let base: string | null = null;
       let branchRenameFrom: string | null = null;
       try {
-        branch = configGet(configFile, "branch");
-        base = configGet(configFile, "base");
-        branchRenameFrom = configGet(configFile, "branch_rename_from");
+        const config = readWorkspaceConfig(configFile);
+        branch = config?.branch ?? null;
+        base = config?.base ?? null;
+        branchRenameFrom = config?.branch_rename_from ?? null;
       } catch (err) {
         dumpErrors.push(`workspace ${ws} config: ${errMsg(err)}`);
       }
