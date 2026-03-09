@@ -428,9 +428,6 @@ function lastCommitParts(row: ListRow): RelativeTimeParts {
 }
 
 export function buildListTableNodes(displayRows: ListRow[], showStatus: boolean): OutputNode[] {
-  const hasAnyTicket = displayRows.some((row) => row.ticket.length > 0);
-  const hasAnyBase = displayRows.some((row) => row.base.length > 0);
-
   // Compute max number width for right-aligning within the LAST COMMIT column
   let maxNumWidth = 0;
   if (showStatus) {
@@ -442,9 +439,9 @@ export function buildListTableNodes(displayRows: ListRow[], showStatus: boolean)
 
   const columns = [
     { header: "WORKSPACE", key: "workspace" },
-    { header: "TICKET", key: "ticket", show: hasAnyTicket },
+    { header: "TICKET", key: "ticket", show: "auto" as const },
     { header: "BRANCH", key: "branch" },
-    { header: "BASE", key: "base", show: hasAnyBase },
+    { header: "BASE", key: "base", show: "auto" as const },
     { header: "REPOS", key: "repos" },
     ...(showStatus
       ? [

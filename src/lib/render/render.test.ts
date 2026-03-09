@@ -95,6 +95,43 @@ describe("render table", () => {
     expect(lines[2]).toMatch(/^ {2}/); // not marked
   });
 
+  test("auto-hides column when all cells are empty", () => {
+    const table: TableNode = {
+      kind: "table",
+      columns: [
+        { header: "NAME", key: "name" },
+        { header: "OPTIONAL", key: "optional", show: "auto" },
+        { header: "STATUS", key: "status" },
+      ],
+      rows: [
+        { cells: { name: cell("foo"), optional: cell(""), status: cell("ok") } },
+        { cells: { name: cell("bar"), status: cell("fail") } },
+      ],
+    };
+
+    const result = render([table], NO_TTY);
+    expect(result).not.toContain("OPTIONAL");
+  });
+
+  test("shows auto column when at least one cell is non-empty", () => {
+    const table: TableNode = {
+      kind: "table",
+      columns: [
+        { header: "NAME", key: "name" },
+        { header: "OPTIONAL", key: "optional", show: "auto" },
+        { header: "STATUS", key: "status" },
+      ],
+      rows: [
+        { cells: { name: cell("foo"), optional: cell(""), status: cell("ok") } },
+        { cells: { name: cell("bar"), optional: cell("value"), status: cell("fail") } },
+      ],
+    };
+
+    const result = render([table], NO_TTY);
+    expect(result).toContain("OPTIONAL");
+    expect(result).toContain("value");
+  });
+
   test("hides columns with show: false", () => {
     const table: TableNode = {
       kind: "table",
