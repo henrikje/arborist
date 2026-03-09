@@ -8,7 +8,6 @@ import {
   computeLastCommitWidths,
   formatLastCommitCell,
   formatRelativeTimeParts,
-  loadArbIgnore,
 } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import {
@@ -50,22 +49,11 @@ import {
   type TemplateDiff,
   diffTemplates,
   displayTemplateDiffs,
-  listNonWorkspaces,
   listWorkspaces,
   selectInteractive,
   workspaceBranch,
   workspaceRepoDirs,
 } from "../lib/workspace";
-
-function hintNonWorkspaces(arbRootDir: string): void {
-  const ignored = loadArbIgnore(arbRootDir);
-  const nonWorkspaces = listNonWorkspaces(arbRootDir, ignored);
-  if (nonWorkspaces.length > 0) {
-    info(
-      `  ${plural(nonWorkspaces.length, "non-workspace directory", "non-workspace directories")} found. Remove manually if unneeded.`,
-    );
-  }
-}
 
 interface WorkspaceAssessment {
   name: string;
@@ -431,7 +419,6 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 
           process.stderr.write("\n");
           success(`Deleted ${plural(safeEntries.length, "workspace")}`);
-          hintNonWorkspaces(ctx.arbRootDir);
           return;
         }
 
@@ -523,8 +510,6 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
         // Summarize
         process.stderr.write("\n");
         success(`Deleted ${plural(assessments.length, "workspace")}`);
-
-        hintNonWorkspaces(ctx.arbRootDir);
 
         // If any deleted workspace was the current one, emit project root
         // so the shell wrapper can cd there (same pattern as create/branch rename).

@@ -1,4 +1,3 @@
-export { loadArbIgnore } from "./arbignore";
 export { configGet, configGetList, configSetList, writeConfig } from "./config";
 export { ArbAbort, ArbError } from "./errors";
 export {
