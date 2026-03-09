@@ -37,7 +37,7 @@ import {
 } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveRepoSelection, workspaceRepoDirs } from "../lib/workspace";
 
-type PullStrategy = "rebase-pull" | "merge-pull" | "safe-reset";
+type PullStrategy = "rebase-pull" | "merge-pull" | "safe-reset" | "forced-reset";
 
 interface PullFailure {
   assessment: PullAssessment;
@@ -57,6 +57,7 @@ export interface PullAssessment {
   toPush: number;
   rebased: number;
   rebasedKnown: boolean;
+  fromBaseCount: number;
   pullMode: "rebase" | "merge";
   pullStrategy?: PullStrategy;
   headSha: string;
@@ -235,12 +236,13 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
                 });
               }
             }
-          } else if (strategy === "safe-reset") {
-            // Safe reset: remote was rewritten and local has no unique commits to preserve.
+          } else if (strategy === "safe-reset" || strategy === "forced-reset") {
+            // Reset to remote tip. Safe-reset: auto-detected, no data loss. Forced-reset: user override via --force.
             if (a.needsStash) {
               await git(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
             }
             const target = a.safeResetTarget ?? `${pullRemote}/${branch}`;
+            const resetLabel = strategy === "forced-reset" ? "forced reset" : "safe reset";
             const resetResult = await git(a.repoDir, "reset", "--hard", target);
             if (resetResult.exitCode === 0) {
               let stashPopOk = true;
@@ -251,7 +253,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
                   stashPopFailed.push(a);
                 }
               }
-              let doneMsg = `safe reset to ${target}`;
+              let doneMsg = `${resetLabel} to ${target}`;
               if (!stashPopOk) {
                 doneMsg += ` ${yellow("(stash pop failed)")}`;
               }
@@ -363,6 +365,7 @@ export function assessPullRepo(
     toPush: 0,
     rebased: 0,
     rebasedKnown: false,
+    fromBaseCount: 0,
     pullMode,
     pullStrategy: pullMode === "rebase" ? "rebase-pull" : "merge-pull",
     headSha,
@@ -433,12 +436,15 @@ export function assessPullRepo(
   const rebased = status.share.rebased ?? 0;
   if (rebased > 0 && rebased >= toPull) {
     const toPush = status.share.toPush ?? 0;
+    const baseAhead = status.base?.ahead ?? toPush;
+    const fromBaseCount = Math.max(0, toPush - baseAhead);
     return {
       ...base,
       behind: toPull,
       toPush,
       rebased,
       rebasedKnown: status.share.rebased != null,
+      fromBaseCount,
       skipReason: "rebased locally (push --force, or pull --force to reset)",
       skipFlag: "rebased-locally",
     };
@@ -519,14 +525,19 @@ export function pullActionCell(a: PullAssessment, remotesMap: Map<string, RepoRe
   const forkText = remotes && remotes.base !== remotes.share ? ` \u2190 ${remotes.share}` : "";
   const strategy = a.pullStrategy ?? (a.pullMode === "rebase" ? "rebase-pull" : "merge-pull");
 
-  if (strategy === "safe-reset") {
+  if (strategy === "safe-reset" || strategy === "forced-reset") {
+    const resetLabel = strategy === "forced-reset" ? "forced reset" : "safe reset";
     const target = a.safeResetTarget ?? `${remotes?.share ?? "origin"}/?`;
-    let safeText = `${plural(a.behind, "commit")} to pull (safe reset to ${target}`;
+    let safeText = `${plural(a.behind, "commit")} to pull (${resetLabel} to ${target}`;
     if (a.safeResetReason) {
       safeText += `: ${a.safeResetReason}`;
     }
     safeText += ")";
     let result = cell(safeText);
+    const netNew = a.toPush - a.rebased - a.fromBaseCount;
+    if (netNew > 0) {
+      result = suffix(result, ` (${plural(netNew, "unpushed commit")} will be lost)`, "attention");
+    }
     if (a.needsStash) {
       if (a.stashPopConflictFiles && a.stashPopConflictFiles.length > 0) {
         result = suffix(result, " (autostash, stash pop conflict likely)", "attention");
@@ -598,7 +609,8 @@ export function forceRebasedSkips(
     a.outcome = "will-pull";
     a.skipReason = undefined;
     a.skipFlag = undefined;
-    a.pullStrategy = "safe-reset";
+    const netNew = a.toPush - a.rebased - a.fromBaseCount;
+    a.pullStrategy = netNew > 0 ? "forced-reset" : "safe-reset";
     a.safeResetTarget = `${shareRemote}/${branch}`;
     a.safeResetReason = "discards local rebase";
   }
@@ -678,7 +690,7 @@ async function predictPullConflicts(
       .filter((a) => a.outcome === "will-pull")
       .map(async (a) => {
         const strategy = a.pullStrategy ?? (a.pullMode === "rebase" ? "rebase-pull" : "merge-pull");
-        if (strategy === "safe-reset") {
+        if (strategy === "safe-reset" || strategy === "forced-reset") {
           a.conflictPrediction = "no-conflict";
           return;
         }
@@ -788,6 +800,8 @@ function pullStrategyLabel(strategy: PullStrategy): string {
       return "rebase";
     case "safe-reset":
       return "safe-reset";
+    case "forced-reset":
+      return "forced-reset";
     default:
       return "merge";
   }
