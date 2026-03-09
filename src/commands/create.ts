@@ -8,6 +8,7 @@ import {
   GitCache,
   type RepoRemotes,
   assertMinimumGitVersion,
+  git,
   listRemoteBranches,
   validateBranchName,
   validateWorkspaceName,
@@ -320,6 +321,29 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
             if (wsBranch) workspaceBranchMap.set(wsBranch, ws);
           }
 
+          // Filter workspace branches to those that exist in selected repos (locally or remotely)
+          const discoveredSet = new Set(discoveredBranches);
+          const wsBranchesToCheck = [...workspaceBranchMap.keys()].filter((b) => !discoveredSet.has(b));
+          const localChecks = await Promise.all(
+            wsBranchesToCheck.map(async (wsBranch) => {
+              for (const repo of repos) {
+                const result = await git(
+                  `${ctx.reposDir}/${repo}`,
+                  "show-ref",
+                  "--verify",
+                  "--quiet",
+                  `refs/heads/${wsBranch}`,
+                );
+                if (result.exitCode === 0) return true;
+              }
+              return false;
+            }),
+          );
+          for (let i = 0; i < wsBranchesToCheck.length; i++) {
+            const b = wsBranchesToCheck[i];
+            if (b && !localChecks[i]) workspaceBranchMap.delete(b);
+          }
+
           // Merge remote branches with workspace branches (which may not be pushed yet)
           const baseCandidates = [...new Set([...discoveredBranches, ...workspaceBranchMap.keys()])]
             .filter((b) => b !== branch)
@@ -330,16 +354,21 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
             const wsbranches = baseCandidates.filter((b) => workspaceBranchMap.has(b));
             const otherBranches = baseCandidates.filter((b) => !workspaceBranchMap.has(b));
 
-            const branchChoices = [...wsbranches, ...otherBranches].map((b) => {
-              const ws = workspaceBranchMap.get(b);
-              return { name: ws ? `${b} (workspace: ${ws})` : b, value: b };
-            });
+            const wsChoices = wsbranches.map((b) => ({
+              name: `${b} (workspace: ${workspaceBranchMap.get(b)})`,
+              value: b,
+            }));
+            const otherChoices = otherBranches.map((b) => ({ name: b, value: b }));
+            const branchChoices =
+              wsChoices.length > 0 && otherChoices.length > 0
+                ? [...wsChoices, new Separator(), ...otherChoices]
+                : [...wsChoices, ...otherChoices];
 
             const selected = await select(
               {
-                message: "Base branch:",
+                message: "Base:",
                 choices: [
-                  { name: "No base (track repo default)", value: BASE_DEFAULT },
+                  { name: "No explicit base branch (track repo default)", value: BASE_DEFAULT },
                   { name: "Enter a custom branch name...", value: BASE_CUSTOM },
                   new Separator(),
                   ...branchChoices,
@@ -353,7 +382,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
             if (selected === BASE_CUSTOM) {
               base = await input(
                 {
-                  message: "Base branch:",
+                  message: "Base:",
                   validate: (v) => (validateBranchName(v) ? true : "Invalid branch name"),
                 },
                 { output: process.stderr },
