@@ -119,7 +119,16 @@ interface ResolvedColumn {
 
 function renderTableNode(node: TableNode, ctx: RenderContext): string {
   // Filter out hidden columns
-  const visibleDefs = node.columns.filter((c) => c.show !== false);
+  const visibleDefs = node.columns.filter((col) => {
+    if (col.show === false) return false;
+    if (col.show === "auto") {
+      return node.rows.some((r) => {
+        const c = r.cells[col.key];
+        return c !== undefined && c.plain.length > 0;
+      });
+    }
+    return true;
+  });
   if (visibleDefs.length === 0 || node.rows.length === 0) return "";
 
   // Resolve column groups
