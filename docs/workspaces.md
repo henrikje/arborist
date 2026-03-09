@@ -93,6 +93,30 @@ arb detach shared --delete-branch    # also delete the local branch from the can
 
 Arb refuses to detach repos with uncommitted changes unless you pass `--force`. Use `--delete-branch` when you want a clean teardown — without it, the branch lingers in the canonical repo's ref list. See `arb detach --help` for all options.
 
+## Rename workspaces
+
+When a temporary workspace proves viable and you want to repurpose it:
+
+```bash
+arb rename PROJ-208
+```
+
+This renames the workspace directory and branch across all repos in a single operation. Use `--branch` to set the branch name independently from the workspace name, and `--base` to change the base branch:
+
+```bash
+arb rename PROJ-208 --branch feat/PROJ-208                 # different branch name
+arb rename --branch feat/PROJ-208                           # workspace name derived from branch
+arb rename PROJ-208 --branch feat/PROJ-208 --base develop   # full repurpose
+```
+
+If the rename fails partway through (non-atomic across repos), use `--continue` to resume or `--abort` to roll back. Migration state is shared with `arb branch rename` — either command can recover from the other's partial rename.
+
+To rename just the branch without renaming the workspace directory, use `arb branch rename`:
+
+```bash
+arb branch rename feat/new-name
+```
+
 ## Delete workspaces
 
 When a feature is done:

@@ -50,9 +50,11 @@ export function writeConfig(
   branch: string,
   base?: string | null,
   branchRenameFrom?: string | null,
+  workspaceRenameTo?: string | null,
 ): void {
   let content = `branch = ${branch}\n`;
   if (base) content += `base = ${base}\n`;
   if (branchRenameFrom) content += `branch_rename_from = ${branchRenameFrom}\n`;
+  if (workspaceRenameTo) content += `workspace_rename_to = ${workspaceRenameTo}\n`;
   writeFileSync(configFile, content);
 }
