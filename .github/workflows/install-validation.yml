@@ -1,0 +1,84 @@
+name: Install Validation
+
+on:
+  workflow_run:
+    workflows: [Publish]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to validate (e.g. 1.2.3)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            method: brew
+          - runner: ubuntu-latest
+            method: brew
+          - runner: macos-latest
+            method: install-sh
+          - runner: ubuntu-latest
+            method: install-sh
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Resolve version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            TAG=$(gh api repos/${{ github.repository }}/releases/latest --jq '.tag_name')
+            echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install via Homebrew
+        if: matrix.method == 'brew'
+        run: |
+          brew tap henrikje/tap
+          brew update
+          brew install arb
+
+      - name: Install via install.sh
+        if: matrix.method == 'install-sh'
+        env:
+          ARB_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/henrikje/arborist/main/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify version
+        run: |
+          EXPECTED="${{ steps.version.outputs.version }}"
+          ACTUAL="$(arb --version)"
+          echo "Expected: $EXPECTED"
+          echo "Actual:   $ACTUAL"
+          [[ "$ACTUAL" == *"$EXPECTED"* ]]
+
+      - name: Verify help
+        run: arb --help
+
+      - name: Smoke test
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@localhost"
+          TEMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "$TEMP_DIR"' EXIT
+          cd "$TEMP_DIR"
+          mkdir remote && cd remote && git init --bare && cd ..
+          mkdir project && cd project
+          git init
+          git remote add origin "$TEMP_DIR/remote"
+          arb init
+          arb status
