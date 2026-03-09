@@ -10,9 +10,9 @@ describe("--base option (stacked PRs)", () => {
   test("arb create --base stores base in config", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "stacked", "--base", "feat/auth", "-b", "feat/auth-ui", "--all-repos"]);
-      const config = await readFile(join(env.projectDir, "stacked/.arbws/config"), "utf-8");
-      expect(config).toContain("branch = feat/auth-ui");
-      expect(config).toContain("base = feat/auth");
+      const config = await readFile(join(env.projectDir, "stacked/.arbws/config.json"), "utf-8");
+      expect(JSON.parse(config).branch).toBe("feat/auth-ui");
+      expect(JSON.parse(config).base).toBe("feat/auth");
     }));
 
   test("arb create --base branches from the specified base", () =>
@@ -34,9 +34,9 @@ describe("--base option (stacked PRs)", () => {
   test("arb create without --base has no base key in config", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "no-base", "-b", "feat/plain", "--all-repos"]);
-      const config = await readFile(join(env.projectDir, "no-base/.arbws/config"), "utf-8");
-      expect(config).toContain("branch = feat/plain");
-      expect(config).not.toContain("base =");
+      const config = await readFile(join(env.projectDir, "no-base/.arbws/config.json"), "utf-8");
+      expect(JSON.parse(config).branch).toBe("feat/plain");
+      expect(JSON.parse(config).base).toBeUndefined();
     }));
 
   test("arb create --base with invalid branch name fails", () =>
@@ -451,8 +451,8 @@ describe("stacked base merge detection", () => {
       expect(logOutput).toContain("merge feat/auth");
 
       // Verify config no longer has base = feat/auth
-      const config = await readFile(join(env.projectDir, "stacked/.arbws/config"), "utf-8");
-      expect(config).not.toContain("base = feat/auth");
+      const config = await readFile(join(env.projectDir, "stacked/.arbws/config.json"), "utf-8");
+      expect(JSON.parse(config).base).toBeUndefined();
     }));
 
   test("arb rebase --retarget uses --onto for squash-merged base", () =>
@@ -493,8 +493,8 @@ describe("stacked base merge detection", () => {
       expect(logOutput2).not.toContain("auth feature");
 
       // Verify config updated
-      const config = await readFile(join(env.projectDir, "stacked/.arbws/config"), "utf-8");
-      expect(config).not.toContain("base = feat/auth");
+      const config = await readFile(join(env.projectDir, "stacked/.arbws/config.json"), "utf-8");
+      expect(JSON.parse(config).base).toBeUndefined();
     }));
 
   test("arb status --json includes baseMergedIntoDefault", () =>
@@ -719,8 +719,8 @@ describe("stacked base merge detection (branch deleted)", () => {
       expect(logOutput).toContain("ui feature");
       expect(logOutput).toContain("merge feat/auth");
 
-      const config = await readFile(join(env.projectDir, "stacked/.arbws/config"), "utf-8");
-      expect(config).not.toContain("base = feat/auth");
+      const config = await readFile(join(env.projectDir, "stacked/.arbws/config.json"), "utf-8");
+      expect(JSON.parse(config).base).toBeUndefined();
     }));
 
   test("arb rebase --retarget works for squash-merged and deleted base", () =>
@@ -760,8 +760,8 @@ describe("stacked base merge detection (branch deleted)", () => {
       const logOutput2 = await git(join(env.projectDir, "stacked/repo-a"), ["log", "--oneline"]);
       expect(logOutput2).not.toContain("auth feature");
 
-      const config = await readFile(join(env.projectDir, "stacked/.arbws/config"), "utf-8");
-      expect(config).not.toContain("base = feat/auth");
+      const config = await readFile(join(env.projectDir, "stacked/.arbws/config.json"), "utf-8");
+      expect(JSON.parse(config).base).toBeUndefined();
     }));
 });
 
@@ -813,9 +813,9 @@ describe("explicit retarget to non-default branch", () => {
       expect(logOutput).toContain("merge feat/B into feat/A");
 
       // Verify config now has base = feat/A (not cleared, since feat/A is not default)
-      const config = await readFile(join(env.projectDir, "stacked-C/.arbws/config"), "utf-8");
-      expect(config).toContain("base = feat/A");
-      expect(config).not.toContain("base = feat/B");
+      const config = await readFile(join(env.projectDir, "stacked-C/.arbws/config.json"), "utf-8");
+      expect(JSON.parse(config).base).toBe("feat/A");
+      expect(JSON.parse(config).base).not.toBe("feat/B");
     }));
 
   test("arb rebase --retarget main clears base config", () =>
@@ -847,8 +847,8 @@ describe("explicit retarget to non-default branch", () => {
       expect(result.output).toContain("retarget");
       expect(result.output).toContain("Retargeted");
 
-      const config = await readFile(join(env.projectDir, "stacked/.arbws/config"), "utf-8");
-      expect(config).not.toContain("base =");
+      const config = await readFile(join(env.projectDir, "stacked/.arbws/config.json"), "utf-8");
+      expect(JSON.parse(config).base).toBeUndefined();
     }));
 
   test("arb rebase --retarget main updates config in no-op retarget path", () =>
@@ -875,8 +875,8 @@ describe("explicit retarget to non-default branch", () => {
       // Simulate already-retargeted history while config still points at feat/auth.
       await git(join(env.projectDir, "stacked/repo-a"), ["merge", "--ff-only", "origin/main"]);
 
-      const before = await readFile(join(env.projectDir, "stacked/.arbws/config"), "utf-8");
-      expect(before).toContain("base = feat/auth");
+      const before = await readFile(join(env.projectDir, "stacked/.arbws/config.json"), "utf-8");
+      expect(JSON.parse(before).base).toBe("feat/auth");
 
       const result = await arb(env, ["rebase", "--retarget", "main"], {
         cwd: join(env.projectDir, "stacked"),
@@ -884,8 +884,8 @@ describe("explicit retarget to non-default branch", () => {
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("All repos up to date");
 
-      const after = await readFile(join(env.projectDir, "stacked/.arbws/config"), "utf-8");
-      expect(after).not.toContain("base =");
+      const after = await readFile(join(env.projectDir, "stacked/.arbws/config.json"), "utf-8");
+      expect(JSON.parse(after).base).toBeUndefined();
     }));
 
   test("arb rebase --retarget nonexistent target fails", () =>
@@ -1120,8 +1120,8 @@ describe("explicit retarget to non-default branch", () => {
       expect(result.output).toContain("Retargeted");
 
       // Config should have base cleared (retargeted to default)
-      const config = await readFile(join(env.projectDir, "stacked/.arbws/config"), "utf-8");
-      expect(config).not.toContain("base = feat/auth");
+      const config = await readFile(join(env.projectDir, "stacked/.arbws/config.json"), "utf-8");
+      expect(JSON.parse(config).base).toBeUndefined();
     }));
 
   test("arb rebase --retarget rejects retargeting to the current feature branch", () =>
@@ -1812,8 +1812,8 @@ describe("retarget with readonly repos", () => {
       expect(result.output).toContain("skipped");
 
       // Verify workspace config updated with new base
-      const config = await readFile(join(env.projectDir, "stacked/.arbws/config"), "utf-8");
-      expect(config).toContain("base = feat/next");
+      const config = await readFile(join(env.projectDir, "stacked/.arbws/config.json"), "utf-8");
+      expect(JSON.parse(config).base).toBe("feat/next");
     }));
 
   test("arb rebase --retarget still blocks when a repo is dirty", () =>

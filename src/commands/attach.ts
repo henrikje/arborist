@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError, configGet } from "../lib/core";
+import { ArbError, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, assertMinimumGitVersion } from "../lib/git";
 import { render } from "../lib/render";
@@ -65,7 +65,7 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
           throw new ArbError("No repos selected.");
         }
       }
-      const base = configGet(`${wsDir}/.arbws/config`, "base") ?? undefined;
+      const base = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base;
 
       const cache = new GitCache();
       await assertMinimumGitVersion(cache);

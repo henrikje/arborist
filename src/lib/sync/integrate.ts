@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { configGet, writeConfig } from "../core/config";
+import { readWorkspaceConfig, writeWorkspaceConfig } from "../core/config";
 import { ArbError } from "../core/errors";
 import type { ArbContext } from "../core/types";
 import {
@@ -67,7 +67,7 @@ export async function integrate(
   // Phase 1: context & repo selection
   const { wsDir, workspace } = requireWorkspace(ctx);
   const branch = await requireBranch(wsDir, workspace);
-  const configBase = configGet(`${wsDir}/.arbws/config`, "base");
+  const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
 
   if (retargetExplicit) {
     if (retargetExplicit === branch) {
@@ -339,7 +339,7 @@ export async function maybeWriteRetargetConfig(options: {
     (a) => a.retargetTo === retargetConfigTarget && a.retargetReason !== "branch-merged",
   );
   if (!firstRetarget) return false;
-  const configFile = `${wsDir}/.arbws/config`;
+  const configFile = `${wsDir}/.arbws/config.json`;
   const wb = await workspaceBranch(wsDir);
   const wsBranch = wb?.branch ?? branch;
   // Resolve the repo's default branch to check if retargetTo matches
@@ -347,9 +347,9 @@ export async function maybeWriteRetargetConfig(options: {
   // If retargeting to a non-default branch, set it as the new base
   const repoDefault = await cache.getDefaultBranch(firstRetarget.repoDir, firstRetarget.baseRemote);
   if (repoDefault && retargetConfigTarget !== repoDefault) {
-    writeConfig(configFile, wsBranch, retargetConfigTarget);
+    writeWorkspaceConfig(configFile, { branch: wsBranch, base: retargetConfigTarget });
   } else {
-    writeConfig(configFile, wsBranch, undefined);
+    writeWorkspaceConfig(configFile, { branch: wsBranch });
   }
   return true;
 }

@@ -276,7 +276,7 @@ export async function fetchAllRepos(env: TestEnv): Promise<void> {
 
 /** Delete a workspace's config file. */
 export async function deleteWorkspaceConfig(env: TestEnv, name: string): Promise<void> {
-  await rm(join(env.projectDir, name, ".arbws/config"), { force: true });
+  await rm(join(env.projectDir, name, ".arbws/config.json"), { force: true });
 }
 
 /** Run a test body with a fresh, isolated TestEnv that is cleaned up afterwards. */

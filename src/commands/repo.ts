@@ -2,7 +2,7 @@ import { existsSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Command } from "commander";
 import { z } from "zod";
-import { ArbError, configGetList, configSetList } from "../lib/core";
+import { ArbError, readProjectConfig, writeProjectConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, assertMinimumGitVersion, git, gitWithTimeout, networkTimeout } from "../lib/git";
 import { printSchema } from "../lib/json";
@@ -331,16 +331,16 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
     .option("-r, --remove", "Remove repos from defaults")
     .summary("Manage default repo selection")
     .description(
-      "Mark repos as defaults for workspace creation. Default repos are pre-selected in interactive pickers and used as the fallback repo set when no repos are specified in non-interactive mode.\n\nWith no arguments, lists current defaults. With repo names, adds them to defaults. With --remove, removes them from defaults.\n\nStored in .arb/config as a comma-separated list under the 'defaults' key.",
+      "Mark repos as defaults for workspace creation. Default repos are pre-selected in interactive pickers and used as the fallback repo set when no repos are specified in non-interactive mode.\n\nWith no arguments, lists current defaults. With repo names, adds them to defaults. With --remove, removes them from defaults.\n\nStored in .arb/config.json as a JSON array under the 'defaults' key.",
     )
     .action(async (nameArgs: string[], options: { remove?: boolean }) => {
       const ctx = getCtx();
-      const configFile = join(ctx.arbRootDir, ".arb", "config");
+      const configFile = join(ctx.arbRootDir, ".arb", "config.json");
       const allRepos = listRepos(ctx.reposDir);
 
       // List mode
       if (nameArgs.length === 0 && !options.remove) {
-        const defaults = configGetList(configFile, "defaults");
+        const defaults = readProjectConfig(configFile)?.defaults ?? [];
         if (defaults.length === 0) {
           info("No default repos configured. Add with: arb repo default <names...>");
           return;
@@ -357,7 +357,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
         throw new ArbError(msg);
       }
 
-      const currentDefaults = configGetList(configFile, "defaults");
+      const currentDefaults = readProjectConfig(configFile)?.defaults ?? [];
 
       if (options.remove) {
         for (const name of nameArgs) {
@@ -368,7 +368,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
           }
         }
         const updated = currentDefaults.filter((d) => !nameArgs.includes(d));
-        configSetList(configFile, "defaults", updated);
+        writeProjectConfig(configFile, { defaults: updated.length > 0 ? updated : undefined });
         success(`Removed ${plural(nameArgs.length, "repo")} from defaults`);
       } else {
         // Validate repo names exist (only for add — remove tolerates stale entries)
@@ -382,7 +382,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
         const toAdd = nameArgs.filter((n) => !currentDefaults.includes(n));
         const alreadyDefault = nameArgs.length - toAdd.length;
         const updated = [...currentDefaults, ...toAdd];
-        configSetList(configFile, "defaults", updated);
+        writeProjectConfig(configFile, { defaults: updated });
         if (alreadyDefault > 0) {
           success(
             `Added ${plural(toAdd.length, "repo")} to defaults (${plural(alreadyDefault, "repo")} already ${alreadyDefault === 1 ? "was" : "were"} default)`,
