@@ -434,6 +434,7 @@ _arb() {
                     ;;
                 pull)
                     _arguments \
+                        '(-f --force)'{-f,--force}'[Reset to remote tip, overriding rebased-locally skip]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \

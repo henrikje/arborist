@@ -76,6 +76,7 @@ export interface PullAssessment {
 export function registerPullCommand(program: Command, getCtx: () => ArbContext): void {
   program
     .command("pull [repos...]")
+    .option("-f, --force", "Reset to remote tip, overriding rebased-locally skip")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("-n, --dry-run", "Show what would happen without executing")
     .option("--rebase", "Pull with rebase")
@@ -85,12 +86,13 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
     .option("-w, --where <filter>", "Only pull repos matching status filter (comma = OR, + = AND, ^ = negate)")
     .summary("Pull the feature branch from the share remote")
     .description(
-      "Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos with uncommitted changes are skipped unless --autostash is used. Repos where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end. When a remote branch was rebased and local has no unique commits to preserve, arb may safely reset to the rewritten remote tip instead of attempting a three-way merge. Use --verbose to show the incoming commits in the plan. Use --autostash to stash uncommitted changes before pulling and re-apply them after. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nThe pull mode (rebase or merge) is determined per-repo from git config (branch.<name>.rebase, then pull.rebase), defaulting to merge if neither is set. Use --rebase or --merge to override for all repos.\n\nSee 'arb help remotes' for remote role resolution.",
+      "Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos with uncommitted changes are skipped unless --autostash is used. Repos where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end. When a remote branch was rebased and local has no unique commits to preserve, arb may safely reset to the rewritten remote tip instead of attempting a three-way merge. Use --force to override the rebased-locally skip and reset to the remote tip, discarding the local rebase. Use --verbose to show the incoming commits in the plan. Use --autostash to stash uncommitted changes before pulling and re-apply them after. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nThe pull mode (rebase or merge) is determined per-repo from git config (branch.<name>.rebase, then pull.rebase), defaulting to merge if neither is set. Use --rebase or --merge to override for all repos.\n\nSee 'arb help remotes' for remote role resolution.",
     )
     .action(
       async (
         repoArgs: string[],
         options: {
+          force?: boolean;
           rebase?: boolean;
           merge?: boolean;
           yes?: boolean;
@@ -155,6 +157,9 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
         const postAssess = async (nextAssessments: PullAssessment[]) => {
           await reviveRebasedSkipsForSafeReset(nextAssessments, remotesMap, branch);
           await resolvePullStrategies(nextAssessments, remotesMap, branch);
+          if (options.force) {
+            forceRebasedSkips(nextAssessments, remotesMap, branch);
+          }
           await predictPullConflicts(nextAssessments, remotesMap, branch);
           if (options.verbose) {
             await gatherPullVerboseCommits(nextAssessments, remotesMap, branch);
@@ -434,7 +439,7 @@ export function assessPullRepo(
       toPush,
       rebased,
       rebasedKnown: status.share.rebased != null,
-      skipReason: "rebased locally (push --force instead)",
+      skipReason: "rebased locally (push --force, or pull --force to reset)",
       skipFlag: "rebased-locally",
     };
   }
@@ -579,6 +584,24 @@ export function pullActionCell(a: PullAssessment, remotesMap: Map<string, RepoRe
   if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
 
   return result;
+}
+
+export function forceRebasedSkips(
+  assessments: PullAssessment[],
+  remotesMap: Map<string, RepoRemotes>,
+  branch: string,
+): void {
+  for (const a of assessments) {
+    if (a.outcome !== "skip" || a.skipFlag !== "rebased-locally") continue;
+    const shareRemote = remotesMap.get(a.repo)?.share;
+    if (!shareRemote) continue;
+    a.outcome = "will-pull";
+    a.skipReason = undefined;
+    a.skipFlag = undefined;
+    a.pullStrategy = "safe-reset";
+    a.safeResetTarget = `${shareRemote}/${branch}`;
+    a.safeResetReason = "discards local rebase";
+  }
 }
 
 async function reviveRebasedSkipsForSafeReset(
