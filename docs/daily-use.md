@@ -126,6 +126,14 @@ If you intentionally want to push an already merged branch anyway (for example t
 
 Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
 
+**Starting fresh** — discard all local changes and reset every repo to the base branch:
+
+```bash
+arb reset
+```
+
+This resolves the correct base remote and branch per repo automatically — no need to hard-code `origin/main`. Untracked files are preserved. The plan shows what will be lost (dirty files, unpushed commits) and warns prominently when unpushed commits are at risk.
+
 All sync commands support `--where` (`-w`) to filter which repos are included in the plan:
 
 ```bash

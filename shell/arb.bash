@@ -513,6 +513,20 @@ __arb_complete_merge() {
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
 }
 
+__arb_complete_reset() {
+    local base_dir="$1" cur="$2"
+    local prev="${COMP_WORDS[COMP_CWORD-1]}"
+    if [[ "$prev" == "-w" || "$prev" == "--where" ]]; then
+        __arb_complete_where_value "$cur"
+        return
+    fi
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -w --where" -- "$cur"))
+        return
+    fi
+    COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
+}
+
 __arb_complete_exec() {
     local base_dir="$1" cur="$2"
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
@@ -609,7 +623,7 @@ __arb_complete_template() {
 __arb_complete_help() {
     local base_dir="$1" cur="$2"
     local topics="where remotes stacked templates scripting"
-    local commands="init repo create delete clean list path cd attach detach status branch pull push rebase merge log diff exec open template"
+    local commands="init repo create delete clean list path cd attach detach status branch pull push rebase merge reset log diff exec open template"
     COMPREPLY=($(compgen -W "$topics $commands" -- "$cur"))
 }
 
@@ -635,7 +649,7 @@ _arb() {
 
     # Completing the subcommand itself
     if ((COMP_CWORD <= cmd_pos)); then
-        local commands="init repo create delete clean list path cd attach detach status branch pull push rebase merge log diff exec open template help"
+        local commands="init repo create delete clean list path cd attach detach status branch pull push rebase merge reset log diff exec open template help"
         # Also complete global flags
         if [[ "$cur" == -* ]]; then
             COMPREPLY=($(compgen -W "-C -h --help -v --version --debug" -- "$cur"))
@@ -664,6 +678,7 @@ _arb() {
         push)     __arb_complete_push "$base_dir" "$cur" ;;
         rebase)   __arb_complete_rebase "$base_dir" "$cur" ;;
         merge)    __arb_complete_merge "$base_dir" "$cur" ;;
+        reset)    __arb_complete_reset "$base_dir" "$cur" ;;
         log)      __arb_complete_log "$base_dir" "$cur" ;;
         diff)     __arb_complete_diff "$base_dir" "$cur" ;;
         exec)     __arb_complete_exec "$base_dir" "$cur" ;;
