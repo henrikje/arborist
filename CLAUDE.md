@@ -33,7 +33,7 @@ Organized into semantic subdirectories. Each directory has a barrel `index.ts` r
 - Within `lib/`, use direct file imports (not barrels) to avoid circular dependency issues.
 - Command files and `src/index.ts` use barrel imports.
 
-- **`core/`** — Foundation: `types.ts` (ArbContext), `errors.ts` (ArbError, ArbAbort), `config.ts` (INI reader/writer), `arbignore.ts`, `time.ts` (relative time formatting)
+- **`core/`** — Foundation: `types.ts` (ArbContext), `errors.ts` (ArbError, ArbAbort), `config.ts` (INI reader/writer), `time.ts` (relative time formatting)
 - **`terminal/`** — Terminal I/O: `output.ts` (ANSI colors, logging, progress), `tty.ts` (TTY detection), `debug.ts`, `stdin.ts`, `abort-keypress.ts`
 - **`git/`** — Git operations: `git.ts` (process spawning, branch/status/remote ops), `git-cache.ts` (request-scoped promise coalescing), `remotes.ts` (remote role resolution), `remote-url.ts` (URL parsing, PR URL construction)
 - **`status/`** — Canonical status model: `status.ts` (RepoStatus, RepoFlags, gathering, filtering — see ARCHITECTURE.md), `skip-flags.ts`, `pr-detection.ts`, `ticket-detection.ts`, `test-helpers.ts` (makeRepo fixtures)

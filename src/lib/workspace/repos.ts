@@ -14,15 +14,6 @@ export function listWorkspaces(arbRootDir: string): string[] {
     .sort();
 }
 
-export function listNonWorkspaces(arbRootDir: string, ignored?: Set<string>): string[] {
-  return readdirSync(arbRootDir)
-    .filter((entry) => !entry.startsWith("."))
-    .filter((entry) => statSync(join(arbRootDir, entry)).isDirectory())
-    .filter((entry) => !existsSync(join(arbRootDir, entry, ".arbws")))
-    .filter((entry) => !ignored || !ignored.has(entry))
-    .sort();
-}
-
 export function listRepos(reposDir: string): string[] {
   if (!existsSync(reposDir)) return [];
   return readdirSync(reposDir)

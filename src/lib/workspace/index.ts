@@ -11,7 +11,6 @@ export {
   collectRepo,
   findRepoUsage,
   listDefaultRepos,
-  listNonWorkspaces,
   listRepos,
   listWorkspaces,
   selectInteractive,
