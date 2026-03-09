@@ -62,7 +62,7 @@ function hintNonWorkspaces(arbRootDir: string): void {
   const nonWorkspaces = listNonWorkspaces(arbRootDir, ignored);
   if (nonWorkspaces.length > 0) {
     info(
-      `  ${plural(nonWorkspaces.length, "non-workspace directory", "non-workspace directories")} found. Run 'arb clean' to review.`,
+      `  ${plural(nonWorkspaces.length, "non-workspace directory", "non-workspace directories")} found. Remove manually if unneeded.`,
     );
   }
 }

@@ -3,11 +3,7 @@ export { type WorkspaceBranchResult, workspaceBranch } from "./branch";
 export {
   detectAndRepairProjectMove,
   detectSharedWorktreeEntries,
-  findOrphanedBranches,
-  findStaleWorktrees,
-  pruneWorktrees,
   readGitdirFromWorktree,
-  repairAllWorktreeRefs,
   repairWorktreeRefs,
 } from "./clean";
 export { requireBranch, requireWorkspace } from "./context";

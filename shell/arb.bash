@@ -268,28 +268,6 @@ __arb_complete_delete() {
     COMPREPLY=($(compgen -W "$(__arb_workspace_names "$base_dir")" -- "$cur"))
 }
 
-__arb_complete_clean() {
-    local base_dir="$1" cur="$2"
-    if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-y --yes -n --dry-run -f --force --fetch -N --no-fetch" -- "$cur"))
-        return
-    fi
-    # Complete non-workspace directory names (top-level dirs without .arbws/)
-    if [[ -n "$base_dir" ]]; then
-        local -a non_ws=()
-        local d
-        for d in "$base_dir"/*/; do
-            [[ -d "$d" ]] || continue
-            local name="${d%/}"
-            name="${name##*/}"
-            [[ "$name" == .* ]] && continue
-            [[ -d "$d.arbws" ]] && continue
-            non_ws+=("$name")
-        done
-        COMPREPLY=($(compgen -W "${non_ws[*]}" -- "$cur"))
-    fi
-}
-
 __arb_complete_list() {
     local cur="$1"
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
@@ -646,7 +624,7 @@ __arb_complete_template() {
 __arb_complete_help() {
     local base_dir="$1" cur="$2"
     local topics="where remotes stacked templates scripting"
-    local commands="init repo create delete rename clean list path cd attach detach status branch pull push rebase merge reset log diff exec open template"
+    local commands="init repo create delete rename list path cd attach detach status branch pull push rebase merge reset log diff exec open template"
     COMPREPLY=($(compgen -W "$topics $commands" -- "$cur"))
 }
 
@@ -672,7 +650,7 @@ _arb() {
 
     # Completing the subcommand itself
     if ((COMP_CWORD <= cmd_pos)); then
-        local commands="init repo create delete rename clean list path cd attach detach status branch pull push rebase merge reset log diff exec open template help"
+        local commands="init repo create delete rename list path cd attach detach status branch pull push rebase merge reset log diff exec open template help"
         # Also complete global flags
         if [[ "$cur" == -* ]]; then
             COMPREPLY=($(compgen -W "-C -h --help -v --version --debug" -- "$cur"))
@@ -690,7 +668,6 @@ _arb() {
         create)   __arb_complete_create "$base_dir" "$cur" ;;
         delete)   __arb_complete_delete "$base_dir" "$cur" ;;
         rename)   __arb_complete_rename "$base_dir" "$cur" ;;
-        clean)    __arb_complete_clean "$base_dir" "$cur" ;;
         list)     __arb_complete_list "$cur" ;;
         path)     __arb_complete_path "$base_dir" "$cur" ;;
         cd)       __arb_complete_cd "$base_dir" "$cur" ;;
