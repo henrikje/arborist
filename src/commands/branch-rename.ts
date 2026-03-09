@@ -1,4 +1,4 @@
-import { existsSync, renameSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, configGet, writeConfig } from "../lib/core";
@@ -33,9 +33,9 @@ import {
 import { workspaceRepoDirs } from "../lib/workspace";
 import { requireWorkspace } from "../lib/workspace";
 
-type RenameOutcome = "will-rename" | "already-on-new" | "skip-missing" | "skip-drifted" | "skip-in-progress";
+export type RenameOutcome = "will-rename" | "already-on-new" | "skip-missing" | "skip-drifted" | "skip-in-progress";
 
-interface RepoAssessment {
+export interface RepoAssessment {
   repo: string;
   repoDir: string;
   outcome: RenameOutcome;
@@ -63,10 +63,9 @@ interface RenameOptions {
   dryRun?: boolean;
   yes?: boolean;
   includeInProgress?: boolean;
-  renameWorkspace?: string | true;
 }
 
-async function assessRepo(
+export async function assessRepo(
   repoDir: string,
   oldBranch: string,
   newBranch: string,
@@ -163,7 +162,7 @@ async function assessRepo(
   };
 }
 
-function buildRenamePlanNodes(
+export function buildRenamePlanNodes(
   assessments: RepoAssessment[],
   oldBranch: string,
   newBranch: string,
@@ -188,7 +187,7 @@ function buildRenamePlanNodes(
       kind: "hint",
       cell: suffix(
         cell("  Workspace directory keeps its current name "),
-        "(add --rename-workspace to rename it)",
+        "(use arb rename to also rename the workspace directory)",
         "muted",
       ),
     });
@@ -291,7 +290,7 @@ function formatPlan(
   return out;
 }
 
-function formatAbortPlan(assessments: AbortAssessment[], oldBranch: string, newBranch: string): string {
+export function formatAbortPlan(assessments: AbortAssessment[], oldBranch: string, newBranch: string): string {
   const nodes: OutputNode[] = [
     { kind: "gap" },
     { kind: "message", level: "default", text: `Rolling back rename: '${newBranch}' to '${oldBranch}'` },
@@ -326,53 +325,13 @@ function formatAbortPlan(assessments: AbortAssessment[], oldBranch: string, newB
   return `${render(nodes, rCtx)}\n`;
 }
 
-function renameWorkspace(
-  ctx: ArbContext,
-  wsDir: string,
-  workspace: string,
-  newWorkspaceName: string,
-  repos: string[],
-): boolean {
-  const newWsDir = `${ctx.arbRootDir}/${newWorkspaceName}`;
-  try {
-    renameSync(wsDir, newWsDir);
-  } catch (err) {
-    warn(`Failed to rename workspace directory: ${err instanceof Error ? err.message : err}`);
-    info(`  Manually rename: mv '${workspace}' '${newWorkspaceName}'`);
-    info("  Then repair worktrees: arb exec -- git worktree repair");
-    return false;
-  }
-
-  // Fix worktree path references in canonical repos
-  let repairFailed = false;
-  for (const repo of repos) {
-    const result = Bun.spawnSync(["git", "worktree", "repair", `${newWsDir}/${repo}`], {
-      cwd: `${ctx.reposDir}/${repo}`,
-      stdout: "ignore",
-      stderr: "pipe",
-    });
-    if (result.exitCode !== 0) {
-      repairFailed = true;
-    }
-  }
-
-  if (repairFailed) {
-    warn("Some worktree repairs failed — run 'arb exec -- git worktree repair' in the new workspace");
-  }
-
-  inlineResult(workspace, `workspace renamed to ${newWorkspaceName}`);
-  return true;
-}
-
 async function runRename(
   wsDir: string,
   ctx: ArbContext,
-  workspace: string,
   configFile: string,
   oldBranch: string,
   newBranch: string,
   configBase: string | null,
-  newWorkspaceName: string | null,
   showRenameWorkspaceHint: boolean,
   options: RenameOptions,
 ): Promise<void> {
@@ -387,16 +346,6 @@ async function runRename(
   // Resolve remotes for all repos (canonical repos share remote config with worktrees)
   const cache = new GitCache();
   await assertMinimumGitVersion(cache);
-
-  // Workspace directory rename requires worktree repair (git 2.30+) — fail before any mutations
-  if (newWorkspaceName) {
-    const version = await cache.getGitVersion();
-    if (version.major < 2 || (version.major === 2 && version.minor < 30)) {
-      const msg = `Renaming the workspace directory requires Git 2.30+ (you have ${version.major}.${version.minor}.${version.patch}). Omit --rename-workspace to rename branches without renaming the workspace.`;
-      error(msg);
-      throw new ArbError(msg);
-    }
-  }
 
   const fullRemotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
 
@@ -428,7 +377,7 @@ async function runRename(
         oldBranch,
         newBranch,
         options.deleteRemote ?? false,
-        newWorkspaceName,
+        null,
         undefined,
         showRenameWorkspaceHint,
       ),
@@ -483,7 +432,7 @@ async function runRename(
   if (failures.length > 0) {
     process.stderr.write("\n");
     error(`Failed to rename in ${plural(failures.length, "repo")}: ${failures.join(", ")}`);
-    warn("Use 'arb branch rename --continue' to retry or 'arb branch rename --abort' to roll back");
+    warn("Use 'arb branch rename --continue' or 'arb rename --continue' to retry, or '--abort' to roll back");
     throw new ArbError(`Failed to rename in ${plural(failures.length, "repo")}: ${failures.join(", ")}`);
   }
 
@@ -518,13 +467,6 @@ async function runRename(
     }
   }
 
-  // Workspace rename — after all per-repo operations complete
-  // (git 2.30+ already verified at the top of runRename)
-  let renamedWorkspace = false;
-  if (newWorkspaceName) {
-    renamedWorkspace = renameWorkspace(ctx, wsDir, workspace, newWorkspaceName, repos);
-  }
-
   process.stderr.write("\n");
 
   // Summarize
@@ -533,7 +475,6 @@ async function runRename(
   if (alreadyRenamed > 0) parts.push(`${alreadyRenamed} already renamed`);
   const skipped = assessments.filter((a) => a.outcome !== "will-rename" && a.outcome !== "already-on-new").length;
   if (skipped > 0) parts.push(`${skipped} skipped`);
-  if (renamedWorkspace) parts.push("workspace renamed");
   finishSummary(parts, false);
 
   // Guide user toward arb push when remote branches were involved
@@ -541,14 +482,9 @@ async function runRename(
   if (hasAnyRemote) {
     info("Run 'arb push' to push the new branch name to the remote");
   }
-
-  // Print new workspace path to stdout for shell wrapper cd
-  if (renamedWorkspace && newWorkspaceName) {
-    process.stdout.write(`${ctx.arbRootDir}/${newWorkspaceName}\n`);
-  }
 }
 
-async function runAbort(
+export async function runAbort(
   wsDir: string,
   configFile: string,
   currentConfigBranch: string,
@@ -645,59 +581,6 @@ async function runAbort(
   }
 }
 
-/**
- * Compute workspace rename eligibility.
- * Returns the new workspace name, or null if no rename should happen.
- */
-function resolveWorkspaceRename(
-  ctx: ArbContext,
-  workspace: string,
-  oldBranch: string,
-  newBranch: string,
-  options: RenameOptions,
-): string | null {
-  if (!options.renameWorkspace) {
-    return null;
-  }
-
-  if (typeof options.renameWorkspace === "string") {
-    // Explicit workspace name — validate
-    const explicitName = options.renameWorkspace;
-    const nameErr = validateWorkspaceName(explicitName);
-    if (nameErr) {
-      error(nameErr);
-      throw new ArbError(nameErr);
-    }
-    if (explicitName !== workspace && existsSync(`${ctx.arbRootDir}/${explicitName}`)) {
-      const msg = `Directory '${explicitName}' already exists`;
-      error(msg);
-      throw new ArbError(msg);
-    }
-    if (explicitName !== workspace) {
-      return explicitName;
-    }
-    return null;
-  }
-
-  // --rename-workspace without argument: auto-derive from new branch name
-  if (workspace === oldBranch) {
-    const nameErr = validateWorkspaceName(newBranch);
-    if (nameErr !== null) {
-      warn("Workspace not renamed — branch name is not a valid workspace name");
-      info("  Use --rename-workspace <name> to specify an explicit name");
-      return null;
-    }
-    if (existsSync(`${ctx.arbRootDir}/${newBranch}`)) {
-      warn(`Workspace not renamed — directory '${newBranch}' already exists`);
-      info("  Use --rename-workspace <name> to rename to a different name");
-      return null;
-    }
-    return newBranch;
-  }
-
-  return null;
-}
-
 export function registerBranchRenameSubcommand(parent: Command, getCtx: () => ArbContext): void {
   parent
     .command("rename [new-name]")
@@ -709,13 +592,9 @@ export function registerBranchRenameSubcommand(parent: Command, getCtx: () => Ar
     .option("-n, --dry-run", "Show what would happen without executing")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("--include-in-progress", "Rename repos even if they have an in-progress git operation")
-    .option(
-      "--rename-workspace [name]",
-      "Also rename the workspace directory (auto-derives name from branch, or specify explicitly)",
-    )
     .summary("Rename the workspace branch across all repos")
     .description(
-      "Renames the workspace branch locally across all repos and updates .arbws/config. The workspace directory is not renamed by default — use --rename-workspace to also rename it (auto-derives name from the new branch), or --rename-workspace <name> to specify an explicit name (useful for slashed branches like feat/foo). You can also simply `mv` the workspace directory — arb detects the rename and repairs worktree references automatically.\n\nFetches before assessing to get fresh remote state (use -N/--no-fetch to skip). Shows a plan and asks for confirmation before proceeding. Repos with an in-progress git operation (rebase, merge, cherry-pick) are skipped by default — use --include-in-progress to override.\n\nBranch rename is non-atomic across repos: if it fails partway, migration state is preserved in .arbws/config so the operation can be resumed. Use --continue to retry remaining repos or --abort to roll back. After rename, tracking is cleared so 'arb push' treats the branch as new and pushes under the new name. Use --delete-remote to also delete the old remote branch during rename.",
+      "Renames the workspace branch locally across all repos and updates .arbws/config. The workspace directory is not renamed — use 'arb rename' to rename both the workspace and branch together.\n\nFetches before assessing to get fresh remote state (use -N/--no-fetch to skip). Shows a plan and asks for confirmation before proceeding. Repos with an in-progress git operation (rebase, merge, cherry-pick) are skipped by default — use --include-in-progress to override.\n\nBranch rename is non-atomic across repos: if it fails partway, migration state is preserved in .arbws/config so the operation can be resumed. Use --continue to retry remaining repos or --abort to roll back. After rename, tracking is cleared so 'arb push' treats the branch as new and pushes under the new name. Use --delete-remote to also delete the old remote branch during rename.",
     )
     .action(async (newNameArg: string | undefined, options: RenameOptions) => {
       const ctx = getCtx();
@@ -774,58 +653,20 @@ export function registerBranchRenameSubcommand(parent: Command, getCtx: () => Ar
           newBranch = newNameArg;
 
           if (oldBranch === newBranch) {
-            // Branch already correct — check for standalone workspace rename
-            if (options.renameWorkspace) {
-              const newWorkspaceName = resolveWorkspaceRename(ctx, workspace, oldBranch, newBranch, options);
-              if (newWorkspaceName) {
-                const versionCache = new GitCache();
-                const version = await versionCache.getGitVersion();
-                if (version.major < 2 || (version.major === 2 && version.minor < 30)) {
-                  const msg = `Renaming the workspace directory requires Git 2.30+ (you have ${version.major}.${version.minor}.${version.patch}).`;
-                  error(msg);
-                  throw new ArbError(msg);
-                }
-                const repoDirs = workspaceRepoDirs(wsDir);
-                const repos = repoDirs.map((d) => basename(d));
-                if (renameWorkspace(ctx, wsDir, workspace, newWorkspaceName, repos)) {
-                  process.stdout.write(`${ctx.arbRootDir}/${newWorkspaceName}\n`);
-                }
-              }
-              return;
-            }
             info(`Already on branch '${newBranch}' — nothing to do`);
             return;
           }
         }
       }
 
-      // Compute workspace rename eligibility (not during --continue or --abort)
-      const newWorkspaceName =
-        !options.continue && !options.abort
-          ? resolveWorkspaceRename(ctx, workspace, oldBranch, newBranch, options)
-          : null;
-
-      // Show hint when workspace could be renamed but --rename-workspace wasn't passed
+      // Show hint when workspace could be renamed via arb rename
       const showRenameWorkspaceHint =
         !options.continue &&
         !options.abort &&
-        newWorkspaceName === null &&
-        !options.renameWorkspace &&
         workspace === oldBranch &&
         validateWorkspaceName(newBranch) === null &&
         !existsSync(`${ctx.arbRootDir}/${newBranch}`);
 
-      return runRename(
-        wsDir,
-        ctx,
-        workspace,
-        configFile,
-        oldBranch,
-        newBranch,
-        configBase,
-        newWorkspaceName,
-        showRenameWorkspaceHint,
-        options,
-      );
+      return runRename(wsDir, ctx, configFile, oldBranch, newBranch, configBase, showRenameWorkspaceHint, options);
     });
 }

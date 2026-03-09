@@ -80,6 +80,21 @@ describe("config", () => {
       expect(readFileSync(configFile, "utf-8")).toBe("branch = my-branch\nbase = main\n");
       expect(configGet(configFile, "branch_rename_from")).toBeNull();
     });
+
+    test("writes workspaceRenameTo when provided", () => {
+      writeConfig(configFile, "new-name", "main", "old-name", "new-ws");
+      const content = readFileSync(configFile, "utf-8");
+      expect(content).toBe(
+        "branch = new-name\nbase = main\nbranch_rename_from = old-name\nworkspace_rename_to = new-ws\n",
+      );
+      expect(configGet(configFile, "workspace_rename_to")).toBe("new-ws");
+    });
+
+    test("omits workspaceRenameTo when null", () => {
+      writeConfig(configFile, "my-branch", "main", null, null);
+      expect(readFileSync(configFile, "utf-8")).toBe("branch = my-branch\nbase = main\n");
+      expect(configGet(configFile, "workspace_rename_to")).toBeNull();
+    });
   });
 
   describe("configGetList", () => {

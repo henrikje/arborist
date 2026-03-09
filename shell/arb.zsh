@@ -41,6 +41,17 @@ arb() {
         return
     fi
 
+    if [[ "$1" == "rename" ]]; then
+        # Pass help flags through without capturing
+        case " ${*:2} " in
+            *" --help "*|*" -h "*) command arb rename "${@:2}"; return ;;
+        esac
+        local _arb_dir
+        _arb_dir="$(command arb rename "${@:2}")" || return
+        [[ -n "$_arb_dir" ]] && cd "$_arb_dir"
+        return
+    fi
+
     if [[ "$1" == "branch" && "$2" == "rename" ]]; then
         # Pass help flags through without capturing
         case " ${*:3} " in
@@ -158,6 +169,7 @@ _arb() {
                 'repo:Manage canonical repos'
                 'create:Create a new workspace'
                 'delete:Delete one or more workspaces'
+                'rename:Rename the workspace (directory + branch)'
                 'clean:Clean up non-workspace directories and stale git state'
                 'list:List all workspaces'
                 'path:Print the path to the project root or a workspace'
@@ -193,6 +205,19 @@ _arb() {
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-N --fetch --no-fetch)--fetch[Fetch before assessing workspace status (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching]'
+                    ;;
+                rename)
+                    _arguments \
+                        '--branch[Set the branch name independently from the workspace name]:branch:' \
+                        '--base[Change the base branch]:branch:' \
+                        '--continue[Resume an in-progress rename]' \
+                        '--abort[Roll back an in-progress rename]' \
+                        '(-r --delete-remote)'{-r,--delete-remote}'[Delete old branch on remote after rename]' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch before rename (default)]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-rename remote fetch]' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                        '1:new-name:'
                     ;;
                 clean)
                     # Complete non-workspace directory names
@@ -408,7 +433,6 @@ _arb() {
                                     '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                                     '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                                     '--include-in-progress[Rename repos even if they have an in-progress git operation]' \
-                                    '--rename-workspace[Also rename the workspace directory]::name:' \
                                     '1:new-name:'
                                 ;;
                         esac
@@ -519,6 +543,7 @@ _arb() {
                         'repo:Manage canonical repos'
                         'create:Create a new workspace'
                         'delete:Delete one or more workspaces'
+                        'rename:Rename the workspace (directory + branch)'
                         'clean:Clean up non-workspace directories and stale git state'
                         'list:List all workspaces'
                         'path:Print the path to the project root or a workspace'
