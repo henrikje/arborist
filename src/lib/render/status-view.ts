@@ -32,13 +32,6 @@ export function buildStatusView(summary: WorkspaceSummary, ctx: StatusViewContex
     return [{ kind: "message", level: "muted", text: "(no repos)" }];
   }
 
-  // Determine if BRANCH column is needed
-  const showBranch = repos.some(
-    (r) =>
-      r.identity.headMode.kind === "detached" ||
-      (r.identity.headMode.kind === "attached" && r.identity.headMode.branch !== ctx.expectedBranch),
-  );
-
   // Pre-compute last commit parts for column group alignment
   const lastCommitParts: RelativeTimeParts[] = repos.map((r) =>
     r.lastCommit ? formatRelativeTimeParts(r.lastCommit) : { num: "", unit: "" },
@@ -53,7 +46,7 @@ export function buildStatusView(summary: WorkspaceSummary, ctx: StatusViewContex
     const row: TableRow = {
       cells: {
         repo: cell(repo.name),
-        branch: analyzeBranch(repo, ctx.expectedBranch),
+        branch: flags.isDrifted || flags.isDetached ? analyzeBranch(repo, ctx.expectedBranch) : EMPTY_CELL,
         baseName: analyzeBaseName(repo, flags),
         baseDiff: analyzeBaseDiff(repo, flags, hasBaseConflict),
         remoteName: analyzeRemoteName(repo, flags),
@@ -82,7 +75,7 @@ export function buildStatusView(summary: WorkspaceSummary, ctx: StatusViewContex
   // Build column definitions
   const columns: TableColumnDef[] = [
     { header: "REPO", key: "repo" },
-    { header: "BRANCH", key: "branch", show: showBranch },
+    { header: "BRANCH", key: "branch", show: "auto" },
     { header: "", key: "lastCommitNum", group: "LAST COMMIT", align: "right" as const },
     { header: "", key: "lastCommitUnit", group: "LAST COMMIT" },
     { header: "", key: "baseName", group: "BASE" },
