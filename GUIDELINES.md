@@ -137,3 +137,41 @@ Recovery depends on whether failures are independent or systemic.
 ### Documentation: help is reference, README is tutorial
 
 `--help` is the authoritative reference — every option, argument, and behavioral detail. Keep descriptions concise but complete. The README walks through workflows and explains the mental model, linking to `arb help <command>` for details.
+
+---
+
+## Commit Conventions
+
+All commits follow [Conventional Commits](https://www.conventionalcommits.org/), enforced by commitlint.
+
+### Types
+
+| Type | Purpose | Scope |
+|------|---------|-------|
+| `feat` | User-facing new functionality or behavioral change | Required — command name or area |
+| `fix` | User-facing bug fix | Required — command name or area |
+| `chore` | Maintenance, CI, dependencies — not user-facing | Required — `ci`, `deps`, `main`, etc. |
+| `docs` | Documentation-only changes | Not needed |
+| `refactor` | Code restructuring with no behavioral change | Not needed |
+
+### Scope
+
+`feat` and `fix` always include a scope identifying the command most affected, or a cross-cutting area when no single command applies:
+
+- **Command name**: `feat(pull)`, `fix(push)`, `feat(create)`, `feat(detach)`
+- **Area**: `feat(config)`, `fix(install)`
+
+`chore` uses a scope describing the maintenance domain: `chore(ci)`, `chore(deps)`, `chore(main)`.
+
+`docs` and `refactor` omit scope — the subject line provides enough context.
+
+### Subject line
+
+Use imperative mood ("add", "fix", "remove"), lowercase, no trailing period. The subject describes *what changed*, not implementation details:
+
+- `feat(pull): add --force flag to arb pull`
+- `fix(install): always add install dir to path`
+- `feat(clean): remove arb clean command`
+- `chore(ci): add post-release install validation workflow`
+- `docs: update workspace description for clarity`
+- `refactor: implement auto-hide for table columns`
