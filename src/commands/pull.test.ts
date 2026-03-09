@@ -142,7 +142,7 @@ describe("assessPullRepo", () => {
     expect(a.needsStash).toBeUndefined();
   });
 
-  test("skips when not pushed yet (noRef)", () => {
+  test("skips when no remote branch (noRef)", () => {
     const a = assessPullRepo(
       makeRepo({
         share: {
@@ -163,7 +163,7 @@ describe("assessPullRepo", () => {
       SHA,
     );
     expect(a.outcome).toBe("skip");
-    expect(a.skipReason).toBe("not pushed yet");
+    expect(a.skipReason).toBe("no remote branch");
     expect(a.skipFlag).toBe("not-pushed");
   });
 
