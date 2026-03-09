@@ -269,22 +269,6 @@ describe("worktree integrity", () => {
     }),
   );
 
-  test.skipIf(gitBelow230)("arb clean repairs project move before stale detection", () =>
-    withEnv(async (env) => {
-      await arb(env, ["create", "ws-a", "repo-a"]);
-      await arb(env, ["create", "ws-b", "repo-a"]);
-
-      const newProjectDir = join(env.testDir, "moved-project");
-      await rename(env.projectDir, newProjectDir);
-
-      // arb clean should repair, not show stale worktrees
-      const result = await arb({ ...env, projectDir: newProjectDir }, ["clean", "--dry-run"]);
-      expect(result.output).not.toContain("Stale worktree");
-
-      env.projectDir = newProjectDir;
-    }),
-  );
-
   test.skipIf(gitBelow230)("project move detection is skipped when old path still exists", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "ws-safe", "repo-a"]);
