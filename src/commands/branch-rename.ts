@@ -15,7 +15,7 @@ import {
 } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
-import { cell, suffix } from "../lib/render";
+import { EMPTY_CELL, cell, suffix } from "../lib/render";
 import { confirmOrExit, runPlanFlow } from "../lib/sync";
 import {
   dryRunNotice,
@@ -170,8 +170,6 @@ export function buildRenamePlanNodes(
   newWorkspaceName: string | null,
   showRenameWorkspaceHint?: boolean,
 ): OutputNode[] {
-  const hasAnyRemote = assessments.some((a) => a.shareRemote !== null);
-
   const nodes: OutputNode[] = [];
 
   // Leading text
@@ -217,29 +215,29 @@ export function buildRenamePlanNodes(
             remoteCell = cell("no remote branch");
           }
         } else {
-          remoteCell = cell("no remote branch");
+          remoteCell = EMPTY_CELL;
         }
         break;
       }
       case "already-on-new":
         localCell = cell("already renamed", "attention");
-        remoteCell = cell("no remote branch");
+        remoteCell = a.shareRemote ? cell("no remote branch") : EMPTY_CELL;
         break;
       case "skip-missing":
         localCell = cell("skip — branch not found", "attention");
-        remoteCell = cell("no remote branch");
+        remoteCell = a.shareRemote ? cell("no remote branch") : EMPTY_CELL;
         break;
       case "skip-drifted":
         localCell = cell(`skip — on branch ${a.currentBranch ?? "?"}, expected ${oldBranch}`, "attention");
-        remoteCell = cell("no remote branch");
+        remoteCell = a.shareRemote ? cell("no remote branch") : EMPTY_CELL;
         break;
       case "skip-in-progress":
         localCell = cell(`skip — ${a.operationType} in progress (use --include-in-progress)`, "attention");
-        remoteCell = cell("no remote branch");
+        remoteCell = a.shareRemote ? cell("no remote branch") : EMPTY_CELL;
         break;
       default:
         localCell = cell("unknown");
-        remoteCell = cell("no remote branch");
+        remoteCell = a.shareRemote ? cell("no remote branch") : EMPTY_CELL;
     }
 
     return {
@@ -256,7 +254,7 @@ export function buildRenamePlanNodes(
     columns: [
       { header: "REPO", key: "repo" },
       { header: "LOCAL", key: "local" },
-      { header: "REMOTE", key: "remote", show: hasAnyRemote },
+      { header: "REMOTE", key: "remote", show: "auto" },
     ],
     rows,
   });
