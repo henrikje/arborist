@@ -170,7 +170,6 @@ _arb() {
                 'create:Create a new workspace'
                 'delete:Delete one or more workspaces'
                 'rename:Rename the workspace (directory + branch)'
-                'clean:Clean up non-workspace directories and stale git state'
                 'list:List all workspaces'
                 'path:Print the path to the project root or a workspace'
                 'cd:Navigate to a workspace directory'
@@ -218,25 +217,6 @@ _arb() {
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '1:new-name:'
-                    ;;
-                clean)
-                    # Complete non-workspace directory names
-                    local -a non_ws_names=()
-                    if [[ -n "$base_dir" ]]; then
-                        for d in "$base_dir"/*(N/); do
-                            local name="${d:t}"
-                            [[ "$name" == .* ]] && continue
-                            [[ -d "$d/.arbws" ]] && continue
-                            non_ws_names+=("$name")
-                        done
-                    fi
-                    _arguments \
-                        '*:directory:($non_ws_names)' \
-                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
-                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
-                        '(-f --force)'{-f,--force}'[Delete unmerged orphaned branches]' \
-                        '(-N --fetch --no-fetch)--fetch[Fetch canonical repos before detecting orphaned branches (default)]' \
-                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching]'
                     ;;
                 path)
                     # Detect if we're inside a workspace
@@ -544,8 +524,7 @@ _arb() {
                         'create:Create a new workspace'
                         'delete:Delete one or more workspaces'
                         'rename:Rename the workspace (directory + branch)'
-                        'clean:Clean up non-workspace directories and stale git state'
-                        'list:List all workspaces'
+                                'list:List all workspaces'
                         'path:Print the path to the project root or a workspace'
                         'cd:Navigate to a workspace directory'
                         'attach:Attach repos to the workspace'

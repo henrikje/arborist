@@ -47,4 +47,4 @@ You can rename a workspace directory with a plain `mv`:
 mv fix-login auth-fix
 ```
 
-Arb detects the rename and silently repairs Git's internal worktree references the next time any command runs inside the workspace (or when `arb clean` runs globally). No special command is needed — arb treats the filesystem as the source of truth.
+Arb detects the rename and silently repairs Git's internal worktree references the next time any command runs inside the workspace. No special command is needed — arb treats the filesystem as the source of truth.
