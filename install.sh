@@ -232,10 +232,7 @@ __arb_configure_rc() {
         warn "Arborist block already present in $rc_name, skipping"
     else
         local ARB_BLOCK="$ARB_MARKER"
-        case ":$PATH:" in
-            *":$BIN_DIR:"*) ;;
-            *) ARB_BLOCK="$ARB_BLOCK"$'\n'"$PATH_LINE" ;;
-        esac
+        ARB_BLOCK="$ARB_BLOCK"$'\n'"$PATH_LINE"
         ARB_BLOCK="$ARB_BLOCK"$'\n'"$SOURCE_LINE"
 
         if [[ -f "$rc_file" ]] && [[ "$(tail -c 2 "$rc_file")" != "" ]]; then
@@ -280,10 +277,7 @@ case "$USER_SHELL" in
         warn "Your shell ($SHELL) was not auto-configured."
         warn "Add the following to your shell profile manually:"
         echo ""
-        case ":$PATH:" in
-            *":$BIN_DIR:"*) ;;
-            *) echo "  export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
-        esac
+        echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
         echo ""
         echo "  For bash: source \"\$HOME/.local/share/arb/arb.bash\""
         echo "  For zsh:  source \"\$HOME/.local/share/arb/arb.zsh\""
