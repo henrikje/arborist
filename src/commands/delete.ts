@@ -338,20 +338,21 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
         // Pre-fetch repos across all candidate workspaces for fresh remote data
         const fetchWorkspaceRepos = async (workspaceNames: string[]) => {
           if (options.fetch === false) return;
-          const allRepoDirs = new Set<string>();
           const allRepoNames = new Set<string>();
           for (const ws of workspaceNames) {
             const wsDir = `${ctx.arbRootDir}/${ws}`;
             for (const repoDir of workspaceRepoDirs(wsDir)) {
-              allRepoDirs.add(repoDir);
               allRepoNames.add(basename(repoDir));
             }
           }
-          if (allRepoDirs.size === 0) return;
+          if (allRepoNames.size === 0) return;
+          // Fetch from canonical repo dirs so each repo is only fetched once,
+          // regardless of how many workspaces reference it.
+          const allRepoDirs = [...allRepoNames].map((name) => `${ctx.reposDir}/${name}`);
           const cache = new GitCache();
           await assertMinimumGitVersion(cache);
           const remotesMap = await cache.resolveRemotesMap([...allRepoNames], ctx.reposDir);
-          const fetchResults = await parallelFetch([...allRepoDirs], undefined, remotesMap);
+          const fetchResults = await parallelFetch(allRepoDirs, undefined, remotesMap);
           reportFetchFailures([...allRepoNames], fetchResults);
         };
 

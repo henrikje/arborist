@@ -947,4 +947,20 @@ describe("delete empty workspace", () => {
       expect(result.exitCode).toBe(0);
       expect(existsSync(join(env.projectDir, "my-feature"))).toBe(false);
     }));
+
+  test("arb delete --all-safe fetches each repo only once across multiple workspaces", () =>
+    withEnv(async (env) => {
+      // Create multiple workspaces all using the same single repo
+      await arb(env, ["create", "ws-one", "repo-a"]);
+      await arb(env, ["create", "ws-two", "repo-a"]);
+      await arb(env, ["create", "ws-three", "repo-a"]);
+      await git(join(env.projectDir, "ws-one/repo-a"), ["push", "-u", "origin", "ws-one"]);
+      await git(join(env.projectDir, "ws-two/repo-a"), ["push", "-u", "origin", "ws-two"]);
+      await git(join(env.projectDir, "ws-three/repo-a"), ["push", "-u", "origin", "ws-three"]);
+
+      const result = await arb(env, ["delete", "--all-safe", "--yes", "--force"]);
+      expect(result.exitCode).toBe(0);
+      // Should report "1 repo" fetched, not "3 repos"
+      expect(result.output).toMatch(/Fetched 1 repo in/);
+    }));
 });
