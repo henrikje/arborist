@@ -21,6 +21,7 @@ import { registerPathCommand } from "./commands/path";
 import { registerPullCommand } from "./commands/pull";
 import { registerPushCommand } from "./commands/push";
 import { registerRebaseCommand } from "./commands/rebase";
+import { registerRenameCommand } from "./commands/rename";
 import { registerRepoCommand } from "./commands/repo";
 import { registerResetCommand } from "./commands/reset";
 import { registerStatusCommand } from "./commands/status";
@@ -42,7 +43,7 @@ const COMMAND_GROUPS = [
   {
     title: "Workspace Commands:",
     description: "  Create and manage workspaces.",
-    commands: ["create", "delete", "clean", "list", "path", "cd", "attach", "detach"],
+    commands: ["create", "delete", "rename", "clean", "list", "path", "cd", "attach", "detach"],
   },
   {
     title: "Inspection Commands:",
@@ -215,6 +216,7 @@ registerInitCommand(program);
 registerRepoCommand(program, getCtx);
 registerCreateCommand(program, getCtx);
 registerDeleteCommand(program, getCtx);
+registerRenameCommand(program, getCtx);
 registerCleanCommand(program, getCtx);
 registerListCommand(program, getCtx);
 registerPathCommand(program, getCtx);

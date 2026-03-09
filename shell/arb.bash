@@ -41,6 +41,17 @@ arb() {
         return
     fi
 
+    if [[ "$1" == "rename" ]]; then
+        # Pass help flags through without capturing
+        case " ${*:2} " in
+            *" --help "*|*" -h "*) command arb rename "${@:2}"; return ;;
+        esac
+        local _arb_dir
+        _arb_dir="$(command arb rename "${@:2}")" || return
+        [[ -n "$_arb_dir" ]] && cd "$_arb_dir"
+        return
+    fi
+
     if [[ "$1" == "branch" && "$2" == "rename" ]]; then
         # Pass help flags through without capturing
         case " ${*:3} " in
@@ -391,6 +402,18 @@ __arb_complete_status() {
     COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
 }
 
+__arb_complete_rename() {
+    local base_dir="$1" cur="$2"
+    local prev="${COMP_WORDS[COMP_CWORD-1]}"
+    if [[ "$prev" == "--branch" || "$prev" == "--base" ]]; then
+        return  # branch name, no completion
+    fi
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "--branch --base --continue --abort -r --delete-remote --fetch -N --no-fetch -n --dry-run -y --yes" -- "$cur"))
+        return
+    fi
+}
+
 __arb_complete_branch() {
     local base_dir="$1" cur="$2"
     local sub_pos=0 i
@@ -404,7 +427,7 @@ __arb_complete_branch() {
     done
 
     local show_opts="-q --quiet -v --verbose --fetch -N --no-fetch --json --schema"
-    local rename_opts="--continue --abort -r --delete-remote --fetch -N --no-fetch -n --dry-run -y --yes --include-in-progress --rename-workspace"
+    local rename_opts="--continue --abort -r --delete-remote --fetch -N --no-fetch -n --dry-run -y --yes --include-in-progress"
 
     if ((COMP_CWORD == sub_pos)); then
         # Complete subcommand name or show-options (since show is the default)
@@ -623,7 +646,7 @@ __arb_complete_template() {
 __arb_complete_help() {
     local base_dir="$1" cur="$2"
     local topics="where remotes stacked templates scripting"
-    local commands="init repo create delete clean list path cd attach detach status branch pull push rebase merge reset log diff exec open template"
+    local commands="init repo create delete rename clean list path cd attach detach status branch pull push rebase merge reset log diff exec open template"
     COMPREPLY=($(compgen -W "$topics $commands" -- "$cur"))
 }
 
@@ -649,7 +672,7 @@ _arb() {
 
     # Completing the subcommand itself
     if ((COMP_CWORD <= cmd_pos)); then
-        local commands="init repo create delete clean list path cd attach detach status branch pull push rebase merge reset log diff exec open template help"
+        local commands="init repo create delete rename clean list path cd attach detach status branch pull push rebase merge reset log diff exec open template help"
         # Also complete global flags
         if [[ "$cur" == -* ]]; then
             COMPREPLY=($(compgen -W "-C -h --help -v --version --debug" -- "$cur"))
@@ -666,6 +689,7 @@ _arb() {
         repo)     __arb_complete_repo "$base_dir" "$cur" ;;
         create)   __arb_complete_create "$base_dir" "$cur" ;;
         delete)   __arb_complete_delete "$base_dir" "$cur" ;;
+        rename)   __arb_complete_rename "$base_dir" "$cur" ;;
         clean)    __arb_complete_clean "$base_dir" "$cur" ;;
         list)     __arb_complete_list "$cur" ;;
         path)     __arb_complete_path "$base_dir" "$cur" ;;
