@@ -108,7 +108,7 @@ When repos are the command's primary target, they are positional arguments (`arb
 
 ### Status-based filtering: `--where` and `--dirty`
 
-`--where` (`-w`) filters repos by `RepoFlags`. Supported on every command that gathers workspace status: `status`, `diff`, `log`, `exec`, `open`, `list`, `delete`, `push`, `pull`, `rebase`, `merge`. Commands that don't gather status (e.g. `attach`, `create`, `branch rename`) do not get `--where`.
+`--where` (`-w`) filters repos by `RepoFlags`. Supported on every command that gathers workspace status: `status`, `diff`, `log`, `exec`, `open`, `list`, `delete`, `push`, `pull`, `rebase`, `merge`, `reset`. Commands that don't gather status (e.g. `attach`, `create`, `branch rename`) do not get `--where`.
 
 `--dirty` (`-d`) is a shorthand for `--where dirty`, mutually exclusive with `--where`. Only offered where "dirty" is a natural filter: `status`, `diff`, `log`, `exec`, `open`, `list`. Omitted from sync commands and `delete`.
 

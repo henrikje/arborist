@@ -170,6 +170,7 @@ _arb() {
                 'push:Push the feature branch to the share remote'
                 'rebase:Rebase feature branches onto the base branch'
                 'merge:Merge the base branch into feature branches'
+                'reset:Reset all repos to the base branch'
                 'log:Show feature branch commits across repos'
                 'diff:Show feature branch diff across repos'
                 'exec:Run a command in each repo'
@@ -475,6 +476,15 @@ _arb() {
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($repo_names)'
                     ;;
+                reset)
+                    _arguments \
+                        '(-N --fetch --no-fetch)--fetch[Fetch before reset (default)]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before reset]' \
+                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
+                        '*:repo:($repo_names)'
+                    ;;
                 log)
                     _arguments \
                         '(-N --fetch --no-fetch)--fetch[Fetch before showing log]' \
@@ -521,6 +531,7 @@ _arb() {
                         'push:Push the feature branch to the share remote'
                         'rebase:Rebase feature branches onto the base branch'
                         'merge:Merge the base branch into feature branches'
+                        'reset:Reset all repos to the base branch'
                         'log:Show feature branch commits across repos'
                         'diff:Show feature branch diff across repos'
                         'exec:Run a command in each repo'
