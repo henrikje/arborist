@@ -27,7 +27,7 @@ Here's what that looks like on disk:
     └── frontend/
 ```
 
-You work in the workspaces. Each workspace represents one feature or issue. It contains a working copy of each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete. The reference clones under `.arb/` are managed by Arborist — you never touch them directly.
+You work in the workspaces. Each workspace is an isolated development environment, typically used to represent one feature or issue. It contains a working copy of each selected repository, with the feature branch checked out. Workspaces can exist side by side and are removed when the task is complete. The reference clones under `.arb/` are managed by Arborist — you never touch them directly.
 
 Keeping your work in sync involves two axes:
 
