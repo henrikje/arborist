@@ -7,19 +7,19 @@ import { arb, git, pushThenDeleteRemote, withEnv, write } from "./helpers/env";
 // ── create ───────────────────────────────────────────────────────
 
 describe("create", () => {
-  test("arb create creates workspace with .arbws/config", () =>
+  test("arb create creates workspace with .arbws/config.json", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "--all-repos"]);
       expect(existsSync(join(env.projectDir, "my-feature"))).toBe(true);
       expect(existsSync(join(env.projectDir, "my-feature/.arbws"))).toBe(true);
-      expect(existsSync(join(env.projectDir, "my-feature/.arbws/config"))).toBe(true);
+      expect(existsSync(join(env.projectDir, "my-feature/.arbws/config.json"))).toBe(true);
     }));
 
-  test(".arbws/config contains correct branch", () =>
+  test(".arbws/config.json contains correct branch", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "--all-repos"]);
-      const content = await readFile(join(env.projectDir, "my-feature/.arbws/config"), "utf8");
-      expect(content).toContain("branch = my-feature");
+      const content = await readFile(join(env.projectDir, "my-feature/.arbws/config.json"), "utf8");
+      expect(JSON.parse(content).branch).toBe("my-feature");
     }));
 
   test("arb create with repos creates workspace repos", () =>
@@ -46,15 +46,15 @@ describe("create", () => {
   test("arb create --branch stores custom branch in config", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "payments", "--branch", "feat/payments", "repo-a"]);
-      const content = await readFile(join(env.projectDir, "payments/.arbws/config"), "utf8");
-      expect(content).toContain("branch = feat/payments");
+      const content = await readFile(join(env.projectDir, "payments/.arbws/config.json"), "utf8");
+      expect(JSON.parse(content).branch).toBe("feat/payments");
     }));
 
   test("arb create -b stores custom branch in config", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "payments", "-b", "feat/payments", "repo-a"]);
-      const content = await readFile(join(env.projectDir, "payments/.arbws/config"), "utf8");
-      expect(content).toContain("branch = feat/payments");
+      const content = await readFile(join(env.projectDir, "payments/.arbws/config.json"), "utf8");
+      expect(JSON.parse(content).branch).toBe("feat/payments");
     }));
 
   test("arb create attaches existing branch", () =>
@@ -165,8 +165,8 @@ describe("create", () => {
       expect(existsSync(wsDir)).toBe(true);
       expect(existsSync(join(wsDir, "repo-a"))).toBe(true);
       expect(existsSync(join(wsDir, "repo-b"))).toBe(true);
-      const config = await readFile(join(wsDir, ".arbws/config"), "utf8");
-      expect(config).toContain("branch = claude/improve-arb-create-ux-Ipru1");
+      const config = await readFile(join(wsDir, ".arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch).toBe("claude/improve-arb-create-ux-Ipru1");
     }));
 
   test("arb create --branch without name fails when derived workspace already exists", () =>
@@ -233,8 +233,8 @@ describe("create", () => {
     withEnv(async (env) => {
       const result = await arb(env, ["create", "FeatureFoo", "repo-a", "repo-b"]);
       expect(result.exitCode).toBe(0);
-      const config = await readFile(join(env.projectDir, "FeatureFoo/.arbws/config"), "utf8");
-      expect(config).toContain("branch = FeatureFoo");
+      const config = await readFile(join(env.projectDir, "FeatureFoo/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch).toBe("FeatureFoo");
       expect(existsSync(join(env.projectDir, "FeatureFoo/repo-a"))).toBe(true);
       expect(existsSync(join(env.projectDir, "FeatureFoo/repo-b"))).toBe(true);
     }));
@@ -243,26 +243,26 @@ describe("create", () => {
     withEnv(async (env) => {
       const result = await arb(env, ["create", "my-ws", "-b", "custom/branch", "repo-a"]);
       expect(result.exitCode).toBe(0);
-      const config = await readFile(join(env.projectDir, "my-ws/.arbws/config"), "utf8");
-      expect(config).toContain("branch = custom/branch");
+      const config = await readFile(join(env.projectDir, "my-ws/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch).toBe("custom/branch");
     }));
 
   test("arb create with --base stores base without interactive prompt", () =>
     withEnv(async (env) => {
       const result = await arb(env, ["create", "stacked-ws", "-b", "feat/ui", "--base", "feat/core", "repo-a"]);
       expect(result.exitCode).toBe(0);
-      const config = await readFile(join(env.projectDir, "stacked-ws/.arbws/config"), "utf8");
-      expect(config).toContain("branch = feat/ui");
-      expect(config).toContain("base = feat/core");
+      const config = await readFile(join(env.projectDir, "stacked-ws/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch).toBe("feat/ui");
+      expect(JSON.parse(config).base).toBe("feat/core");
     }));
 
   test("arb create without --base omits base from config in non-TTY", () =>
     withEnv(async (env) => {
       const result = await arb(env, ["create", "no-base-ws", "repo-a"]);
       expect(result.exitCode).toBe(0);
-      const config = await readFile(join(env.projectDir, "no-base-ws/.arbws/config"), "utf8");
-      expect(config).toContain("branch = no-base-ws");
-      expect(config).not.toContain("base =");
+      const config = await readFile(join(env.projectDir, "no-base-ws/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch).toBe("no-base-ws");
+      expect(JSON.parse(config).base).toBeUndefined();
     }));
 
   test("arb create checks out existing remote branch with name on CLI", () =>
@@ -410,7 +410,10 @@ describe("attach", () => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       await rm(join(env.projectDir, "my-feature"), { recursive: true });
       await mkdir(join(env.projectDir, "my-feature/.arbws"), { recursive: true });
-      await writeFile(join(env.projectDir, "my-feature/.arbws/config"), "branch = my-feature");
+      await writeFile(
+        join(env.projectDir, "my-feature/.arbws/config.json"),
+        `${JSON.stringify({ branch: "my-feature" }, null, 2)}\n`,
+      );
       const result = await arb(env, ["attach", "repo-a", "repo-b"], {
         cwd: join(env.projectDir, "my-feature"),
       });
@@ -432,7 +435,7 @@ describe("attach", () => {
       // Attach reports failure but does not destroy the workspace
       expect(result.stderr).toContain("failed");
       expect(existsSync(join(env.projectDir, "ws-b/repo-b"))).toBe(true);
-      expect(existsSync(join(env.projectDir, "ws-b/.arbws/config"))).toBe(true);
+      expect(existsSync(join(env.projectDir, "ws-b/.arbws/config.json"))).toBe(true);
     }));
 });
 
@@ -535,7 +538,10 @@ describe("detach", () => {
   test("arb detach -a on empty workspace errors", () =>
     withEnv(async (env) => {
       await mkdir(join(env.projectDir, "empty-ws/.arbws"), { recursive: true });
-      await writeFile(join(env.projectDir, "empty-ws/.arbws/config"), "branch = empty");
+      await writeFile(
+        join(env.projectDir, "empty-ws/.arbws/config.json"),
+        `${JSON.stringify({ branch: "empty" }, null, 2)}\n`,
+      );
       const result = await arb(env, ["detach", "-a", "-N"], { cwd: join(env.projectDir, "empty-ws") });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("No repos in this workspace");
@@ -796,7 +802,7 @@ describe("delete --all-safe", () => {
       await arb(env, ["create", "ws-broken", "repo-a"]);
       await git(join(env.projectDir, "ws-broken/repo-a"), ["push", "-u", "origin", "ws-broken"]);
       // Remove config to simulate config-missing state
-      await rm(join(env.projectDir, "ws-broken/.arbws/config"));
+      await rm(join(env.projectDir, "ws-broken/.arbws/config.json"));
 
       const result = await arb(env, ["delete", "--all-safe", "--yes", "--force"]);
       expect(result.exitCode).toBe(0);

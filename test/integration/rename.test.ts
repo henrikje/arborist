@@ -18,9 +18,9 @@ describe.skipIf(gitBelow230)("basic rename", () => {
       expect(existsSync(join(env.projectDir, "PROJ-208"))).toBe(true);
       expect(existsSync(join(env.projectDir, "my-feature"))).toBe(false);
       // Config at new path
-      const config = await readFile(join(env.projectDir, "PROJ-208/.arbws/config"), "utf8");
-      expect(config).toContain("branch = PROJ-208");
-      expect(config).not.toContain("branch_rename_from");
+      const config = await readFile(join(env.projectDir, "PROJ-208/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch).toBe("PROJ-208");
+      expect(JSON.parse(config).branch_rename_from).toBeUndefined();
       // Both repos on new branch
       const branchA = (await git(join(env.projectDir, "PROJ-208/repo-a"), ["symbolic-ref", "--short", "HEAD"])).trim();
       const branchB = (await git(join(env.projectDir, "PROJ-208/repo-b"), ["symbolic-ref", "--short", "HEAD"])).trim();
@@ -44,8 +44,8 @@ describe.skipIf(gitBelow230)("basic rename", () => {
       const branchA = (await git(join(env.projectDir, "PROJ-208/repo-a"), ["symbolic-ref", "--short", "HEAD"])).trim();
       expect(branchA).toBe("feat/PROJ-208");
       // Config
-      const config = await readFile(join(env.projectDir, "PROJ-208/.arbws/config"), "utf8");
-      expect(config).toContain("branch = feat/PROJ-208");
+      const config = await readFile(join(env.projectDir, "PROJ-208/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch).toBe("feat/PROJ-208");
     }));
 
   test("arb rename --branch derives workspace name from branch", () =>
@@ -70,9 +70,9 @@ describe.skipIf(gitBelow230)("basic rename", () => {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
-      const config = await readFile(join(env.projectDir, "PROJ-208/.arbws/config"), "utf8");
-      expect(config).toContain("base = develop");
-      expect(config).toContain("branch = PROJ-208");
+      const config = await readFile(join(env.projectDir, "PROJ-208/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).base).toBe("develop");
+      expect(JSON.parse(config).branch).toBe("PROJ-208");
     }));
 
   test("arb rename with all three: name, --branch, --base", () =>
@@ -84,9 +84,9 @@ describe.skipIf(gitBelow230)("basic rename", () => {
         { cwd: join(env.projectDir, "my-feature") },
       );
       expect(result.exitCode).toBe(0);
-      const config = await readFile(join(env.projectDir, "PROJ-208/.arbws/config"), "utf8");
-      expect(config).toContain("branch = feat/PROJ-208");
-      expect(config).toContain("base = develop");
+      const config = await readFile(join(env.projectDir, "PROJ-208/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch).toBe("feat/PROJ-208");
+      expect(JSON.parse(config).base).toBe("develop");
       expect(existsSync(join(env.projectDir, "PROJ-208"))).toBe(true);
     }));
 });
@@ -107,8 +107,8 @@ describe.skipIf(gitBelow230)("zero-repos case", () => {
       expect(result.exitCode).toBe(0);
       expect(existsSync(join(env.projectDir, "PROJ-208"))).toBe(true);
       expect(existsSync(join(env.projectDir, "my-feature"))).toBe(false);
-      const config = await readFile(join(env.projectDir, "PROJ-208/.arbws/config"), "utf8");
-      expect(config).toContain("branch = PROJ-208");
+      const config = await readFile(join(env.projectDir, "PROJ-208/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch).toBe("PROJ-208");
     }));
 });
 
@@ -193,8 +193,8 @@ describe.skipIf(gitBelow230)("dry-run", () => {
       expect(result.output).toContain("Dry run");
       expect(result.output).toContain("Renaming workspace");
       // Config not changed
-      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config"), "utf8");
-      expect(config).toContain("branch = my-feature");
+      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch).toBe("my-feature");
       // Workspace not renamed
       expect(existsSync(join(env.projectDir, "my-feature"))).toBe(true);
       expect(existsSync(join(env.projectDir, "PROJ-208"))).toBe(false);
@@ -258,8 +258,12 @@ describe.skipIf(gitBelow230)("recovery: arb rename → arb rename", () => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       // Simulate partial: config updated with workspace_rename_to, repo-a renamed, repo-b not yet
       await writeFile(
-        join(env.projectDir, "my-feature/.arbws/config"),
-        "branch = PROJ-208\nbranch_rename_from = my-feature\nworkspace_rename_to = PROJ-208\n",
+        join(env.projectDir, "my-feature/.arbws/config.json"),
+        `${JSON.stringify(
+          { branch: "PROJ-208", branch_rename_from: "my-feature", workspace_rename_to: "PROJ-208" },
+          null,
+          2,
+        )}\n`,
       );
       await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "-m", "my-feature", "PROJ-208"]);
 
@@ -275,17 +279,17 @@ describe.skipIf(gitBelow230)("recovery: arb rename → arb rename", () => {
       expect(branchA).toBe("PROJ-208");
       expect(branchB).toBe("PROJ-208");
       // Migration state cleared
-      const config = await readFile(join(env.projectDir, "PROJ-208/.arbws/config"), "utf8");
-      expect(config).not.toContain("branch_rename_from");
-      expect(config).not.toContain("workspace_rename_to");
+      const config = await readFile(join(env.projectDir, "PROJ-208/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch_rename_from).toBeUndefined();
+      expect(JSON.parse(config).workspace_rename_to).toBeUndefined();
     }));
 
   test("arb rename partial failure → arb rename --abort rolls back", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       await writeFile(
-        join(env.projectDir, "my-feature/.arbws/config"),
-        "branch = PROJ-208\nbranch_rename_from = my-feature\n",
+        join(env.projectDir, "my-feature/.arbws/config.json"),
+        `${JSON.stringify({ branch: "PROJ-208", branch_rename_from: "my-feature" }, null, 2)}\n`,
       );
       await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "-m", "my-feature", "PROJ-208"]);
 
@@ -301,17 +305,17 @@ describe.skipIf(gitBelow230)("recovery: arb rename → arb rename", () => {
       ).trim();
       expect(branchA).toBe("my-feature");
       expect(branchB).toBe("my-feature");
-      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config"), "utf8");
-      expect(config).toContain("branch = my-feature");
-      expect(config).not.toContain("branch_rename_from");
+      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch).toBe("my-feature");
+      expect(JSON.parse(config).branch_rename_from).toBeUndefined();
     }));
 
   test("arb rename re-run with same target treats as resume", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       await writeFile(
-        join(env.projectDir, "my-feature/.arbws/config"),
-        "branch = PROJ-208\nbranch_rename_from = my-feature\n",
+        join(env.projectDir, "my-feature/.arbws/config.json"),
+        `${JSON.stringify({ branch: "PROJ-208", branch_rename_from: "my-feature" }, null, 2)}\n`,
       );
       await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "-m", "my-feature", "PROJ-208"]);
 
@@ -353,8 +357,8 @@ describe.skipIf(gitBelow230)("cross-command recovery: branch rename → rename",
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       // arb branch rename does NOT write workspace_rename_to
       await writeFile(
-        join(env.projectDir, "my-feature/.arbws/config"),
-        "branch = PROJ-208\nbranch_rename_from = my-feature\n",
+        join(env.projectDir, "my-feature/.arbws/config.json"),
+        `${JSON.stringify({ branch: "PROJ-208", branch_rename_from: "my-feature" }, null, 2)}\n`,
       );
       await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "-m", "my-feature", "PROJ-208"]);
 
@@ -369,16 +373,16 @@ describe.skipIf(gitBelow230)("cross-command recovery: branch rename → rename",
       expect(branchB).toBe("PROJ-208");
       // Workspace directory NOT renamed (no workspace_rename_to in config from branch rename)
       expect(existsSync(join(env.projectDir, "my-feature"))).toBe(true);
-      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config"), "utf8");
-      expect(config).not.toContain("branch_rename_from");
+      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch_rename_from).toBeUndefined();
     }));
 
   test("arb branch rename partial → arb rename --abort rolls back", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       await writeFile(
-        join(env.projectDir, "my-feature/.arbws/config"),
-        "branch = PROJ-208\nbranch_rename_from = my-feature\n",
+        join(env.projectDir, "my-feature/.arbws/config.json"),
+        `${JSON.stringify({ branch: "PROJ-208", branch_rename_from: "my-feature" }, null, 2)}\n`,
       );
       await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "-m", "my-feature", "PROJ-208"]);
 
@@ -400,8 +404,8 @@ describe.skipIf(gitBelow230)("cross-command recovery: rename → branch rename",
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       await writeFile(
-        join(env.projectDir, "my-feature/.arbws/config"),
-        "branch = PROJ-208\nbranch_rename_from = my-feature\n",
+        join(env.projectDir, "my-feature/.arbws/config.json"),
+        `${JSON.stringify({ branch: "PROJ-208", branch_rename_from: "my-feature" }, null, 2)}\n`,
       );
       await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "-m", "my-feature", "PROJ-208"]);
 
@@ -422,8 +426,8 @@ describe.skipIf(gitBelow230)("cross-command recovery: rename → branch rename",
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       await writeFile(
-        join(env.projectDir, "my-feature/.arbws/config"),
-        "branch = PROJ-208\nbranch_rename_from = my-feature\n",
+        join(env.projectDir, "my-feature/.arbws/config.json"),
+        `${JSON.stringify({ branch: "PROJ-208", branch_rename_from: "my-feature" }, null, 2)}\n`,
       );
       await git(join(env.projectDir, "my-feature/repo-a"), ["branch", "-m", "my-feature", "PROJ-208"]);
 
@@ -435,8 +439,8 @@ describe.skipIf(gitBelow230)("cross-command recovery: rename → branch rename",
         await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
       ).trim();
       expect(branchA).toBe("my-feature");
-      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config"), "utf8");
-      expect(config).toContain("branch = my-feature");
+      const config = await readFile(join(env.projectDir, "my-feature/.arbws/config.json"), "utf8");
+      expect(JSON.parse(config).branch).toBe("my-feature");
     }));
 });
 
@@ -447,8 +451,8 @@ describe("conflicting target", () => {
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       await writeFile(
-        join(env.projectDir, "my-feature/.arbws/config"),
-        "branch = PROJ-208\nbranch_rename_from = my-feature\n",
+        join(env.projectDir, "my-feature/.arbws/config.json"),
+        `${JSON.stringify({ branch: "PROJ-208", branch_rename_from: "my-feature" }, null, 2)}\n`,
       );
       const result = await arb(env, ["rename", "PROJ-209", "--yes", "--no-fetch"], {
         cwd: join(env.projectDir, "my-feature"),

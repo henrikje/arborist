@@ -2,7 +2,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import checkbox from "@inquirer/checkbox";
 import confirm from "@inquirer/confirm";
-import { configGetList } from "../core/config";
+import { readProjectConfig } from "../core/config";
 import { ArbError } from "../core/errors";
 import { error } from "../terminal/output";
 
@@ -23,8 +23,8 @@ export function listRepos(reposDir: string): string[] {
 }
 
 export function listDefaultRepos(arbRootDir: string): Set<string> {
-  const configFile = join(arbRootDir, ".arb", "config");
-  return new Set(configGetList(configFile, "defaults"));
+  const configFile = join(arbRootDir, ".arb", "config.json");
+  return new Set(readProjectConfig(configFile)?.defaults ?? []);
 }
 
 export function workspaceRepoDirs(wsDir: string): string[] {

@@ -1,6 +1,5 @@
-import { existsSync } from "node:fs";
 import { basename } from "node:path";
-import { configGet } from "../core/config";
+import { readWorkspaceConfig } from "../core/config";
 import { git } from "../git/git";
 import { warn } from "../terminal/output";
 import { workspaceRepoDirs } from "./repos";
@@ -11,13 +10,11 @@ export interface WorkspaceBranchResult {
 }
 
 export async function workspaceBranch(wsDir: string): Promise<WorkspaceBranchResult | null> {
-  const configFile = `${wsDir}/.arbws/config`;
+  const configFile = `${wsDir}/.arbws/config.json`;
 
-  if (existsSync(configFile)) {
-    const branch = configGet(configFile, "branch");
-    if (branch) {
-      return { branch, inferred: false };
-    }
+  const config = readWorkspaceConfig(configFile);
+  if (config) {
+    return { branch: config.branch, inferred: false };
   }
 
   // Config missing or empty — try to infer from first worktree

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError, configGet, writeConfig } from "../lib/core";
+import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import {
   GitCache,
@@ -406,7 +406,11 @@ async function runRename(
 
   // Pre-update config: write new branch + migration state BEFORE git ops
   // This means arb status immediately reflects intent; branch_rename_from preserves recovery info
-  writeConfig(configFile, newBranch, configBase, oldBranch);
+  writeWorkspaceConfig(configFile, {
+    branch: newBranch,
+    ...(configBase && { base: configBase }),
+    branch_rename_from: oldBranch,
+  });
 
   // Execute local renames sequentially
   let renameOk = 0;
@@ -446,7 +450,7 @@ async function runRename(
   }
 
   // All local renames succeeded — clear migration state
-  writeConfig(configFile, newBranch, configBase, null);
+  writeWorkspaceConfig(configFile, { branch: newBranch, ...(configBase && { base: configBase }) });
 
   // Remote cleanup — only runs after all local renames succeed so --abort never needs to touch remotes
   if (options.deleteRemote) {
@@ -526,7 +530,7 @@ export async function runAbort(
 
   if (toRollBack.length === 0) {
     // Already fully reverted — just clean up config
-    writeConfig(configFile, oldBranch, configBase, null);
+    writeWorkspaceConfig(configFile, { branch: oldBranch, ...(configBase && { base: configBase }) });
     success("Rename aborted — all repos already reverted");
     if (skipUnknown.length > 0) {
       warn(`${plural(skipUnknown.length, "repo")} on unexpected branch left unchanged`);
@@ -571,7 +575,7 @@ export async function runAbort(
   }
 
   // All rollbacks succeeded — restore config
-  writeConfig(configFile, oldBranch, configBase, null);
+  writeWorkspaceConfig(configFile, { branch: oldBranch, ...(configBase && { base: configBase }) });
 
   success(`Rename aborted — reverted ${plural(rollbackOk, "repo")}`);
   info("Remote branches were not modified — no remote cleanup needed");
@@ -594,16 +598,17 @@ export function registerBranchRenameSubcommand(parent: Command, getCtx: () => Ar
     .option("--include-in-progress", "Rename repos even if they have an in-progress git operation")
     .summary("Rename the workspace branch across all repos")
     .description(
-      "Renames the workspace branch locally across all repos and updates .arbws/config. The workspace directory is not renamed — use 'arb rename' to rename both the workspace and branch together.\n\nFetches before assessing to get fresh remote state (use -N/--no-fetch to skip). Shows a plan and asks for confirmation before proceeding. Repos with an in-progress git operation (rebase, merge, cherry-pick) are skipped by default — use --include-in-progress to override.\n\nBranch rename is non-atomic across repos: if it fails partway, migration state is preserved in .arbws/config so the operation can be resumed. Use --continue to retry remaining repos or --abort to roll back. After rename, tracking is cleared so 'arb push' treats the branch as new and pushes under the new name. Use --delete-remote to also delete the old remote branch during rename.",
+      "Renames the workspace branch locally across all repos and updates .arbws/config.json. The workspace directory is not renamed — use 'arb rename' to rename both the workspace and branch together.\n\nFetches before assessing to get fresh remote state (use -N/--no-fetch to skip). Shows a plan and asks for confirmation before proceeding. Repos with an in-progress git operation (rebase, merge, cherry-pick) are skipped by default — use --include-in-progress to override.\n\nBranch rename is non-atomic across repos: if it fails partway, migration state is preserved in .arbws/config.json so the operation can be resumed. Use --continue to retry remaining repos or --abort to roll back. After rename, tracking is cleared so 'arb push' treats the branch as new and pushes under the new name. Use --delete-remote to also delete the old remote branch during rename.",
     )
     .action(async (newNameArg: string | undefined, options: RenameOptions) => {
       const ctx = getCtx();
       const { wsDir, workspace } = requireWorkspace(ctx);
 
-      const configFile = `${wsDir}/.arbws/config`;
-      const currentConfigBranch = configGet(configFile, "branch");
-      const branchRenameFrom = configGet(configFile, "branch_rename_from");
-      const configBase = configGet(configFile, "base");
+      const configFile = `${wsDir}/.arbws/config.json`;
+      const wsConfig = readWorkspaceConfig(configFile);
+      const currentConfigBranch = wsConfig?.branch ?? null;
+      const branchRenameFrom = wsConfig?.branch_rename_from ?? null;
+      const configBase = wsConfig?.base ?? null;
 
       if (!currentConfigBranch) {
         const msg = `No branch configured for workspace '${workspace}'. Cannot rename.`;

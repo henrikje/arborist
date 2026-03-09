@@ -374,7 +374,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
           const safeEntries: WorkspaceAssessment[] = [];
           for (const ws of candidates) {
             const wsDir = `${ctx.arbRootDir}/${ws}`;
-            if (!existsSync(`${wsDir}/.arbws/config`)) continue;
+            if (!existsSync(`${wsDir}/.arbws/config.json`) && !existsSync(`${wsDir}/.arbws/config`)) continue;
 
             const assessment = await assessWorkspace(ws, ctx);
             if (assessment && !assessment.hasAtRisk && isWorkspaceSafe(assessment.summary.repos, assessment.branch)) {

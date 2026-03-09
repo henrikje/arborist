@@ -1,7 +1,7 @@
 import { existsSync, renameSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError, configGet, writeConfig } from "../lib/core";
+import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, assertMinimumGitVersion, git, validateBranchName, validateWorkspaceName } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
@@ -135,18 +135,18 @@ async function runWorkspaceRename(
   // Zero-repos case: just rename workspace + update config
   if (repoDirs.length === 0) {
     if (oldBranch !== newBranch) {
-      writeConfig(configFile, newBranch, effectiveBase, null);
+      writeWorkspaceConfig(configFile, { branch: newBranch, ...(effectiveBase && { base: effectiveBase }) });
     }
     if (workspace !== newWorkspaceName) {
       if (!options.dryRun) {
         renameWorkspaceDir(ctx, wsDir, workspace, newWorkspaceName, repos);
-        const newConfigFile = `${ctx.arbRootDir}/${newWorkspaceName}/.arbws/config`;
+        const newConfigFile = `${ctx.arbRootDir}/${newWorkspaceName}/.arbws/config.json`;
         if (oldBranch === newBranch && effectiveBase !== configBase) {
-          writeConfig(newConfigFile, newBranch, effectiveBase, null);
+          writeWorkspaceConfig(newConfigFile, { branch: newBranch, ...(effectiveBase && { base: effectiveBase }) });
         }
       }
     } else if (effectiveBase !== configBase) {
-      writeConfig(configFile, newBranch, effectiveBase, null);
+      writeWorkspaceConfig(configFile, { branch: newBranch, ...(effectiveBase && { base: effectiveBase }) });
     }
     if (options.dryRun) {
       info("No repos in this workspace");
@@ -244,7 +244,12 @@ async function runWorkspaceRename(
     // Pre-update config: write new branch + migration state BEFORE git ops
     // Include workspace_rename_to so --continue knows the target workspace name
     const wsRenameTo = workspace !== newWorkspaceName ? newWorkspaceName : null;
-    writeConfig(configFile, newBranch, configBase, oldBranch, wsRenameTo);
+    writeWorkspaceConfig(configFile, {
+      branch: newBranch,
+      ...(configBase && { base: configBase }),
+      branch_rename_from: oldBranch,
+      ...(wsRenameTo && { workspace_rename_to: wsRenameTo }),
+    });
 
     const failures: string[] = [];
     for (const a of willRename) {
@@ -279,7 +284,7 @@ async function runWorkspaceRename(
   }
 
   // All local renames succeeded — clear migration state + update base
-  writeConfig(configFile, newBranch, effectiveBase, null);
+  writeWorkspaceConfig(configFile, { branch: newBranch, ...(effectiveBase && { base: effectiveBase }) });
 
   // Remote cleanup
   if (options.deleteRemote && branchesNeedRename) {
@@ -306,9 +311,9 @@ async function runWorkspaceRename(
     if (renamedWorkspace) {
       inlineResult(workspace, `workspace renamed to ${newWorkspaceName}`);
       // Update config file path for any further writes
-      const newConfigFile = `${ctx.arbRootDir}/${newWorkspaceName}/.arbws/config`;
+      const newConfigFile = `${ctx.arbRootDir}/${newWorkspaceName}/.arbws/config.json`;
       if (effectiveBase !== configBase) {
-        writeConfig(newConfigFile, newBranch, effectiveBase, null);
+        writeWorkspaceConfig(newConfigFile, { branch: newBranch, ...(effectiveBase && { base: effectiveBase }) });
       }
     }
   }
@@ -358,11 +363,12 @@ export function registerRenameCommand(program: Command, getCtx: () => ArbContext
       const ctx = getCtx();
       const { wsDir, workspace } = requireWorkspace(ctx);
 
-      const configFile = `${wsDir}/.arbws/config`;
-      const currentConfigBranch = configGet(configFile, "branch");
-      const branchRenameFrom = configGet(configFile, "branch_rename_from");
-      const configBase = configGet(configFile, "base");
-      const workspaceRenameTo = configGet(configFile, "workspace_rename_to");
+      const configFile = `${wsDir}/.arbws/config.json`;
+      const wsConfig = readWorkspaceConfig(configFile);
+      const currentConfigBranch = wsConfig?.branch ?? null;
+      const branchRenameFrom = wsConfig?.branch_rename_from ?? null;
+      const configBase = wsConfig?.base ?? null;
+      const workspaceRenameTo = wsConfig?.workspace_rename_to ?? null;
 
       if (!currentConfigBranch) {
         const msg = `No branch configured for workspace '${workspace}'. Cannot rename.`;

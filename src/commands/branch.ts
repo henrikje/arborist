@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError, configGet } from "../lib/core";
+import { ArbError, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, assertMinimumGitVersion, git } from "../lib/git";
 import { printSchema } from "../lib/json";
@@ -154,7 +154,7 @@ async function runBranch(
   options: { quiet?: boolean; verbose?: boolean; json?: boolean; fetch?: boolean },
 ): Promise<void> {
   const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
-  const configFile = `${wsDir}/.arbws/config`;
+  const configFile = `${wsDir}/.arbws/config.json`;
 
   if (options.quiet && options.json) {
     error("Cannot combine --quiet with --json.");
@@ -168,7 +168,7 @@ async function runBranch(
 
   const wb = await workspaceBranch(wsDir);
   const branch = wb?.branch ?? (ctx.currentWorkspace as string);
-  const base = configGet(configFile, "base");
+  const base = readWorkspaceConfig(configFile)?.base ?? null;
 
   if (options.verbose) {
     await runVerboseBranch(ctx, wsDir, branch, base, options);

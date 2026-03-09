@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { configGet } from "../core/config";
+import { readWorkspaceConfig } from "../core/config";
 import { ArbError } from "../core/errors";
 import { latestCommitDate } from "../core/time";
 import {
@@ -747,7 +747,7 @@ export async function gatherWorkspaceSummary(
   const workspace = basename(wsDir);
   const wb = await workspaceBranch(wsDir);
   const branch = wb?.branch ?? workspace.toLowerCase();
-  const configBase = configGet(`${wsDir}/.arbws/config`, "base");
+  const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
   const repoDirs = workspaceRepoDirs(wsDir);
   let scanned = 0;
 

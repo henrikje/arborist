@@ -1,8 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configGet, configGetList, configSetList, writeConfig } from "./config";
+import {
+  type WorkspaceConfig,
+  readProjectConfig,
+  readWorkspaceConfig,
+  writeProjectConfig,
+  writeWorkspaceConfig,
+} from "./config";
 
 describe("config", () => {
   let tmpDir: string;
@@ -10,152 +16,235 @@ describe("config", () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "arb-config-test-"));
-    configFile = join(tmpDir, "config");
+    configFile = join(tmpDir, "config.json");
   });
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  describe("configGet", () => {
+  describe("readWorkspaceConfig", () => {
     test("returns null for missing file", () => {
-      expect(configGet(join(tmpDir, "nonexistent"), "branch")).toBeNull();
+      expect(readWorkspaceConfig(join(tmpDir, "nonexistent"))).toBeNull();
     });
 
-    test("returns null for missing key", () => {
-      writeConfig(configFile, "main");
-      expect(configGet(configFile, "nonexistent")).toBeNull();
+    test("reads JSON config", () => {
+      writeFileSync(configFile, `${JSON.stringify({ branch: "develop" }, null, 2)}\n`);
+      const config = readWorkspaceConfig(configFile);
+      expect(config).toEqual({ branch: "develop" });
     });
 
-    test("returns value for existing key", () => {
-      writeConfig(configFile, "develop");
-      expect(configGet(configFile, "branch")).toBe("develop");
+    test("reads config with all fields", () => {
+      const full: WorkspaceConfig = {
+        branch: "new-name",
+        base: "main",
+        branch_rename_from: "old-name",
+        workspace_rename_to: "new-ws",
+      };
+      writeFileSync(configFile, `${JSON.stringify(full, null, 2)}\n`);
+      const config = readWorkspaceConfig(configFile);
+      expect(config).toEqual(full);
     });
 
-    test("handles multi-line configs", () => {
-      writeFileSync(configFile, "branch = main\nremote = origin\n");
-      expect(configGet(configFile, "branch")).toBe("main");
-      expect(configGet(configFile, "remote")).toBe("origin");
+    test("optional fields are omitted when absent", () => {
+      writeFileSync(configFile, `${JSON.stringify({ branch: "my-branch" }, null, 2)}\n`);
+      const config = readWorkspaceConfig(configFile);
+      expect(config).toEqual({ branch: "my-branch" });
+      expect(config?.base).toBeUndefined();
+      expect(config?.branch_rename_from).toBeUndefined();
+      expect(config?.workspace_rename_to).toBeUndefined();
+    });
+
+    test("throws on invalid JSON content", () => {
+      writeFileSync(configFile, "not json and not ini either {{{");
+      expect(() => readWorkspaceConfig(configFile)).toThrow("Failed to parse config");
+    });
+
+    test("throws on missing required branch field", () => {
+      writeFileSync(configFile, `${JSON.stringify({ base: "main" }, null, 2)}\n`);
+      expect(() => readWorkspaceConfig(configFile)).toThrow("Invalid config");
     });
   });
 
-  describe("writeConfig", () => {
-    test("writes correct format", () => {
-      writeConfig(configFile, "feature-branch");
-      expect(readFileSync(configFile, "utf-8")).toBe("branch = feature-branch\n");
+  describe("writeWorkspaceConfig", () => {
+    test("writes JSON with 2-space indent and trailing newline", () => {
+      writeWorkspaceConfig(configFile, { branch: "feature-branch" });
+      const content = readFileSync(configFile, "utf-8");
+      expect(content).toBe('{\n  "branch": "feature-branch"\n}\n');
     });
 
-    test("file is readable back via configGet", () => {
-      writeConfig(configFile, "my-branch");
-      expect(configGet(configFile, "branch")).toBe("my-branch");
+    test("round-trips with readWorkspaceConfig", () => {
+      writeWorkspaceConfig(configFile, { branch: "my-branch" });
+      expect(readWorkspaceConfig(configFile)).toEqual({ branch: "my-branch" });
     });
 
     test("writes base when provided", () => {
-      writeConfig(configFile, "feat/ui", "feat/auth");
+      writeWorkspaceConfig(configFile, { branch: "feat/ui", base: "feat/auth" });
+      const config = readWorkspaceConfig(configFile);
+      expect(config?.branch).toBe("feat/ui");
+      expect(config?.base).toBe("feat/auth");
+    });
+
+    test("writes all migration fields", () => {
+      const full: WorkspaceConfig = {
+        branch: "new-name",
+        base: "main",
+        branch_rename_from: "old-name",
+        workspace_rename_to: "new-ws",
+      };
+      writeWorkspaceConfig(configFile, full);
+      expect(readWorkspaceConfig(configFile)).toEqual(full);
+    });
+
+    test("strips undefined optional fields from JSON", () => {
+      writeWorkspaceConfig(configFile, { branch: "my-branch" });
       const content = readFileSync(configFile, "utf-8");
-      expect(content).toBe("branch = feat/ui\nbase = feat/auth\n");
+      expect(content).not.toContain("base");
+      expect(content).not.toContain("branch_rename_from");
+      expect(content).not.toContain("workspace_rename_to");
+    });
+  });
+
+  describe("readProjectConfig", () => {
+    test("returns null for missing file", () => {
+      expect(readProjectConfig(join(tmpDir, "nonexistent"))).toBeNull();
     });
 
-    test("base is readable back via configGet", () => {
-      writeConfig(configFile, "feat/ui", "feat/auth");
-      expect(configGet(configFile, "branch")).toBe("feat/ui");
-      expect(configGet(configFile, "base")).toBe("feat/auth");
+    test("reads defaults array", () => {
+      writeFileSync(configFile, `${JSON.stringify({ defaults: ["repo-a", "repo-b", "repo-c"] }, null, 2)}\n`);
+      const config = readProjectConfig(configFile);
+      expect(config?.defaults).toEqual(["repo-a", "repo-b", "repo-c"]);
     });
 
-    test("omits base line when base is undefined", () => {
-      writeConfig(configFile, "my-branch", undefined);
-      expect(readFileSync(configFile, "utf-8")).toBe("branch = my-branch\n");
-      expect(configGet(configFile, "base")).toBeNull();
+    test("reads empty config", () => {
+      writeFileSync(configFile, `${JSON.stringify({}, null, 2)}\n`);
+      const config = readProjectConfig(configFile);
+      expect(config).toEqual({});
+    });
+  });
+
+  describe("writeProjectConfig", () => {
+    test("round-trips with readProjectConfig", () => {
+      writeProjectConfig(configFile, { defaults: ["repo-a", "repo-b"] });
+      expect(readProjectConfig(configFile)).toEqual({ defaults: ["repo-a", "repo-b"] });
     });
 
-    test("writes branchRenameFrom when provided", () => {
-      writeConfig(configFile, "new-name", "main", "old-name");
+    test("writes JSON format", () => {
+      writeProjectConfig(configFile, { defaults: ["repo-a"] });
       const content = readFileSync(configFile, "utf-8");
-      expect(content).toBe("branch = new-name\nbase = main\nbranch_rename_from = old-name\n");
-      expect(configGet(configFile, "branch_rename_from")).toBe("old-name");
+      expect(content).toBe('{\n  "defaults": [\n    "repo-a"\n  ]\n}\n');
     });
+  });
 
-    test("omits branchRenameFrom when null", () => {
-      writeConfig(configFile, "my-branch", "main", null);
-      expect(readFileSync(configFile, "utf-8")).toBe("branch = my-branch\nbase = main\n");
-      expect(configGet(configFile, "branch_rename_from")).toBeNull();
-    });
-
-    test("writes workspaceRenameTo when provided", () => {
-      writeConfig(configFile, "new-name", "main", "old-name", "new-ws");
+  describe("INI migration", () => {
+    test("migrates workspace INI to JSON on read", () => {
+      writeFileSync(configFile, "branch = my-feature\n");
+      const config = readWorkspaceConfig(configFile);
+      expect(config).toEqual({ branch: "my-feature" });
+      // File should now be JSON
       const content = readFileSync(configFile, "utf-8");
-      expect(content).toBe(
+      expect(JSON.parse(content)).toEqual({ branch: "my-feature" });
+    });
+
+    test("migrates workspace INI with base", () => {
+      writeFileSync(configFile, "branch = feat/ui\nbase = feat/auth\n");
+      const config = readWorkspaceConfig(configFile);
+      expect(config?.branch).toBe("feat/ui");
+      expect(config?.base).toBe("feat/auth");
+    });
+
+    test("migrates workspace INI with migration state", () => {
+      writeFileSync(
+        configFile,
         "branch = new-name\nbase = main\nbranch_rename_from = old-name\nworkspace_rename_to = new-ws\n",
       );
-      expect(configGet(configFile, "workspace_rename_to")).toBe("new-ws");
+      const config = readWorkspaceConfig(configFile);
+      expect(config).toEqual({
+        branch: "new-name",
+        base: "main",
+        branch_rename_from: "old-name",
+        workspace_rename_to: "new-ws",
+      });
     });
 
-    test("omits workspaceRenameTo when null", () => {
-      writeConfig(configFile, "my-branch", "main", null, null);
-      expect(readFileSync(configFile, "utf-8")).toBe("branch = my-branch\nbase = main\n");
-      expect(configGet(configFile, "workspace_rename_to")).toBeNull();
+    test("migrates project INI with defaults", () => {
+      writeFileSync(configFile, "defaults = repo-a,repo-b,repo-c\n");
+      const config = readProjectConfig(configFile);
+      expect(config?.defaults).toEqual(["repo-a", "repo-b", "repo-c"]);
+    });
+
+    test("migrates project INI with whitespace in defaults", () => {
+      writeFileSync(configFile, "defaults = repo-a , repo-b , repo-c\n");
+      const config = readProjectConfig(configFile);
+      expect(config?.defaults).toEqual(["repo-a", "repo-b", "repo-c"]);
+    });
+
+    test("rewrites INI file as JSON after migration", () => {
+      writeFileSync(configFile, "branch = develop\nbase = main\n");
+      readWorkspaceConfig(configFile);
+      const content = readFileSync(configFile, "utf-8");
+      const parsed = JSON.parse(content);
+      expect(parsed).toEqual({ branch: "develop", base: "main" });
+    });
+
+    test("subsequent reads are pure JSON", () => {
+      writeFileSync(configFile, "branch = develop\n");
+      readWorkspaceConfig(configFile);
+      // Second read should work on JSON
+      const config = readWorkspaceConfig(configFile);
+      expect(config).toEqual({ branch: "develop" });
     });
   });
 
-  describe("configGetList", () => {
-    test("returns empty array for missing file", () => {
-      expect(configGetList(join(tmpDir, "nonexistent"), "repos")).toEqual([]);
+  describe("legacy filename migration", () => {
+    let legacyFile: string;
+
+    beforeEach(() => {
+      legacyFile = join(tmpDir, "config");
     });
 
-    test("returns empty array for missing key", () => {
-      writeFileSync(configFile, "branch = main\n");
-      expect(configGetList(configFile, "repos")).toEqual([]);
+    test("reads from legacy file when config.json is missing", () => {
+      writeFileSync(legacyFile, `${JSON.stringify({ branch: "my-feature" }, null, 2)}\n`);
+      const config = readWorkspaceConfig(configFile);
+      expect(config).toEqual({ branch: "my-feature" });
     });
 
-    test("returns parsed comma-separated values", () => {
-      writeFileSync(configFile, "repos = repo-a,repo-b,repo-c\n");
-      expect(configGetList(configFile, "repos")).toEqual(["repo-a", "repo-b", "repo-c"]);
-    });
-
-    test("trims whitespace from values", () => {
-      writeFileSync(configFile, "repos = repo-a , repo-b , repo-c\n");
-      expect(configGetList(configFile, "repos")).toEqual(["repo-a", "repo-b", "repo-c"]);
-    });
-
-    test("filters out empty values", () => {
-      writeFileSync(configFile, "repos = repo-a,,repo-b,\n");
-      expect(configGetList(configFile, "repos")).toEqual(["repo-a", "repo-b"]);
-    });
-  });
-
-  describe("configSetList", () => {
-    test("creates file with list value when file does not exist", () => {
-      configSetList(configFile, "repos", ["repo-a", "repo-b"]);
-      expect(readFileSync(configFile, "utf-8")).toBe("repos = repo-a,repo-b\n");
-    });
-
-    test("updates existing list value", () => {
-      writeFileSync(configFile, "branch = main\nrepos = old-repo\n");
-      configSetList(configFile, "repos", ["new-a", "new-b"]);
+    test("writes config.json and deletes legacy file", () => {
+      writeFileSync(legacyFile, `${JSON.stringify({ branch: "my-feature" }, null, 2)}\n`);
+      readWorkspaceConfig(configFile);
+      expect(existsSync(configFile)).toBe(true);
+      expect(existsSync(legacyFile)).toBe(false);
       const content = readFileSync(configFile, "utf-8");
-      expect(content).toContain("repos = new-a,new-b");
-      expect(content).toContain("branch = main");
+      expect(JSON.parse(content)).toEqual({ branch: "my-feature" });
     });
 
-    test("removes key when values array is empty", () => {
-      writeFileSync(configFile, "branch = main\nrepos = repo-a\n");
-      configSetList(configFile, "repos", []);
-      const content = readFileSync(configFile, "utf-8");
-      expect(content).not.toContain("repos");
-      expect(content).toContain("branch = main");
+    test("migrates legacy INI to config.json", () => {
+      writeFileSync(legacyFile, "branch = develop\nbase = main\n");
+      const config = readWorkspaceConfig(configFile);
+      expect(config).toEqual({ branch: "develop", base: "main" });
+      expect(existsSync(configFile)).toBe(true);
+      expect(existsSync(legacyFile)).toBe(false);
     });
 
-    test("appends new key to existing file", () => {
-      writeFileSync(configFile, "branch = main\n");
-      configSetList(configFile, "repos", ["repo-a"]);
-      const content = readFileSync(configFile, "utf-8");
-      expect(content).toContain("branch = main");
-      expect(content).toContain("repos = repo-a");
+    test("migrates legacy project config", () => {
+      writeFileSync(legacyFile, `${JSON.stringify({ defaults: ["repo-a"] }, null, 2)}\n`);
+      const config = readProjectConfig(configFile);
+      expect(config).toEqual({ defaults: ["repo-a"] });
+      expect(existsSync(configFile)).toBe(true);
+      expect(existsSync(legacyFile)).toBe(false);
     });
 
-    test("does not create file when values are empty and file does not exist", () => {
-      configSetList(configFile, "repos", []);
-      expect(require("node:fs").existsSync(configFile)).toBe(false);
+    test("prefers config.json when both exist", () => {
+      writeFileSync(configFile, `${JSON.stringify({ branch: "from-json" }, null, 2)}\n`);
+      writeFileSync(legacyFile, `${JSON.stringify({ branch: "from-legacy" }, null, 2)}\n`);
+      const config = readWorkspaceConfig(configFile);
+      expect(config).toEqual({ branch: "from-json" });
+      // Legacy file should remain untouched
+      expect(existsSync(legacyFile)).toBe(true);
+    });
+
+    test("returns null when neither file exists", () => {
+      expect(readWorkspaceConfig(configFile)).toBeNull();
     });
   });
 });

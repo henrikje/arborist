@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { z } from "zod";
-import { ArbError, type RelativeTimeParts, configGet, formatRelativeTimeParts } from "../lib/core";
+import { ArbError, type RelativeTimeParts, formatRelativeTimeParts, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, assertMinimumGitVersion } from "../lib/git";
 import { printSchema } from "../lib/json";
@@ -301,7 +301,7 @@ async function gatherListMetadata(ctx: ArbContext, workspaces: string[]): Promis
     const wsDir = `${ctx.arbRootDir}/${name}`;
     const marker = name === ctx.currentWorkspace;
 
-    const configMissing = !existsSync(`${wsDir}/.arbws/config`);
+    const configMissing = !existsSync(`${wsDir}/.arbws/config.json`) && !existsSync(`${wsDir}/.arbws/config`);
 
     if (configMissing) {
       rows.push({
@@ -322,7 +322,7 @@ async function gatherListMetadata(ctx: ArbContext, workspaces: string[]): Promis
     const repoDirs = workspaceRepoDirs(wsDir);
     const wb = await workspaceBranch(wsDir);
     const branch = wb?.branch ?? name.toLowerCase();
-    const configBase = configGet(`${wsDir}/.arbws/config`, "base");
+    const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
     const base = configBase ?? "";
 
     // Detect ticket from branch name (cheap, no git call)

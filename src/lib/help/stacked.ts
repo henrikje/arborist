@@ -18,7 +18,7 @@ export const stackedTopic: HelpTopic = {
     out(`  ${dim("arb create <name> --base <branch>")}`);
     out("");
     out("  The --base flag sets the branch that arb will rebase onto and track.");
-    out("  This is stored in .arbws/config and used by status, rebase, and merge.");
+    out("  This is stored in .arbws/config.json and used by status, rebase, and merge.");
     out("  Without --base, arb uses the default branch (e.g. main).");
     out("");
     out(bold("STATUS FLAGS"));
@@ -37,7 +37,7 @@ export const stackedTopic: HelpTopic = {
     out("  retargeted to the default branch (or another branch):");
     out("");
     out(`  ${dim("arb rebase --retarget")}`);
-    out("    Rebases onto the default branch and updates .arbws/config.");
+    out("    Rebases onto the default branch and updates .arbws/config.json.");
     out("");
     out(`  ${dim("arb rebase --retarget <branch>")}`);
     out("    Retargets to a specific branch — useful for deep stacks where the");
