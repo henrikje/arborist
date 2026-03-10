@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { makeRepo } from "../status/test-helpers";
+import { dim } from "../terminal/output";
 import type { SectionNode } from "./model";
 import { formatVerboseDetail, toJsonVerbose, verboseDetailToNodes } from "./status-verbose";
 
@@ -28,10 +29,10 @@ describe("formatVerboseDetail", () => {
     };
     const output = formatVerboseDetail(repo, verbose);
     expect(output).toContain("(1 new, 2 already merged)");
-    expect(output).toContain("aaa1234 new commit");
-    expect(output).not.toContain("aaa1234 new commit (");
-    expect(output).toContain("bbb1234 old commit 1 (merged as abcdef1)");
-    expect(output).toContain("ccc1234 old commit 2 (merged as abcdef1)");
+    expect(output).toContain(`${dim("aaa1234")} new commit`);
+    expect(output).not.toContain(`${dim("aaa1234")} new commit (`);
+    expect(output).toContain(`${dim("bbb1234")} old commit 1${dim(" (merged as abcdef1)")}`);
+    expect(output).toContain(`${dim("ccc1234")} old commit 2${dim(" (merged as abcdef1)")}`);
   });
 
   test("annotates new commits that have a rebase match on base", () => {
@@ -64,9 +65,9 @@ describe("formatVerboseDetail", () => {
     // The "new" commit has a base match — header should show 0 new, 2 already merged
     expect(output).toContain("(0 new, 2 already merged)");
     // The matched commit should show its base equivalent
-    expect(output).toContain("aaa1234 fix: improve coverage (same as xxx1234)");
+    expect(output).toContain(`${dim("aaa1234")} fix: improve coverage${dim(" (same as xxx1234)")}`);
     // The old commit should show the merge hash
-    expect(output).toContain("bbb1234 feat: detect merge commits (merged as squash1)");
+    expect(output).toContain(`${dim("bbb1234")} feat: detect merge commits${dim(" (merged as squash1)")}`);
   });
 
   test("suppresses unpushed section when merged and all commits are in ahead-of-base", () => {
@@ -198,8 +199,8 @@ describe("formatVerboseDetail", () => {
     const output = formatVerboseDetail(repo, verbose);
     expect(output).not.toContain("already merged");
     expect(output).not.toContain("merged as");
-    expect(output).toContain("aaa1234 commit 1");
-    expect(output).toContain("bbb1234 commit 2");
+    expect(output).toContain(`${dim("aaa1234")} commit 1`);
+    expect(output).toContain(`${dim("bbb1234")} commit 2`);
   });
 });
 
