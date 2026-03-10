@@ -84,10 +84,10 @@ jobs:
           TEMP_DIR="$(mktemp -d)"
           trap 'rm -rf "$TEMP_DIR"' EXIT
           cd "$TEMP_DIR"
-          mkdir remote && cd remote && git init --bare && cd ..
+          git init --bare remote
+          git clone remote tmpclone && cd tmpclone && git commit --allow-empty -m "init" && git push && cd "$TEMP_DIR" && rm -rf tmpclone
           mkdir project && cd project
-          git init
-          git remote add origin "$TEMP_DIR/remote"
           arb init
-          arb create myworkspace
+          arb repo clone "$TEMP_DIR/remote"
+          arb create myworkspace --all-repos
           arb status -C myworkspace
