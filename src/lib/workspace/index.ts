@@ -43,6 +43,7 @@ export {
   displayOverlaySummary,
   displayRepoDirectoryWarnings,
   displayTemplateConflicts,
+  displayAggregatedTemplateDiffs,
   displayTemplateDiffs,
   displayUnknownVariables,
   forceApplyRepoTemplates,

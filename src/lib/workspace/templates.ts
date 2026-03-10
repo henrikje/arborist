@@ -3,7 +3,7 @@ import { basename, dirname, join, relative } from "node:path";
 import { Liquid } from "liquidjs";
 import { GitCache } from "../git/git-cache";
 import { cell } from "../render/model";
-import type { OutputNode } from "../render/model";
+import type { Cell, OutputNode } from "../render/model";
 import { info, plural, warn } from "../terminal/output";
 import { listRepos, workspaceRepoDirs } from "./repos";
 
@@ -844,6 +844,64 @@ export function displayTemplateDiffs(templateDiffs: TemplateDiff[], suffix?: str
         const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
         return cell(`${prefix}${diff.relPath}`);
       }),
+    });
+    nodes.push({ kind: "gap" });
+  }
+  return nodes;
+}
+
+/** Aggregate template diffs across multiple workspaces into unified sections. */
+export function displayAggregatedTemplateDiffs(
+  assessments: { name: string; templateDiffs: TemplateDiff[] }[],
+): OutputNode[] {
+  if (assessments.every((a) => a.templateDiffs.length === 0)) return [];
+
+  // Group by workspace, then by kind
+  const byWsKind = new Map<string, Map<string, string[]>>();
+  for (const a of assessments) {
+    for (const diff of a.templateDiffs) {
+      let wsMap = byWsKind.get(a.name);
+      if (!wsMap) {
+        wsMap = new Map();
+        byWsKind.set(a.name, wsMap);
+      }
+      let files = wsMap.get(diff.kind);
+      if (!files) {
+        files = [];
+        wsMap.set(diff.kind, files);
+      }
+      const prefix = diff.scope === "repo" ? `${diff.repo}/` : "";
+      files.push(`${prefix}${diff.relPath}`);
+    }
+  }
+
+  const buildItems = (kind: string) => {
+    const items: Cell[] = [];
+    for (const [ws, wsMap] of byWsKind) {
+      const files = wsMap.get(kind);
+      if (files) {
+        items.push(cell(`[${ws}] ${files.join(", ")}`));
+      }
+    }
+    return items;
+  };
+
+  const nodes: OutputNode[] = [];
+  const modItems = buildItems("modified");
+  if (modItems.length > 0) {
+    nodes.push({
+      kind: "section",
+      header: cell("Template files modified", "attention"),
+      items: modItems,
+    });
+    nodes.push({ kind: "gap" });
+  }
+  const delItems = buildItems("deleted");
+  if (delItems.length > 0) {
+    nodes.push({
+      kind: "section",
+      header: cell("Template files deleted", "attention"),
+      items: delItems,
     });
     nodes.push({ kind: "gap" });
   }
