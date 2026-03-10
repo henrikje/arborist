@@ -90,4 +90,4 @@ jobs:
           arb init
           arb repo clone "$TEMP_DIR/remote"
           arb create myworkspace --all-repos
-          arb status -C myworkspace
+          arb -C myworkspace status
