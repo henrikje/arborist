@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { Liquid } from "liquidjs";
@@ -124,6 +125,42 @@ function stripTemplateExt(relPath: string): string {
   return relPath.slice(0, -ARBTEMPLATE_EXT.length);
 }
 
+// ── Template manifest ────────────────────────────────────────────────
+// Stores SHA-256 hashes of seeded file contents so we can distinguish
+// "user modified the file" from "template source changed after seeding".
+
+export function hashContent(content: Buffer | string): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
+export function manifestKey(scope: "workspace" | "repo", relPath: string, repo?: string): string {
+  return scope === "workspace" ? `workspace:${relPath}` : `repo:${repo}:${relPath}`;
+}
+
+const MANIFEST_FILE = "templates.json";
+
+export function readManifest(wsDir: string): Record<string, string> {
+  const path = join(wsDir, ".arbws", MANIFEST_FILE);
+  if (!existsSync(path)) return {};
+  try {
+    return JSON.parse(readFileSync(path, "utf-8"));
+  } catch {
+    return {};
+  }
+}
+
+export function writeManifest(wsDir: string, manifest: Record<string, string>): void {
+  const dir = join(wsDir, ".arbws");
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+export function mergeManifest(wsDir: string, newEntries: Record<string, string>): void {
+  if (Object.keys(newEntries).length === 0) return;
+  const existing = readManifest(wsDir);
+  writeManifest(wsDir, { ...existing, ...newEntries });
+}
+
 export interface FailedCopy {
   path: string;
   error: string;
@@ -143,6 +180,7 @@ export interface OverlayResult {
   failed: FailedCopy[];
   unknownVariables: UnknownVariable[];
   repoDirectoryWarnings: string[];
+  seededHashes: Record<string, string>;
 }
 
 function emptyResult(): OverlayResult {
@@ -154,6 +192,7 @@ function emptyResult(): OverlayResult {
     failed: [],
     unknownVariables: [],
     repoDirectoryWarnings: [],
+    seededHashes: {},
   };
 }
 
@@ -201,12 +240,17 @@ export function overlayDirectory(
         if (!existsSync(destPath)) {
           try {
             mkdirSync(join(destDir, relative(srcDir, dir)), { recursive: true });
+            let content: Buffer;
             if (tplContent !== null && ctx) {
-              writeFileSync(destPath, renderTemplate(tplContent, ctx));
+              const rendered = renderTemplate(tplContent, ctx);
+              writeFileSync(destPath, rendered);
+              content = Buffer.from(rendered);
             } else {
               copyFileSync(srcPath, destPath);
+              content = readFileSync(destPath);
             }
             result.seeded.push(relPath);
+            result.seededHashes[relPath] = hashContent(content);
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             result.failed.push({ path: relPath, error: msg });
@@ -228,6 +272,7 @@ export function overlayDirectory(
                 // User hasn't edited — safe to overwrite
                 writeFileSync(destPath, newRender);
                 result.regenerated.push(relPath);
+                result.seededHashes[relPath] = hashContent(newRender);
               } else {
                 // User has edited — don't overwrite
                 result.skipped.push(relPath);
@@ -271,6 +316,11 @@ export async function applyWorkspaceTemplates(
 
   const result = overlayDirectory(templateDir, wsDir, ctx, ".arb/templates/workspace", "workspace");
   result.repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(arbRootDir);
+  const manifestEntries: Record<string, string> = {};
+  for (const [relPath, hash] of Object.entries(result.seededHashes)) {
+    manifestEntries[manifestKey("workspace", relPath)] = hash;
+  }
+  mergeManifest(wsDir, manifestEntries);
   return result;
 }
 
@@ -310,6 +360,11 @@ export async function applyRepoTemplates(
     result.conflicts.push(...repoResult.conflicts);
     result.failed.push(...repoResult.failed);
     result.unknownVariables.push(...repoResult.unknownVariables);
+    const manifestEntries: Record<string, string> = {};
+    for (const [relPath, hash] of Object.entries(repoResult.seededHashes)) {
+      manifestEntries[manifestKey("repo", relPath, repo)] = hash;
+    }
+    mergeManifest(wsDir, manifestEntries);
   }
 
   return result;
@@ -395,19 +450,27 @@ export interface TemplateDiff {
   relPath: string;
   scope: "workspace" | "repo";
   repo?: string;
-  kind: "modified" | "deleted";
+  kind: "modified" | "deleted" | "stale";
 }
 
 interface DiffDirectoryResult {
   modified: string[];
   deleted: string[];
+  stale: string[];
 }
 
-function diffDirectory(srcDir: string, destDir: string, ctx?: TemplateContext): DiffDirectoryResult {
-  if (!existsSync(srcDir)) return { modified: [], deleted: [] };
+function diffDirectory(
+  srcDir: string,
+  destDir: string,
+  ctx?: TemplateContext,
+  manifest?: Record<string, string>,
+  manifestKeyFn?: (relPath: string) => string,
+): DiffDirectoryResult {
+  if (!existsSync(srcDir)) return { modified: [], deleted: [], stale: [] };
 
   const modified: string[] = [];
   const deleted: string[] = [];
+  const stale: string[] = [];
   const seen = new Set<string>();
 
   function walk(dir: string): void {
@@ -438,6 +501,14 @@ function diffDirectory(srcDir: string, destDir: string, ctx?: TemplateContext): 
           isArbtpl && ctx ? Buffer.from(renderTemplate(readFileSync(srcPath, "utf-8"), ctx)) : readFileSync(srcPath);
         const destContent = readFileSync(destPath);
         if (!srcContent.equals(destContent)) {
+          // Check manifest: if workspace file matches its seeded hash, the user hasn't touched it
+          if (manifest && manifestKeyFn) {
+            const seededHash = manifest[manifestKeyFn(relPath)];
+            if (seededHash && hashContent(destContent) === seededHash) {
+              stale.push(relPath);
+              continue;
+            }
+          }
           modified.push(relPath);
         }
       }
@@ -445,7 +516,7 @@ function diffDirectory(srcDir: string, destDir: string, ctx?: TemplateContext): 
   }
 
   walk(srcDir);
-  return { modified, deleted };
+  return { modified, deleted, stale };
 }
 
 export async function diffTemplates(
@@ -458,6 +529,7 @@ export async function diffTemplates(
   const reposDir = join(arbRootDir, ".arb", "repos");
   const c = cache ?? new GitCache();
   const allRepos = await workspaceRepoList(wsDir, reposDir, c);
+  const manifest = readManifest(wsDir);
 
   const wsTemplateDir = join(arbRootDir, ".arb", "templates", "workspace");
   const wsCtx: TemplateContext = {
@@ -466,12 +538,15 @@ export async function diffTemplates(
     workspacePath: wsDir,
     repos: allRepos,
   };
-  const wsDiffs = diffDirectory(wsTemplateDir, wsDir, wsCtx);
+  const wsDiffs = diffDirectory(wsTemplateDir, wsDir, wsCtx, manifest, (relPath) => manifestKey("workspace", relPath));
   for (const relPath of wsDiffs.modified) {
     result.push({ relPath, scope: "workspace", kind: "modified" });
   }
   for (const relPath of wsDiffs.deleted) {
     result.push({ relPath, scope: "workspace", kind: "deleted" });
+  }
+  for (const relPath of wsDiffs.stale) {
+    result.push({ relPath, scope: "workspace", kind: "stale" });
   }
 
   for (const repo of repos) {
@@ -487,12 +562,17 @@ export async function diffTemplates(
       repoPath: repoDir,
       repos: allRepos,
     };
-    const repoDiffs = diffDirectory(repoTemplateDir, repoDir, repoCtx);
+    const repoDiffs = diffDirectory(repoTemplateDir, repoDir, repoCtx, manifest, (relPath) =>
+      manifestKey("repo", relPath, repo),
+    );
     for (const relPath of repoDiffs.modified) {
       result.push({ relPath, scope: "repo", repo, kind: "modified" });
     }
     for (const relPath of repoDiffs.deleted) {
       result.push({ relPath, scope: "repo", repo, kind: "deleted" });
+    }
+    for (const relPath of repoDiffs.stale) {
+      result.push({ relPath, scope: "repo", repo, kind: "stale" });
     }
   }
 
@@ -659,6 +739,7 @@ export interface ForceOverlayResult {
   failed: FailedCopy[];
   unknownVariables: UnknownVariable[];
   repoDirectoryWarnings: string[];
+  seededHashes: Record<string, string>;
 }
 
 export function forceOverlayDirectory(
@@ -678,6 +759,7 @@ export function forceOverlayDirectory(
       failed: [],
       unknownVariables: [],
       repoDirectoryWarnings: [],
+      seededHashes: {},
     };
 
   const result: ForceOverlayResult = {
@@ -688,6 +770,7 @@ export function forceOverlayDirectory(
     failed: [],
     unknownVariables: [],
     repoDirectoryWarnings: [],
+    seededHashes: {},
   };
   const seen = new Set<string>();
 
@@ -722,18 +805,24 @@ export function forceOverlayDirectory(
         try {
           if (!existsSync(destPath)) {
             mkdirSync(join(destDir, relative(srcDir, dir)), { recursive: true });
+            let content: Buffer;
             if (tplContent !== null && ctx) {
-              writeFileSync(destPath, renderTemplate(tplContent, ctx));
+              const rendered = renderTemplate(tplContent, ctx);
+              writeFileSync(destPath, rendered);
+              content = Buffer.from(rendered);
             } else {
               copyFileSync(srcPath, destPath);
+              content = readFileSync(destPath);
             }
             result.seeded.push(relPath);
+            result.seededHashes[relPath] = hashContent(content);
           } else {
             const srcContent =
               tplContent !== null && ctx ? Buffer.from(renderTemplate(tplContent, ctx)) : readFileSync(srcPath);
             const destContent = readFileSync(destPath);
             if (srcContent.equals(destContent)) {
               result.unchanged.push(relPath);
+              result.seededHashes[relPath] = hashContent(srcContent);
             } else {
               if (tplContent !== null && ctx) {
                 writeFileSync(destPath, srcContent);
@@ -741,6 +830,7 @@ export function forceOverlayDirectory(
                 copyFileSync(srcPath, destPath);
               }
               result.reset.push(relPath);
+              result.seededHashes[relPath] = hashContent(srcContent);
             }
           }
         } catch (e) {
@@ -772,6 +862,11 @@ export async function forceApplyWorkspaceTemplates(
   };
   const result = forceOverlayDirectory(templateDir, wsDir, ctx, ".arb/templates/workspace", "workspace");
   result.repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(arbRootDir);
+  const manifestEntries: Record<string, string> = {};
+  for (const [relPath, hash] of Object.entries(result.seededHashes)) {
+    manifestEntries[manifestKey("workspace", relPath)] = hash;
+  }
+  mergeManifest(wsDir, manifestEntries);
   return result;
 }
 
@@ -789,6 +884,7 @@ export async function forceApplyRepoTemplates(
     failed: [],
     unknownVariables: [],
     repoDirectoryWarnings: [],
+    seededHashes: {},
   };
   const reposDir = join(arbRootDir, ".arb", "repos");
   const c = cache ?? new GitCache();
@@ -815,6 +911,11 @@ export async function forceApplyRepoTemplates(
     result.conflicts.push(...repoResult.conflicts);
     result.failed.push(...repoResult.failed);
     result.unknownVariables.push(...repoResult.unknownVariables);
+    const manifestEntries: Record<string, string> = {};
+    for (const [relPath, hash] of Object.entries(repoResult.seededHashes)) {
+      manifestEntries[manifestKey("repo", relPath, repo)] = hash;
+    }
+    mergeManifest(wsDir, manifestEntries);
   }
 
   return result;
@@ -825,6 +926,7 @@ export function displayTemplateDiffs(templateDiffs: TemplateDiff[], suffix?: str
   const nodes: OutputNode[] = [];
   const modified = templateDiffs.filter((d) => d.kind === "modified");
   const deleted = templateDiffs.filter((d) => d.kind === "deleted");
+  const stale = templateDiffs.filter((d) => d.kind === "stale");
   if (modified.length > 0) {
     nodes.push({
       kind: "section",
@@ -841,6 +943,17 @@ export function displayTemplateDiffs(templateDiffs: TemplateDiff[], suffix?: str
       kind: "section",
       header: cell(`Template files deleted${suffix ?? ""}`, "attention"),
       items: deleted.map((diff) => {
+        const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
+        return cell(`${prefix}${diff.relPath}`);
+      }),
+    });
+    nodes.push({ kind: "gap" });
+  }
+  if (stale.length > 0) {
+    nodes.push({
+      kind: "section",
+      header: cell(`Template files with newer version available${suffix ?? ""}`, "muted"),
+      items: stale.map((diff) => {
         const prefix = diff.scope === "repo" ? `[${diff.repo}] ` : "";
         return cell(`${prefix}${diff.relPath}`);
       }),

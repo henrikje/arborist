@@ -40,7 +40,10 @@ import {
   displayUnknownVariables,
   forceApplyRepoTemplates,
   forceApplyWorkspaceTemplates,
+  hashContent,
   listTemplates,
+  manifestKey,
+  mergeManifest,
   renderTemplate,
   requireWorkspace,
   templateFilePath,
@@ -52,7 +55,7 @@ import {
 
 function buildTemplateListNodes(
   templates: TemplateEntry[],
-  diffMap: Map<string, "modified" | "deleted">,
+  diffMap: Map<string, "modified" | "deleted" | "stale">,
   repoWarningDirs: Set<string>,
   conflictsOut: TemplateEntry[],
 ): OutputNode[] {
@@ -65,6 +68,7 @@ function buildTemplateListNodes(
     if (t.conflict) statusParts.push(cell("conflict", "attention"));
     if (diffKind === "modified") statusParts.push(cell("modified", "attention"));
     if (diffKind === "deleted") statusParts.push(cell("deleted", "attention"));
+    if (diffKind === "stale") statusParts.push(cell("stale", "muted"));
     if (t.scope === "workspace" && repoWarningDirs.has(t.relPath.split("/")[0] ?? "")) {
       statusParts.push(cell("misplaced", "attention"));
     }
@@ -239,7 +243,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
     .command("list", { isDefault: true })
     .summary("List all defined templates (default)")
     .description(
-      "Show all template files in .arb/templates/ as a columnar table. When run inside a workspace, adds a STATUS column showing drift annotations: template (uses .arbtemplate rendering), conflict (both plain and .arbtemplate exist), modified (workspace copy differs), or deleted (workspace copy removed).",
+      "Show all template files in .arb/templates/ as a columnar table. When run inside a workspace, adds a STATUS column showing drift annotations: template (uses .arbtemplate rendering), conflict (both plain and .arbtemplate exist), modified (workspace copy edited by user), deleted (workspace copy removed), or stale (template source changed since seeding but workspace copy untouched).",
     )
     .action(async () => {
       const ctx = getCtx();
@@ -265,7 +269,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
       }
 
       // Build diff map: key → kind
-      const diffMap = new Map<string, "modified" | "deleted">();
+      const diffMap = new Map<string, "modified" | "deleted" | "stale">();
       for (const d of diffs) {
         diffMap.set(`${d.scope}:${d.repo ?? ""}:${d.relPath}`, d.kind);
       }
@@ -452,7 +456,7 @@ function applySingleFile(
   force: boolean,
   ctx?: TemplateContext,
   tplLabel?: string,
-): { status: "seeded" | "skipped" | "reset" | "unchanged"; unknownVariables: UnknownVariable[] } {
+): { status: "seeded" | "skipped" | "reset" | "unchanged"; unknownVariables: UnknownVariable[]; hash?: string } {
   const isArbtpl = tplPath.endsWith(ARBTEMPLATE_EXT);
   const tplContent = isArbtpl && ctx ? readFileSync(tplPath, "utf-8") : null;
   const unknownVariables: UnknownVariable[] =
@@ -462,12 +466,16 @@ function applySingleFile(
 
   if (!existsSync(destPath)) {
     mkdirSync(dirname(destPath), { recursive: true });
+    let content: Buffer;
     if (tplContent !== null && ctx) {
-      writeFileSync(destPath, renderTemplate(tplContent, ctx));
+      const rendered = renderTemplate(tplContent, ctx);
+      writeFileSync(destPath, rendered);
+      content = Buffer.from(rendered);
     } else {
       copyFileSync(tplPath, destPath);
+      content = readFileSync(destPath);
     }
-    return { status: "seeded", unknownVariables };
+    return { status: "seeded", unknownVariables, hash: hashContent(content) };
   }
   if (!force) {
     return { status: "skipped", unknownVariables };
@@ -475,14 +483,14 @@ function applySingleFile(
   const srcContent = tplContent !== null && ctx ? Buffer.from(renderTemplate(tplContent, ctx)) : readFileSync(tplPath);
   const destContent = readFileSync(destPath);
   if (srcContent.equals(destContent)) {
-    return { status: "unchanged", unknownVariables };
+    return { status: "unchanged", unknownVariables, hash: hashContent(srcContent) };
   }
   if (tplContent !== null && ctx) {
     writeFileSync(destPath, srcContent);
   } else {
     copyFileSync(tplPath, destPath);
   }
-  return { status: "reset", unknownVariables };
+  return { status: "reset", unknownVariables, hash: hashContent(srcContent) };
 }
 
 async function applyDefaultMode(
@@ -505,6 +513,7 @@ async function applyDefaultMode(
     const entries = resolveTemplatesToApply(ctx, applyWorkspace, repos, fileFilter);
     const reposDir = join(ctx.arbRootDir, ".arb", "repos");
     const allRepos = await workspaceRepoList(wsDir, reposDir, cache);
+    const batchedHashes: Record<string, string> = {};
     for (const entry of entries) {
       if (entry.scope === "repo" && entry.repo && !existsSync(join(wsDir, entry.repo))) {
         continue;
@@ -523,13 +532,17 @@ async function applyDefaultMode(
         repos: allRepos,
       };
       const tplLabel = relative(ctx.arbRootDir, tplPath);
-      const { status, unknownVariables } = applySingleFile(tplPath, destPath, false, tplCtx, tplLabel);
+      const { status, unknownVariables, hash } = applySingleFile(tplPath, destPath, false, tplCtx, tplLabel);
       allUnknowns.push(...unknownVariables);
+      if (hash) {
+        batchedHashes[manifestKey(entry.scope, entry.relPath, entry.repo)] = hash;
+      }
       const label = status === "skipped" ? yellow("skipped (exists)") : "seeded";
       process.stderr.write(`  [${scope}]${pad} ${entry.relPath.padEnd(40)} ${label}\n`);
       if (status === "seeded") totalSeeded++;
       else totalSkipped++;
     }
+    mergeManifest(wsDir, batchedHashes);
     repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(ctx.arbRootDir);
   } else {
     if (applyWorkspace) {
@@ -589,6 +602,7 @@ async function applyForceMode(
     const entries = resolveTemplatesToApply(ctx, applyWorkspace, repos, fileFilter);
     const reposDir = join(ctx.arbRootDir, ".arb", "repos");
     const allRepos = await workspaceRepoList(wsDir, reposDir, cache);
+    const batchedHashes: Record<string, string> = {};
     for (const entry of entries) {
       if (entry.scope === "repo" && entry.repo && !existsSync(join(wsDir, entry.repo))) {
         continue;
@@ -607,13 +621,17 @@ async function applyForceMode(
         repos: allRepos,
       };
       const tplLabel = relative(ctx.arbRootDir, tplPath);
-      const { status, unknownVariables } = applySingleFile(tplPath, destPath, true, tplCtx, tplLabel);
+      const { status, unknownVariables, hash } = applySingleFile(tplPath, destPath, true, tplCtx, tplLabel);
       allUnknowns.push(...unknownVariables);
+      if (hash) {
+        batchedHashes[manifestKey(entry.scope, entry.relPath, entry.repo)] = hash;
+      }
       process.stderr.write(`  [${scope}]${pad} ${entry.relPath.padEnd(40)} ${status}\n`);
       if (status === "seeded") totalSeeded++;
       else if (status === "reset") totalReset++;
       else totalUnchanged++;
     }
+    mergeManifest(wsDir, batchedHashes);
     repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(ctx.arbRootDir);
   } else {
     if (applyWorkspace) {

@@ -156,8 +156,8 @@ async function assessWorkspace(
     }
   }
 
-  // Template drift detection
-  const templateDiffs = await diffTemplates(ctx.arbRootDir, wsDir, repos, cache);
+  // Template drift detection (exclude stale — user hasn't touched those files)
+  const templateDiffs = (await diffTemplates(ctx.arbRootDir, wsDir, repos, cache)).filter((d) => d.kind !== "stale");
 
   return {
     name,

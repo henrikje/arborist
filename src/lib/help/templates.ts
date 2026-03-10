@@ -45,6 +45,13 @@ export const templatesTopic: HelpTopic = {
     out("  Use 'arb template diff' to see which files have drifted from their");
     out("  template, and 'arb template apply --force' to reset them.");
     out("");
+    out(dim("  Annotations in 'arb template list':"));
+    out(`    ${dim("modified")}    You edited the workspace copy (differs from template)`);
+    out(`    ${dim("deleted")}     You removed the workspace copy`);
+    out(`    ${dim("stale")}       The template source changed since seeding, but you`);
+    out("                haven't touched the workspace copy. Run");
+    out("                'arb template apply --force' to update it.");
+    out("");
     out(bold("COMMANDS"));
     out("");
     out(`    ${dim("template add")}      Capture a file as a template`);
