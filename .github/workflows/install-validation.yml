@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to validate (e.g. 1.2.3)"
-        required: true
+        description: "Version to validate (e.g. 1.2.3). Defaults to latest release."
+        required: false
 
 permissions:
   contents: read
@@ -36,12 +36,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.version }}" ]]; then
             echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
           else
             TAG=$(gh api repos/${{ github.repository }}/releases/latest --jq '.tag_name')
             echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Set up Homebrew (Linux)
+        if: matrix.method == 'brew' && runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential procps curl file git
+          NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
 
       - name: Install via Homebrew
         if: matrix.method == 'brew'
@@ -81,4 +89,5 @@ jobs:
           git init
           git remote add origin "$TEMP_DIR/remote"
           arb init
-          arb status
+          arb create myworkspace
+          arb status -C myworkspace
