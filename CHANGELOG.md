@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.106.0](https://github.com/henrikje/arborist/compare/v0.105.0...v0.106.0) (2026-03-10)
+
+
+### Features
+
+* **delete:** interactive selection with live plan preview for --where and --all-safe ([550dde6](https://github.com/henrikje/arborist/commit/550dde674a3f9890469174237ee064343356c165))
+* **delete:** reduce verbosity of multi-workspace delete output ([b7fe729](https://github.com/henrikje/arborist/commit/b7fe729d45d08640b801b3bf68cd6f7b8cf07791))
+* **filter:** add --older-than and --newer-than age-based workspace filtering ([#289](https://github.com/henrikje/arborist/issues/289)) ([7737a8f](https://github.com/henrikje/arborist/commit/7737a8f66581e65444479ea7de116759fa33f43c))
+* **template:** distinguish stale templates from user-modified files ([07cdb1f](https://github.com/henrikje/arborist/commit/07cdb1fb75d08c9a9691ec9d3651b87e2b3c9969))
+
+
+### Bug Fixes
+
+* **render:** strip trailing whitespace from table rows and headers ([f101b9d](https://github.com/henrikje/arborist/commit/f101b9d6dfce53ade5a07b402457aa2cab94a04c))
+
 ## [0.105.0](https://github.com/henrikje/arborist/compare/v0.104.1...v0.105.0) (2026-03-09)
 
 Adds new `rename` and `reset` workspace commands, improves pull plan behavior, and harmonizes command options. Introduced JSON-based configuration.
