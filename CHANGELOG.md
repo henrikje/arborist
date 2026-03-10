@@ -2,6 +2,7 @@
 
 ## [0.105.0](https://github.com/henrikje/arborist/compare/v0.104.1...v0.105.0) (2026-03-09)
 
+Adds new `rename` and `reset` workspace commands, improves pull plan behavior, and harmonizes command options. Introduced JSON-based configuration.
 
 ### Features
 
