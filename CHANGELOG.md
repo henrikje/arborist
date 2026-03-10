@@ -2,6 +2,7 @@
 
 ## [0.106.0](https://github.com/henrikje/arborist/compare/v0.105.0...v0.106.0) (2026-03-10)
 
+Improved workspace deletion with safer filtering, interactive selection, and clearer output.
 
 ### Features
 
