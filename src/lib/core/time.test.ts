@@ -5,6 +5,7 @@ import {
   formatRelativeTime,
   formatRelativeTimeParts,
   latestCommitDate,
+  parseDuration,
 } from "./time";
 
 function ago(ms: number): string {
@@ -163,5 +164,46 @@ describe("latestCommitDate", () => {
 
   test("returns null for empty array", () => {
     expect(latestCommitDate([])).toBeNull();
+  });
+});
+
+describe("parseDuration", () => {
+  test("parses days", () => {
+    expect(parseDuration("30d")).toBe(30 * 24 * 60 * 60 * 1000);
+    expect(parseDuration("1d")).toBe(1 * 24 * 60 * 60 * 1000);
+  });
+
+  test("parses weeks", () => {
+    expect(parseDuration("2w")).toBe(2 * 7 * 24 * 60 * 60 * 1000);
+  });
+
+  test("parses months (30-day)", () => {
+    expect(parseDuration("3m")).toBe(3 * 30 * 24 * 60 * 60 * 1000);
+  });
+
+  test("parses years (365-day)", () => {
+    expect(parseDuration("1y")).toBe(365 * 24 * 60 * 60 * 1000);
+  });
+
+  test("returns null for missing unit", () => {
+    expect(parseDuration("30")).toBeNull();
+  });
+
+  test("returns null for unknown unit", () => {
+    expect(parseDuration("30h")).toBeNull();
+    expect(parseDuration("30s")).toBeNull();
+  });
+
+  test("returns null for non-numeric input", () => {
+    expect(parseDuration("abc")).toBeNull();
+    expect(parseDuration("xd")).toBeNull();
+  });
+
+  test("returns null for zero", () => {
+    expect(parseDuration("0d")).toBeNull();
+  });
+
+  test("trims whitespace", () => {
+    expect(parseDuration(" 7d")).toBe(7 * 24 * 60 * 60 * 1000);
   });
 });

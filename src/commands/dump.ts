@@ -332,7 +332,7 @@ async function runDump(ctx: ArbContext): Promise<void> {
   if (ctx.currentWorkspace) {
     const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
     try {
-      const gatherPromise = gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
+      const gatherPromise = gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache, { gatherActivity: true });
       let gatherTimeoutId: ReturnType<typeof setTimeout> | undefined;
       const gatherTimeout = new Promise<"timed-out">((resolve) => {
         gatherTimeoutId = setTimeout(() => resolve("timed-out"), GATHER_TIMEOUT_MS);
@@ -356,6 +356,7 @@ async function runDump(ctx: ArbContext): Promise<void> {
           base: gatherResult.base,
           detectedTicket: gatherResult.detectedTicket,
           lastCommit: gatherResult.lastCommit,
+          lastActivity: gatherResult.lastActivity,
           repos,
         };
       }

@@ -263,13 +263,13 @@ When the "new" count is zero, every remote-only commit is already reflected in y
 ### Filter by status
 
 ```bash
-arb list --where at-risk                 # workspaces that need attention
-arb delete --where gone                  # clean up after merged PRs
-arb status --where dirty,unpushed        # repos matching either
-arb push --where unpushed+^behind-base   # push only repos that won't need a rebase
+arb list --where at-risk                  # workspaces that need attention
+arb status --where dirty,unpushed         # repos matching either
+arb push --where unpushed+^behind-base    # push only repos that won't need a rebase
+arb delete --older-than 10d --where gone  # delete old merged workspaces
 ```
 
-Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, drifted, and more. The `--where` flag (`-w` for short) lets you filter by any combination, and works across most commands. Use `--dirty` as a shorthand for `--where dirty`.
+Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, drifted, and more. The `--where` flag (`-w` for short) lets you filter by any combination, and works across most commands. Use `--dirty` as a shorthand for `--where dirty`. For age-based filtering, `--older-than` and `--newer-than` (`list` and `delete`) filter by workspace activity and compose with `--where` as AND.
 
 ### Run commands across repos
 

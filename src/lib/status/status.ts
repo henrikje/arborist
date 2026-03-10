@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import { readWorkspaceConfig } from "../core/config";
 import { ArbError } from "../core/errors";
-import { latestCommitDate } from "../core/time";
+import { latestCommitDate, parseDuration } from "../core/time";
 import {
   type GitOperation,
   analyzeReplayPlan,
@@ -24,6 +24,7 @@ import type { GitCache } from "../git/git-cache";
 import { buildPrUrl, parseRemoteUrl } from "../git/remote-url";
 import type { RepoRemotes } from "../git/remotes";
 import { error } from "../terminal/output";
+import { getRepoActivityDate, getWorkspaceActivityDate } from "../workspace/activity";
 import { workspaceBranch } from "../workspace/branch";
 import { workspaceRepoDirs } from "../workspace/repos";
 import { extractPrNumber } from "./pr-detection";
@@ -68,6 +69,7 @@ export interface RepoStatus {
   };
   operation: GitOperation;
   lastCommit: string | null;
+  lastActivity: string | null;
 }
 
 /** Build the full git ref for a base section (e.g. "origin/main"). */
@@ -366,6 +368,52 @@ export function isWorkspaceSafe(repos: RepoStatus[], branch: string): boolean {
   return true;
 }
 
+// ── Age Filtering ──
+
+export interface AgeFilter {
+  olderThan?: number; // ms
+  newerThan?: number; // ms
+}
+
+export function resolveAgeFilter(options: { olderThan?: string; newerThan?: string }): AgeFilter | undefined {
+  const { olderThan, newerThan } = options;
+  if (!olderThan && !newerThan) return undefined;
+  const filter: AgeFilter = {};
+  if (olderThan) {
+    const ms = parseDuration(olderThan);
+    if (ms === null) {
+      error(
+        `Invalid duration "${olderThan}". Use a positive integer followed by d (days), w (weeks), m (months), or y (years). Examples: 30d, 2w, 3m, 1y`,
+      );
+      throw new ArbError(`Invalid duration: ${olderThan}`);
+    }
+    filter.olderThan = ms;
+  }
+  if (newerThan) {
+    const ms = parseDuration(newerThan);
+    if (ms === null) {
+      error(
+        `Invalid duration "${newerThan}". Use a positive integer followed by d (days), w (weeks), m (months), or y (years). Examples: 30d, 2w, 3m, 1y`,
+      );
+      throw new ArbError(`Invalid duration: ${newerThan}`);
+    }
+    filter.newerThan = ms;
+  }
+  return filter;
+}
+
+/** Returns true if the given activity date (ISO string or null) matches the age filter.
+ * null is treated as infinitely old: matches olderThan, does not match newerThan. */
+export function matchesAge(activityDate: string | null, filter: AgeFilter): boolean {
+  if (activityDate === null) {
+    return filter.olderThan !== undefined;
+  }
+  const ageMs = Date.now() - new Date(activityDate).getTime();
+  if (filter.olderThan !== undefined && ageMs <= filter.olderThan) return false;
+  if (filter.newerThan !== undefined && ageMs >= filter.newerThan) return false;
+  return true;
+}
+
 // ── Workspace Summary ──
 
 export interface WorkspaceSummary {
@@ -379,6 +427,7 @@ export interface WorkspaceSummary {
   statusLabels: string[];
   statusCounts: { label: string; count: number; key: keyof RepoFlags }[];
   lastCommit: string | null;
+  lastActivity: string | null;
   detectedTicket: { key: string } | null;
 }
 
@@ -735,6 +784,7 @@ export async function gatherRepoStatus(
     share: shareStatus,
     operation: gitDirResult,
     lastCommit: null,
+    lastActivity: null,
   };
 }
 
@@ -743,6 +793,7 @@ export async function gatherWorkspaceSummary(
   reposDir: string,
   onProgress: ((scanned: number, total: number) => void) | undefined,
   cache: GitCache,
+  options?: { gatherActivity?: boolean },
 ): Promise<WorkspaceSummary> {
   const workspace = basename(wsDir);
   const wb = await workspaceBranch(wsDir);
@@ -758,24 +809,34 @@ export async function gatherWorkspaceSummary(
 
       const remotes = await cache.resolveRemotes(canonicalPath);
 
-      const [status, commitDate] = await Promise.all([
+      const [status, commitDate, activityDate] = await Promise.all([
         gatherRepoStatus(repoDir, reposDir, configBase, remotes, cache),
         getHeadCommitDate(repoDir),
+        options?.gatherActivity ? getRepoActivityDate(repoDir) : Promise.resolve(null),
       ]);
       scanned++;
       onProgress?.(scanned, repoDirs.length);
-      return { status, commitDate };
+      return { status, commitDate, activityDate };
     }),
   );
 
   const repos = repoResults.map((r) => {
     r.status.lastCommit = r.commitDate;
+    r.status.lastActivity = r.activityDate;
     return r.status;
   });
 
   const { atRiskCount, rebasedOnlyCount, statusLabels, statusCounts } = computeSummaryAggregates(repos, branch);
 
   const lastCommit = latestCommitDate(repoResults.map((r) => r.commitDate));
+
+  // Workspace-level activity: max of per-repo activity + non-repo workspace items (Phase A)
+  // Also take lastCommit as a lower bound — a fresh commit always marks the workspace as active.
+  let lastActivity: string | null = null;
+  if (options?.gatherActivity) {
+    const filesDate = await getWorkspaceActivityDate(wsDir, repoDirs);
+    lastActivity = latestCommitDate([filesDate, lastCommit]);
+  }
 
   // ── Ticket detection ──
   // 1. Try branch name first (cheap, no git call)
@@ -810,6 +871,7 @@ export async function gatherWorkspaceSummary(
     statusLabels,
     statusCounts,
     lastCommit,
+    lastActivity,
     detectedTicket,
   };
 }

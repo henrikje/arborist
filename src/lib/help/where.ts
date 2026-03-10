@@ -60,5 +60,17 @@ export const whereFilterTopic: HelpTopic = {
     out(`  ${dim("arb list --where stale")}                List workspaces with any stale repo`);
     out(`  ${dim("arb push --where ^behind-base")}          Push only repos already rebased`);
     out(`  ${dim("arb rebase --where ^diverged")}          Skip diverged repos, rebase the rest`);
+    out("");
+    out(bold("AGE-BASED FILTERING"));
+    out("");
+    out("  --older-than and --newer-than filter list and delete by workspace age");
+    out("  (most recent file activity: commits, uncommitted edits, .claude/, etc.).");
+    out("  They compose with --where as AND:");
+    out("");
+    out(`  ${dim("arb list --older-than 30d")}              Workspaces with no activity in 30+ days`);
+    out(`  ${dim("arb list --newer-than 7d")}               Workspaces active in the last week`);
+    out(`  ${dim("arb delete --older-than 90d --where gone --yes")}  Delete old merged workspaces`);
+    out("");
+    out("  Durations: d (days), w (weeks), m (months), y (years). Examples: 30d, 2w, 3m, 1y.");
   },
 };

@@ -70,6 +70,23 @@ export function latestCommitDate(dates: (string | null)[]): string | null {
   return latest;
 }
 
+const DURATION_UNITS: Record<string, number> = {
+  d: 24 * 60 * 60 * 1000,
+  w: 7 * 24 * 60 * 60 * 1000,
+  m: 30 * 24 * 60 * 60 * 1000,
+  y: 365 * 24 * 60 * 60 * 1000,
+};
+
+/** Parse a duration string like "30d", "2w", "3m", "1y" into milliseconds. Returns null for invalid input. */
+export function parseDuration(s: string): number | null {
+  const match = /^(\d+)([dwmy])$/.exec(s.trim());
+  if (!match) return null;
+  const n = Number.parseInt(match[1] as string, 10);
+  if (n <= 0) return null;
+  const unit = DURATION_UNITS[match[2] as string];
+  return unit !== undefined ? n * unit : null;
+}
+
 /** Render a last-commit cell with right-aligned number and left-aligned unit. */
 export function formatLastCommitCell(parts: RelativeTimeParts, widths: LastCommitWidths, pad: boolean): string {
   if (parts.num) {
