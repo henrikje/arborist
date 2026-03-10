@@ -118,7 +118,14 @@ describe("arb list --older-than composed with --where", () => {
   test("combines as AND: must match both age and status filter", () =>
     withEnv(async (env) => {
       await setupOldAndNew(env);
-      // ws-old has an unpushed commit; ws-new has no commits ahead of base
+      // setupOldAndNew pushes ws-old's commit, so add an unpushed one
+      const wsOldRepoDir = join(env.projectDir, "ws-old", "repo-b");
+      const oldDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      await write(join(wsOldRepoDir, "extra.txt"), "unpushed work");
+      await git(wsOldRepoDir, ["add", "extra.txt"]);
+      await git(wsOldRepoDir, ["commit", `--date=${oldDate.toISOString()}`, "-m", "unpushed work"]);
+      backdateMtime(join(env.projectDir, "ws-old"), oldDate);
+      // ws-old now has an unpushed commit; ws-new has no commits ahead of base
       const result = await arb(env, ["list", "--older-than", "1d", "--where", "unpushed", "--no-fetch"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("ws-old");
