@@ -45,6 +45,8 @@ async function setupOldAndNew(env: Env): Promise<void> {
   await git(wsOldRepoDir, ["add", "work.txt"]);
   // --date sets the author date (used by getHeadCommitDate via --format=%aI)
   await git(wsOldRepoDir, ["commit", `--date=${oldDateStr}`, "-m", "old work"]);
+  // Push so ws-old has no unpushed commits (safe to delete without --force)
+  await git(wsOldRepoDir, ["push", "--set-upstream", "origin", "ws-old"]);
   backdateMtime(join(env.projectDir, "ws-old"), oldDate);
 }
 
