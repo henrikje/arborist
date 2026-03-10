@@ -50,6 +50,7 @@ import {
 import {
   type TemplateDiff,
   diffTemplates,
+  displayAggregatedTemplateDiffs,
   displayTemplateDiffs,
   listWorkspaces,
   selectInteractive,
@@ -230,26 +231,31 @@ function displayDeleteTable(assessments: WorkspaceAssessment[]): void {
 
   // Template diffs below the table
   const multiWs = assessments.length > 1;
-  for (const a of assessments) {
-    const suffix = multiWs ? ` (${a.name})` : "";
-    const diffNodes = displayTemplateDiffs(a.templateDiffs, suffix);
+  if (multiWs) {
+    const diffNodes = displayAggregatedTemplateDiffs(assessments);
     if (diffNodes.length > 0) {
       process.stderr.write(render(diffNodes, rCtx));
+    }
+  } else {
+    for (const a of assessments) {
+      const diffNodes = displayTemplateDiffs(a.templateDiffs);
+      if (diffNodes.length > 0) {
+        process.stderr.write(render(diffNodes, rCtx));
+      }
     }
   }
 
   // At-risk warnings
-  for (const a of assessments) {
-    if (a.hasAtRisk) {
-      const inWs = multiWs ? ` in ${a.name}` : "";
+  const totalAtRisk = assessments.reduce((sum, a) => sum + a.atRiskCount, 0);
+  const atRiskWsCount = assessments.filter((a) => a.hasAtRisk).length;
+  if (totalAtRisk > 0) {
+    if (multiWs) {
       warn(
-        `  \u26A0 ${plural(a.atRiskCount, "repo")}${inWs} ${a.atRiskCount === 1 ? "has" : "have"} changes that will be lost.`,
+        `  \u26A0 ${plural(totalAtRisk, "repo")} across ${plural(atRiskWsCount, "workspace")} ${totalAtRisk === 1 ? "has" : "have"} changes that will be lost.`,
       );
+    } else {
+      warn(`  \u26A0 ${plural(totalAtRisk, "repo")} ${totalAtRisk === 1 ? "has" : "have"} changes that will be lost.`);
     }
-  }
-
-  const hasAnyAtRisk = assessments.some((a) => a.hasAtRisk);
-  if (hasAnyAtRisk) {
     process.stderr.write("\n");
   }
 }
