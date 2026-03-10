@@ -154,6 +154,8 @@ All commits follow [Conventional Commits](https://www.conventionalcommits.org/),
 | `docs` | Documentation-only changes | Not needed |
 | `refactor` | Code restructuring with no behavioral change | Not needed |
 
+`feat` and `fix` are reserved for user-facing changes only. Non-user-facing changes (CI, internal tooling, dependencies) must use `chore`, `docs`, or `refactor` instead.
+
 ### Scope
 
 `feat` and `fix` always include a scope identifying the command most affected, or a cross-cutting area when no single command applies:
