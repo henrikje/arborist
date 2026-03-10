@@ -26,6 +26,16 @@ arb list --where stale             # workspaces that may need attention
 
 Use `,` for OR and `+` for AND. See [Scripting & automation](scripting-automation.md#filtering) for the full list of filter terms and syntax details.
 
+Use `--older-than` and `--newer-than` to filter by workspace age — how recently files were touched (commits, uncommitted edits, and workspace-level items like `.claude/` are all considered):
+
+```bash
+arb list --older-than 30d    # workspaces with no activity in the last 30 days
+arb list --newer-than 7d     # workspaces active in the last week
+arb list --older-than 2w --where unpushed   # old workspaces that still have unpushed commits
+```
+
+Durations use `d` (days), `w` (weeks), `m` (months), or `y` (years). `--older-than` and `--newer-than` compose with `--where` as AND.
+
 ## Navigate
 
 `arb cd` changes into a workspace or repo directory. It requires the shell integration installed by `install.sh`:
@@ -125,7 +135,17 @@ When a feature is done:
 arb delete fix-login
 ```
 
-This shows the status of each repo and walks you through deletion. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before deleting the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-safe` to batch-delete every workspace with safe status. Combine `--all-safe --where gone` to target merged-and-safe workspaces specifically. See `arb delete --help` for all options.
+This shows the status of each repo and walks you through deletion. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before deleting the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-safe` to batch-delete every workspace with safe status. Combine `--all-safe --where gone` to target merged-and-safe workspaces specifically.
+
+To clean up old or abandoned workspaces regardless of status, use `--older-than`:
+
+```bash
+arb delete --older-than 90d --dry-run    # preview workspaces with no activity for 90+ days
+arb delete --older-than 90d --yes        # delete them
+arb delete --older-than 30d --where gone --yes   # only if also merged/gone
+```
+
+Activity is measured the same way as `arb list --older-than`: most recent file mtime across commits, uncommitted edits, and workspace-level items. See `arb delete --help` for all options.
 
 ## Default repos
 

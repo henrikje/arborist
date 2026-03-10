@@ -28,6 +28,8 @@ import {
   computeFlags,
   gatherWorkspaceSummary,
   isWorkspaceSafe,
+  matchesAge,
+  resolveAgeFilter,
   resolveWhereFilter,
   workspaceMatchesWhere,
   wouldLoseWork,
@@ -66,7 +68,11 @@ interface WorkspaceAssessment {
   templateDiffs: TemplateDiff[];
 }
 
-async function assessWorkspace(name: string, ctx: ArbContext): Promise<WorkspaceAssessment | null> {
+async function assessWorkspace(
+  name: string,
+  ctx: ArbContext,
+  gatherOpts?: { gatherActivity?: boolean },
+): Promise<WorkspaceAssessment | null> {
   const validationError = validateWorkspaceName(name);
   if (validationError) {
     error(validationError);
@@ -108,6 +114,7 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
       statusLabels: [],
       statusCounts: [],
       lastCommit: null,
+      lastActivity: null,
       detectedTicket: null,
     };
   } else {
@@ -116,7 +123,7 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
     // if we can't determine the state, treat the workspace as at-risk.
     await assertMinimumGitVersion(cache);
     try {
-      summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
+      summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache, gatherOpts);
     } catch (e) {
       warn(`Could not gather status for ${name}: ${e instanceof Error ? e.message : e}`);
       summary = {
@@ -130,6 +137,7 @@ async function assessWorkspace(name: string, ctx: ArbContext): Promise<Workspace
         statusLabels: [],
         statusCounts: [],
         lastCommit: null,
+        lastActivity: null,
         detectedTicket: null,
       };
     }
@@ -308,6 +316,10 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
       "Delete all safe workspaces (no uncommitted changes, unpushed commits, or branch drift; behind base is fine)",
     )
     .option("-w, --where <filter>", "Filter workspaces by repo status flags (comma = OR, + = AND, ^ = negate)")
+    .option(
+      "--older-than <duration>",
+      "Only delete workspaces not touched in the given duration (e.g. 30d, 2w, 3m, 1y)",
+    )
     .option("-n, --dry-run", "Show what would happen without executing")
     .option("--fetch", "Fetch before assessing workspace status (default)")
     .option("-N, --no-fetch", "Skip fetching")
@@ -324,6 +336,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
           deleteRemote?: boolean;
           allSafe?: boolean;
           where?: string;
+          olderThan?: string;
           dryRun?: boolean;
           fetch?: boolean;
         },
@@ -334,6 +347,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
         const deleteRemote = options.deleteRemote ?? false;
 
         const whereFilter = resolveWhereFilter(options);
+        const ageFilter = resolveAgeFilter(options);
 
         // Pre-fetch repos across all candidate workspaces for fresh remote data
         const fetchWorkspaceRepos = async (workspaceNames: string[]) => {
@@ -372,19 +386,18 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 
           await fetchWorkspaceRepos(candidates);
 
+          const gatherOptsAllSafe = ageFilter ? { gatherActivity: true } : undefined;
           const safeEntries: WorkspaceAssessment[] = [];
           for (const ws of candidates) {
             const wsDir = `${ctx.arbRootDir}/${ws}`;
             if (!existsSync(`${wsDir}/.arbws/config.json`) && !existsSync(`${wsDir}/.arbws/config`)) continue;
 
-            const assessment = await assessWorkspace(ws, ctx);
+            const assessment = await assessWorkspace(ws, ctx, gatherOptsAllSafe);
             if (assessment && !assessment.hasAtRisk && isWorkspaceSafe(assessment.summary.repos, assessment.branch)) {
               // Apply --where narrowing (AND with --all-safe)
-              if (whereFilter) {
-                if (!workspaceMatchesWhere(assessment.summary.repos, assessment.branch, whereFilter)) {
-                  continue;
-                }
-              }
+              if (whereFilter && !workspaceMatchesWhere(assessment.summary.repos, assessment.branch, whereFilter))
+                continue;
+              if (ageFilter && !matchesAge(assessment.summary.lastActivity, ageFilter)) continue;
               safeEntries.push(assessment);
             }
           }
@@ -424,8 +437,8 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
         }
 
         let names = nameArgs;
-        if (names.length === 0 && whereFilter) {
-          // --where replaces positional args: select from all workspaces
+        if (names.length === 0 && (whereFilter || ageFilter)) {
+          // --where / --older-than replaces positional args: select from all workspaces
           const allWorkspaces = listWorkspaces(ctx.arbRootDir);
           names = allWorkspaces.filter((ws) => ws !== ctx.currentWorkspace);
         } else if (names.length === 0) {
@@ -453,19 +466,23 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
         await fetchWorkspaceRepos(names);
 
         // Assess all workspaces
+        const gatherOpts = ageFilter ? { gatherActivity: true } : undefined;
         let assessments: WorkspaceAssessment[] = [];
         for (const name of names) {
-          const assessment = await assessWorkspace(name, ctx);
+          const assessment = await assessWorkspace(name, ctx, gatherOpts);
           if (assessment) assessments.push(assessment);
         }
 
-        // Filter by --where
+        // Filter by --where and/or --older-than
         if (whereFilter) {
           assessments = assessments.filter((a) => workspaceMatchesWhere(a.summary.repos, a.branch, whereFilter));
         }
+        if (ageFilter) {
+          assessments = assessments.filter((a) => matchesAge(a.summary.lastActivity, ageFilter));
+        }
 
         if (assessments.length === 0) {
-          if (whereFilter) {
+          if (whereFilter || ageFilter) {
             info("No workspaces match the filter.");
           }
           return;

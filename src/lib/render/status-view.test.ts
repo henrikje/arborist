@@ -16,6 +16,7 @@ function makeSummary(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummar
     statusLabels: [],
     statusCounts: [],
     lastCommit: null,
+    lastActivity: null,
     detectedTicket: null,
     ...overrides,
   };

@@ -12,8 +12,11 @@ import type { Cell, OutputNode } from "../lib/render";
 import { EMPTY_CELL, cell } from "../lib/render";
 import { buildStatusCountsCell } from "../lib/render";
 import {
+  type AgeFilter,
   type WorkspaceSummary,
   gatherWorkspaceSummary,
+  matchesAge,
+  resolveAgeFilter,
   resolveWhereFilter,
   workspaceMatchesWhere,
 } from "../lib/status";
@@ -52,6 +55,8 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
     .option("--no-status", "Skip per-repo status (faster for large setups)")
     .option("-d, --dirty", "Only list dirty workspaces (shorthand for --where dirty)")
     .option("-w, --where <filter>", "Filter workspaces by repo status flags (comma = OR, + = AND, ^ = negate)")
+    .option("--older-than <duration>", "Only list workspaces not touched in the given duration (e.g. 30d, 2w, 3m, 1y)")
+    .option("--newer-than <duration>", "Only list workspaces touched within the given duration (e.g. 7d, 2w)")
     .option("-q, --quiet", "Output one workspace name per line")
     .option("--json", "Output structured JSON")
     .option("--schema", "Print JSON Schema for this command's --json output and exit")
@@ -61,6 +66,8 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
         status?: boolean;
         dirty?: boolean;
         where?: string;
+        olderThan?: string;
+        newerThan?: string;
         quiet?: boolean;
         json?: boolean;
         schema?: boolean;
@@ -84,9 +91,10 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
         }
 
         const whereFilter = resolveWhereFilter(options);
-        if (whereFilter && options.status === false) {
-          error("Cannot combine --no-status with --where. --where requires status gathering.");
-          throw new ArbError("Cannot combine --no-status with --where. --where requires status gathering.");
+        const ageFilter = resolveAgeFilter(options);
+        if ((whereFilter || ageFilter) && options.status === false) {
+          error("Cannot combine --no-status with --where or --older-than/--newer-than. Status gathering is required.");
+          throw new ArbError("Cannot combine --no-status with filters that require status gathering.");
         }
 
         const workspaces = listWorkspaces(ctx.arbRootDir);
@@ -109,11 +117,18 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
         // ── Quiet output path ──
         if (options.quiet) {
           if (options.fetch) await blockingFetchRepos(ctx, cache, repoNames); // only if explicitly requested
-          if (whereFilter) {
+          if (whereFilter || ageFilter) {
+            const gatherActivityOpts = ageFilter ? { gatherActivity: true } : undefined;
             const results = await Promise.all(
               metadata.toScan.map(async (entry) => {
                 try {
-                  const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir, undefined, cache);
+                  const summary = await gatherWorkspaceSummary(
+                    entry.wsDir,
+                    ctx.reposDir,
+                    undefined,
+                    cache,
+                    gatherActivityOpts,
+                  );
                   return { index: entry.index, summary };
                 } catch {
                   return { index: entry.index, summary: null };
@@ -128,9 +143,10 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
               const summary = summaryMap.get(i);
               if (!summary) continue;
               const row = metadata.rows[i];
-              if (row && workspaceMatchesWhere(summary.repos, summary.branch, whereFilter)) {
-                process.stdout.write(`${row.name}\n`);
-              }
+              if (!row) continue;
+              if (whereFilter && !workspaceMatchesWhere(summary.repos, summary.branch, whereFilter)) continue;
+              if (ageFilter && !matchesAge(summary.lastActivity, ageFilter)) continue;
+              process.stdout.write(`${row.name}\n`);
             }
           } else {
             for (const row of metadata.rows) {
@@ -159,10 +175,17 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
             return;
           }
 
+          const gatherActivityOptsJson = ageFilter ? { gatherActivity: true } : undefined;
           const results = await Promise.all(
             metadata.toScan.map(async (entry) => {
               try {
-                const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir, undefined, cache);
+                const summary = await gatherWorkspaceSummary(
+                  entry.wsDir,
+                  ctx.reposDir,
+                  undefined,
+                  cache,
+                  gatherActivityOptsJson,
+                );
                 return { index: entry.index, summary };
               } catch {
                 return { index: entry.index, summary: null };
@@ -191,11 +214,13 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
           }
 
           let filtered = jsonEntries;
-          if (whereFilter) {
+          if (whereFilter || ageFilter) {
             filtered = jsonEntries.filter((_entry, i) => {
               const summary = summaryMap.get(i);
               if (!summary) return false;
-              return workspaceMatchesWhere(summary.repos, summary.branch, whereFilter);
+              if (whereFilter && !workspaceMatchesWhere(summary.repos, summary.branch, whereFilter)) return false;
+              if (ageFilter && !matchesAge(summary.lastActivity, ageFilter)) return false;
+              return true;
             });
           }
 
@@ -255,6 +280,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
                   if (state.aborted) return placeholder;
                   const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
                     silent: true,
+                    ageFilter,
                   });
                   return formatListTable(statusRows, true);
                 },
@@ -275,6 +301,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
               render: async () => {
                 const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
                   silent: true,
+                  ageFilter,
                 });
                 return formatListTable(statusRows, true);
               },
@@ -284,7 +311,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
         } else {
           // Non-phased (non-TTY or nothing to scan)
           if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames);
-          const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache);
+          const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, { ageFilter });
           process.stdout.write(formatListTable(statusRows, true));
         }
       },
@@ -369,7 +396,7 @@ async function gatherListStatus(
   ctx: ArbContext,
   whereFilter: string | undefined,
   cache: GitCache,
-  options?: { silent?: boolean },
+  options?: { silent?: boolean; ageFilter?: AgeFilter },
 ): Promise<ListRow[]> {
   const rows = metadata.rows.map((r) => ({ ...r }));
   const summaryByIndex = new Map<number, WorkspaceSummary>();
@@ -385,10 +412,18 @@ async function gatherListStatus(
         scanProgress(scannedRepos, totalRepos);
       };
 
+  const gatherActivityOpts = options?.ageFilter ? { gatherActivity: true } : undefined;
+
   const results = await Promise.all(
     metadata.toScan.map(async (entry) => {
       try {
-        const summary = await gatherWorkspaceSummary(entry.wsDir, ctx.reposDir, progressCallback, cache);
+        const summary = await gatherWorkspaceSummary(
+          entry.wsDir,
+          ctx.reposDir,
+          progressCallback,
+          cache,
+          gatherActivityOpts,
+        );
         return { index: entry.index, summary };
       } catch {
         return { index: entry.index, summary: null };
@@ -409,11 +444,14 @@ async function gatherListStatus(
     if (row) applySummaryToRow(row, summary);
   }
 
-  if (whereFilter) {
+  const ageFilter = options?.ageFilter;
+  if (whereFilter || ageFilter) {
     return rows.filter((_, i) => {
       const summary = summaryByIndex.get(i);
       if (!summary) return false;
-      return workspaceMatchesWhere(summary.repos, summary.branch, whereFilter);
+      if (whereFilter && !workspaceMatchesWhere(summary.repos, summary.branch, whereFilter)) return false;
+      if (ageFilter && !matchesAge(summary.lastActivity, ageFilter)) return false;
+      return true;
     });
   }
 

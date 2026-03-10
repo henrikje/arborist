@@ -201,6 +201,7 @@ _arb() {
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-a --all-safe)'{-a,--all-safe}'[Remove all safe workspaces]' \
                         '(-w --where)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
+                        '--older-than[Only delete workspaces not touched in the given duration (e.g. 30d, 2w, 3m, 1y)]:duration:' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-N --fetch --no-fetch)--fetch[Fetch before assessing workspace status (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching]'
@@ -359,6 +360,8 @@ _arb() {
                         '(-q --quiet --json --schema)'{-q,--quiet}'[Output one workspace name per line]' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only list dirty workspaces]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
+                        '--older-than[Only list workspaces not touched in the given duration (e.g. 30d, 2w, 3m, 1y)]:duration:' \
+                        '--newer-than[Only list workspaces touched within the given duration (e.g. 7d, 2w)]:duration:' \
                         '(--json -q --quiet --schema)--json[Output structured JSON]' \
                         '(--schema --json -q --quiet)--schema[Print JSON Schema for --json output]'
                     ;;

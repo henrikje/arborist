@@ -72,6 +72,7 @@ export const StatusJsonRepoSchema = z.object({
     .optional(),
   operation: GitOperationSchema,
   lastCommit: z.string().nullable(),
+  lastActivity: z.string().nullable().optional(),
   verbose: z
     .object({
       aheadOfBase: z
@@ -122,6 +123,7 @@ export const StatusJsonOutputSchema = z.object({
   statusLabels: z.array(z.string()),
   statusCounts: z.array(z.object({ label: z.string(), count: z.number() })),
   lastCommit: z.string().nullable(),
+  lastActivity: z.string().nullable().optional(),
   detectedTicket: DetectedTicketSchema,
 });
 

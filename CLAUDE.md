@@ -89,4 +89,5 @@ After each change, check whether the following need updating:
 - **Command help text** — If the change modifies a command's options, arguments, or behavior, update `.description()` and `.option()` help strings in `src/commands/`.
 - **Shell tab completion** — If the change adds, removes, or renames a command option or subcommand, update both `shell/arb.bash` and `shell/arb.zsh`.
 - **Integration tests** — Always add new tests when changes affect CLI behavior. If any existing integration tests fail after a change, report the failure to the user with the reason, and explain what you plan to do before making fixes.
+- **`arb dump`** — If the change adds new fields to `WorkspaceSummary`, `RepoStatus`, or other state gathered per-workspace/repo, update `src/commands/dump.ts` to include those fields in the dump output. Also update the `gatherWorkspaceSummary` call in `dump.ts` if new options need to be passed.
 - **Decision records** — If the change involved a significant design decision, write a `decisions/NNNN-*.md`. See `decisions/README.md` for the template. Existing records must never be modified.
