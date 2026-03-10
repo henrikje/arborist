@@ -36,6 +36,8 @@ import {
 } from "../lib/status";
 import { confirmOrExit, parallelFetch, reportFetchFailures } from "../lib/sync";
 import {
+  checkboxWithPreview,
+  dim,
   dryRunNotice,
   error,
   info,
@@ -44,6 +46,7 @@ import {
   isTTY,
   plural,
   readNamesFromStdin,
+  red,
   success,
   warn,
 } from "../lib/terminal";
@@ -53,7 +56,6 @@ import {
   displayAggregatedTemplateDiffs,
   displayTemplateDiffs,
   listWorkspaces,
-  selectInteractive,
   workspaceBranch,
   workspaceRepoDirs,
 } from "../lib/workspace";
@@ -65,8 +67,150 @@ interface WorkspaceAssessment {
   repos: string[]; // Repo names from filesystem scan (independent of summary)
   summary: WorkspaceSummary;
   atRiskCount: number;
+  atRiskRepos: string[];
   hasAtRisk: boolean;
   templateDiffs: TemplateDiff[];
+}
+
+function buildCheckboxName(
+  a: WorkspaceAssessment,
+  maxNameWidth: number,
+  lcWidths: LastCommitWidths,
+  maxReposWidth: number,
+): string {
+  const name = a.name.padEnd(maxNameWidth);
+
+  // Last commit
+  const parts = a.summary.lastCommit ? formatRelativeTimeParts(a.summary.lastCommit) : { num: "", unit: "" };
+  const lastCommit = formatLastCommitCell(parts, lcWidths, true);
+
+  // Repo count (left-aligned, matching the table renderer)
+  const repoCount = `${a.summary.total}`.padEnd(maxReposWidth);
+
+  // Status — uses formatStatusCounts for ANSI attention coloring on at-risk flags
+  let status: string;
+  if (a.summary.total === 0) {
+    status = "empty";
+  } else if (a.summary.repos.length === 0 && a.summary.total > 0) {
+    status = "(remotes not resolved)";
+  } else if (a.summary.statusCounts.length === 0) {
+    status = "no issues";
+  } else {
+    status = formatStatusCounts(a.summary.statusCounts, a.summary.rebasedOnlyCount, LOSE_WORK_FLAGS);
+  }
+
+  return `${name}  ${lastCommit}  ${repoCount}  ${status}`;
+}
+
+function buildCheckboxHeader(maxNameWidth: number, lcWidths: LastCommitWidths, maxReposWidth: number): string {
+  // 3 leading spaces to align with inquirer's "cursor + icon + space" prefix
+  const prefix = "   ";
+  const wsHeader = "WORKSPACE".padEnd(maxNameWidth);
+  const lcHeader = "LAST COMMIT".padStart(lcWidths.total);
+  const reposHeader = "REPOS".padEnd(maxReposWidth);
+  return `\n${prefix}${wsHeader}  ${lcHeader}  ${reposHeader}  STATUS`;
+}
+
+function buildAtRiskNodes(assessments: WorkspaceAssessment[]): OutputNode[] {
+  const atRisk = assessments.filter((a) => a.hasAtRisk);
+  if (atRisk.length === 0) return [];
+  const multiWs = assessments.length > 1;
+  return [
+    {
+      kind: "section",
+      header: cell("Workspaces with changes that will be lost", "attention"),
+      items: atRisk.map((a) => {
+        const repos = a.atRiskRepos.join(", ");
+        return cell(multiWs ? `[${a.name}] ${repos}` : repos);
+      }),
+    },
+    { kind: "gap" },
+  ];
+}
+
+function buildDeleteInfoNodes(assessments: WorkspaceAssessment[]): OutputNode[] {
+  const nodes: OutputNode[] = [];
+  const multiWs = assessments.length > 1;
+  if (multiWs) {
+    const diffNodes = displayAggregatedTemplateDiffs(assessments);
+    if (diffNodes.length > 0) nodes.push(...diffNodes);
+  } else {
+    for (const a of assessments) {
+      const diffNodes = displayTemplateDiffs(a.templateDiffs);
+      if (diffNodes.length > 0) nodes.push(...diffNodes);
+    }
+  }
+  nodes.push(...buildAtRiskNodes(assessments));
+  return nodes;
+}
+
+function buildDeletePreview(
+  assessments: WorkspaceAssessment[],
+  selectedIndices: number[],
+  forceAtRisk: boolean,
+): string {
+  const selected = selectedIndices.map((i) => assessments[i] as WorkspaceAssessment);
+  if (selected.length === 0) return "";
+
+  const rCtx: RenderContext = { tty: true };
+  const nodes = buildDeleteInfoNodes(selected);
+  let out = nodes.length > 0 ? `\n${render(nodes, rCtx)}` : "";
+
+  // At-risk refusal warning
+  const atRiskWorkspaces = selected.filter((a) => a.hasAtRisk);
+  if (atRiskWorkspaces.length > 0 && !forceAtRisk) {
+    out += red(
+      `Refusing to delete: ${plural(atRiskWorkspaces.length, "workspace")} ${atRiskWorkspaces.length === 1 ? "has" : "have"} work that would be lost. Use --force to override.`,
+    );
+    out += "\n";
+  }
+
+  return out;
+}
+
+async function selectFromAssessments(
+  assessments: WorkspaceAssessment[],
+  forceAtRisk: boolean,
+  preSelected = true,
+): Promise<WorkspaceAssessment[]> {
+  if (assessments.length === 0) return [];
+
+  // Compute column widths for checkbox names
+  const maxNameWidth = Math.max("WORKSPACE".length, ...assessments.map((a) => a.name.length));
+  const allTimeParts: RelativeTimeParts[] = assessments.map((a) =>
+    a.summary.lastCommit ? formatRelativeTimeParts(a.summary.lastCommit) : { num: "", unit: "" },
+  );
+  const lcWidths = computeLastCommitWidths(allTimeParts);
+  const maxReposWidth = Math.max("REPOS".length, ...assessments.map((a) => `${a.summary.total}`.length));
+
+  const header = buildCheckboxHeader(maxNameWidth, lcWidths, maxReposWidth);
+
+  const choices = assessments.map((a, i) => ({
+    name: buildCheckboxName(a, maxNameWidth, lcWidths, maxReposWidth),
+    value: i,
+    short: a.name,
+    checked: preSelected,
+  }));
+
+  const selected = await checkboxWithPreview(
+    {
+      message: header,
+      choices,
+      pageSize: 20,
+      loop: false,
+      preview: (selectedIndices: number[]) => buildDeletePreview(assessments, selectedIndices, forceAtRisk),
+      theme: {
+        prefix: { idle: "", done: "" },
+        style: {
+          message: (text: string, status: string) => (status === "done" ? "" : dim(text)),
+          renderSelectedChoices: (sel: { short: string }[]) => `${sel.length} selected`,
+        },
+      },
+    },
+    { output: process.stderr, clearPromptOnDone: true },
+  );
+
+  return selected.map((i) => assessments[i] as WorkspaceAssessment);
 }
 
 async function assessWorkspace(
@@ -145,16 +289,20 @@ async function assessWorkspace(
   }
 
   // Determine at-risk repos
-  let hasAtRisk = summary.repos.length === 0 && repos.length > 0;
-  let atRiskCount = summary.repos.length === 0 ? repos.length : 0;
-
-  for (const status of summary.repos) {
-    const flags = computeFlags(status, branch);
-    if (wouldLoseWork(flags)) {
-      hasAtRisk = true;
-      atRiskCount++;
+  const atRiskRepos: string[] = [];
+  if (summary.repos.length === 0 && repos.length > 0) {
+    // Remotes not resolved — all repos are at risk
+    atRiskRepos.push(...repos);
+  } else {
+    for (const status of summary.repos) {
+      const flags = computeFlags(status, branch);
+      if (wouldLoseWork(flags)) {
+        atRiskRepos.push(status.name);
+      }
     }
   }
+  const atRiskCount = atRiskRepos.length;
+  const hasAtRisk = atRiskCount > 0;
 
   // Template drift detection (exclude stale — user hasn't touched those files)
   const templateDiffs = (await diffTemplates(ctx.arbRootDir, wsDir, repos, cache)).filter((d) => d.kind !== "stale");
@@ -166,6 +314,7 @@ async function assessWorkspace(
     repos,
     summary,
     atRiskCount,
+    atRiskRepos,
     hasAtRisk,
     templateDiffs,
   };
@@ -226,37 +375,11 @@ function buildDeleteTableNodes(assessments: WorkspaceAssessment[]): OutputNode[]
 
 function displayDeleteTable(assessments: WorkspaceAssessment[]): void {
   const rCtx: RenderContext = { tty: isTTY() };
-  const nodes = buildDeleteTableNodes(assessments);
-  process.stderr.write(`\n${render(nodes, rCtx)}\n`);
-
-  // Template diffs below the table
-  const multiWs = assessments.length > 1;
-  if (multiWs) {
-    const diffNodes = displayAggregatedTemplateDiffs(assessments);
-    if (diffNodes.length > 0) {
-      process.stderr.write(render(diffNodes, rCtx));
-    }
-  } else {
-    for (const a of assessments) {
-      const diffNodes = displayTemplateDiffs(a.templateDiffs);
-      if (diffNodes.length > 0) {
-        process.stderr.write(render(diffNodes, rCtx));
-      }
-    }
-  }
-
-  // At-risk warnings
-  const totalAtRisk = assessments.reduce((sum, a) => sum + a.atRiskCount, 0);
-  const atRiskWsCount = assessments.filter((a) => a.hasAtRisk).length;
-  if (totalAtRisk > 0) {
-    if (multiWs) {
-      warn(
-        `  \u26A0 ${plural(totalAtRisk, "repo")} across ${plural(atRiskWsCount, "workspace")} ${totalAtRisk === 1 ? "has" : "have"} changes that will be lost.`,
-      );
-    } else {
-      warn(`  \u26A0 ${plural(totalAtRisk, "repo")} ${totalAtRisk === 1 ? "has" : "have"} changes that will be lost.`);
-    }
-    process.stderr.write("\n");
+  const tableNodes = buildDeleteTableNodes(assessments);
+  const infoNodes = buildDeleteInfoNodes(assessments);
+  process.stderr.write(`\n${render(tableNodes, rCtx)}\n`);
+  if (infoNodes.length > 0) {
+    process.stderr.write(render(infoNodes, rCtx));
   }
 }
 
@@ -331,7 +454,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
     .option("-N, --no-fetch", "Skip fetching")
     .summary("Delete one or more workspaces")
     .description(
-      "Delete one or more workspaces and their repos. Fetches workspace repos before assessing for fresh remote state (skip with -N/--no-fetch). Shows the status of each repo (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-delete all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Use --where <filter> to filter by status flags. When used without workspace names, --where selects all matching workspaces (e.g. arb delete --where gone deletes all gone workspaces). When combined with names, --where narrows the selection further (AND logic). Combine with --all-safe to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). See 'arb help where' for filter syntax.\n\nUse --yes to skip confirmation, --force to override at-risk safety checks, --delete-remote to also delete the remote branches.\n\nSee 'arb help stacked' for stacked workspace deletion.",
+      "Delete one or more workspaces and their repos. Fetches workspace repos before assessing for fresh remote state (skip with -N/--no-fetch). Shows the status of each repo (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-delete all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Use --where <filter> to filter by status flags. When used without workspace names, --where selects all matching workspaces (e.g. arb delete --where gone deletes all gone workspaces). In a TTY, --where and --all-safe show an interactive picker with all matches pre-selected, letting you deselect workspaces to keep. When combined with names, --where narrows the selection further (AND logic). Combine with --all-safe to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). See 'arb help where' for filter syntax.\n\nUse --yes to skip confirmation (and interactive selection), --force to override at-risk safety checks, --delete-remote to also delete the remote branches.\n\nSee 'arb help stacked' for stacked workspace deletion.",
     )
     .action(
       async (
@@ -393,7 +516,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
           await fetchWorkspaceRepos(candidates);
 
           const gatherOptsAllSafe = ageFilter ? { gatherActivity: true } : undefined;
-          const safeEntries: WorkspaceAssessment[] = [];
+          let safeEntries: WorkspaceAssessment[] = [];
           for (const ws of candidates) {
             const wsDir = `${ctx.arbRootDir}/${ws}`;
             if (!existsSync(`${wsDir}/.arbws/config.json`) && !existsSync(`${wsDir}/.arbws/config`)) continue;
@@ -411,6 +534,15 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
           if (safeEntries.length === 0) {
             info("No workspaces with safe status.");
             return;
+          }
+
+          // Interactive selection when in TTY — let the user deselect workspaces to keep
+          if (isTTY() && process.stdin.isTTY && !skipPrompts) {
+            safeEntries = await selectFromAssessments(safeEntries, forceAtRisk);
+            if (safeEntries.length === 0) {
+              info("No workspaces selected.");
+              return;
+            }
           }
 
           displayDeleteTable(safeEntries);
@@ -443,6 +575,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
         }
 
         let names = nameArgs;
+        const interactivePicker = names.length === 0 && !whereFilter && !ageFilter;
         if (names.length === 0 && (whereFilter || ageFilter)) {
           // --where / --older-than replaces positional args: select from all workspaces
           const allWorkspaces = listWorkspaces(ctx.arbRootDir);
@@ -455,16 +588,14 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
             error("No workspace specified.");
             throw new ArbError("No workspace specified.");
           } else {
-            const workspaces = listWorkspaces(ctx.arbRootDir);
-            if (workspaces.length === 0) {
+            // Interactive: assess all workspaces for the table selector
+            const allWorkspaces = listWorkspaces(ctx.arbRootDir);
+            const candidates = allWorkspaces.filter((ws) => ws !== ctx.currentWorkspace);
+            if (candidates.length === 0) {
               error("No workspaces found.");
               throw new ArbError("No workspaces found.");
             }
-            names = await selectInteractive(workspaces, "Select workspaces to delete");
-            if (names.length === 0) {
-              error("No workspaces selected.");
-              throw new ArbError("No workspaces selected.");
-            }
+            names = candidates;
           }
         }
 
@@ -490,8 +621,20 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
         if (assessments.length === 0) {
           if (whereFilter || ageFilter) {
             info("No workspaces match the filter.");
+          } else {
+            error("No workspaces found.");
+            throw new ArbError("No workspaces found.");
           }
           return;
+        }
+
+        // Interactive selection in TTY — table selector for bare delete, --where, or --older-than
+        if ((interactivePicker || whereFilter || ageFilter) && isTTY() && process.stdin.isTTY && !skipPrompts) {
+          assessments = await selectFromAssessments(assessments, forceAtRisk, !interactivePicker);
+          if (assessments.length === 0) {
+            info("No workspaces selected.");
+            return;
+          }
         }
 
         // Display columnar status table
