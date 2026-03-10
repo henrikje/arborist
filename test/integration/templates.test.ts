@@ -215,6 +215,20 @@ describe("remove: template drift detection", () => {
       expect(result.output).not.toContain("Template files modified");
     }));
 
+  test("arb delete does not show stale files as template drift", () =>
+    withEnv(async (env) => {
+      await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
+      await write(join(env.projectDir, ".arb/templates/workspace/.env"), "ORIGINAL");
+      await arb(env, ["create", "stale-del", "repo-a"]);
+      // Template source changes, but user doesn't edit the workspace file
+      await write(join(env.projectDir, ".arb/templates/workspace/.env"), "UPDATED");
+
+      const result = await arb(env, ["delete", "stale-del", "--yes", "--force"]);
+      expect(result.exitCode).toBe(0);
+      expect(result.output).not.toContain("Template files modified");
+      expect(result.output).not.toContain("newer version");
+    }));
+
   test("arb delete multi-workspace shows unified plan with template drift", () =>
     withEnv(async (env) => {
       await mkdir(join(env.projectDir, ".arb/templates/repos/repo-a"), { recursive: true });
@@ -1582,5 +1596,110 @@ describe("unified display in lifecycle commands", () => {
       expect(result.output).toContain("Conflicting templates");
       expect(result.output).toContain("remove either");
       expect(result.output).toContain(".arb/templates/workspace/config.json");
+    }));
+
+  // ── stale detection (template changed, user didn't) ──────────────
+
+  test("arb template list shows stale instead of modified when user hasn't edited", () =>
+    withEnv(async (env) => {
+      await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
+      await write(join(env.projectDir, ".arb/templates/workspace/.env"), "ORIGINAL");
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      // Template source changes, but workspace file is untouched
+      await write(join(env.projectDir, ".arb/templates/workspace/.env"), "UPDATED");
+      const result = await arb(env, ["template", "list"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("stale");
+      expect(result.output).not.toContain("modified");
+    }));
+
+  test("arb template list shows modified when user edited the file", () =>
+    withEnv(async (env) => {
+      await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
+      await write(join(env.projectDir, ".arb/templates/workspace/.env"), "ORIGINAL");
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      // User edits the file AND template source changes
+      await writeFile(join(env.projectDir, "my-feature/.env"), "USER-EDIT");
+      await write(join(env.projectDir, ".arb/templates/workspace/.env"), "UPDATED");
+      const result = await arb(env, ["template", "list"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("modified");
+      expect(result.output).not.toContain("stale");
+    }));
+
+  test("arb template diff excludes stale files", () =>
+    withEnv(async (env) => {
+      await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
+      await write(join(env.projectDir, ".arb/templates/workspace/.env"), "ORIGINAL");
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      // Template changes, user doesn't touch the file
+      await write(join(env.projectDir, ".arb/templates/workspace/.env"), "UPDATED");
+      const result = await arb(env, ["template", "diff"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      // No user modifications, so no diff output, exit 0
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("No changes");
+    }));
+
+  test("arb template apply --force updates manifest for stale files", () =>
+    withEnv(async (env) => {
+      await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
+      await write(join(env.projectDir, ".arb/templates/workspace/.env"), "V1");
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      // Template changes
+      await write(join(env.projectDir, ".arb/templates/workspace/.env"), "V2");
+      // Force apply brings workspace up to date
+      const apply = await arb(env, ["template", "apply", "--force"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(apply.exitCode).toBe(0);
+      expect(apply.output).toContain("reset");
+      // After force apply, template list should show no drift
+      const list = await arb(env, ["template", "list"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(list.output).not.toContain("stale");
+      expect(list.output).not.toContain("modified");
+    }));
+
+  test("arb template list shows stale for repo-scoped templates", () =>
+    withEnv(async (env) => {
+      await mkdir(join(env.projectDir, ".arb/templates/repos/repo-a"), { recursive: true });
+      await write(join(env.projectDir, ".arb/templates/repos/repo-a/.env"), "ORIGINAL");
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      // Template source changes, workspace file untouched
+      await write(join(env.projectDir, ".arb/templates/repos/repo-a/.env"), "UPDATED");
+      const result = await arb(env, ["template", "list"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("stale");
+      expect(result.output).not.toContain("modified");
+    }));
+
+  test("arb template list shows stale for .arbtemplate after template source change", () =>
+    withEnv(async (env) => {
+      await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
+      await write(
+        join(env.projectDir, ".arb/templates/workspace/config.json.arbtemplate"),
+        '{"ws":"{{ workspace.name }}"}',
+      );
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      // Template source changes (adds a field)
+      await write(
+        join(env.projectDir, ".arb/templates/workspace/config.json.arbtemplate"),
+        '{"ws":"{{ workspace.name }}","version":2}',
+      );
+      const result = await arb(env, ["template", "list"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("stale");
+      expect(result.output).not.toContain("modified");
     }));
 });

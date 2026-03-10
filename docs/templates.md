@@ -124,7 +124,7 @@ arb detach shared
 
 ### Drift detection on `arb delete`
 
-Before deleting a workspace, arb checks whether any template-generated files have been modified. If they have, the modified files are listed so you can capture changes back into your templates before the workspace is gone.
+Before deleting a workspace, arb checks whether any template-generated files have been modified by the user. If they have, the modified files are listed so you can capture changes back into your templates before the workspace is gone. Files that are merely stale (see below) are not shown — they contain no user work to preserve.
 
 ### Manual re-application
 
@@ -170,7 +170,17 @@ arb template diff                   # show all drift
 arb template diff .env --repo api   # check a specific file
 ```
 
-`arb template list` also annotates modified files when run inside a workspace.
+`arb template list` also annotates files when run inside a workspace:
+
+| Annotation | Meaning |
+|---|---|
+| **modified** | You edited the workspace copy — it differs from what the template would produce |
+| **deleted** | You removed the workspace copy |
+| **stale** | The template source changed since the file was seeded, but you haven't touched the workspace copy |
+
+**Stale** files are not at risk — they just have a newer template version available. Run `arb template apply --force` to update them. `arb template diff` only shows **modified** files (actual user edits), not stale ones.
+
+Arborist tracks what was originally seeded in `.arbws/templates.json` (a manifest of SHA-256 hashes). This allows it to distinguish "the template changed" from "the user changed the file." Workspaces created before this tracking was added fall back to treating all drifted files as modified.
 
 ## LiquidJS rendering
 

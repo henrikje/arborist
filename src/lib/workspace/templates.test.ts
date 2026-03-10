@@ -12,10 +12,15 @@ import {
   detectScopeFromPath,
   diffTemplates,
   forceOverlayDirectory,
+  hashContent,
   listTemplates,
+  manifestKey,
+  mergeManifest,
   overlayDirectory,
+  readManifest,
   renderTemplate,
   templateFilePath,
+  writeManifest,
 } from "./templates";
 
 const noRemote = { name: "", url: "" };
@@ -1335,6 +1340,235 @@ describe("templates", () => {
     test("nested property typo is detected", () => {
       const content = "{{ repo.baseRemote.naem }}";
       expect(checkUnknownVariables(content, repoCtx)).toEqual(["repo.baseRemote.naem"]);
+    });
+  });
+
+  describe("manifest helpers", () => {
+    test("readManifest returns empty object when file does not exist", () => {
+      expect(readManifest(tmpDir)).toEqual({});
+    });
+
+    test("writeManifest creates .arbws directory and file", () => {
+      writeManifest(tmpDir, { "workspace:foo.txt": "abc123" });
+      const content = JSON.parse(readFileSync(join(tmpDir, ".arbws", "templates.json"), "utf-8"));
+      expect(content).toEqual({ "workspace:foo.txt": "abc123" });
+    });
+
+    test("readManifest reads back written data", () => {
+      writeManifest(tmpDir, { "workspace:foo.txt": "abc123" });
+      expect(readManifest(tmpDir)).toEqual({ "workspace:foo.txt": "abc123" });
+    });
+
+    test("mergeManifest adds entries to existing manifest", () => {
+      writeManifest(tmpDir, { "workspace:a.txt": "hash1" });
+      mergeManifest(tmpDir, { "workspace:b.txt": "hash2" });
+      expect(readManifest(tmpDir)).toEqual({
+        "workspace:a.txt": "hash1",
+        "workspace:b.txt": "hash2",
+      });
+    });
+
+    test("mergeManifest overwrites existing keys", () => {
+      writeManifest(tmpDir, { "workspace:a.txt": "old" });
+      mergeManifest(tmpDir, { "workspace:a.txt": "new" });
+      expect(readManifest(tmpDir)).toEqual({ "workspace:a.txt": "new" });
+    });
+
+    test("mergeManifest does nothing for empty entries", () => {
+      writeManifest(tmpDir, { "workspace:a.txt": "hash1" });
+      mergeManifest(tmpDir, {});
+      expect(readManifest(tmpDir)).toEqual({ "workspace:a.txt": "hash1" });
+    });
+
+    test("manifestKey builds correct keys", () => {
+      expect(manifestKey("workspace", "foo.txt")).toBe("workspace:foo.txt");
+      expect(manifestKey("repo", "bar.txt", "my-repo")).toBe("repo:my-repo:bar.txt");
+    });
+
+    test("hashContent produces consistent SHA-256 hex digest", () => {
+      const hash = hashContent("hello world");
+      expect(hash).toHaveLength(64);
+      expect(hashContent("hello world")).toBe(hash);
+      expect(hashContent("different")).not.toBe(hash);
+    });
+  });
+
+  describe("overlayDirectory with manifest", () => {
+    test("seeded files have hashes in result", () => {
+      const src = join(tmpDir, "src");
+      const dest = join(tmpDir, "dest");
+      mkdirSync(src);
+      mkdirSync(dest);
+      writeFileSync(join(src, "file.txt"), "hello");
+
+      const result = overlayDirectory(src, dest);
+      expect(result.seeded).toEqual(["file.txt"]);
+      expect(result.seededHashes["file.txt"]).toBe(hashContent("hello"));
+    });
+
+    test("seeded .arbtemplate files have hashes of rendered content", () => {
+      const src = join(tmpDir, "src");
+      const dest = join(tmpDir, "dest");
+      mkdirSync(src);
+      mkdirSync(dest);
+      writeFileSync(join(src, `config.json${ARBTEMPLATE_EXT}`), "ws={{ workspace.name }}");
+
+      const ctx: TemplateContext = {
+        rootPath: tmpDir,
+        workspaceName: "my-ws",
+        workspacePath: dest,
+      };
+      const result = overlayDirectory(src, dest, ctx);
+      expect(result.seeded).toEqual(["config.json"]);
+      expect(result.seededHashes["config.json"]).toBe(hashContent("ws=my-ws"));
+    });
+
+    test("regenerated files have updated hashes", () => {
+      const src = join(tmpDir, "src");
+      const dest = join(tmpDir, "dest");
+      mkdirSync(src);
+      mkdirSync(dest);
+      writeFileSync(
+        join(src, `repos.txt${ARBTEMPLATE_EXT}`),
+        "{% for r in workspace.repos %}{{ r.name }}\n{% endfor %}",
+      );
+      // Write existing content matching previous context (1 repo)
+      writeFileSync(join(dest, "repos.txt"), "alpha\n");
+
+      const ctx: TemplateContext = {
+        rootPath: tmpDir,
+        workspaceName: "ws",
+        workspacePath: dest,
+        repos: [wt("alpha", "/a"), wt("beta", "/b")],
+        previousRepos: [wt("alpha", "/a")],
+      };
+      const result = overlayDirectory(src, dest, ctx);
+      expect(result.regenerated).toEqual(["repos.txt"]);
+      expect(result.seededHashes["repos.txt"]).toBe(hashContent("alpha\nbeta\n"));
+    });
+  });
+
+  describe("diffTemplates with manifest (stale detection)", () => {
+    test("reports stale instead of modified when file matches manifest hash", async () => {
+      const arbRoot = join(tmpDir, "project");
+      const wsDir = join(arbRoot, "ws");
+      const tplDir = join(arbRoot, ".arb", "templates", "workspace");
+      mkdirSync(tplDir, { recursive: true });
+      mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+
+      // Template v1: seeded "hello v1"
+      const seededContent = "hello v1";
+      writeFileSync(join(wsDir, "readme.txt"), seededContent);
+
+      // Template v2: now produces "hello v2"
+      writeFileSync(join(tplDir, "readme.txt"), "hello v2");
+
+      // Manifest records the original seeded hash
+      writeManifest(wsDir, {
+        [manifestKey("workspace", "readme.txt")]: hashContent(seededContent),
+      });
+
+      const diffs = await diffTemplates(arbRoot, wsDir, []);
+      expect(diffs).toEqual([{ relPath: "readme.txt", scope: "workspace", kind: "stale" }]);
+    });
+
+    test("reports modified when file differs from both template and manifest", async () => {
+      const arbRoot = join(tmpDir, "project");
+      const wsDir = join(arbRoot, "ws");
+      const tplDir = join(arbRoot, ".arb", "templates", "workspace");
+      mkdirSync(tplDir, { recursive: true });
+      mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+
+      // Template produces "hello v2"
+      writeFileSync(join(tplDir, "readme.txt"), "hello v2");
+      // User edited the file
+      writeFileSync(join(wsDir, "readme.txt"), "user edited content");
+
+      // Manifest records original seeded hash
+      writeManifest(wsDir, {
+        [manifestKey("workspace", "readme.txt")]: hashContent("hello v1"),
+      });
+
+      const diffs = await diffTemplates(arbRoot, wsDir, []);
+      expect(diffs).toEqual([{ relPath: "readme.txt", scope: "workspace", kind: "modified" }]);
+    });
+
+    test("falls back to modified when no manifest exists (backwards compatibility)", async () => {
+      const arbRoot = join(tmpDir, "project");
+      const wsDir = join(arbRoot, "ws");
+      const tplDir = join(arbRoot, ".arb", "templates", "workspace");
+      mkdirSync(tplDir, { recursive: true });
+      mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+
+      writeFileSync(join(tplDir, "readme.txt"), "hello v2");
+      writeFileSync(join(wsDir, "readme.txt"), "hello v1");
+      // No manifest file
+
+      const diffs = await diffTemplates(arbRoot, wsDir, []);
+      expect(diffs).toEqual([{ relPath: "readme.txt", scope: "workspace", kind: "modified" }]);
+    });
+
+    test("reports stale for repo-scoped templates", async () => {
+      const arbRoot = join(tmpDir, "project");
+      const wsDir = join(arbRoot, "ws");
+      const repoDir = join(wsDir, "my-repo");
+      const tplDir = join(arbRoot, ".arb", "templates", "repos", "my-repo");
+      mkdirSync(tplDir, { recursive: true });
+      mkdirSync(join(repoDir, ".git"), { recursive: true });
+      mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+
+      const seededContent = "repo config v1";
+      writeFileSync(join(repoDir, "config.txt"), seededContent);
+      writeFileSync(join(tplDir, "config.txt"), "repo config v2");
+
+      writeManifest(wsDir, {
+        [manifestKey("repo", "config.txt", "my-repo")]: hashContent(seededContent),
+      });
+
+      const diffs = await diffTemplates(arbRoot, wsDir, ["my-repo"]);
+      expect(diffs).toEqual([{ relPath: "config.txt", scope: "repo", repo: "my-repo", kind: "stale" }]);
+    });
+
+    test("reports stale for .arbtemplate files", async () => {
+      const arbRoot = join(tmpDir, "project");
+      const wsDir = join(arbRoot, "ws");
+      const tplDir = join(arbRoot, ".arb", "templates", "workspace");
+      mkdirSync(tplDir, { recursive: true });
+      mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+
+      // Template v1 rendered "ws=my-ws", then template source changed
+      const seededContent = "ws=my-ws";
+      writeFileSync(join(wsDir, "config.json"), seededContent);
+      writeFileSync(join(tplDir, `config.json${ARBTEMPLATE_EXT}`), "ws={{ workspace.name }} v2");
+
+      writeManifest(wsDir, {
+        [manifestKey("workspace", "config.json")]: hashContent(seededContent),
+      });
+
+      const diffs = await diffTemplates(arbRoot, wsDir, []);
+      expect(diffs).toEqual([{ relPath: "config.json", scope: "workspace", kind: "stale" }]);
+    });
+  });
+
+  describe("forceOverlayDirectory with manifest hashes", () => {
+    test("collects hashes for seeded, reset, and unchanged files", () => {
+      const src = join(tmpDir, "src");
+      const dest = join(tmpDir, "dest");
+      mkdirSync(src);
+      mkdirSync(dest);
+      writeFileSync(join(src, "new.txt"), "new content");
+      writeFileSync(join(src, "same.txt"), "unchanged");
+      writeFileSync(join(dest, "same.txt"), "unchanged");
+      writeFileSync(join(src, "changed.txt"), "new version");
+      writeFileSync(join(dest, "changed.txt"), "old version");
+
+      const result = forceOverlayDirectory(src, dest);
+      expect(result.seeded).toEqual(["new.txt"]);
+      expect(result.unchanged).toEqual(["same.txt"]);
+      expect(result.reset).toEqual(["changed.txt"]);
+      expect(result.seededHashes["new.txt"]).toBe(hashContent("new content"));
+      expect(result.seededHashes["same.txt"]).toBe(hashContent("unchanged"));
+      expect(result.seededHashes["changed.txt"]).toBe(hashContent("new version"));
     });
   });
 });
