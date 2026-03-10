@@ -266,7 +266,7 @@ function renderTableHeader(resolved: ResolvedColumn[], ctx: RenderContext): stri
     }
   }
 
-  return `${out}\n`;
+  return `${out.trimEnd()}\n`;
 }
 
 function renderTableRow(row: TableRow, resolved: ResolvedColumn[], ctx: RenderContext): string {
@@ -274,10 +274,12 @@ function renderTableRow(row: TableRow, resolved: ResolvedColumn[], ctx: RenderCo
   let out = prefix;
   let isFirst = true;
 
-  for (const col of resolved) {
+  for (let i = 0; i < resolved.length; i++) {
+    const col = resolved[i] as ResolvedColumn;
     const c = row.cells[col.def.key];
     const plainLen = c ? c.plain.length : 0;
     const rendered = c ? renderCell(c, ctx) : "";
+    const isLast = i === resolved.length - 1;
 
     // Determine gap before this column
     if (!isFirst) {
@@ -296,10 +298,12 @@ function renderTableRow(row: TableRow, resolved: ResolvedColumn[], ctx: RenderCo
       displayPlainLen = col.width;
     }
 
-    // Alignment
+    // Alignment (skip trailing padding on last column to avoid terminal wrapping)
     if (col.def.align === "right") {
       const pad = Math.max(0, col.width - displayPlainLen);
       out += `${" ".repeat(pad)}${displayText}`;
+    } else if (isLast) {
+      out += displayText;
     } else {
       const pad = Math.max(0, col.width - displayPlainLen);
       out += `${displayText}${" ".repeat(pad)}`;
