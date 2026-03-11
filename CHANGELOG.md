@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.107.0](https://github.com/henrikje/arborist/compare/v0.106.0...v0.107.0) (2026-03-11)
+
+
+### Features
+
+* **delete:** add progress output and parallelize workspace analysis ([534c8c2](https://github.com/henrikje/arborist/commit/534c8c2231e3320e593e9f4bc6d972985334658a))
+* **list:** show LAST ACTIVITY column when age filtering is active ([a734941](https://github.com/henrikje/arborist/commit/a734941433fa0f3394fe98b6d511f2ede45a0d02))
+
+
+### Bug Fixes
+
+* **filter:** fix --older-than/--newer-than activity date accuracy ([4acb400](https://github.com/henrikje/arborist/commit/4acb40043661e7a048b959bfec920e46bc80732e))
+* **list:** skip phased table rendering when filters are active ([5975879](https://github.com/henrikje/arborist/commit/59758795c8cb9f33f310d7dce86b1b42875e2e82))
+
 ## [0.106.0](https://github.com/henrikje/arborist/compare/v0.105.0...v0.106.0) (2026-03-10)
 
 Improved workspace deletion with safer filtering, interactive selection, and clearer output.
