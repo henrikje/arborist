@@ -36,6 +36,8 @@ import {
 } from "../lib/status";
 import { confirmOrExit, parallelFetch, reportFetchFailures } from "../lib/sync";
 import {
+  analyzeDone,
+  analyzeProgress,
   checkboxWithPreview,
   dim,
   dryRunNotice,
@@ -516,20 +518,40 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
           await fetchWorkspaceRepos(candidates);
 
           const gatherOptsAllSafe = ageFilter ? { gatherActivity: true } : undefined;
-          let safeEntries: WorkspaceAssessment[] = [];
-          for (const ws of candidates) {
-            const wsDir = `${ctx.arbRootDir}/${ws}`;
-            if (!existsSync(`${wsDir}/.arbws/config.json`) && !existsSync(`${wsDir}/.arbws/config`)) continue;
+          const totalCandidates = candidates.length;
+          let analyzedCandidates = 0;
+          const analyzeStart = performance.now();
+          let safeResults: (WorkspaceAssessment | null)[];
+          try {
+            safeResults = await Promise.all(
+              candidates.map(async (ws) => {
+                const wsDir = `${ctx.arbRootDir}/${ws}`;
+                if (!existsSync(`${wsDir}/.arbws/config.json`) && !existsSync(`${wsDir}/.arbws/config`)) {
+                  analyzeProgress(++analyzedCandidates, totalCandidates);
+                  return null;
+                }
 
-            const assessment = await assessWorkspace(ws, ctx, gatherOptsAllSafe);
-            if (assessment && !assessment.hasAtRisk && isWorkspaceSafe(assessment.summary.repos, assessment.branch)) {
-              // Apply --where narrowing (AND with --all-safe)
-              if (whereFilter && !workspaceMatchesWhere(assessment.summary.repos, assessment.branch, whereFilter))
-                continue;
-              if (ageFilter && !matchesAge(assessment.summary.lastActivity, ageFilter)) continue;
-              safeEntries.push(assessment);
-            }
+                const assessment = await assessWorkspace(ws, ctx, gatherOptsAllSafe);
+                analyzeProgress(++analyzedCandidates, totalCandidates);
+                if (
+                  assessment &&
+                  !assessment.hasAtRisk &&
+                  isWorkspaceSafe(assessment.summary.repos, assessment.branch)
+                ) {
+                  // Apply --where narrowing (AND with --all-safe)
+                  if (whereFilter && !workspaceMatchesWhere(assessment.summary.repos, assessment.branch, whereFilter))
+                    return null;
+                  if (ageFilter && !matchesAge(assessment.summary.lastActivity, ageFilter)) return null;
+                  return assessment;
+                }
+                return null;
+              }),
+            );
+          } finally {
+            const elapsed = ((performance.now() - analyzeStart) / 1000).toFixed(1);
+            analyzeDone(totalCandidates, elapsed);
           }
+          let safeEntries = safeResults.filter((a): a is WorkspaceAssessment => a !== null);
 
           if (safeEntries.length === 0) {
             info("No workspaces with safe status.");
@@ -604,11 +626,23 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 
         // Assess all workspaces
         const gatherOpts = ageFilter ? { gatherActivity: true } : undefined;
-        let assessments: WorkspaceAssessment[] = [];
-        for (const name of names) {
-          const assessment = await assessWorkspace(name, ctx, gatherOpts);
-          if (assessment) assessments.push(assessment);
+        const total = names.length;
+        let analyzed = 0;
+        const analyzeStart = performance.now();
+        let results: (WorkspaceAssessment | null)[];
+        try {
+          results = await Promise.all(
+            names.map(async (name) => {
+              const assessment = await assessWorkspace(name, ctx, gatherOpts);
+              analyzeProgress(++analyzed, total);
+              return assessment;
+            }),
+          );
+        } finally {
+          const elapsed = ((performance.now() - analyzeStart) / 1000).toFixed(1);
+          analyzeDone(total, elapsed);
         }
+        let assessments = results.filter((a): a is WorkspaceAssessment => a !== null);
 
         // Filter by --where and/or --older-than
         if (whereFilter) {

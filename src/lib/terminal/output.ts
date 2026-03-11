@@ -131,6 +131,19 @@ export function scanProgress(scanned: number, total: number): void {
   process.stderr.write(`\r  Scanning ${scanned}/${total}`);
 }
 
+export function analyzeProgress(analyzed: number, total: number): void {
+  if (!isTTY()) return;
+  process.stderr.write(`\rAnalyzing workspaces ${analyzed}/${total}`);
+}
+
+export function analyzeDone(total: number, elapsed: string): void {
+  if (isTTY()) {
+    process.stderr.write(`\r\x1B[2KAnalyzed ${plural(total, "workspace")} in ${elapsed}s\n`);
+  } else {
+    process.stderr.write(`Analyzed ${plural(total, "workspace")} in ${elapsed}s\n`);
+  }
+}
+
 export function clearScanProgress(): void {
   if (!isTTY()) return;
   process.stderr.write(`\r${" ".repeat(40)}\r`);
