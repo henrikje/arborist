@@ -22,7 +22,16 @@ import {
 } from "../lib/status";
 import { detectTicketFromName } from "../lib/status";
 import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/sync";
-import { clearScanProgress, dim, error, info, isTTY, listenForAbortKeypress, scanProgress } from "../lib/terminal";
+import {
+  analyzeProgress,
+  clearScanProgress,
+  dim,
+  error,
+  info,
+  isTTY,
+  listenForAbortKeypress,
+  scanProgress,
+} from "../lib/terminal";
 import { listWorkspaces, workspaceBranch, workspaceRepoDirs } from "../lib/workspace";
 
 interface ListRow {
@@ -240,7 +249,8 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
         }
 
         const tty = isTTY();
-        const canPhase = tty && metadata.toScan.length > 0;
+        const hasFilter = !!(whereFilter || ageFilter);
+        const canPhase = tty && metadata.toScan.length > 0 && !hasFilter;
 
         if (canPhase && shouldFetch) {
           // 3-phase: placeholder + fetching → placeholder + scanning → fresh
@@ -311,6 +321,18 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
               write: (o) => process.stdout.write(o),
             },
           ]);
+        } else if (hasFilter && metadata.toScan.length > 0) {
+          if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames);
+          // Workspace-level progress, suppress repo-level scanProgress
+          const total = metadata.toScan.length;
+          let analyzed = 0;
+          const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
+            silent: true,
+            ageFilter,
+            onWorkspace: () => analyzeProgress(++analyzed, total),
+          });
+          clearScanProgress(); // clear the "Analyzing workspaces N/N" line
+          process.stdout.write(formatListTable(statusRows, true));
         } else {
           // Non-phased (non-TTY or nothing to scan)
           if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames);
@@ -402,7 +424,7 @@ async function gatherListStatus(
   ctx: ArbContext,
   whereFilter: string | undefined,
   cache: GitCache,
-  options?: { silent?: boolean; ageFilter?: AgeFilter },
+  options?: { silent?: boolean; ageFilter?: AgeFilter; onWorkspace?: () => void },
 ): Promise<ListRow[]> {
   const rows = metadata.rows.map((r) => ({ ...r }));
   const summaryByIndex = new Map<number, WorkspaceSummary>();
@@ -430,8 +452,10 @@ async function gatherListStatus(
           cache,
           gatherActivityOpts,
         );
+        options?.onWorkspace?.();
         return { index: entry.index, summary };
       } catch {
+        options?.onWorkspace?.();
         return { index: entry.index, summary: null };
       }
     }),
