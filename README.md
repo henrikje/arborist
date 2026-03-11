@@ -1,6 +1,6 @@
 # Arborist (`arb`)
 
-**Arborist** lets you work on multiple features across several repositories in parallel, without juggling branches, breaking your flow, or losing changes.
+**Arborist** lets you work on multiple features across several repositories at the same time, without juggling branches, breaking your flow, or losing changes.
 
 Based on [Git worktrees](https://git-scm.com/docs/git-worktree), Arborist complements standard Git with structured workspaces and cross-repo coordination. If your project spans multiple repos — microservices, a frontend/backend split, shared libraries — Arborist keeps them in sync.
 
@@ -114,7 +114,7 @@ Without repo arguments, Arborist prompts you to pick which repos to include. Not
 ↑↓ navigate • space select • a all • i invert • ⏎ submit
 ```
 
-Both selected repos will be checked out on the `add-dark-mode` branch. With the shell extension installed, Arborist automatically moves you into the new workspace.
+Both selected repos will be checked out on the `add-dark-mode` branch. With the optional [shell integration](docs/workspaces.md#navigate) installed, Arborist automatically moves you into the new workspace.
 
 ```bash
 # You're in ~/my-project/add-dark-mode
@@ -184,7 +184,7 @@ Let's run `arb status` to get an overview. The hotfix landed on `main` while you
   frontend    5 minutes      origin/main  1 ahead, 1 behind     origin/add-dark-mode  1 to push     clean
 ```
 
-Rebase to integrate the upstream changes:
+Rebase to integrate the upstream changes (the **integration** axis from the mental model):
 
 ```bash
 arb rebase
@@ -219,7 +219,7 @@ e4f5g6h Add dark mode toggle to navbar
 Logged 2 repos (2 commits)
 ```
 
-Then push both repos and clean up:
+Then push both repos (the **sharing** axis) and clean up:
 
 ```bash
 arb push
@@ -248,7 +248,7 @@ For `arb pull --merge`, if the remote was rewritten and you have no unique commi
 
 ### Commit matching
 
-Rebasing, squash-merging, and force-pushing all rewrite history, making it hard to tell genuinely new work from commits you've already seen. Arborist uses patch identity and reflog analysis to match them — so the plan and status display tell you what's actually happening.
+When you rebase, squash-merge, or force-push, Git creates new commits that replace old ones. The old and new commits look different (different hashes), but represent the same work. Arborist matches them automatically — using patch identity and reflog history — so status and plans always show what's *genuinely new* versus what you've already seen.
 
 `arb status` breaks push and pull counts down by identity — "outdated" for remote commits already reflected in your local history, "new" for genuinely new remote work:
 
@@ -264,8 +264,7 @@ When the "new" count is zero, every remote-only commit is already reflected in y
 
 ```bash
 arb list --where at-risk                  # workspaces that need attention
-arb status --where dirty,unpushed         # repos matching either
-arb push --where unpushed+^behind-base    # push only repos that won't need a rebase
+arb status --where dirty,unpushed         # repos matching either dirty or unpushed
 arb delete --older-than 10d --where gone  # delete old merged workspaces
 ```
 
