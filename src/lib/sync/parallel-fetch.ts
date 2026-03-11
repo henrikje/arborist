@@ -125,11 +125,11 @@ export async function parallelFetch(
 
   if (timeoutId !== undefined) clearTimeout(timeoutId);
 
-  const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
   if (!silent) {
     if (tty) {
-      process.stderr.write(`\r\x1B[2KFetched ${label} in ${elapsed}s\n`);
+      process.stderr.write("\r\x1B[2K"); // clear the "Fetching..." progress line
     } else {
+      const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
       process.stderr.write(`Fetched ${label} in ${elapsed}s\n`);
     }
   }
