@@ -18,7 +18,6 @@ function makeSummary(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummar
     lastCommit: null,
     lastActivity: null,
     lastActivityFile: null,
-    detectedTicket: null,
     ...overrides,
   };
 }

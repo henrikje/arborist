@@ -354,7 +354,6 @@ async function runDump(ctx: ArbContext): Promise<void> {
           name: gatherResult.workspace,
           branch: gatherResult.branch,
           base: gatherResult.base,
-          detectedTicket: gatherResult.detectedTicket,
           lastCommit: gatherResult.lastCommit,
           lastActivity: gatherResult.lastActivity,
           lastActivityFile: gatherResult.lastActivityFile,

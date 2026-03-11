@@ -90,7 +90,7 @@ Use `,` for OR (match any term) and `+` for AND (match all terms). `+` binds tig
 
 See `arb status --help` for all options.
 
-Arborist also detects ticket keys (like `PROJ-208` or `ACME-42`) from branch names and commit messages, showing them in `arb list` as a TICKET column. When a branch has been merged, the detected PR number from the merge commit, squash commit, or branch tip commit subject appears in `arb status` (e.g. `merged (#123), gone`). All detected values are heuristic — they come from local git data, not API calls.
+When a branch has been merged, the detected PR number from the merge commit, squash commit, or branch tip commit subject appears in `arb status` (e.g. `merged (#123), gone`). Detected values are heuristic — they come from local git data, not API calls.
 
 ## Stay in sync
 

@@ -27,4 +27,4 @@ export {
   wouldLoseWork,
 } from "./status";
 export { makeRepo } from "./test-helpers";
-export { detectTicketFromCommits, detectTicketFromName } from "./ticket-detection";
+export { detectTicketFromName } from "./ticket-detection";
