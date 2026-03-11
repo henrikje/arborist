@@ -357,6 +357,7 @@ async function runDump(ctx: ArbContext): Promise<void> {
           detectedTicket: gatherResult.detectedTicket,
           lastCommit: gatherResult.lastCommit,
           lastActivity: gatherResult.lastActivity,
+          lastActivityFile: gatherResult.lastActivityFile,
           repos,
         };
       }

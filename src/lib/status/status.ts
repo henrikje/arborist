@@ -70,6 +70,7 @@ export interface RepoStatus {
   operation: GitOperation;
   lastCommit: string | null;
   lastActivity: string | null;
+  lastActivityFile: string | null;
 }
 
 /** Build the full git ref for a base section (e.g. "origin/main"). */
@@ -428,6 +429,7 @@ export interface WorkspaceSummary {
   statusCounts: { label: string; count: number; key: keyof RepoFlags }[];
   lastCommit: string | null;
   lastActivity: string | null;
+  lastActivityFile: string | null;
   detectedTicket: { key: string } | null;
 }
 
@@ -785,6 +787,7 @@ export async function gatherRepoStatus(
     operation: gitDirResult,
     lastCommit: null,
     lastActivity: null,
+    lastActivityFile: null,
   };
 }
 
@@ -822,7 +825,8 @@ export async function gatherWorkspaceSummary(
 
   const repos = repoResults.map((r) => {
     r.status.lastCommit = r.commitDate;
-    r.status.lastActivity = r.activityDate;
+    r.status.lastActivity = r.activityDate?.date ?? null;
+    r.status.lastActivityFile = r.activityDate?.file ?? null;
     return r.status;
   });
 
@@ -833,9 +837,15 @@ export async function gatherWorkspaceSummary(
   // Workspace-level activity: max of per-repo activity + non-repo workspace items (Phase A)
   // Also take lastCommit as a lower bound — a fresh commit always marks the workspace as active.
   let lastActivity: string | null = null;
+  let lastActivityFile: string | null = null;
   if (options?.gatherActivity) {
-    const filesDate = await getWorkspaceActivityDate(wsDir, repoDirs);
+    const filesResult = await getWorkspaceActivityDate(wsDir, repoDirs);
+    const filesDate = filesResult?.date ?? null;
     lastActivity = latestCommitDate([filesDate, lastCommit]);
+    // If the file-based date won (or tied), record the file. If lastCommit won, file is null.
+    if (filesResult && lastActivity === filesDate) {
+      lastActivityFile = filesResult.file;
+    }
   }
 
   // ── Ticket detection ──
@@ -872,6 +882,7 @@ export async function gatherWorkspaceSummary(
     statusCounts,
     lastCommit,
     lastActivity,
+    lastActivityFile,
     detectedTicket,
   };
 }

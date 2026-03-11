@@ -1,4 +1,4 @@
-export { getRepoActivityDate, getWorkspaceActivityDate } from "./activity";
+export { type ActivityResult, getRepoActivityDate, getWorkspaceActivityDate } from "./activity";
 export { detectArbRoot, detectWorkspace } from "./arb-root";
 export { type WorkspaceBranchResult, workspaceBranch } from "./branch";
 export {
