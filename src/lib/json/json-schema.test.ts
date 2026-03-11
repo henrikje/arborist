@@ -41,7 +41,6 @@ describe("json-schema stability", () => {
         "statusLabels",
         "statusCounts",
         "lastCommit",
-        "detectedTicket",
       ],
     });
   });

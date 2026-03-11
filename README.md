@@ -283,13 +283,13 @@ arb open code
 
 ### Know when you're done
 
-After your PR is merged, Arborist detects it — even for squash merges — and shows it clearly in `arb list`. Ticket keys (like Jira or Linear) and PR numbers are detected automatically from branch names and commit messages — no configuration needed:
+After your PR is merged, Arborist detects it — even for squash merges — and shows it clearly in `arb list`. PR numbers are detected automatically from merge and squash commit messages — no configuration needed:
 
 ```
-  WORKSPACE           TICKET       BRANCH              REPOS    LAST COMMIT    STATUS
-  proj-208-login      PROJ-208     proj-208-login      3        3 hours        merged (#42), gone
-  proj-215-dark       PROJ-215     proj-215-dark       2        1 day          merged, gone
-  new-feature                      new-feature         3        5 minutes      unpushed
+  WORKSPACE         BRANCH            REPOS    LAST COMMIT    STATUS
+  proj-208-login    proj-208-login    3        3 hours        merged (#42), gone
+  proj-215-dark     proj-215-dark     2        1 day          merged, gone
+  new-feature       new-feature       3        5 minutes      unpushed
 ```
 
 No guessing which branches have landed. You see "merged" with the detected PR number from the merge/squash commit, and "gone" when the remote branch was deleted. Ready to `arb delete`.

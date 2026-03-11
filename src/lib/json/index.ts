@@ -24,5 +24,4 @@ export {
   type StatusJsonRepo,
   StatusJsonOutputSchema,
   StatusJsonRepoSchema,
-  DetectedTicketSchema,
 } from "./json-types";

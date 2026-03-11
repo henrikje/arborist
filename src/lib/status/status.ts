@@ -28,7 +28,7 @@ import { getRepoActivityDate, getWorkspaceActivityDate } from "../workspace/acti
 import { workspaceBranch } from "../workspace/branch";
 import { workspaceRepoDirs } from "../workspace/repos";
 import { extractPrNumber } from "./pr-detection";
-import { detectTicketFromCommits, detectTicketFromName } from "./ticket-detection";
+import { detectTicketFromName } from "./ticket-detection";
 
 // ── 5-Section Model Types ──
 
@@ -340,20 +340,6 @@ export function computeMergeDetectionStrategy(
   return { shouldCheckSquash, shouldCheckPrefixes, prefixLimit };
 }
 
-/** Pick the most common ticket key from a frequency map. */
-export function pickMostCommonTicket(ticketCounts: Map<string, number>): string | null {
-  if (ticketCounts.size === 0) return null;
-  let best: string | null = null;
-  let bestCount = 0;
-  for (const [key, count] of ticketCounts) {
-    if (count > bestCount) {
-      best = key;
-      bestCount = count;
-    }
-  }
-  return best;
-}
-
 export function workspaceMatchesWhere(repos: RepoStatus[], branch: string, where: string): boolean {
   return repos.some((repo) => {
     const flags = computeFlags(repo, branch);
@@ -430,7 +416,6 @@ export interface WorkspaceSummary {
   lastCommit: string | null;
   lastActivity: string | null;
   lastActivityFile: string | null;
-  detectedTicket: { key: string } | null;
 }
 
 export function computeSummaryAggregates(
@@ -848,28 +833,6 @@ export async function gatherWorkspaceSummary(
     }
   }
 
-  // ── Ticket detection ──
-  // 1. Try branch name first (cheap, no git call)
-  let detectedTicket: { key: string } | null = null;
-  const ticketFromName = detectTicketFromName(branch);
-  if (ticketFromName) {
-    detectedTicket = { key: ticketFromName };
-  } else if (repos.length > 0) {
-    // 2. Fall back to scanning commit messages across repos
-    const ticketCounts = new Map<string, number>();
-    await Promise.all(
-      repos.map(async (repo) => {
-        if (!repo.base) return;
-        const repoDir = `${wsDir}/${repo.name}`;
-        const ref = repo.base.remote ? `${repo.base.remote}/${repo.base.ref}` : repo.base.ref;
-        const ticket = await detectTicketFromCommits(repoDir, ref);
-        if (ticket) ticketCounts.set(ticket, (ticketCounts.get(ticket) ?? 0) + 1);
-      }),
-    );
-    const best = pickMostCommonTicket(ticketCounts);
-    if (best) detectedTicket = { key: best };
-  }
-
   return {
     workspace,
     branch,
@@ -883,6 +846,5 @@ export async function gatherWorkspaceSummary(
     lastCommit,
     lastActivity,
     lastActivityFile,
-    detectedTicket,
   };
 }

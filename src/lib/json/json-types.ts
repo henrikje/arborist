@@ -105,12 +105,6 @@ export const StatusJsonRepoSchema = z.object({
     .optional(),
 });
 
-export const DetectedTicketSchema = z
-  .object({
-    key: z.string(),
-  })
-  .nullable();
-
 export const StatusJsonOutputSchema = z.object({
   workspace: z.string(),
   branch: z.string(),
@@ -126,7 +120,6 @@ export const StatusJsonOutputSchema = z.object({
   lastCommit: z.string().nullable(),
   lastActivity: z.string().nullable().optional(),
   lastActivityFile: z.string().nullable().optional(),
-  detectedTicket: DetectedTicketSchema,
 });
 
 // ── Log JSON schemas ──
@@ -210,7 +203,6 @@ export const ListJsonEntrySchema = z.object({
   lastCommit: z.string().nullable().optional(),
   lastActivity: z.string().nullable().optional(),
   lastActivityFile: z.string().nullable().optional(),
-  detectedTicket: DetectedTicketSchema.optional(),
 });
 
 // ── Branch JSON schema ──
