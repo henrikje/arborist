@@ -125,6 +125,17 @@ __arb_repo_names() {
     done | while IFS= read -r p; do printf '%s\n' "${p##*/}"; done
 }
 
+__arb_workspace_repo_names() {
+    local base_dir="$1"
+    local ws
+    ws="$(__arb_detect_workspace "$base_dir")"
+    if [[ -n "$ws" ]]; then
+        __arb_worktree_names "$base_dir/$ws"
+    else
+        __arb_repo_names "$base_dir"
+    fi
+}
+
 __arb_where_filters() {
     printf '%s\n' dirty unpushed behind-share behind-base diverged drifted detached operation gone shallow merged base-merged base-missing at-risk stale clean pushed synced-base synced-share synced safe
 }
@@ -363,7 +374,7 @@ __arb_complete_detach() {
         COMPREPLY=($(compgen -W "-f --force -a --all-repos --delete-branch -y --yes -n --dry-run --fetch -N --no-fetch" -- "$cur"))
         return
     fi
-    COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
+    COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
 }
 
 __arb_complete_status() {
@@ -377,7 +388,7 @@ __arb_complete_status() {
         COMPREPLY=($(compgen -W "-d --dirty -w --where --fetch -N --no-fetch -v --verbose -q --quiet --json --schema" -- "$cur"))
         return
     fi
-    COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
+    COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
 }
 
 __arb_complete_rename() {
@@ -441,7 +452,7 @@ __arb_complete_log() {
         COMPREPLY=($(compgen -W "--fetch -N --no-fetch -n --max-count -v --verbose --json --schema -d --dirty -w --where" -- "$cur"))
         return
     fi
-    COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
+    COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
 }
 
 __arb_complete_diff() {
@@ -455,7 +466,7 @@ __arb_complete_diff() {
         COMPREPLY=($(compgen -W "--fetch -N --no-fetch --stat --json --schema -d --dirty -w --where" -- "$cur"))
         return
     fi
-    COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
+    COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
 }
 
 __arb_complete_pull() {
@@ -469,7 +480,7 @@ __arb_complete_pull() {
         COMPREPLY=($(compgen -W "-f --force -y --yes -n --dry-run -v --verbose --rebase --merge --autostash -w --where" -- "$cur"))
         return
     fi
-    COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
+    COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
 }
 
 __arb_complete_push() {
@@ -483,7 +494,7 @@ __arb_complete_push() {
         COMPREPLY=($(compgen -W "-f --force --include-merged --fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -w --where" -- "$cur"))
         return
     fi
-    COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
+    COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
 }
 
 __arb_complete_rebase() {
@@ -497,7 +508,7 @@ __arb_complete_rebase() {
         COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --retarget --autostash -w --where" -- "$cur"))
         return
     fi
-    COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
+    COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
 }
 
 __arb_complete_merge() {
@@ -511,7 +522,7 @@ __arb_complete_merge() {
         COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --autostash -w --where" -- "$cur"))
         return
     fi
-    COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
+    COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
 }
 
 __arb_complete_reset() {
@@ -528,14 +539,14 @@ __arb_complete_reset() {
         COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -b --base -w --where" -- "$cur"))
         return
     fi
-    COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
+    COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
 }
 
 __arb_complete_exec() {
     local base_dir="$1" cur="$2"
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
     if [[ "$prev" == "--repo" ]]; then
-        COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
+        COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
         return
     fi
     if [[ "$prev" == "-w" || "$prev" == "--where" ]]; then
@@ -552,7 +563,7 @@ __arb_complete_open() {
     local base_dir="$1" cur="$2"
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
     if [[ "$prev" == "--repo" ]]; then
-        COMPREPLY=($(compgen -W "$(__arb_repo_names "$base_dir")" -- "$cur"))
+        COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
         return
     fi
     if [[ "$prev" == "-w" || "$prev" == "--where" ]]; then

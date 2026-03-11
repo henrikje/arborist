@@ -149,9 +149,23 @@ _arb() {
 
     local -a ws_names=()
     local -a repo_names=()
+    local -a ws_repo_names=()
     if [[ -n "$base_dir" ]]; then
         ws_names=(${base_dir}/*/.arbws(N:h:t))
         [[ -d "$base_dir/.arb/repos" ]] && repo_names=("$base_dir/.arb/repos"/*(N/:t))
+        # Detect current workspace and list its worktrees
+        local _arb_ws_detect=""
+        if [[ "$PWD" == "$base_dir/"* ]]; then
+            local _arb_rest="${PWD#$base_dir/}"
+            local _arb_first="${_arb_rest%%/*}"
+            [[ -n "$_arb_first" && -d "$base_dir/$_arb_first/.arbws" ]] && _arb_ws_detect="$_arb_first"
+        fi
+        if [[ -n "$_arb_ws_detect" ]]; then
+            for _n in "$base_dir/$_arb_ws_detect"/*(N/:t); do
+                [[ "$_n" == ".arbws" ]] && continue
+                [[ -e "$base_dir/$_arb_ws_detect/$_n/.git" ]] && ws_repo_names+=("$_n")
+            done
+        fi
     fi
 
     _arguments -C \
@@ -303,7 +317,7 @@ _arb() {
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-N --fetch --no-fetch)--fetch[Fetch before detaching (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-fetch]' \
-                        '*:repo:($repo_names)'
+                        '*:repo:($ws_repo_names)'
                     ;;
                 repo)
                     shift words; (( CURRENT-- ))
@@ -375,7 +389,7 @@ _arb() {
                         '(-q --quiet --json -v --verbose --schema)'{-q,--quiet}'[Output one repo name per line]' \
                         '(--json -q --quiet --schema)--json[Output structured JSON]' \
                         '(--schema --json -q --quiet -v --verbose)--schema[Print JSON Schema for --json output]' \
-                        '*:repo:($repo_names)'
+                        '*:repo:($ws_repo_names)'
                     ;;
                 branch)
                     shift words; (( CURRENT-- ))
@@ -423,14 +437,14 @@ _arb() {
                     ;;
                 exec)
                     _arguments \
-                        '*--repo[Only run in specified repos]:repo:($repo_names)' \
+                        '*--repo[Only run in specified repos]:repo:($ws_repo_names)' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only run in dirty repos]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:command:'
                     ;;
                 open)
                     _arguments \
-                        '*--repo[Only open specified repos]:repo:($repo_names)' \
+                        '*--repo[Only open specified repos]:repo:($ws_repo_names)' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only open dirty worktrees]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter worktrees by status flags]:filter:_arb_where_filter' \
                         '1:editor:(code cursor zed subl)'
@@ -445,7 +459,7 @@ _arb() {
                         '(--rebase)--merge[Pull with merge]' \
                         '--autostash[Stash uncommitted changes before pull, re-apply after]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '*:repo:($repo_names)'
+                        '*:repo:($ws_repo_names)'
                     ;;
 				push)
 					_arguments \
@@ -457,7 +471,7 @@ _arb() {
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show outgoing commits in the plan]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '*:repo:($repo_names)'
+                        '*:repo:($ws_repo_names)'
                     ;;
                 rebase)
                     _arguments \
@@ -470,7 +484,7 @@ _arb() {
                         '--retarget=-[Retarget repos whose base has been merged; optionally specify branch]::branch:' \
                         '--autostash[Stash uncommitted changes before rebase, re-apply after]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '*:repo:($repo_names)'
+                        '*:repo:($ws_repo_names)'
                     ;;
                 merge)
                     _arguments \
@@ -482,7 +496,7 @@ _arb() {
                         '(-g --graph)'{-g,--graph}'[Show branch divergence graph in the plan]' \
                         '--autostash[Stash uncommitted changes before merge, re-apply after]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '*:repo:($repo_names)'
+                        '*:repo:($ws_repo_names)'
                     ;;
                 reset)
                     _arguments \
@@ -492,7 +506,7 @@ _arb() {
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-b --base)'{-b,--base}'[Reset to a different base branch and retarget]:branch:' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '*:repo:($repo_names)'
+                        '*:repo:($ws_repo_names)'
                     ;;
                 log)
                     _arguments \
@@ -504,7 +518,7 @@ _arb() {
                         '(--schema --json)--schema[Print JSON Schema for --json output]' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only log dirty repos]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '*:repo:($repo_names)'
+                        '*:repo:($ws_repo_names)'
                     ;;
                 diff)
                     _arguments \
@@ -515,7 +529,7 @@ _arb() {
                         '(--schema --json)--schema[Print JSON Schema for --json output]' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only diff dirty repos]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '*:repo:($repo_names)'
+                        '*:repo:($ws_repo_names)'
                     ;;
                 help)
                     local -a help_completions=(
