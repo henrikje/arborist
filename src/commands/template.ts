@@ -113,7 +113,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
     .option("-f, --force", "Overwrite existing template")
     .summary("Capture a file or directory as a template")
     .description(
-      "Copy a file or directory from the current workspace into .arb/templates/. If a directory is given, all files within it are added recursively. The scope (workspace or repo) is auto-detected from the source path's location: a file inside a repo directory becomes a repo template, a file elsewhere in the workspace becomes a workspace template. Use --repo or --workspace to override. The path must be inside the workspace unless an explicit scope flag is given. If the template already exists with identical content, succeeds silently. If content differs, use --force to overwrite.",
+      "Copy a file or directory from the current workspace into .arb/templates/. If a directory is given, all files within it are added recursively. The scope (workspace or repo) is auto-detected from the source path's location: a file inside a repo directory becomes a repo template, a file elsewhere in the workspace becomes a workspace template. Use --repo or --workspace to override. The path must be inside the workspace unless an explicit scope flag is given. If the template already exists with identical content, succeeds silently. If content differs, use --force to overwrite. If a .arbtemplate version of the file already exists, the add is refused to prevent a conflict; remove the .arbtemplate version first.",
     )
     .action((path: string, options: { repo?: string[]; workspace?: boolean; force?: boolean }) => {
       const ctx = getCtx();
@@ -207,7 +207,24 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
         const relPath = relSuffix ? join(baseRelPath, relSuffix) : baseRelPath;
 
         for (const repo of targetRepos) {
-          const templatePath = templateFilePath(ctx.arbRootDir, scope, relPath, repo);
+          // Compute the plain destination path directly instead of using templateFilePath(),
+          // which has fallback logic that would resolve to an existing .arbtemplate counterpart.
+          const templatePath =
+            scope === "workspace"
+              ? join(ctx.arbRootDir, ".arb", "templates", "workspace", relPath)
+              : join(ctx.arbRootDir, ".arb", "templates", "repos", repo ?? "", relPath);
+
+          // Block if the .arbtemplate counterpart exists — adding a plain file would create
+          // a conflict (both file and file.arbtemplate). Tell the user to remove it first.
+          const arbtplCounterpart = `${templatePath}${ARBTEMPLATE_EXT}`;
+          if (existsSync(arbtplCounterpart)) {
+            const tplDir = scope === "workspace" ? ".arb/templates/workspace" : `.arb/templates/repos/${repo}`;
+            error(
+              `Cannot add ${relPath}: ${tplDir}/${relPath}${ARBTEMPLATE_EXT} already exists. Remove it first to avoid a conflict.`,
+            );
+            hasConflict = true;
+            continue;
+          }
 
           if (existsSync(templatePath)) {
             const existingContent = readFileSync(templatePath);
