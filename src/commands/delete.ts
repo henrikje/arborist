@@ -74,6 +74,11 @@ interface WorkspaceAssessment {
   templateDiffs: TemplateDiff[];
 }
 
+/** Use lastActivity when available (age-filtered), otherwise lastCommit. */
+function assessmentTimeDate(a: WorkspaceAssessment): string | null {
+  return a.summary.lastActivity ?? a.summary.lastCommit;
+}
+
 function buildCheckboxName(
   a: WorkspaceAssessment,
   maxNameWidth: number,
@@ -82,8 +87,8 @@ function buildCheckboxName(
 ): string {
   const name = a.name.padEnd(maxNameWidth);
 
-  // Last commit
-  const parts = a.summary.lastCommit ? formatRelativeTimeParts(a.summary.lastCommit) : { num: "", unit: "" };
+  const timeDate = assessmentTimeDate(a);
+  const parts = timeDate ? formatRelativeTimeParts(timeDate) : { num: "", unit: "" };
   const lastCommit = formatLastCommitCell(parts, lcWidths, true);
 
   // Repo count (left-aligned, matching the table renderer)
@@ -104,11 +109,17 @@ function buildCheckboxName(
   return `${name}  ${lastCommit}  ${repoCount}  ${status}`;
 }
 
-function buildCheckboxHeader(maxNameWidth: number, lcWidths: LastCommitWidths, maxReposWidth: number): string {
+function buildCheckboxHeader(
+  maxNameWidth: number,
+  lcWidths: LastCommitWidths,
+  maxReposWidth: number,
+  hasActivity: boolean,
+): string {
   // 3 leading spaces to align with inquirer's "cursor + icon + space" prefix
   const prefix = "   ";
   const wsHeader = "WORKSPACE".padEnd(maxNameWidth);
-  const lcHeader = "LAST COMMIT".padStart(lcWidths.total);
+  const timeLabel = hasActivity ? "LAST ACTIVITY" : "LAST COMMIT";
+  const lcHeader = timeLabel.padStart(Math.max(lcWidths.total, timeLabel.length));
   const reposHeader = "REPOS".padEnd(maxReposWidth);
   return `\n${prefix}${wsHeader}  ${lcHeader}  ${reposHeader}  STATUS`;
 }
@@ -179,13 +190,20 @@ async function selectFromAssessments(
 
   // Compute column widths for checkbox names
   const maxNameWidth = Math.max("WORKSPACE".length, ...assessments.map((a) => a.name.length));
-  const allTimeParts: RelativeTimeParts[] = assessments.map((a) =>
-    a.summary.lastCommit ? formatRelativeTimeParts(a.summary.lastCommit) : { num: "", unit: "" },
-  );
+  const allTimeParts: RelativeTimeParts[] = assessments.map((a) => {
+    const date = assessmentTimeDate(a);
+    return date ? formatRelativeTimeParts(date) : { num: "", unit: "" };
+  });
   const lcWidths = computeLastCommitWidths(allTimeParts);
+  const hasActivity = assessments.some((a) => a.summary.lastActivity != null);
+  // Widen column if "LAST ACTIVITY" header (13 chars) is wider than data
+  if (hasActivity && lcWidths.total < 13) {
+    lcWidths.maxUnit += 13 - lcWidths.total;
+    lcWidths.total = 13;
+  }
   const maxReposWidth = Math.max("REPOS".length, ...assessments.map((a) => `${a.summary.total}`.length));
 
-  const header = buildCheckboxHeader(maxNameWidth, lcWidths, maxReposWidth);
+  const header = buildCheckboxHeader(maxNameWidth, lcWidths, maxReposWidth, hasActivity);
 
   const choices = assessments.map((a, i) => ({
     name: buildCheckboxName(a, maxNameWidth, lcWidths, maxReposWidth),
@@ -325,14 +343,16 @@ async function assessWorkspace(
 }
 
 function buildDeleteTableNodes(assessments: WorkspaceAssessment[]): OutputNode[] {
-  // Last commit column — compute widths for right-alignment
-  const allTimeParts: RelativeTimeParts[] = assessments.map((a) =>
-    a.summary.lastCommit ? formatRelativeTimeParts(a.summary.lastCommit) : { num: "", unit: "" },
-  );
+  // Time column — compute widths for right-alignment
+  const allTimeParts: RelativeTimeParts[] = assessments.map((a) => {
+    const date = assessmentTimeDate(a);
+    return date ? formatRelativeTimeParts(date) : { num: "", unit: "" };
+  });
   const lcWidths: LastCommitWidths = computeLastCommitWidths(allTimeParts);
+  const hasActivity = assessments.some((a) => a.summary.lastActivity != null);
 
   const rows = assessments.map((a, i) => {
-    // Last commit cell
+    // Time cell
     const parts = allTimeParts[i];
     let lastCommitCell: Cell;
     if (!parts || (!parts.num && !parts.unit)) {
@@ -368,7 +388,7 @@ function buildDeleteTableNodes(assessments: WorkspaceAssessment[]): OutputNode[]
       kind: "table",
       columns: [
         { header: "WORKSPACE", key: "workspace" },
-        { header: "LAST COMMIT", key: "lastCommit" },
+        { header: hasActivity ? "LAST ACTIVITY" : "LAST COMMIT", key: "lastCommit" },
         { header: "REPOS", key: "repos" },
         { header: "STATUS", key: "status" },
       ],

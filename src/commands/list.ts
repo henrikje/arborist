@@ -35,6 +35,7 @@ interface ListRow {
   repos: string;
   statusCell: Cell;
   lastCommit: string | null;
+  lastActivity: string | null;
   special: "config-missing" | "empty" | null;
 }
 
@@ -207,6 +208,8 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
               entry.statusLabels = summary.statusLabels;
               entry.statusCounts = summary.statusCounts.map(({ label, count }) => ({ label, count }));
               entry.lastCommit = summary.lastCommit;
+              if (summary.lastActivity) entry.lastActivity = summary.lastActivity;
+              if (summary.lastActivityFile) entry.lastActivityFile = summary.lastActivityFile;
               if (!entry.detectedTicket && summary.detectedTicket) {
                 entry.detectedTicket = summary.detectedTicket;
               }
@@ -341,6 +344,7 @@ async function gatherListMetadata(ctx: ArbContext, workspaces: string[]): Promis
         repos: "",
         statusCell: cell("(config missing)", "attention"),
         lastCommit: null,
+        lastActivity: null,
         special: "config-missing",
       });
       continue;
@@ -366,6 +370,7 @@ async function gatherListMetadata(ctx: ArbContext, workspaces: string[]): Promis
         repos: "0",
         statusCell: cell("(empty)", "attention"),
         lastCommit: null,
+        lastActivity: null,
         special: "empty",
       });
       continue;
@@ -381,6 +386,7 @@ async function gatherListMetadata(ctx: ArbContext, workspaces: string[]): Promis
       repos: `${repoDirs.length}`,
       statusCell: cell("...", "muted"),
       lastCommit: null,
+      lastActivity: null,
       special: null,
     });
     toScan.push({ index: rows.length - 1, wsDir });
@@ -460,20 +466,29 @@ async function gatherListStatus(
 
 // ── Rendering ──
 
-function lastCommitParts(row: ListRow): RelativeTimeParts {
-  if (!row.lastCommit) return { num: "", unit: "" };
-  return formatRelativeTimeParts(row.lastCommit);
+function timeColumnDate(row: ListRow): string | null {
+  return row.lastActivity ?? row.lastCommit;
+}
+
+function timeColumnParts(row: ListRow): RelativeTimeParts {
+  const date = timeColumnDate(row);
+  if (!date) return { num: "", unit: "" };
+  return formatRelativeTimeParts(date);
 }
 
 export function buildListTableNodes(displayRows: ListRow[], showStatus: boolean): OutputNode[] {
-  // Compute max number width for right-aligning within the LAST COMMIT column
+  // Compute max number width for right-aligning within the time column
   let maxNumWidth = 0;
   if (showStatus) {
     for (const row of displayRows) {
-      const parts = lastCommitParts(row);
+      const parts = timeColumnParts(row);
       if (parts.num.length > maxNumWidth) maxNumWidth = parts.num.length;
     }
   }
+
+  // Use "LAST ACTIVITY" header when any row has activity data
+  const hasActivity = displayRows.some((row) => row.lastActivity != null);
+  const timeHeader = hasActivity ? "LAST ACTIVITY" : "LAST COMMIT";
 
   const columns = [
     { header: "WORKSPACE", key: "workspace" },
@@ -483,17 +498,19 @@ export function buildListTableNodes(displayRows: ListRow[], showStatus: boolean)
     { header: "REPOS", key: "repos" },
     ...(showStatus
       ? [
-          { header: "LAST COMMIT", key: "lastCommit" },
+          { header: timeHeader, key: "lastCommit" },
           { header: "STATUS", key: "status" },
         ]
       : []),
   ];
 
   const rows = displayRows.map((row) => {
-    const parts = lastCommitParts(row);
+    const parts = timeColumnParts(row);
     let lastCommitCell: Cell;
     if (parts.num && parts.unit) {
       lastCommitCell = cell(`${parts.num.padStart(maxNumWidth)} ${parts.unit}`);
+    } else if (parts.unit) {
+      lastCommitCell = cell(parts.unit);
     } else if (row.special === null) {
       lastCommitCell = cell("...", "muted");
     } else {
@@ -553,6 +570,7 @@ function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
     row.statusCell = buildStatusCountsCell(summary.statusCounts, summary.rebasedOnlyCount);
   }
   row.lastCommit = summary.lastCommit;
+  row.lastActivity = summary.lastActivity;
   const baseFellBack = summary.repos.some((r) => r.base?.configuredRef != null);
   if (baseFellBack) {
     row.baseCell = cell(row.base, "attention");

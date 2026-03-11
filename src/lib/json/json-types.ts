@@ -208,6 +208,8 @@ export const ListJsonEntrySchema = z.object({
   statusLabels: z.array(z.string()).optional(),
   statusCounts: z.array(z.object({ label: z.string(), count: z.number() })).optional(),
   lastCommit: z.string().nullable().optional(),
+  lastActivity: z.string().nullable().optional(),
+  lastActivityFile: z.string().nullable().optional(),
   detectedTicket: DetectedTicketSchema.optional(),
 });
 
