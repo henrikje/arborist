@@ -38,7 +38,19 @@ Durations use `d` (days), `w` (weeks), `m` (months), or `y` (years). `--older-th
 
 ## Navigate
 
-`arb cd` changes into a workspace or repo directory. It requires the shell integration installed by `install.sh`:
+`arb cd` changes into a workspace or repo directory. It requires the shell integration — a small shell function that wraps `arb` so it can change your working directory.
+
+`install.sh` sets this up automatically. If you installed via Homebrew, add the appropriate line to your shell profile:
+
+```bash
+# zsh (~/.zshrc)
+source "$(brew --prefix)/share/arb/arb.zsh"
+
+# bash (~/.bashrc)
+source "$(brew --prefix)/share/arb/arb.bash"
+```
+
+With the shell integration in place:
 
 ```bash
 arb cd fix-login              # cd into workspace
