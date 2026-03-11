@@ -886,6 +886,48 @@ describe("template", () => {
       expect(result.output).toContain("outside the workspace");
     }));
 
+  test("arb template add blocks when .arbtemplate counterpart exists (workspace)", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
+      await writeFile(join(env.projectDir, ".arb/templates/workspace/config.json.arbtemplate"), "{{ workspace.name }}");
+      await writeFile(join(env.projectDir, "my-feature/config.json"), "plain content");
+      const result = await arb(env, ["template", "add", "config.json", "--workspace"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("config.json.arbtemplate already exists");
+      // The .arbtemplate file should not be corrupted
+      const content = await readFile(join(env.projectDir, ".arb/templates/workspace/config.json.arbtemplate"), "utf8");
+      expect(content).toBe("{{ workspace.name }}");
+    }));
+
+  test("arb template add blocks when .arbtemplate counterpart exists even with --force", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
+      await writeFile(join(env.projectDir, ".arb/templates/workspace/.env.arbtemplate"), "{{ workspace.name }}");
+      await writeFile(join(env.projectDir, "my-feature/.env"), "SECRET=abc");
+      const result = await arb(env, ["template", "add", ".env", "--workspace", "--force"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain(".env.arbtemplate already exists");
+    }));
+
+  test("arb template add blocks when .arbtemplate counterpart exists (repo)", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      await mkdir(join(env.projectDir, ".arb/templates/repos/repo-a"), { recursive: true });
+      await writeFile(join(env.projectDir, ".arb/templates/repos/repo-a/.env.arbtemplate"), "{{ repo.name }}");
+      await writeFile(join(env.projectDir, "my-feature/repo-a/.env"), "DB=localhost");
+      const result = await arb(env, ["template", "add", ".env"], {
+        cwd: join(env.projectDir, "my-feature/repo-a"),
+      });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain(".env.arbtemplate already exists");
+    }));
+
   test("arb template list aligns modified annotations", () =>
     withEnv(async (env) => {
       await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
