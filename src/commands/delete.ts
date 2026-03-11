@@ -281,7 +281,6 @@ async function assessWorkspace(
       lastCommit: null,
       lastActivity: null,
       lastActivityFile: null,
-      detectedTicket: null,
     };
   } else {
     // Gather workspace summary using the canonical status model.
@@ -305,7 +304,6 @@ async function assessWorkspace(
         lastCommit: null,
         lastActivity: null,
         lastActivityFile: null,
-        detectedTicket: null,
       };
     }
   }

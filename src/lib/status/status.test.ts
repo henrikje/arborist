@@ -12,7 +12,6 @@ import {
   isAtRisk,
   isWorkspaceSafe,
   parseLeftRight,
-  pickMostCommonTicket,
   repoMatchesWhere,
   shouldRunMergeDetection,
   validateWhere,
@@ -2648,35 +2647,5 @@ describe("computeMergeDetectionStrategy", () => {
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
     expect(result.prefixLimit).toBe(0);
-  });
-});
-
-describe("pickMostCommonTicket", () => {
-  test("returns null for empty map", () => {
-    expect(pickMostCommonTicket(new Map())).toBeNull();
-  });
-
-  test("returns the single entry key", () => {
-    const map = new Map([["PROJ-123", 1]]);
-    expect(pickMostCommonTicket(map)).toBe("PROJ-123");
-  });
-
-  test("returns the key with the highest count", () => {
-    const map = new Map([
-      ["PROJ-100", 1],
-      ["PROJ-200", 3],
-      ["PROJ-300", 2],
-    ]);
-    expect(pickMostCommonTicket(map)).toBe("PROJ-200");
-  });
-
-  test("returns one of the tied keys when counts are equal", () => {
-    const map = new Map([
-      ["PROJ-100", 2],
-      ["PROJ-200", 2],
-    ]);
-    const result = pickMostCommonTicket(map);
-    expect(result).not.toBeNull();
-    expect(["PROJ-100", "PROJ-200"]).toContain(result as string);
   });
 });

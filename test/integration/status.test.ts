@@ -1495,101 +1495,27 @@ describe("diverged commit matching", () => {
     }));
 });
 
-// ── ticket detection ─────────────────────────────────────────────
+test("arb status -v shows (same as ...) when feature commit is cherry-picked onto base", () =>
+  withEnv(async (env) => {
+    await arb(env, ["create", "my-feature", "repo-a"]);
+    const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+    await write(join(wtRepoA, "feature.txt"), "feature");
+    await git(wtRepoA, ["add", "feature.txt"]);
+    await git(wtRepoA, ["commit", "-m", "feature work"]);
+    await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
 
-describe("ticket detection", () => {
-  test("arb list shows ticket from branch name", () =>
-    withEnv(async (env) => {
-      await arb(env, ["create", "proj-42-feature", "repo-a"]);
+    // Cherry-pick the feature commit onto main (with a diverging commit first)
+    const featureSha = (await git(wtRepoA, ["rev-parse", "HEAD"])).trim();
+    const repoA = join(env.projectDir, ".arb/repos/repo-a");
+    await write(join(repoA, "upstream.txt"), "upstream");
+    await git(repoA, ["add", "upstream.txt"]);
+    await git(repoA, ["commit", "-m", "upstream work"]);
+    await git(repoA, ["cherry-pick", featureSha]);
+    await git(repoA, ["push"]);
 
-      const result = await arb(env, ["list", "--no-fetch"]);
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("TICKET");
-      expect(result.output).toContain("PROJ-42");
-    }));
-
-  test("arb list --json includes detectedTicket from branch name", () =>
-    withEnv(async (env) => {
-      await arb(env, ["create", "proj-208-fix", "repo-a"]);
-
-      const proc = Bun.spawn([ARB_BIN, "list", "--no-fetch", "--json"], {
-        cwd: env.projectDir,
-        stdout: "pipe",
-        stderr: "pipe",
-        env: { ...process.env, NO_COLOR: "1" },
-      });
-      const stdout = await new Response(proc.stdout).text();
-      await new Response(proc.stderr).text();
-      await proc.exited;
-      const json = JSON.parse(stdout);
-      const entry = json.find((e: { workspace: string }) => e.workspace === "proj-208-fix");
-      expect(entry.detectedTicket.key).toBe("PROJ-208");
-    }));
-
-  test("arb status --json includes detectedTicket from branch name", () =>
-    withEnv(async (env) => {
-      await arb(env, ["create", "proj-42-feature", "repo-a"]);
-
-      const proc = Bun.spawn([ARB_BIN, "status", "--no-fetch", "--json"], {
-        cwd: join(env.projectDir, "proj-42-feature"),
-        stdout: "pipe",
-        stderr: "pipe",
-        env: { ...process.env, NO_COLOR: "1" },
-      });
-      const stdout = await new Response(proc.stdout).text();
-      await new Response(proc.stderr).text();
-      await proc.exited;
-      const json = JSON.parse(stdout);
-      expect(json.detectedTicket.key).toBe("PROJ-42");
-    }));
-
-  test("arb list does not detect PR reference as ticket", () =>
-    withEnv(async (env) => {
-      await arb(env, ["create", "svc-riskman-pr-74", "repo-a"]);
-
-      // Text output should not show TICKET column (no workspace has a real ticket)
-      const result = await arb(env, ["list", "--no-fetch"]);
-      expect(result.exitCode).toBe(0);
-      expect(result.output).not.toContain("TICKET");
-      expect(result.output).not.toContain("PR-74");
-
-      // JSON output should not have detectedTicket
-      const proc = Bun.spawn([ARB_BIN, "list", "--no-fetch", "--json"], {
-        cwd: env.projectDir,
-        stdout: "pipe",
-        stderr: "pipe",
-        env: { ...process.env, NO_COLOR: "1" },
-      });
-      const stdout = await new Response(proc.stdout).text();
-      await new Response(proc.stderr).text();
-      await proc.exited;
-      const json = JSON.parse(stdout);
-      const withTicket = json.filter((e: { detectedTicket: unknown }) => e.detectedTicket != null);
-      expect(withTicket.length).toBe(0);
-    }));
-
-  test("arb status -v shows (same as ...) when feature commit is cherry-picked onto base", () =>
-    withEnv(async (env) => {
-      await arb(env, ["create", "my-feature", "repo-a"]);
-      const wtRepoA = join(env.projectDir, "my-feature/repo-a");
-      await write(join(wtRepoA, "feature.txt"), "feature");
-      await git(wtRepoA, ["add", "feature.txt"]);
-      await git(wtRepoA, ["commit", "-m", "feature work"]);
-      await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
-
-      // Cherry-pick the feature commit onto main (with a diverging commit first)
-      const featureSha = (await git(wtRepoA, ["rev-parse", "HEAD"])).trim();
-      const repoA = join(env.projectDir, ".arb/repos/repo-a");
-      await write(join(repoA, "upstream.txt"), "upstream");
-      await git(repoA, ["add", "upstream.txt"]);
-      await git(repoA, ["commit", "-m", "upstream work"]);
-      await git(repoA, ["cherry-pick", featureSha]);
-      await git(repoA, ["push"]);
-
-      await fetchAllRepos(env);
-      const result = await arb(env, ["status", "-v"], { cwd: join(env.projectDir, "my-feature") });
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("(same as");
-      expect(result.output).toContain("feature work");
-    }));
-});
+    await fetchAllRepos(env);
+    const result = await arb(env, ["status", "-v"], { cwd: join(env.projectDir, "my-feature") });
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("(same as");
+    expect(result.output).toContain("feature work");
+  }));

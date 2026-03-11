@@ -144,7 +144,6 @@ describe("json-types zod validation", () => {
       statusLabels: [],
       statusCounts: [],
       lastCommit: null,
-      detectedTicket: null,
     };
     expect(() => StatusJsonOutputSchema.parse(output)).not.toThrow();
   });
