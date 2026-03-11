@@ -262,6 +262,7 @@ async function assessWorkspace(
       statusCounts: [],
       lastCommit: null,
       lastActivity: null,
+      lastActivityFile: null,
       detectedTicket: null,
     };
   } else {
@@ -285,6 +286,7 @@ async function assessWorkspace(
         statusCounts: [],
         lastCommit: null,
         lastActivity: null,
+        lastActivityFile: null,
         detectedTicket: null,
       };
     }

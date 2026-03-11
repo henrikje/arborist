@@ -31,6 +31,7 @@ export function makeRepo(overrides: Partial<RepoStatus> = {}): RepoStatus {
     operation: null,
     lastCommit: null,
     lastActivity: null,
+    lastActivityFile: null,
     ...overrides,
   };
 }
