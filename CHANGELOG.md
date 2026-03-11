@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.108.0](https://github.com/henrikje/arborist/compare/v0.107.0...v0.108.0) (2026-03-11)
+
+
+### Features
+
+* **list:** remove ticket detection column ([d533b0f](https://github.com/henrikje/arborist/commit/d533b0ffca9c8d1847e03256176a00646d564a24))
+* **reset:** add --base flag to retarget workspace via reset ([56ab3aa](https://github.com/henrikje/arborist/commit/56ab3aa2d6e751b5c200a5664818ac18362ce7d5))
+
+
+### Bug Fixes
+
+* **shell:** suggest workspace repos for workspace-scoped commands ([c14f839](https://github.com/henrikje/arborist/commit/c14f83982ca6b4397216454f3d5b966ef048c973))
+* **template:** block template add when .arbtemplate counterpart exists ([91562ea](https://github.com/henrikje/arborist/commit/91562eaff86f4a521b66e035332ce7bcaab98fc5))
+
 ## [0.107.0](https://github.com/henrikje/arborist/compare/v0.106.0...v0.107.0) (2026-03-11)
 
 
