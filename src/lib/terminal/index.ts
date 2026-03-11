@@ -3,6 +3,8 @@ export { checkboxWithPreview } from "./checkbox-with-preview";
 export { listenForAbortKeypress } from "./abort-keypress";
 export { debugGit, debugLog, enableDebug, getGitCallCount, isDebug } from "./debug";
 export {
+  analyzeDone,
+  analyzeProgress,
   bold,
   boldLine,
   cyan,
