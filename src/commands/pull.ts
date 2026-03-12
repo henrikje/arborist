@@ -121,11 +121,18 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
         const autostash = options.autostash === true;
 
         // Phase 2: assess
-        const assess = async (fetchFailed: string[]) => {
+        const prevStatuses = new Map<string, RepoStatus>();
+        const assess = async (fetchFailed: string[], unchangedRepos: Set<string>) => {
           const assessments = await Promise.all(
             repos.map(async (repo) => {
               const repoDir = `${wsDir}/${repo}`;
-              const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo), cache);
+              let status: RepoStatus;
+              if (unchangedRepos.has(repo) && prevStatuses.has(repo)) {
+                status = prevStatuses.get(repo) as RepoStatus;
+              } else {
+                status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo), cache);
+              }
+              prevStatuses.set(repo, status);
               if (where) {
                 const flags = computeFlags(status, branch);
                 if (!repoMatchesWhere(flags, where)) return null;

@@ -1,6 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import * as tty from "../terminal/tty";
-import { fetchSuffix, getFetchFailedRepos, reportFetchFailures } from "./parallel-fetch";
+import { fetchSuffix, getFetchFailedRepos, getUnchangedRepos, reportFetchFailures } from "./parallel-fetch";
 
 describe("reportFetchFailures", () => {
   test("returns empty array when all succeed", () => {
@@ -69,6 +69,50 @@ describe("fetchSuffix", () => {
     expect(result).toContain("<Esc to cancel>");
     process.stdin.isTTY = saved;
     spy.mockRestore();
+  });
+});
+
+describe("getUnchangedRepos", () => {
+  test("returns all repos when all succeed with no output", () => {
+    const results = new Map([
+      ["repo-a", { repo: "repo-a", exitCode: 0, output: "" }],
+      ["repo-b", { repo: "repo-b", exitCode: 0, output: "" }],
+    ]);
+    expect(getUnchangedRepos(results)).toEqual(new Set(["repo-a", "repo-b"]));
+  });
+
+  test("excludes repos with non-empty output", () => {
+    const results = new Map([
+      ["repo-a", { repo: "repo-a", exitCode: 0, output: "" }],
+      ["repo-b", { repo: "repo-b", exitCode: 0, output: "abc..def main -> origin/main" }],
+    ]);
+    expect(getUnchangedRepos(results)).toEqual(new Set(["repo-a"]));
+  });
+
+  test("excludes repos with non-zero exitCode", () => {
+    const results = new Map([
+      ["repo-a", { repo: "repo-a", exitCode: 0, output: "" }],
+      ["repo-b", { repo: "repo-b", exitCode: 1, output: "" }],
+    ]);
+    expect(getUnchangedRepos(results)).toEqual(new Set(["repo-a"]));
+  });
+
+  test("excludes repos with non-zero exitCode and non-empty output", () => {
+    const results = new Map([["repo-a", { repo: "repo-a", exitCode: 128, output: "fatal" }]]);
+    expect(getUnchangedRepos(results)).toEqual(new Set());
+  });
+
+  test("returns empty set when all repos had changes", () => {
+    const results = new Map([
+      ["repo-a", { repo: "repo-a", exitCode: 0, output: "updated" }],
+      ["repo-b", { repo: "repo-b", exitCode: 0, output: "updated" }],
+    ]);
+    expect(getUnchangedRepos(results)).toEqual(new Set());
+  });
+
+  test("returns empty set for empty results", () => {
+    const results = new Map<string, { repo: string; exitCode: number; output: string }>();
+    expect(getUnchangedRepos(results)).toEqual(new Set());
   });
 });
 

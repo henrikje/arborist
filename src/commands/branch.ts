@@ -10,7 +10,7 @@ import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { runPhasedRender } from "../lib/render";
 import { type RepoStatus, computeFlags, gatherWorkspaceSummary } from "../lib/status";
-import { fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/sync";
+import { type FetchResult, fetchSuffix, getUnchangedRepos, parallelFetch, reportFetchFailures } from "../lib/sync";
 import { error, info, isTTY, listenForAbortKeypress, stderr } from "../lib/terminal";
 import { workspaceBranch, workspaceRepoDirs } from "../lib/workspace";
 import { requireWorkspace } from "../lib/workspace";
@@ -229,9 +229,10 @@ async function runVerboseBranch(
     fetchPromise.catch(() => {}); // Prevent unhandled rejection on abort
 
     const state: {
-      fetchResults?: Map<string, { exitCode: number; output: string }>;
+      fetchResults?: Map<string, FetchResult>;
       aborted?: boolean;
       staleOutput?: string;
+      staleRepos?: RepoStatus[];
     } = {};
 
     try {
@@ -239,6 +240,7 @@ async function runVerboseBranch(
         {
           render: async () => {
             const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
+            state.staleRepos = summary.repos;
             state.staleOutput = formatVerboseOutput(summary.repos, branch, base);
             return state.staleOutput + fetchSuffix(repoNames.length, { abortable: true });
           },
@@ -256,7 +258,13 @@ async function runVerboseBranch(
               return state.staleOutput as string;
             }
             cache.invalidateAfterFetch();
-            const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
+            // Reuse phase-1 results for repos whose fetch was a no-op
+            const unchanged = getUnchangedRepos(state.fetchResults);
+            const previousResults = new Map<string, RepoStatus>();
+            for (const repo of state.staleRepos ?? []) {
+              if (unchanged.has(repo.name)) previousResults.set(repo.name, repo);
+            }
+            const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache, { previousResults });
             return formatVerboseOutput(summary.repos, branch, base);
           },
           write: (output) => process.stdout.write(output),
@@ -266,7 +274,7 @@ async function runVerboseBranch(
       abortCleanup();
     }
     if (!state.aborted) {
-      reportFetchFailures(repoNames, state.fetchResults as Map<string, { exitCode: number; output: string }>);
+      reportFetchFailures(repoNames, state.fetchResults as Map<string, FetchResult>);
     }
     return;
   }

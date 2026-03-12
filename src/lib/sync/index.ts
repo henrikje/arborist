@@ -11,6 +11,7 @@ export {
   type FetchResult,
   fetchSuffix,
   getFetchFailedRepos,
+  getUnchangedRepos,
   parallelFetch,
   reportFetchFailures,
 } from "./parallel-fetch";

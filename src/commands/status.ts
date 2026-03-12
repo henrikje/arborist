@@ -17,7 +17,7 @@ import {
   repoMatchesWhere,
   resolveWhereFilter,
 } from "../lib/status";
-import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/sync";
+import { type FetchResult, fetchSuffix, getUnchangedRepos, parallelFetch, reportFetchFailures } from "../lib/sync";
 import { clearScanProgress, error, isTTY, listenForAbortKeypress, scanProgress, stderr } from "../lib/terminal";
 import { requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
@@ -95,8 +95,9 @@ async function runStatus(
   const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
   const selectedSet = new Set(selectedRepos);
 
-  // Shared gather helper: scan + filter
-  const gatherFiltered = async (): Promise<WorkspaceSummary> => {
+  // Shared gather helper: scan + filter.
+  // When previousResults is provided, repos in that map are reused instead of re-scanned.
+  const gatherFiltered = async (previousResults?: Map<string, RepoStatus>): Promise<WorkspaceSummary> => {
     const summary = await gatherWorkspaceSummary(
       wsDir,
       ctx.reposDir,
@@ -104,6 +105,7 @@ async function runStatus(
         scanProgress(scanned, total);
       },
       cache,
+      { previousResults },
     );
     clearScanProgress();
 
@@ -131,13 +133,19 @@ async function runStatus(
       .resolveRemotesMap(repoNamesForFetch, ctx.reposDir)
       .then((remotesMap) => parallelFetch(fetchDirs, undefined, remotesMap, { silent: true, signal: abortSignal }));
     fetchPromise.catch(() => {}); // Prevent unhandled rejection on abort
-    const state: { fetchResults?: Map<string, FetchResult>; aborted?: boolean; staleTable?: string } = {};
+    const state: {
+      fetchResults?: Map<string, FetchResult>;
+      aborted?: boolean;
+      staleTable?: string;
+      staleRepos?: RepoStatus[];
+    } = {};
 
     try {
       await runPhasedRender([
         {
           render: async () => {
             const data = await gatherFiltered();
+            state.staleRepos = data.repos;
             state.staleTable = await renderStatusTable(data, wsDir, { verbose: options.verbose });
             return state.staleTable + fetchSuffix(fetchDirs.length, { abortable: true });
           },
@@ -155,7 +163,13 @@ async function runStatus(
               return state.staleTable as string;
             }
             cache.invalidateAfterFetch();
-            const data = await gatherFiltered();
+            // Reuse phase-1 results for repos whose fetch was a no-op
+            const unchanged = getUnchangedRepos(state.fetchResults);
+            const previousResults = new Map<string, RepoStatus>();
+            for (const repo of state.staleRepos ?? []) {
+              if (unchanged.has(repo.name)) previousResults.set(repo.name, repo);
+            }
+            const data = await gatherFiltered(previousResults);
             return await renderStatusTable(data, wsDir, { verbose: options.verbose });
           },
           write: (output) => process.stdout.write(output),
