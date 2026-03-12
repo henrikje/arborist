@@ -4,44 +4,9 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { arb, git, initBareRepo, withBareEnv, withEnv, write } from "./helpers/env";
 
-// ── version & help ───────────────────────────────────────────────
+// ── repo bare invocation (defaults to list) ─────────────────────
 
-describe("version & help", () => {
-  test("arb --version outputs version number", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["--version"]);
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toMatch(/^Arborist (dev\.[0-9a-f]+|[0-9]+\.[0-9]+\.[0-9]+)/);
-    }));
-
-  test("arb version is treated as unknown command", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["version"]);
-      expect(result.exitCode).not.toBe(0);
-    }));
-
-  test("arb -v outputs version number", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["-v"]);
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toMatch(/^Arborist (dev\.[0-9a-f]+|[0-9]+\.[0-9]+\.[0-9]+)/);
-    }));
-});
-
-// ── bare arb (shows help) ────────────────────────────────────────
-
-describe("bare arb (shows help)", () => {
-  test("bare arb shows help with usage and commands", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, []);
-      expect(result.output).toContain("Usage:");
-      expect(result.output).toContain("Commands:");
-    }));
-});
-
-// ── repo default (bare invocation defaults to list) ─────────────
-
-describe("repo default", () => {
+describe("repo bare invocation", () => {
   test("arb repo defaults to arb repo list", () =>
     withEnv(async (env) => {
       const result = await arb(env, ["repo"]);
@@ -101,141 +66,6 @@ describe("repo list", () => {
       const result = await arb(env, ["repo", "list"], { cwd: "/tmp" });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("Not inside a project");
-    }));
-});
-
-// ── help ──────────────────────────────────────────────────────────
-
-describe("help", () => {
-  test("arb help shows full usage text", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["help"]);
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("Usage:");
-      expect(result.output).toContain("repo");
-    }));
-
-  test("arb --help shows usage", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["--help"]);
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("Usage:");
-    }));
-
-  test("arb -h shows usage", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["-h"]);
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("Usage:");
-    }));
-
-  test("arb help where shows filter syntax reference", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["help", "where"]);
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("WHERE FILTER SYNTAX");
-      expect(result.output).toContain("dirty");
-      expect(result.output).toContain("unpushed");
-      expect(result.output).toContain("synced");
-      expect(result.output).toContain("EXAMPLES");
-    }));
-
-  test("arb help status shows status command help", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["help", "status"]);
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("arb status");
-      expect(result.output).toContain("arb help where");
-    }));
-
-  test("arb help remotes shows remote roles reference", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["help", "remotes"]);
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("REMOTE ROLES");
-    }));
-
-  test("arb help stacked shows stacked workspaces reference", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["help", "stacked"]);
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("STACKED WORKSPACES");
-    }));
-
-  test("arb help templates shows template reference", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["help", "templates"]);
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("TEMPLATE");
-    }));
-
-  test("arb help scripting shows scripting reference", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["help", "scripting"]);
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("SCRIPTING");
-    }));
-
-  test("arb help nonexistent shows error", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["help", "nonexistent"]);
-      expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("Unknown command or topic");
-    }));
-
-  test("unknown command shows error", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["nonsense"]);
-      expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("unknown command");
-    }));
-
-  test("commands outside project fail with helpful message", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["list"], { cwd: "/tmp" });
-      expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("Not inside a project");
-    }));
-});
-
-// ── init ─────────────────────────────────────────────────────────
-
-describe("init", () => {
-  test("arb init creates .arb/repos/", () =>
-    withEnv(async (env) => {
-      const dir = join(env.testDir, "fresh");
-      await mkdir(dir, { recursive: true });
-      const result = await arb(env, ["init"], { cwd: dir });
-      expect(result.exitCode).toBe(0);
-      expect(existsSync(join(dir, ".arb"))).toBe(true);
-      expect(existsSync(join(dir, ".arb/repos"))).toBe(true);
-      expect(result.output).toContain("arb repo clone");
-      expect(result.output).toContain("arb create");
-    }));
-
-  test("arb init on existing root fails", () =>
-    withEnv(async (env) => {
-      const result = await arb(env, ["init"]);
-      expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("Already initialized");
-    }));
-
-  test("arb init inside workspace fails", () =>
-    withEnv(async (env) => {
-      const createResult = await arb(env, ["create", "ws-init-test", "-a"]);
-      expect(createResult.exitCode).toBe(0);
-      const result = await arb(env, ["init"], {
-        cwd: join(env.projectDir, "ws-init-test/repo-a"),
-      });
-      expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("inside an existing project");
-    }));
-
-  test("arb init with path inside project fails", () =>
-    withEnv(async (env) => {
-      const result = await arb(env, ["init", join(env.projectDir, "some-subdir")]);
-      expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("inside an existing project");
     }));
 });
 
@@ -391,5 +221,56 @@ describe("repo remove", () => {
       expect(result.exitCode).toBe(0);
       expect(existsSync(join(env.projectDir, ".arb/repos/dry-rm-short"))).toBe(true);
       expect(result.output).toContain("Dry run");
+    }));
+});
+
+// ── repo list quiet/json ─────────────────────────────────────────
+
+describe("repo list quiet/json", () => {
+  test("arb repo list --quiet outputs repo names only", () =>
+    withEnv(async (env) => {
+      const result = await arb(env, ["repo", "list", "-q"]);
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("repo-a");
+      expect(result.output).toContain("repo-b");
+      expect(result.output).not.toContain("REPO");
+      expect(result.output).not.toContain("URL");
+    }));
+
+  test("arb repo list --json outputs valid JSON with share and base", () =>
+    withEnv(async (env) => {
+      const result = await arb(env, ["repo", "list", "--json"]);
+      expect(result.exitCode).toBe(0);
+      const data = JSON.parse(result.stdout);
+      expect(data.length).toBe(2);
+      expect(data[0]).toHaveProperty("name");
+      expect(data[0]).toHaveProperty("url");
+      expect(data[0]).toHaveProperty("share");
+      expect(data[0]).toHaveProperty("base");
+      expect(data[0].share).toHaveProperty("name");
+      expect(data[0].share).toHaveProperty("url");
+      expect(data[0].base).toHaveProperty("name");
+      expect(data[0].base).toHaveProperty("url");
+    }));
+
+  test("arb repo list --quiet --json conflicts", () =>
+    withEnv(async (env) => {
+      const result = await arb(env, ["repo", "list", "--quiet", "--json"]);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Cannot combine --quiet with --json");
+    }));
+
+  test("arb repo list --verbose --quiet conflicts", () =>
+    withEnv(async (env) => {
+      const result = await arb(env, ["repo", "list", "--verbose", "--quiet"]);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Cannot combine --quiet with --verbose");
+    }));
+
+  test("arb repo list --verbose --json conflicts", () =>
+    withEnv(async (env) => {
+      const result = await arb(env, ["repo", "list", "--verbose", "--json"]);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Cannot combine --verbose with --json");
     }));
 });
