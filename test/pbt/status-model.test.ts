@@ -96,6 +96,13 @@ async function runOnce(seed: number): Promise<void> {
         const model: WorkspaceModel = freshWorkspaceModel([...REPOS]);
         const real: RealSystem = { env, wsName: WS_NAME, commitCounter: 0, executedCommands: [] };
 
+        // Seed: commit on each repo + push, so gated commands (Pull, Rebase,
+        // MakeCommitOnShare) have preconditions met from the start.
+        for (const repo of REPOS) {
+          await new MakeCommit(repo).run(model, real);
+        }
+        await new Push().run(model, real);
+
         await fc.asyncModelRun(() => ({ model, real }), cmds);
 
         console.log(`    ${real.executedCommands.join(", ")}`);
