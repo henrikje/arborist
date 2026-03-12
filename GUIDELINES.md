@@ -38,6 +38,22 @@ Arborist uses marker directories (`.arb/`, `.arbws/`), filesystem scanning, and 
 
 A command earns its place when it encapsulates domain knowledge (multi-repo coordination, fork workflows), provides safety gates (refuses risky operations, detects at-risk state), or renders data that isn't directly comparable. A command that wraps `rm`, `ls`, or `cp` on a plain-text file does not earn its place — the filesystem already provides that interface.
 
+### Evaluating new operations
+
+When a new operation is proposed — whether it becomes a command, a flag, a subcommand, or nothing at all — work through these questions in order.
+
+**1. Coordination or authoring?** The authoring boundary (DR-0023) is the first gate. If the operation belongs to the developer's role as author — how they present their work — it belongs in `arb exec` or outside Arborist entirely. The commit-message problem is a useful tell: if any automated choice is likely wrong and will need manual correction, the operation is on the authoring side.
+
+**2. New operation or variant of an existing one?** If the mechanism is fundamentally the same as an existing command applied differently, it is a variant and belongs as a flag on that command. Detection logic for the variant case typically lives in the parent command already — splitting it out would mean detection in one place and recovery in another.
+
+**3. For variants — how rare?** An escape hatch invoked once per stack lifecycle or to recover from an unusual state is an optional flag. A frequent alternate mode deserves a more prominent option or its own subcommand.
+
+**4. For new operations — is the coordination value substantial?** Does it need a plan/confirm flow, conflict prediction, an abort/continue state machine, or non-trivial per-repo assessment? Would `arb exec` leave users meaningfully worse off? Substantial value earns a dedicated command. Thin value earns an `arb exec` recipe in the docs.
+
+**5. For new commands — weight determines placement.** Lightweight, noun-focused operations (show state, rename, simple mutations) go under a subcommand group (e.g. `arb branch show`, `arb branch rename`). Heavyweight operations with multi-phase workflows, conflict handling, or state machines go at the top level alongside `rebase`, `merge`, and `push`.
+
+The underlying principle: a command earns its place when Arborist has meaningful knowledge to contribute that the user cannot easily replicate with `arb exec` — conflict prediction, divergence analysis, cross-repo state coordination, safe rollback. When that knowledge is absent or thin, the value is not there.
+
 ### Prefer correctness over backwards compatibility
 
 Arborist is in pre-release. The priority is getting the design right — not preserving compatibility with earlier pre-release behavior. When a better approach is found, adopt it directly: rename commands, change defaults, restructure output. Breaking changes are expected and acceptable during this phase.
