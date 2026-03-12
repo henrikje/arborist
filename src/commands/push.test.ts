@@ -664,9 +664,55 @@ describe("formatPushPlan", () => {
     return map;
   }
 
-  test("shows commit count for will-push", () => {
+  test("shows commit count for will-push (no base info)", () => {
     const plan = formatPushPlan([makeAssessment({ ahead: 3 })], makeRemotesMap(["repo-a", {}]));
     expect(plan).toContain("3 commits to push");
+  });
+
+  test("shows from-base + new breakdown for will-push when baseAhead > 0", () => {
+    const plan = formatPushPlan([makeAssessment({ ahead: 3, baseAhead: 1 })], makeRemotesMap(["repo-a", {}]));
+    expect(plan).toContain("2 from main + 1 new");
+    expect(plan).toContain("to push");
+  });
+
+  test("shows only new for will-push when all commits are from base branch", () => {
+    const plan = formatPushPlan([makeAssessment({ ahead: 2, baseAhead: 2 })], makeRemotesMap(["repo-a", {}]));
+    expect(plan).toContain("2 new");
+    expect(plan).not.toContain("from main");
+    expect(plan).toContain("to push");
+  });
+
+  test("shows only from-base for will-push when baseAhead is 0 but ahead > 0", () => {
+    // This means all commits come from base, none are "new" (baseAhead=0 means 0 new)
+    // but baseAhead=0 means no base info, so falls back to flat count
+    const plan = formatPushPlan([makeAssessment({ ahead: 3, baseAhead: 0 })], makeRemotesMap(["repo-a", {}]));
+    expect(plan).toContain("3 commits to push");
+  });
+
+  test("shows from-base breakdown for will-push with new branch suffix", () => {
+    const plan = formatPushPlan(
+      [makeAssessment({ ahead: 3, baseAhead: 1, newBranch: true })],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("2 from main + 1 new");
+    expect(plan).toContain("(new branch: origin/feature)");
+  });
+
+  test("shows from-base breakdown for will-push with behindBase", () => {
+    const plan = formatPushPlan(
+      [makeAssessment({ ahead: 3, baseAhead: 1, behindBase: 2 })],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("2 from main + 1 new");
+    expect(plan).toContain("2 behind base");
+  });
+
+  test("caps newCount to ahead for will-push when baseAhead exceeds ahead", () => {
+    // 7 total commits on branch (baseAhead=7) but only 2 unpushed (ahead=2)
+    const plan = formatPushPlan([makeAssessment({ ahead: 2, baseAhead: 7 })], makeRemotesMap(["repo-a", {}]));
+    expect(plan).toContain("2 new");
+    expect(plan).not.toContain("7");
+    expect(plan).toContain("to push");
   });
 
   test("shows new branch annotation with remote branch name", () => {
@@ -705,7 +751,7 @@ describe("formatPushPlan", () => {
     expect(plan).not.toContain("new");
   });
 
-  test("shows force with behind count when not rebased", () => {
+  test("shows force with behind count when no base info and not rebased", () => {
     const plan = formatPushPlan(
       [makeAssessment({ outcome: "will-force-push", ahead: 3, behind: 2, rebased: 0 })],
       makeRemotesMap(["repo-a", {}]),
@@ -714,7 +760,35 @@ describe("formatPushPlan", () => {
     expect(plan).toContain("2 behind origin");
   });
 
-  test("shows outdated count for will-force-push-outdated (squash scenario)", () => {
+  test("shows from-base + new breakdown for will-force-push when baseAhead > 0 and rebased === 0", () => {
+    const plan = formatPushPlan(
+      [makeAssessment({ outcome: "will-force-push", ahead: 4, behind: 2, rebased: 0, baseAhead: 2 })],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("2 from main + 2 new");
+    expect(plan).toContain("(force)");
+  });
+
+  test("shows from-base + rebased + new for will-force-push with all three parts", () => {
+    const plan = formatPushPlan(
+      [makeAssessment({ outcome: "will-force-push", ahead: 5, behind: 3, rebased: 1, baseAhead: 3 })],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("2 from main + 1 rebased + 2 new");
+    expect(plan).toContain("(force)");
+  });
+
+  test("caps newCount to ahead for will-force-push when baseAhead exceeds ahead", () => {
+    const plan = formatPushPlan(
+      [makeAssessment({ outcome: "will-force-push", ahead: 2, behind: 1, rebased: 0, baseAhead: 5 })],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("2 new");
+    expect(plan).not.toContain("5");
+    expect(plan).toContain("(force)");
+  });
+
+  test("shows outdated count for will-force-push-outdated (squash scenario, no base info)", () => {
     const plan = formatPushPlan(
       [makeAssessment({ outcome: "will-force-push-outdated", ahead: 1, behind: 3, rebased: 0, replaced: 3 })],
       makeRemotesMap(["repo-a", {}]),
@@ -732,6 +806,62 @@ describe("formatPushPlan", () => {
     expect(plan).toContain("3 rebased");
     expect(plan).toContain("replaces 3 outdated on origin");
     expect(plan).not.toContain("force");
+  });
+
+  test("shows from-base + new breakdown for will-force-push-outdated when baseAhead > 0 and rebased === 0", () => {
+    const plan = formatPushPlan(
+      [
+        makeAssessment({
+          outcome: "will-force-push-outdated",
+          ahead: 3,
+          behind: 1,
+          rebased: 0,
+          replaced: 1,
+          baseAhead: 1,
+        }),
+      ],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("2 from main + 1 new");
+    expect(plan).toContain("replaces 1 outdated on origin");
+    expect(plan).not.toContain("force");
+  });
+
+  test("shows from-base + rebased + new for will-force-push-outdated with all three parts", () => {
+    const plan = formatPushPlan(
+      [
+        makeAssessment({
+          outcome: "will-force-push-outdated",
+          ahead: 5,
+          behind: 2,
+          rebased: 1,
+          replaced: 1,
+          baseAhead: 3,
+        }),
+      ],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("2 from main + 1 rebased + 2 new");
+    expect(plan).toContain("replaces 2 outdated on origin");
+  });
+
+  test("caps newCount to ahead for will-force-push-outdated when baseAhead exceeds ahead", () => {
+    const plan = formatPushPlan(
+      [
+        makeAssessment({
+          outcome: "will-force-push-outdated",
+          ahead: 2,
+          behind: 1,
+          rebased: 0,
+          replaced: 1,
+          baseAhead: 5,
+        }),
+      ],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("2 new");
+    expect(plan).not.toContain("5");
+    expect(plan).toContain("replaces 1 outdated on origin");
   });
 
   test("shows up-to-date", () => {
