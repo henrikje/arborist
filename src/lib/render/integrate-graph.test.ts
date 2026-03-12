@@ -7,6 +7,7 @@ function makeAssessment(overrides: Partial<RepoAssessment> = {}): RepoAssessment
     repo: "repo-a",
     repoDir: "/tmp/repo-a",
     outcome: "will-operate",
+    branch: "feat/xyz",
     behind: 3,
     ahead: 2,
     baseRemote: "origin",

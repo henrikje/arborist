@@ -124,6 +124,8 @@ If you add commits to a branch that was already merged (squash or regular), Arbo
 
 If you intentionally want to push an already merged branch anyway (for example to restore a deleted remote branch), use `arb push --include-merged`.
 
+If a repo is on a different branch than the workspace expects (shown as "drifted" in status), sync commands skip it by default. Use `--include-drifted` on `arb push`, `arb pull`, `arb rebase`, or `arb merge` to include it. The repo is pushed to / pulled from its actual branch, and the plan output annotates it for visibility.
+
 Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
 
 **Starting fresh** — discard all local changes and reset every repo to the remote share branch (or the base branch if never pushed):

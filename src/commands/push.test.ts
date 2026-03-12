@@ -35,7 +35,49 @@ describe("assessPushRepo", () => {
     );
     expect(a.outcome).toBe("skip");
     expect(a.skipReason).toContain("on branch other, expected feature");
+    expect(a.skipReason).toContain("--include-drifted");
     expect(a.skipFlag).toBe("drifted");
+  });
+
+  test("includes drifted branch with includeDrifted", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
+        share: {
+          remote: "origin",
+          ref: "origin/other",
+          refMode: "configured",
+          toPush: 2,
+          toPull: 0,
+          rebased: null,
+          replaced: null,
+          squashed: null,
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+      { includeDrifted: true },
+    );
+    expect(a.outcome).toBe("will-push");
+    expect(a.drifted).toBe(true);
+    expect(a.branch).toBe("other");
+    expect(a.ahead).toBe(2);
+  });
+
+  test("drifted up-to-date with includeDrifted", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
+      }),
+      DIR,
+      "feature",
+      SHA,
+      { includeDrifted: true },
+    );
+    expect(a.outcome).toBe("up-to-date");
+    expect(a.drifted).toBe(true);
+    expect(a.branch).toBe("other");
   });
 
   test("skips when base branch merged into default", () => {
@@ -1161,6 +1203,28 @@ describe("formatPushPlan", () => {
       makeRemotesMap(["repo-a", {}]),
     );
     expect(plan).not.toContain("merged with new commits");
+  });
+
+  test("shows drifted branch annotation in plan", () => {
+    const plan = formatPushPlan(
+      [makeAssessment({ drifted: true, branch: "other-branch" })],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("(branch: other-branch)");
+  });
+
+  test("shows drifted hint when drifted repos are being pushed", () => {
+    const plan = formatPushPlan(
+      [makeAssessment({ drifted: true, branch: "other-branch" })],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("hint:");
+    expect(plan).toContain("on a different branch than the workspace");
+  });
+
+  test("no drifted hint when no drifted repos", () => {
+    const plan = formatPushPlan([makeAssessment()], makeRemotesMap(["repo-a", {}]));
+    expect(plan).not.toContain("different branch");
   });
 
   // ── Header & alignment tests ────────────────────────────────

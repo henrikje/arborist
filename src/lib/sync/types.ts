@@ -6,6 +6,7 @@ export interface RepoAssessment {
   outcome: "will-operate" | "up-to-date" | "skip";
   skipReason?: string;
   skipFlag?: SkipFlag;
+  branch: string;
   baseBranch?: string;
   baseRemote: string;
   behind: number;
@@ -30,4 +31,5 @@ export interface RepoAssessment {
   retargetReplayCount?: number;
   retargetAlreadyOnTarget?: number;
   retargetReason?: "base-merged" | "branch-merged";
+  drifted?: boolean;
 }

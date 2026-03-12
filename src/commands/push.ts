@@ -33,6 +33,7 @@ export interface PushAssessment {
   headSha: string;
   recreate: boolean;
   behindBase: number;
+  drifted?: boolean;
   commits?: { shortHash: string; subject: string }[];
   totalCommits?: number;
 }
@@ -42,6 +43,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
     .command("push [repos...]")
     .option("-f, --force", "Force push with lease")
     .option("--include-merged", "Include branches already merged into base")
+    .option("--include-drifted", "Include repos on a different branch than the workspace")
     .option("--fetch", "Fetch from all remotes before push (default)")
     .option("-N, --no-fetch", "Skip fetching before push")
     .option("-y, --yes", "Skip confirmation prompt")
@@ -50,7 +52,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
     .option("-w, --where <filter>", "Only push repos matching status filter (comma = OR, + = AND, ^ = negate)")
     .summary("Push the feature branch to the share remote")
     .description(
-      "Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos with no commits to push, or whose branches have been merged into the base branch unless --include-merged is used. If a remote branch was deleted after merge, use --include-merged to recreate it. After rebase, amend, or squash, Arborist detects that all remote commits are outdated and pushes automatically with --force-with-lease. Use --force when the remote has genuinely new commits that you want to overwrite. Use --verbose to show the outgoing commits for each repo in the plan. Fetches before push by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
+      "Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos with no commits to push, or whose branches have been merged into the base branch unless --include-merged is used. Repos on a different branch than the workspace are skipped unless --include-drifted is used; when included, they are pushed to their actual branch. If a remote branch was deleted after merge, use --include-merged to recreate it. After rebase, amend, or squash, Arborist detects that all remote commits are outdated and pushes automatically with --force-with-lease. Use --force when the remote has genuinely new commits that you want to overwrite. Use --verbose to show the outgoing commits for each repo in the plan. Fetches before push by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
     )
     .action(
       async (
@@ -58,6 +60,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
         options: {
           force?: boolean;
           includeMerged?: boolean;
+          includeDrifted?: boolean;
           fetch?: boolean;
           yes?: boolean;
           dryRun?: boolean;
@@ -101,6 +104,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
               return assessPushRepo(status, repoDir, branch, headSha, {
                 force: options.force,
                 includeMerged: options.includeMerged,
+                includeDrifted: options.includeDrifted,
               });
             }),
           );
@@ -117,7 +121,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
         };
 
         const postAssess = options.verbose
-          ? (nextAssessments: PushAssessment[]) => gatherPushVerboseCommits(nextAssessments, remotesMap, branch)
+          ? (nextAssessments: PushAssessment[]) => gatherPushVerboseCommits(nextAssessments, remotesMap)
           : undefined;
 
         const assessments = await runPlanFlow({
@@ -284,6 +288,18 @@ export function buildPushPlanNodes(
     });
   }
 
+  const driftedCount = assessments.filter(
+    (a) =>
+      a.drifted &&
+      (a.outcome === "will-push" || a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated"),
+  ).length;
+  if (driftedCount > 0) {
+    nodes.push({
+      kind: "hint",
+      cell: cell(`  hint: ${plural(driftedCount, "repo")} on a different branch than the workspace`, "muted"),
+    });
+  }
+
   nodes.push({ kind: "gap" });
   return nodes;
 }
@@ -291,6 +307,8 @@ export function buildPushPlanNodes(
 export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRemotes>): Cell {
   const remotes = remotesMap.get(a.repo);
   const forkText = remotes && remotes.base !== remotes.share ? ` → ${a.shareRemote}` : "";
+
+  let result: Cell;
 
   if (a.outcome === "will-push") {
     const remoteBranch = `${a.shareRemote}/${a.branch}`;
@@ -311,17 +329,14 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
     } else {
       desc = plural(a.ahead, "commit");
     }
-    let base = cell(`${desc} to push${newBranchSuffix}`);
+    result = cell(`${desc} to push${newBranchSuffix}`);
     if (a.behindBase > 0) {
-      base = suffix(base, ` (${a.behindBase} behind base)`, "attention");
+      result = suffix(result, ` (${a.behindBase} behind base)`, "attention");
     }
-    if (forkText) base = suffix(base, forkText);
-    if (a.headSha) base = suffix(base, `  (HEAD ${a.headSha})`, "muted");
-    return base;
-  }
-
-  // will-force-push-outdated — all remote commits are accounted for (rebased, replaced, or squashed)
-  if (a.outcome === "will-force-push-outdated") {
+    if (forkText) result = suffix(result, forkText);
+    if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
+  } else if (a.outcome === "will-force-push-outdated") {
+    // will-force-push-outdated — all remote commits are accounted for (rebased, replaced, or squashed)
     const outdatedSuffix = ` (replaces ${a.behind} outdated on ${a.shareRemote})`;
     if (a.baseAhead > 0 || a.rebased > 0) {
       const fromBase = Math.max(0, a.ahead - a.baseAhead);
@@ -331,23 +346,20 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
       if (a.rebased > 0) parts.push(`${a.rebased} rebased`);
       if (newCount > 0) parts.push(`${newCount} new`);
       const desc = parts.length > 0 ? parts.join(" + ") : plural(a.ahead, "commit");
-      let base = cell(`${desc} to push${outdatedSuffix}`);
+      result = cell(`${desc} to push${outdatedSuffix}`);
       if (a.behindBase > 0) {
-        base = suffix(base, ` (${a.behindBase} behind base)`, "attention");
+        result = suffix(result, ` (${a.behindBase} behind base)`, "attention");
       }
-      if (a.headSha) base = suffix(base, `  (HEAD ${a.headSha})`, "muted");
-      return base;
+      if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
+    } else {
+      result = cell(`${plural(a.ahead, "commit")} to push${outdatedSuffix}`);
+      if (a.behindBase > 0) {
+        result = suffix(result, ` (${a.behindBase} behind base)`, "attention");
+      }
+      if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
     }
-    let base = cell(`${plural(a.ahead, "commit")} to push${outdatedSuffix}`);
-    if (a.behindBase > 0) {
-      base = suffix(base, ` (${a.behindBase} behind base)`, "attention");
-    }
-    if (a.headSha) base = suffix(base, `  (HEAD ${a.headSha})`, "muted");
-    return base;
-  }
-
-  // will-force-push
-  if (a.baseAhead > 0 || a.rebased > 0) {
+  } else if (a.baseAhead > 0 || a.rebased > 0) {
+    // will-force-push with base info
     const fromBase = Math.max(0, a.ahead - a.baseAhead);
     const newCount = Math.max(0, a.ahead - fromBase - a.rebased);
     const parts: string[] = [];
@@ -355,26 +367,30 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
     if (a.rebased > 0) parts.push(`${a.rebased} rebased`);
     if (newCount > 0) parts.push(`${newCount} new`);
     const desc = parts.length > 0 ? parts.join(" + ") : plural(a.ahead, "commit");
-    let base = cell(`${desc} to push (force)`);
+    result = cell(`${desc} to push (force)`);
     if (a.behindBase > 0) {
-      base = suffix(base, ` (${a.behindBase} behind base)`, "attention");
+      result = suffix(result, ` (${a.behindBase} behind base)`, "attention");
     }
-    if (a.headSha) base = suffix(base, `  (HEAD ${a.headSha})`, "muted");
-    return base;
+    if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
+  } else {
+    // will-force-push without base info
+    result = cell(`${plural(a.ahead, "commit")} to push (force \u2014 ${a.behind} behind ${a.shareRemote})`);
+    if (a.behindBase > 0) {
+      result = suffix(result, ` (${a.behindBase} behind base)`, "attention");
+    }
+    if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
   }
 
-  let base = cell(`${plural(a.ahead, "commit")} to push (force \u2014 ${a.behind} behind ${a.shareRemote})`);
-  if (a.behindBase > 0) {
-    base = suffix(base, ` (${a.behindBase} behind base)`, "attention");
+  if (a.drifted) {
+    result = suffix(result, ` (branch: ${a.branch})`, "attention");
   }
-  if (a.headSha) base = suffix(base, `  (HEAD ${a.headSha})`, "muted");
-  return base;
+
+  return result;
 }
 
 async function gatherPushVerboseCommits(
   assessments: PushAssessment[],
   remotesMap: Map<string, RepoRemotes>,
-  branch: string,
 ): Promise<void> {
   await Promise.all(
     assessments
@@ -388,7 +404,7 @@ async function gatherPushVerboseCommits(
         const ref =
           a.newBranch || a.recreate
             ? `${remotesMap.get(a.repo)?.base ?? shareRemote}/HEAD`
-            : `${shareRemote}/${branch}`;
+            : `${shareRemote}/${a.branch}`;
         const commits = await getCommitsBetweenFull(a.repoDir, ref, "HEAD");
         const total = commits.length;
         a.commits = commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
@@ -405,7 +421,7 @@ export function assessPushRepo(
   repoDir: string,
   branch: string,
   headSha: string,
-  options?: { force?: boolean; includeMerged?: boolean },
+  options?: { force?: boolean; includeMerged?: boolean; includeDrifted?: boolean },
 ): PushAssessment {
   const behindBase = status.base?.behind ?? 0;
 
@@ -433,11 +449,15 @@ export function assessPushRepo(
     return { ...base, skipReason: "HEAD is detached", skipFlag: "detached-head" };
   }
   if (status.identity.headMode.branch !== branch) {
-    return {
-      ...base,
-      skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}`,
-      skipFlag: "drifted",
-    };
+    if (!options?.includeDrifted) {
+      return {
+        ...base,
+        skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch} (use --include-drifted)`,
+        skipFlag: "drifted",
+      };
+    }
+    base.branch = status.identity.headMode.branch;
+    base.drifted = true;
   }
 
   // Base branch merged into default — retarget before pushing
