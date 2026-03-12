@@ -504,7 +504,6 @@ _arb() {
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before reset]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
-                        '(-b --base)'{-b,--base}'[Reset to a different base branch and retarget]:branch:' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($ws_repo_names)'
                     ;;

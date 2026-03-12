@@ -532,11 +532,8 @@ __arb_complete_reset() {
         __arb_complete_where_value "$cur"
         return
     fi
-    if [[ "$prev" == "-b" || "$prev" == "--base" ]]; then
-        return
-    fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -b --base -w --where" -- "$cur"))
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
