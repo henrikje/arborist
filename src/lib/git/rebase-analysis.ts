@@ -13,6 +13,8 @@ export interface ReplayPlanAnalysis {
   toReplay: number;
   contiguous: boolean;
   boundaryRef?: string;
+  /** True when alreadyOnTarget was determined via detectBranchMerged heuristic, not patch-id matching. */
+  mergedPrefix?: boolean;
 }
 
 export async function matchDivergedCommits(repoDir: string, baseRef: string): Promise<CommitMatchResult> {
@@ -122,6 +124,7 @@ export async function analyzeReplayPlan(repoDir: string, baseRef: string): Promi
         toReplay,
         contiguous: true,
         boundaryRef: `HEAD~${toReplay}`,
+        mergedPrefix: true,
       };
     }
   }

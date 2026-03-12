@@ -43,6 +43,7 @@ export const StatusJsonRepoSchema = z.object({
           alreadyOnTarget: z.number(),
           toReplay: z.number(),
           contiguous: z.boolean(),
+          mergedPrefix: z.boolean().optional(),
         })
         .optional(),
       baseMergedIntoDefault: z.enum(["merge", "squash"]).nullable(),

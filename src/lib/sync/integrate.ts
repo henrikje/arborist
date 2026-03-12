@@ -860,11 +860,15 @@ async function assessRepo(
   // Diverged branch where some/all local commits are already represented on target base.
   // When contiguous, replay only the top suffix; when none remain, treat as up-to-date.
   // Explicit retarget takes precedence over this optimization.
+  // When mergedPrefix is set, the replay plan came from the detectBranchMerged heuristic
+  // (not patch-id matching) — require corroboration from the main merge detection to avoid
+  // false positives where the heuristic incorrectly claims commits are already merged.
   if (
     mode === "rebase" &&
     retargetExplicit === null &&
     classified.outcome === "will-operate" &&
-    base?.replayPlan?.contiguous
+    base?.replayPlan?.contiguous &&
+    !(base.replayPlan.mergedPrefix && base.mergedIntoBase == null)
   ) {
     const replayPlan = base.replayPlan;
     if (replayPlan.alreadyOnTarget > 0 && replayPlan.toReplay === 0) {

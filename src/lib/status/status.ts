@@ -285,6 +285,7 @@ export async function gatherRepoStatus(
         alreadyOnTarget: replayPlan.alreadyOnTarget,
         toReplay: replayPlan.toReplay,
         contiguous: replayPlan.contiguous,
+        ...(replayPlan.mergedPrefix && { mergedPrefix: true }),
       };
     }
   }

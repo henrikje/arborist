@@ -71,6 +71,48 @@ describe("json-types zod validation", () => {
     expect(() => StatusJsonRepoSchema.parse(repo)).not.toThrow();
   });
 
+  test("StatusJsonRepoSchema parses repo with replayPlan including mergedPrefix", () => {
+    const repo = {
+      name: "api",
+      identity: {
+        worktreeKind: "linked" as const,
+        headMode: { kind: "attached" as const, branch: "feat-x" },
+        shallow: false,
+      },
+      local: { staged: 0, modified: 0, untracked: 0, conflicts: 0 },
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: null,
+        ahead: 4,
+        behind: 6,
+        mergedIntoBase: null,
+        baseMergedIntoDefault: null,
+        detectedPr: null,
+        replayPlan: {
+          totalLocal: 4,
+          alreadyOnTarget: 3,
+          toReplay: 1,
+          contiguous: true,
+          mergedPrefix: true,
+        },
+      },
+      share: {
+        remote: "origin",
+        ref: null,
+        refMode: "noRef" as const,
+        toPush: null,
+        toPull: null,
+        rebased: null,
+        replaced: null,
+        squashed: null,
+      },
+      operation: null,
+      lastCommit: "2025-01-15T10:30:00Z",
+    };
+    expect(() => StatusJsonRepoSchema.parse(repo)).not.toThrow();
+  });
+
   test("StatusJsonRepoSchema parses repo with predictions", () => {
     const repo = {
       name: "api",

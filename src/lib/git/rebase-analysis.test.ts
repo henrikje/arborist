@@ -320,5 +320,6 @@ describe("analyzeReplayPlan", () => {
       expect(result.alreadyOnTarget).toBe(2);
       expect(result.toReplay).toBe(1);
       expect(result.boundaryRef).toBe("HEAD~1");
+      expect(result.mergedPrefix).toBe(true);
     }));
 });
