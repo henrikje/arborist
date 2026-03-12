@@ -346,8 +346,7 @@ describe("--dry-run flag", () => {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("1 commit");
-      expect(result.output).toContain("to push");
+      expect(result.output).toContain("1 new to push");
       expect(result.output).toContain("Dry run");
       // Must NOT contain the execution summary
       expect(result.output).not.toContain("Pushed");
