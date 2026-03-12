@@ -417,10 +417,11 @@ __arb_complete_branch() {
 
     local show_opts="-q --quiet -v --verbose --fetch -N --no-fetch --json --schema"
     local rename_opts="--continue --abort -r --delete-remote --fetch -N --no-fetch -n --dry-run -y --yes --include-in-progress"
+    local base_opts="--unset -f --force"
 
     if ((COMP_CWORD == sub_pos)); then
         # Complete subcommand name or show-options (since show is the default)
-        COMPREPLY=($(compgen -W "show rename $show_opts" -- "$cur"))
+        COMPREPLY=($(compgen -W "show rename base $show_opts" -- "$cur"))
         return
     fi
 
@@ -432,6 +433,11 @@ __arb_complete_branch() {
         rename)
             if [[ "$cur" == -* ]]; then
                 COMPREPLY=($(compgen -W "$rename_opts" -- "$cur"))
+            fi
+            ;;
+        base)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=($(compgen -W "$base_opts" -- "$cur"))
             fi
             ;;
         *)
