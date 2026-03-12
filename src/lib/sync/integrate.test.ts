@@ -108,6 +108,47 @@ describe("classifyRepo", () => {
     expect(a.skipFlag).toBe("dirty");
   });
 
+  test("dirty skip carries baseBranch when up to date", () => {
+    const a = classifyRepo(
+      makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }),
+      DIR,
+      "feature",
+      [],
+      false,
+      SHA,
+    );
+    expect(a.outcome).toBe("skip");
+    expect(a.skipFlag).toBe("dirty");
+    expect(a.baseBranch).toBe("main");
+    expect(a.behind).toBe(0);
+  });
+
+  test("dirty skip does not carry baseBranch when behind", () => {
+    const a = classifyRepo(
+      makeRepo({
+        local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: null,
+          ahead: 0,
+          behind: 3,
+          mergedIntoBase: null,
+          baseMergedIntoDefault: null,
+          detectedPr: null,
+        },
+      }),
+      DIR,
+      "feature",
+      [],
+      false,
+      SHA,
+    );
+    expect(a.outcome).toBe("skip");
+    expect(a.skipFlag).toBe("dirty");
+    expect(a.baseBranch).toBeUndefined();
+  });
+
   test("sets needsStash when dirty with autostash and staged files", () => {
     const a = classifyRepo(
       makeRepo({
@@ -648,6 +689,34 @@ describe("formatIntegratePlan", () => {
   test("shows up-to-date", () => {
     const plan = formatIntegratePlan([makeAssessment({ outcome: "up-to-date" })], "rebase", "feature");
     expect(plan).toContain("up to date");
+  });
+
+  test("shows up-to-date for dirty skip when behind is 0", () => {
+    const plan = formatIntegratePlan(
+      [
+        makeAssessment({
+          outcome: "skip",
+          skipFlag: "dirty",
+          skipReason: "uncommitted changes",
+          baseBranch: "main",
+          behind: 0,
+        }),
+      ],
+      "rebase",
+      "feature",
+    );
+    expect(plan).toContain("up to date");
+    expect(plan).not.toContain("skipped");
+  });
+
+  test("shows skipped for dirty skip when behind base", () => {
+    const plan = formatIntegratePlan(
+      [makeAssessment({ outcome: "skip", skipFlag: "dirty", skipReason: "uncommitted changes", behind: 3 })],
+      "rebase",
+      "feature",
+    );
+    expect(plan).toContain("skipped");
+    expect(plan).not.toContain("up to date");
   });
 
   test("shows skipped with reason", () => {
