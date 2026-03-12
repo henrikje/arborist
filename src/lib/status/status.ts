@@ -1,4 +1,7 @@
 import { basename } from "node:path";
+import { detectRebasedCommits, detectReplacedCommits, detectSquashedCommits } from "../analysis/commit-matching";
+import { detectBranchMerged, findMergeCommitForBranch, findTicketReferencedCommit } from "../analysis/merge-detection";
+import { analyzeReplayPlan } from "../analysis/replay-analysis";
 import { readWorkspaceConfig } from "../core/config";
 import { latestCommitDate } from "../core/time";
 import {
@@ -13,13 +16,6 @@ import {
   remoteBranchExists,
 } from "../git/git";
 import type { GitCache } from "../git/git-cache";
-import { detectBranchMerged, findMergeCommitForBranch, findTicketReferencedCommit } from "../git/merge-detection";
-import {
-  analyzeReplayPlan,
-  detectRebasedCommits,
-  detectReplacedCommits,
-  detectSquashedCommits,
-} from "../git/rebase-analysis";
 import { buildPrUrl, parseRemoteUrl } from "../git/remote-url";
 import type { RepoRemotes } from "../git/remotes";
 import { getRepoActivityDate, getWorkspaceActivityDate } from "../workspace/activity";
@@ -83,6 +79,36 @@ export function computeMergeDetectionStrategy(
   }
 
   return { shouldCheckSquash, shouldCheckPrefixes, prefixLimit };
+}
+
+// ── Share Divergence Detection ──
+
+async function detectShareDivergence(
+  repoDir: string,
+  trackingRef: string,
+  branch: string,
+  toPush: number | null,
+  toPull: number | null,
+): Promise<{ rebased: number | null; replaced: number | null; squashed: number | null }> {
+  let rebased: number | null = null;
+  let replaced: number | null = null;
+  let squashed: number | null = null;
+  if (toPush !== null && toPush > 0 && toPull !== null && toPull > 0) {
+    const rebasedResult = await detectRebasedCommits(repoDir, trackingRef);
+    rebased = rebasedResult?.count ?? null;
+    const unmatchedPull = toPull - (rebased ?? 0);
+    if (unmatchedPull > 0) {
+      const rebasedRemoteHashes = rebasedResult?.rebasedRemoteHashes ?? new Set<string>();
+      const replacedResult = await detectReplacedCommits(repoDir, trackingRef, branch, rebasedRemoteHashes);
+      replaced = replacedResult?.count ?? null;
+    }
+    const unmatchedAfterReplace = toPull - (rebased ?? 0) - (replaced ?? 0);
+    if (unmatchedAfterReplace > 0) {
+      const squashedResult = await detectSquashedCommits(repoDir, trackingRef, toPull);
+      squashed = squashedResult?.count ?? null;
+    }
+  }
+  return { rebased, replaced, squashed };
 }
 
 // ── Status Gathering ──
@@ -180,33 +206,14 @@ export async function gatherRepoStatus(
         toPull = left;
         toPush = right;
       }
-      let rebased: number | null = null;
-      let replaced: number | null = null;
-      let squashed: number | null = null;
-      if (toPush !== null && toPush > 0 && toPull !== null && toPull > 0) {
-        const rebasedResult = await detectRebasedCommits(repoDir, trackingRef);
-        rebased = rebasedResult?.count ?? null;
-        const unmatchedPull = toPull - (rebased ?? 0);
-        if (unmatchedPull > 0) {
-          const rebasedRemoteHashes = rebasedResult?.rebasedRemoteHashes ?? new Set<string>();
-          const replacedResult = await detectReplacedCommits(repoDir, trackingRef, actualBranch, rebasedRemoteHashes);
-          replaced = replacedResult?.count ?? null;
-        }
-        const unmatchedAfterReplace = toPull - (rebased ?? 0) - (replaced ?? 0);
-        if (unmatchedAfterReplace > 0) {
-          const squashedResult = await detectSquashedCommits(repoDir, trackingRef, toPull);
-          squashed = squashedResult?.count ?? null;
-        }
-      }
+      const divergence = await detectShareDivergence(repoDir, trackingRef, actualBranch, toPush, toPull);
       shareStatus = {
         remote: shareRemote,
         ref: trackingRef,
         refMode: "configured",
         toPush,
         toPull,
-        rebased,
-        replaced,
-        squashed,
+        ...divergence,
       };
     } else if (await remoteBranchExists(repoDir, actualBranch, shareRemote)) {
       // Step 2: No tracking config but remote ref exists → implicit
@@ -219,33 +226,14 @@ export async function gatherRepoStatus(
         toPull = left;
         toPush = right;
       }
-      let rebased: number | null = null;
-      let replaced: number | null = null;
-      let squashed: number | null = null;
-      if (toPush !== null && toPush > 0 && toPull !== null && toPull > 0) {
-        const rebasedResult = await detectRebasedCommits(repoDir, implicitRef);
-        rebased = rebasedResult?.count ?? null;
-        const unmatchedPull = toPull - (rebased ?? 0);
-        if (unmatchedPull > 0) {
-          const rebasedRemoteHashes = rebasedResult?.rebasedRemoteHashes ?? new Set<string>();
-          const replacedResult = await detectReplacedCommits(repoDir, implicitRef, actualBranch, rebasedRemoteHashes);
-          replaced = replacedResult?.count ?? null;
-        }
-        const unmatchedAfterReplace = toPull - (rebased ?? 0) - (replaced ?? 0);
-        if (unmatchedAfterReplace > 0) {
-          const squashedResult = await detectSquashedCommits(repoDir, implicitRef, toPull);
-          squashed = squashedResult?.count ?? null;
-        }
-      }
+      const divergence = await detectShareDivergence(repoDir, implicitRef, actualBranch, toPush, toPull);
       shareStatus = {
         remote: shareRemote,
         ref: implicitRef,
         refMode: "implicit",
         toPush,
         toPull,
-        rebased,
-        replaced,
-        squashed,
+        ...divergence,
       };
     } else {
       // Step 3: Check if tracking config exists (→ gone) or not (→ noRef)
