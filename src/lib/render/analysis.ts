@@ -151,8 +151,8 @@ function remoteDiffParts(repo: RepoStatus): { push: string; pull: string; pullNe
     }
 
     return {
-      push: pushParts.filter(Boolean).join(", "),
-      pull: pullParts.join(", "),
+      push: pushParts.filter(Boolean).join(" + "),
+      pull: pullParts.join(" + "),
       pullNewText,
       pushNewText,
     };
@@ -170,10 +170,10 @@ function remoteDiffParts(repo: RepoStatus): { push: string; pull: string; pullNe
 function pushSideSpans(pushText: string, pushNewText: string, pushNeedsAttention: boolean): Span[] {
   if (!pushNeedsAttention) return [{ text: pushText, attention: "default" }];
   if (!pushNewText || pushText === pushNewText) return [{ text: pushText, attention: "attention" }];
-  if (pushText.endsWith(`, ${pushNewText}`)) {
-    const prefix = pushText.slice(0, pushText.length - pushNewText.length - 2);
+  if (pushText.endsWith(` + ${pushNewText}`)) {
+    const prefix = pushText.slice(0, pushText.length - pushNewText.length - 3);
     return [
-      { text: `${prefix}, `, attention: "default" },
+      { text: `${prefix} + `, attention: "default" },
       { text: pushNewText, attention: "attention" },
     ];
   }
@@ -229,12 +229,12 @@ export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags, hasPullCon
 
   // Both sides: push | arrow (muted) | pull (highlight "N new" only when pull conflict is predicted)
   if (pullNewText && pullText !== pullNewText) {
-    // Has outdated + new: "M outdated, K new" — highlight "K new" with attention
-    const outdatedPortion = pullText.slice(0, pullText.length - pullNewText.length - 2);
+    // Has outdated + new: "M outdated + K new" — highlight "K new" with attention
+    const outdatedPortion = pullText.slice(0, pullText.length - pullNewText.length - 3);
     return spans(
       ...pushSpans,
       { text: " → ", attention: "muted" },
-      { text: `${outdatedPortion}, `, attention: "default" },
+      { text: `${outdatedPortion} + `, attention: "default" },
       { text: pullNewText, attention: hasPullConflict ? "attention" : "default" },
     );
   }
