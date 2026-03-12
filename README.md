@@ -275,7 +275,7 @@ Arborist tracks status flags across repos — dirty, unpushed, behind-base, dive
 ```bash
 arb exec npm install
 arb exec --dirty git stash
-arb open code
+arb open code # open repos in VS Code
 ```
 
 `arb exec` runs any command in each repo, using the repo directory as working directory. `arb open` passes all repo paths as arguments to the given command, useful for editors like VS Code or IntelliJ. Combine with `--dirty` or `--where` to narrow the scope.
