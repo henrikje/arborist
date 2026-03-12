@@ -165,4 +165,53 @@ describe("analyzeReplayPlan", () => {
       expect(result.boundaryRef).toBe("HEAD~1");
       expect(result.mergedPrefix).toBe(true);
     }));
+
+  test("totalLocal = 0 returns contiguous plan with 0 toReplay", () =>
+    withRepo(async ({ repoDir }) => {
+      const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+      // Feature branch with no commits beyond base
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+
+      const result = await analyzeReplayPlan(repoDir, defaultBranch);
+      expect(result).not.toBeNull();
+      if (!result) throw new Error("expected replay plan");
+      expect(result.totalLocal).toBe(0);
+      expect(result.alreadyOnTarget).toBe(0);
+      expect(result.toReplay).toBe(0);
+      expect(result.contiguous).toBe(true);
+    }));
+
+  test("contiguous suffix with boundaryRef set via cherry-pick matching", () =>
+    withRepo(async ({ repoDir }) => {
+      const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+      // Create feature with 1 commit, then add a new commit on top
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+      writeFileSync(join(repoDir, "feature.txt"), "feature content");
+      Bun.spawnSync(["git", "-C", repoDir, "add", "feature.txt"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "feature commit"]);
+      const featureSha = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+
+      // Advance main and cherry-pick the feature commit (like the existing matchDivergedCommits test)
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+      writeFileSync(join(repoDir, "main-work.txt"), "main work");
+      Bun.spawnSync(["git", "-C", repoDir, "add", "main-work.txt"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "main work"]);
+      Bun.spawnSync(["git", "-C", repoDir, "cherry-pick", featureSha]);
+
+      // Back to feature, add new commit on top (contiguous suffix to replay)
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+      writeFileSync(join(repoDir, "new.txt"), "new content");
+      Bun.spawnSync(["git", "-C", repoDir, "add", "new.txt"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "new commit"]);
+
+      const result = await analyzeReplayPlan(repoDir, defaultBranch);
+      expect(result).not.toBeNull();
+      if (!result) throw new Error("expected replay plan");
+      expect(result.contiguous).toBe(true);
+      expect(result.alreadyOnTarget).toBe(1);
+      expect(result.toReplay).toBe(1);
+      expect(result.boundaryRef).toBe("HEAD~1");
+    }));
 });
