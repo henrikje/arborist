@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.109.0](https://github.com/henrikje/arborist/compare/v0.108.0...v0.109.0) (2026-03-12)
+
+
+### Features
+
+* **attach:** replace single-item confirm with checkbox selector ([a474ce7](https://github.com/henrikje/arborist/commit/a474ce750da79caa53b4dd0e88333fae7343a67b))
+* **branch:** add `arb branch base` subcommand ([a6144c8](https://github.com/henrikje/arborist/commit/a6144c86078b816e3efce1b71d76bfc7cc7b94f6))
+* **push:** add --include-drifted flag to sync commands ([38fb9f7](https://github.com/henrikje/arborist/commit/38fb9f717f7422588ae732c5f54df4febbbb7ab1))
+* **push:** detect squashed remote commits via cumulative patch-id ([b6c2890](https://github.com/henrikje/arborist/commit/b6c2890bdfe8ac4109f8b38b957d3197b47f07df))
+* **push:** show commit breakdown in push plan matching status output ([#321](https://github.com/henrikje/arborist/issues/321)) ([eee68cb](https://github.com/henrikje/arborist/commit/eee68cb7a793969f28bcd7f38fab5f7aedac3645))
+* **reset:** remove --base flag from arb reset ([e6b7b9c](https://github.com/henrikje/arborist/commit/e6b7b9c550df04c37e5c497442b8d4e3bb913ee7))
+* **reset:** reset to share branch by default, fall back to base ([f3d18dd](https://github.com/henrikje/arborist/commit/f3d18ddf9735303f29c726b92a195b4953e61ceb))
+* **status:** skip re-scan for repos with no-op fetches ([de9a49b](https://github.com/henrikje/arborist/commit/de9a49be7c898430941dc85e8f6afb28f7c5f15f))
+
+
+### Bug Fixes
+
+* **delete:** show all workspaces in interactive selector ([16e04fd](https://github.com/henrikje/arborist/commit/16e04fdd0a27eaaf80a0957ad7df7d5c7e10de03))
+* **list:** show per-workspace scanning progress in phased render paths ([bf9902a](https://github.com/henrikje/arborist/commit/bf9902a15e44a9f971f790fc5ed472aad9beaa17))
+* **rebase:** prevent false-positive merged label when detectBranchMerged heuristic is uncorroborated ([c7f962a](https://github.com/henrikje/arborist/commit/c7f962a86a75e13132bf801e8abeaf0b8a4e7298))
+* **rebase:** show up-to-date instead of skipped for dirty repos that are not behind ([40c582a](https://github.com/henrikje/arborist/commit/40c582ad58d6bd675c4e7c233cc96e6cb3dfacb6))
+* **status:** prevent false merged status after reset + pull ([401b23c](https://github.com/henrikje/arborist/commit/401b23ccb4c662c57e3bc75ce90ae251b00e84fa))
+* **status:** use + separator in SHARE column to match push format ([10bdd19](https://github.com/henrikje/arborist/commit/10bdd1967a57c6b444d84c60892fa400e87cdeee))
+
 ## [0.108.0](https://github.com/henrikje/arborist/compare/v0.107.0...v0.108.0) (2026-03-11)
 
 
