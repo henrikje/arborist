@@ -194,6 +194,42 @@ export class Push implements AsyncCommand<WorkspaceModel, RealSystem> {
   }
 }
 
+// ── Pull ─────────────────────────────────────────────────────────
+
+export class Pull implements AsyncCommand<WorkspaceModel, RealSystem> {
+  check(model: Readonly<WorkspaceModel>): boolean {
+    // At least one repo has genuine external commits to pull and is clean
+    return Object.values(model.repos).some(
+      (r) => r.pushed && r.externalCommits > 0 && r.staged === 0 && r.untracked === 0,
+    );
+  }
+
+  async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
+    real.executedCommands.push(this.toString());
+    // arb pull always fetches (no --no-fetch option)
+    const result = await arb(real.env, ["pull", "--rebase", "--yes"], {
+      cwd: join(real.env.projectDir, real.wsName),
+    });
+    if (result.exitCode !== 0) {
+      throw new Error(`arb pull failed: ${result.output}`);
+    }
+    for (const repo of Object.values(model.repos)) {
+      if (repo.pushed && repo.externalCommits > 0 && repo.staged === 0 && repo.untracked === 0) {
+        // After pull --rebase: external commits are absorbed into local history.
+        // Local commits are replayed on top, so toPush count stays the same.
+        repo.localCommits += repo.externalCommits;
+        repo.pushedCommits += repo.externalCommits;
+        repo.externalCommits = 0;
+      }
+    }
+    await assertStatus(model, real);
+  }
+
+  toString(): string {
+    return "Pull";
+  }
+}
+
 // ── Rebase ───────────────────────────────────────────────────────
 
 export class Rebase implements AsyncCommand<WorkspaceModel, RealSystem> {
