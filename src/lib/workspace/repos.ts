@@ -1,7 +1,6 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import checkbox from "@inquirer/checkbox";
-import confirm from "@inquirer/confirm";
 import { readProjectConfig } from "../core/config";
 import { ArbError } from "../core/errors";
 import { error } from "../terminal/output";
@@ -41,17 +40,6 @@ export function workspaceRepoDirs(wsDir: string): string[] {
 export async function selectInteractive(items: string[], message: string, defaults?: Set<string>): Promise<string[]> {
   if (items.length === 0) {
     throw new Error("No items to select");
-  }
-
-  if (items.length === 1) {
-    const yes = await confirm(
-      {
-        message: `Only option: ${items[0]}. Include it?`,
-        default: true,
-      },
-      { output: process.stderr },
-    );
-    return yes ? items : [];
   }
 
   return checkbox(
