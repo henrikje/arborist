@@ -90,6 +90,33 @@ describe("predictRebaseConflictCommits", () => {
       const result = await predictRebaseConflictCommits(repoDir, defaultBranch);
       expect(result.length).toBe(0);
     }));
+
+  test("returns array of conflicting commit hashes for overlapping changes", () =>
+    withRepo(async ({ repoDir }) => {
+      const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+      // Create a shared file
+      writeFileSync(join(repoDir, "shared.txt"), "original");
+      Bun.spawnSync(["git", "-C", repoDir, "add", "shared.txt"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add shared"]);
+
+      // Feature branch modifies the file
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+      writeFileSync(join(repoDir, "shared.txt"), "feature version");
+      Bun.spawnSync(["git", "-C", repoDir, "add", "shared.txt"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "feature change"]);
+
+      // Main branch also modifies the file (conflicting)
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+      writeFileSync(join(repoDir, "shared.txt"), "main version");
+      Bun.spawnSync(["git", "-C", repoDir, "add", "shared.txt"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "main change"]);
+
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+      const result = await predictRebaseConflictCommits(repoDir, defaultBranch);
+      expect(result.length).toBeGreaterThan(0);
+      expect(result[0]?.files.length).toBeGreaterThan(0);
+    }));
 });
 
 describe("predictStashPopConflict", () => {
@@ -97,5 +124,29 @@ describe("predictStashPopConflict", () => {
     withRepo(async ({ repoDir }) => {
       const result = await predictStashPopConflict(repoDir, "HEAD");
       expect(result.overlapping.length).toBe(0);
+    }));
+
+  test("returns overlapping file paths when dirty working tree conflicts with incoming changes", () =>
+    withRepo(async ({ repoDir }) => {
+      const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+      // Create a shared file and push
+      writeFileSync(join(repoDir, "shared.txt"), "original");
+      Bun.spawnSync(["git", "-C", repoDir, "add", "shared.txt"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add shared"]);
+
+      // Create a branch that modifies the shared file
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+      writeFileSync(join(repoDir, "shared.txt"), "main version");
+      Bun.spawnSync(["git", "-C", repoDir, "add", "shared.txt"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "main change"]);
+
+      // Dirty the working tree on feature branch with the same file
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+      writeFileSync(join(repoDir, "shared.txt"), "dirty local version");
+
+      const result = await predictStashPopConflict(repoDir, defaultBranch);
+      expect(result.overlapping).toContain("shared.txt");
     }));
 });

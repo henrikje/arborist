@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getDefaultBranch } from "../git/git";
-import { detectBranchMerged, findMergeCommitForBranch, findTicketReferencedCommit } from "./merge-detection";
+import {
+  detectBranchMerged,
+  findMergeCommitForBranch,
+  findTicketReferencedCommit,
+  verifySquashRange,
+} from "./merge-detection";
 
 const configureGitIdentity = (dir: string) => {
   Bun.spawnSync(["git", "-C", dir, "config", "user.name", "Arborist Test"]);
@@ -482,5 +487,70 @@ describe("findTicketReferencedCommit", () => {
       const result = await findTicketReferencedCommit(repoDir, "PROJ-208");
       expect(result).not.toBeNull();
       expect(result?.subject).toContain("something");
+    }));
+});
+
+describe("verifySquashRange", () => {
+  test("verified match returns true", () =>
+    withRepo(async ({ repoDir }) => {
+      const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+      // Create feature branch with 2 commits
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+      writeFileSync(join(repoDir, "a.txt"), "content a");
+      Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add a"]);
+      writeFileSync(join(repoDir, "b.txt"), "content b");
+      Bun.spawnSync(["git", "-C", repoDir, "add", "b.txt"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add b"]);
+
+      // Squash-merge into main
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+      Bun.spawnSync(["git", "-C", repoDir, "merge", "--squash", "feature"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "squash: add a and b"]);
+      const squashHash = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+
+      // Add a new commit on feature on top
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+      writeFileSync(join(repoDir, "c.txt"), "content c");
+      Bun.spawnSync(["git", "-C", repoDir, "add", "c.txt"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add c"]);
+
+      // verifySquashRange with newCommitsAfterMerge=1 should verify old commits match squash
+      const result = await verifySquashRange(repoDir, defaultBranch, squashHash, 1);
+      expect(result).toBe(true);
+    }));
+
+  test("non-matching content returns false", () =>
+    withRepo(async ({ repoDir }) => {
+      const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+      // Create feature branch with a commit
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+      writeFileSync(join(repoDir, "a.txt"), "content a");
+      Bun.spawnSync(["git", "-C", repoDir, "add", "a.txt"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add a"]);
+
+      // Create a different commit on main (not a squash of feature)
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+      writeFileSync(join(repoDir, "different.txt"), "different content");
+      Bun.spawnSync(["git", "-C", repoDir, "add", "different.txt"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "different commit"]);
+      const differentHash = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "HEAD"]).stdout.toString().trim();
+
+      // Add a new commit on feature
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", "feature"]);
+      writeFileSync(join(repoDir, "b.txt"), "content b");
+      Bun.spawnSync(["git", "-C", repoDir, "add", "b.txt"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add b"]);
+
+      const result = await verifySquashRange(repoDir, defaultBranch, differentHash, 1);
+      expect(result).toBe(false);
+    }));
+
+  test("invalid inputs return false", () =>
+    withRepo(async ({ repoDir }) => {
+      const result = await verifySquashRange(repoDir, "nonexistent", "deadbeef", 1);
+      expect(result).toBe(false);
     }));
 });

@@ -1236,6 +1236,86 @@ describe("maybeWriteRetargetConfig", () => {
       rmSync(wsDir, { recursive: true, force: true });
     }
   });
+
+  test("returns false when retargetConfigTarget is null", async () => {
+    const wrote = await maybeWriteRetargetConfig({
+      wsDir: "/tmp/fake",
+      branch: "feature",
+      assessments: [makeAssessment()],
+      retargetConfigTarget: null,
+      cache: { getDefaultBranch: async () => "main" },
+    });
+    expect(wrote).toBe(false);
+  });
+
+  test("returns false when no matching assessment found", async () => {
+    const wrote = await maybeWriteRetargetConfig({
+      wsDir: "/tmp/fake",
+      branch: "feature",
+      assessments: [makeAssessment({ retargetTo: "other-branch", retargetReason: "base-merged" })],
+      retargetConfigTarget: "main",
+      cache: { getDefaultBranch: async () => "main" },
+    });
+    expect(wrote).toBe(false);
+  });
+
+  test("returns false when hasConflicts is true", async () => {
+    const wrote = await maybeWriteRetargetConfig({
+      wsDir: "/tmp/fake",
+      branch: "feature",
+      assessments: [makeAssessment()],
+      retargetConfigTarget: "main",
+      cache: { getDefaultBranch: async () => "main" },
+      hasConflicts: true,
+    });
+    expect(wrote).toBe(false);
+  });
+
+  test("writes config WITH base key when retarget target differs from default", async () => {
+    const wsDir = mkdtempSync(join(tmpdir(), "arb-retarget-nondefault-"));
+    try {
+      mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+      const configFile = join(wsDir, ".arbws", "config.json");
+      writeFileSync(configFile, `${JSON.stringify({ branch: "feature", base: "feat/old" }, null, 2)}\n`);
+
+      const wrote = await maybeWriteRetargetConfig({
+        dryRun: false,
+        wsDir,
+        branch: "feature",
+        assessments: [makeAssessment({ retargetTo: "release/v2" })],
+        retargetConfigTarget: "release/v2",
+        cache: { getDefaultBranch: async () => "main" },
+      });
+
+      expect(wrote).toBe(true);
+      expect(JSON.parse(readFileSync(configFile, "utf-8"))).toEqual({ branch: "feature", base: "release/v2" });
+    } finally {
+      rmSync(wsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("writes config WITHOUT base key when retarget target matches repo default branch", async () => {
+    const wsDir = mkdtempSync(join(tmpdir(), "arb-retarget-default-"));
+    try {
+      mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+      const configFile = join(wsDir, ".arbws", "config.json");
+      writeFileSync(configFile, `${JSON.stringify({ branch: "feature", base: "feat/old" }, null, 2)}\n`);
+
+      const wrote = await maybeWriteRetargetConfig({
+        dryRun: false,
+        wsDir,
+        branch: "feature",
+        assessments: [makeAssessment()],
+        retargetConfigTarget: "main",
+        cache: { getDefaultBranch: async () => "main" },
+      });
+
+      expect(wrote).toBe(true);
+      expect(JSON.parse(readFileSync(configFile, "utf-8"))).toEqual({ branch: "feature" });
+    } finally {
+      rmSync(wsDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("formatVerboseCommits", () => {

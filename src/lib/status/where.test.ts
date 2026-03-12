@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { computeFlags } from "./flags";
 import { makeRepo } from "./test-helpers";
 import type { RepoStatus } from "./types";
-import { repoMatchesWhere, validateWhere, workspaceMatchesWhere } from "./where";
+import {
+  matchesAge,
+  repoMatchesWhere,
+  resolveAgeFilter,
+  resolveWhereFilter,
+  validateWhere,
+  workspaceMatchesWhere,
+} from "./where";
 
 describe("validateWhere", () => {
   test("returns null for valid single term", () => {
@@ -842,5 +849,93 @@ describe("positive / negation equivalence", () => {
     );
     expect(repoMatchesWhere(syncedFlags, "^stale")).toBe(repoMatchesWhere(syncedFlags, "synced"));
     expect(repoMatchesWhere(staleFlags, "^stale")).toBe(repoMatchesWhere(staleFlags, "synced"));
+  });
+});
+
+describe("resolveWhereFilter", () => {
+  test('dirty: true alone returns "dirty"', () => {
+    expect(resolveWhereFilter({ dirty: true })).toBe("dirty");
+  });
+
+  test("dirty: true + where throws error (conflict)", () => {
+    expect(() => resolveWhereFilter({ dirty: true, where: "ahead" })).toThrow("Cannot combine --dirty with --where");
+  });
+
+  test("neither dirty nor where returns undefined", () => {
+    expect(resolveWhereFilter({})).toBeUndefined();
+  });
+
+  test("where only returns the where string", () => {
+    expect(resolveWhereFilter({ where: "dirty" })).toBe("dirty");
+  });
+
+  test("invalid where throws error", () => {
+    expect(() => resolveWhereFilter({ where: "invalid-term" })).toThrow("Unknown filter term");
+  });
+});
+
+describe("resolveAgeFilter", () => {
+  test("no options returns undefined", () => {
+    expect(resolveAgeFilter({})).toBeUndefined();
+  });
+
+  test("valid olderThan returns filter with olderThan ms", () => {
+    const filter = resolveAgeFilter({ olderThan: "30d" });
+    expect(filter).toBeDefined();
+    expect(filter?.olderThan).toBeGreaterThan(0);
+  });
+
+  test("valid newerThan returns filter with newerThan ms", () => {
+    const filter = resolveAgeFilter({ newerThan: "2w" });
+    expect(filter).toBeDefined();
+    expect(filter?.newerThan).toBeGreaterThan(0);
+  });
+
+  test("invalid olderThan throws error", () => {
+    expect(() => resolveAgeFilter({ olderThan: "invalid" })).toThrow("Invalid duration");
+  });
+
+  test("invalid newerThan throws error", () => {
+    expect(() => resolveAgeFilter({ newerThan: "xyz" })).toThrow("Invalid duration");
+  });
+
+  test("both olderThan and newerThan returns filter with both", () => {
+    const filter = resolveAgeFilter({ olderThan: "30d", newerThan: "7d" });
+    expect(filter?.olderThan).toBeGreaterThan(0);
+    expect(filter?.newerThan).toBeGreaterThan(0);
+  });
+});
+
+describe("matchesAge", () => {
+  test("null date with olderThan filter returns true", () => {
+    expect(matchesAge(null, { olderThan: 1000 })).toBe(true);
+  });
+
+  test("null date with newerThan filter returns false", () => {
+    expect(matchesAge(null, { newerThan: 1000 })).toBe(false);
+  });
+
+  test("null date with both filters returns true (olderThan takes priority for null)", () => {
+    expect(matchesAge(null, { olderThan: 1000, newerThan: 500 })).toBe(true);
+  });
+
+  test("recent date does not match olderThan", () => {
+    const recent = new Date().toISOString();
+    expect(matchesAge(recent, { olderThan: 86400000 })).toBe(false);
+  });
+
+  test("old date matches olderThan", () => {
+    const old = new Date(Date.now() - 86400000 * 60).toISOString();
+    expect(matchesAge(old, { olderThan: 86400000 })).toBe(true);
+  });
+
+  test("recent date matches newerThan", () => {
+    const recent = new Date().toISOString();
+    expect(matchesAge(recent, { newerThan: 86400000 })).toBe(true);
+  });
+
+  test("old date does not match newerThan", () => {
+    const old = new Date(Date.now() - 86400000 * 60).toISOString();
+    expect(matchesAge(old, { newerThan: 86400000 })).toBe(false);
   });
 });

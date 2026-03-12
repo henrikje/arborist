@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { makeRepo } from "../status/test-helpers";
 import { dim } from "../terminal/output";
 import type { SectionNode } from "./model";
-import { formatVerboseDetail, toJsonVerbose, verboseDetailToNodes } from "./status-verbose";
+import { formatVerboseCommits, formatVerboseDetail, toJsonVerbose, verboseDetailToNodes } from "./status-verbose";
 
 describe("formatVerboseDetail", () => {
   test("annotates already-merged commits with merge commit hash", () => {
@@ -868,5 +868,305 @@ describe("toJsonVerbose", () => {
     expect(ahead?.[0]?.mergedAs).toBeUndefined();
     expect(ahead?.[1]?.mergedAs).toBe("merge123456");
     expect(ahead?.[2]?.mergedAs).toBe("merge123456");
+  });
+});
+
+// ── formatVerboseDetail — behind base with squash/rebase annotations ──
+
+describe("formatVerboseDetail — behind base annotations", () => {
+  test("behind base commit with squashOf renders squash label", () => {
+    const repo = makeRepo({
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: null,
+        ahead: 0,
+        behind: 1,
+        mergedIntoBase: null,
+        baseMergedIntoDefault: null,
+        detectedPr: null,
+      },
+    });
+    const verbose = {
+      behindBase: [
+        {
+          hash: "xxx",
+          shortHash: "xxx1234",
+          subject: "squashed upstream",
+          squashOf: { hashes: ["a", "b", "c"], shortHashes: ["aaa1234", "bbb1234", "ccc1234"] },
+        },
+      ],
+    };
+    const output = formatVerboseDetail(repo, verbose);
+    expect(output).toContain("Behind origin/main:");
+    expect(output).toContain("(squash of aaa1234..ccc1234)");
+  });
+
+  test("behind base commit with rebaseOf renders same-as label", () => {
+    const repo = makeRepo({
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: null,
+        ahead: 0,
+        behind: 1,
+        mergedIntoBase: null,
+        baseMergedIntoDefault: null,
+        detectedPr: null,
+      },
+    });
+    const verbose = {
+      behindBase: [
+        {
+          hash: "xxx",
+          shortHash: "xxx1234",
+          subject: "upstream commit",
+          rebaseOf: { hash: "local1", shortHash: "loc1234" },
+        },
+      ],
+    };
+    const output = formatVerboseDetail(repo, verbose);
+    expect(output).toContain("(same as loc1234)");
+  });
+
+  test("squash of single commit (length 1) does not render squash label", () => {
+    const repo = makeRepo({
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: null,
+        ahead: 0,
+        behind: 1,
+        mergedIntoBase: null,
+        baseMergedIntoDefault: null,
+        detectedPr: null,
+      },
+    });
+    const verbose = {
+      behindBase: [
+        {
+          hash: "xxx",
+          shortHash: "xxx1234",
+          subject: "single squash",
+          squashOf: { hashes: ["a"], shortHashes: ["aaa1234"] },
+        },
+      ],
+    };
+    const output = formatVerboseDetail(repo, verbose);
+    expect(output).not.toContain("squash of");
+  });
+});
+
+// ── formatVerboseDetail — to pull section ──
+
+describe("formatVerboseDetail — to pull section", () => {
+  test("mixed superseded/not-superseded commits", () => {
+    const repo = makeRepo({
+      share: {
+        remote: "origin",
+        ref: "origin/feature",
+        refMode: "configured",
+        toPush: 0,
+        toPull: 2,
+        rebased: null,
+        replaced: null,
+        squashed: null,
+      },
+    });
+    const verbose = {
+      toPull: [
+        { hash: "aaa", shortHash: "aaa1234", subject: "old commit", superseded: true },
+        { hash: "bbb", shortHash: "bbb1234", subject: "new commit", superseded: false },
+      ],
+    };
+    const output = formatVerboseDetail(repo, verbose);
+    expect(output).toContain("To pull from origin/feature:");
+    expect(output).toContain("(rebased locally)");
+    expect(output).not.toContain("safe to force push");
+  });
+
+  test("all superseded shows safe-to-force-push suffix", () => {
+    const repo = makeRepo({
+      share: {
+        remote: "origin",
+        ref: "origin/feature",
+        refMode: "configured",
+        toPush: 0,
+        toPull: 2,
+        rebased: null,
+        replaced: null,
+        squashed: null,
+      },
+    });
+    const verbose = {
+      toPull: [
+        { hash: "aaa", shortHash: "aaa1234", subject: "old commit", superseded: true },
+        { hash: "bbb", shortHash: "bbb1234", subject: "another old", superseded: true },
+      ],
+    };
+    const output = formatVerboseDetail(repo, verbose);
+    expect(output).toContain("safe to force push");
+  });
+});
+
+// ── formatVerboseDetail — file change sections ──
+
+describe("formatVerboseDetail — file changes", () => {
+  test("staged files with type labels", () => {
+    const repo = makeRepo({ local: { staged: 2, modified: 0, untracked: 0, conflicts: 0 } });
+    const verbose = {
+      staged: [
+        { file: "src/new.ts", type: "new file" as const },
+        { file: "src/changed.ts", type: "modified" as const },
+      ],
+    };
+    const output = formatVerboseDetail(repo, verbose);
+    expect(output).toContain("Changes to be committed:");
+    expect(output).toContain("new file:");
+    expect(output).toContain("src/new.ts");
+    expect(output).toContain("modified:");
+    expect(output).toContain("src/changed.ts");
+  });
+
+  test("unstaged files with type labels", () => {
+    const repo = makeRepo({ local: { staged: 0, modified: 2, untracked: 0, conflicts: 0 } });
+    const verbose = {
+      unstaged: [
+        { file: "src/app.ts", type: "modified" as const },
+        { file: "src/old.ts", type: "deleted" as const },
+      ],
+    };
+    const output = formatVerboseDetail(repo, verbose);
+    expect(output).toContain("Changes not staged for commit:");
+    expect(output).toContain("modified:");
+    expect(output).toContain("deleted:");
+  });
+
+  test("untracked files", () => {
+    const repo = makeRepo({ local: { staged: 0, modified: 0, untracked: 2, conflicts: 0 } });
+    const verbose = {
+      untracked: ["new-file.ts", "temp.log"],
+    };
+    const output = formatVerboseDetail(repo, verbose);
+    expect(output).toContain("Untracked files:");
+    expect(output).toContain("new-file.ts");
+    expect(output).toContain("temp.log");
+  });
+});
+
+// ── formatVerboseCommits — squash of single, overflow, conflicts ──
+
+describe("formatVerboseCommits — additional branches", () => {
+  test("squash of single commit (length 1) does not render squash label", () => {
+    const out = formatVerboseCommits(
+      [{ shortHash: "abc1234", subject: "squashed", squashOf: ["aaa1234"] }],
+      1,
+      "Incoming:",
+    );
+    expect(out).not.toContain("squash of");
+  });
+
+  test("squash of multiple commits renders squash label", () => {
+    const out = formatVerboseCommits(
+      [{ shortHash: "abc1234", subject: "squashed", squashOf: ["aaa1234", "bbb1234"] }],
+      1,
+      "Incoming:",
+    );
+    expect(out).toContain("squash of aaa1234..bbb1234");
+  });
+
+  test("truncated commit list shows overflow message", () => {
+    const commits = [
+      { shortHash: "abc1234", subject: "first commit" },
+      { shortHash: "def5678", subject: "second commit" },
+    ];
+    const out = formatVerboseCommits(commits, 10, "Incoming:");
+    expect(out).toContain("... and 8 more");
+  });
+
+  test("conflict commits show annotation and file list", () => {
+    const out = formatVerboseCommits(
+      [
+        { shortHash: "abc1234", subject: "conflicting" },
+        { shortHash: "def5678", subject: "clean" },
+      ],
+      2,
+      "Incoming:",
+      { conflictCommits: [{ shortHash: "abc1234", files: ["src/app.ts", "src/index.ts"] }] },
+    );
+    expect(out).toContain("(conflict)");
+    expect(out).toContain("src/app.ts, src/index.ts");
+  });
+
+  test("multiple conflict commits", () => {
+    const out = formatVerboseCommits(
+      [
+        { shortHash: "abc1234", subject: "conflict 1" },
+        { shortHash: "def5678", subject: "conflict 2" },
+      ],
+      2,
+      "Incoming:",
+      {
+        conflictCommits: [
+          { shortHash: "abc1234", files: ["file1.ts"] },
+          { shortHash: "def5678", files: ["file2.ts"] },
+        ],
+      },
+    );
+    expect(out).toContain("file1.ts");
+    expect(out).toContain("file2.ts");
+    // Both should have conflict annotation
+    const conflictCount = (out.match(/\(conflict\)/g) || []).length;
+    expect(conflictCount).toBe(2);
+  });
+});
+
+// ── verboseDetailToNodes — to pull section ──
+
+describe("verboseDetailToNodes — to pull section", () => {
+  test("to pull with mixed superseded shows items with tags", () => {
+    const repo = makeRepo({
+      share: {
+        remote: "origin",
+        ref: "origin/feature",
+        refMode: "configured",
+        toPush: 0,
+        toPull: 2,
+        rebased: null,
+        replaced: null,
+        squashed: null,
+      },
+    });
+    const verbose = {
+      toPull: [
+        { hash: "aaa", shortHash: "aaa1234", subject: "old", superseded: true },
+        { hash: "bbb", shortHash: "bbb1234", subject: "new", superseded: false },
+      ],
+    };
+    const secs = sections(verboseDetailToNodes(repo, verbose));
+    expect(secs).toHaveLength(1);
+    expect(secs[0]?.header.plain).toBe("To pull from origin/feature:");
+    expect(secs[0]?.items[0]?.plain).toContain("(rebased locally)");
+    expect(secs[0]?.items[1]?.plain).not.toContain("(rebased locally)");
+  });
+
+  test("all superseded shows safe to force push suffix in header", () => {
+    const repo = makeRepo({
+      share: {
+        remote: "origin",
+        ref: "origin/feature",
+        refMode: "configured",
+        toPush: 0,
+        toPull: 1,
+        rebased: null,
+        replaced: null,
+        squashed: null,
+      },
+    });
+    const verbose = {
+      toPull: [{ hash: "aaa", shortHash: "aaa1234", subject: "old", superseded: true }],
+    };
+    const secs = sections(verboseDetailToNodes(repo, verbose));
+    expect(secs[0]?.header.plain).toContain("(safe to force push)");
   });
 });
