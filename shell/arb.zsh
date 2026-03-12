@@ -510,6 +510,7 @@ _arb() {
                     _arguments \
                         '(-N --fetch --no-fetch)--fetch[Fetch before reset (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before reset]' \
+                        '--base[Always reset to the base branch]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \

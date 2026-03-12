@@ -19,6 +19,7 @@ export interface ResetAssessment {
   outcome: "will-reset" | "already-clean" | "skip";
   skipReason?: string;
   skipFlag?: SkipFlag;
+  mode: "share" | "base";
   baseRemote: string;
   baseRef: string;
   target: string;
@@ -34,11 +35,13 @@ export function assessResetRepo(
   branch: string,
   fetchFailed: string[],
   headSha: string,
+  useBase: boolean,
 ): ResetAssessment {
-  const base: ResetAssessment = {
+  const defaults: ResetAssessment = {
     repo: status.name,
     repoDir,
     outcome: "skip",
+    mode: "base",
     baseRemote: "",
     baseRef: "",
     target: "",
@@ -50,21 +53,21 @@ export function assessResetRepo(
 
   // Fetch failed for this repo
   if (fetchFailed.includes(status.name)) {
-    return { ...base, skipReason: "fetch failed", skipFlag: "fetch-failed" };
+    return { ...defaults, skipReason: "fetch failed", skipFlag: "fetch-failed" };
   }
 
   // Operation in progress
   if (status.operation !== null) {
-    return { ...base, skipReason: `${status.operation} in progress`, skipFlag: "operation-in-progress" };
+    return { ...defaults, skipReason: `${status.operation} in progress`, skipFlag: "operation-in-progress" };
   }
 
   // Branch check — detached or drifted
   if (status.identity.headMode.kind === "detached") {
-    return { ...base, skipReason: "HEAD is detached", skipFlag: "detached-head" };
+    return { ...defaults, skipReason: "HEAD is detached", skipFlag: "detached-head" };
   }
   if (status.identity.headMode.branch !== branch) {
     return {
-      ...base,
+      ...defaults,
       skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}`,
       skipFlag: "drifted",
     };
@@ -72,40 +75,80 @@ export function assessResetRepo(
 
   // No base branch resolved
   if (status.base === null) {
-    return { ...base, skipReason: "no base branch", skipFlag: "no-base-branch" };
+    return { ...defaults, skipReason: "no base branch", skipFlag: "no-base-branch" };
   }
 
   // No base remote resolved
   if (!status.base.remote) {
-    return { ...base, skipReason: "no base remote", skipFlag: "no-base-remote" };
+    return { ...defaults, skipReason: "no base remote", skipFlag: "no-base-remote" };
   }
 
   const baseRemote = status.base.remote;
   const baseRef = status.base.ref;
-  const target = `${baseRemote}/${baseRef}`;
-
   const dirtyFiles = status.local.staged + status.local.modified + status.local.conflicts;
-  const flags = computeFlags(status, branch);
-  const totalAhead = status.base.ahead ?? 0;
-  const unpushedCommits = flags.isUnpushed ? (status.share.toPush ?? totalAhead) : 0;
 
-  // Check if already at the base ref with no dirty files
-  if (status.base.behind === 0 && totalAhead === 0 && dirtyFiles === 0) {
-    return {
-      ...base,
-      outcome: "already-clean",
-      baseRemote,
-      baseRef,
-      target,
-      dirtyFiles: 0,
-      totalAhead: 0,
-      unpushedCommits: 0,
-    };
+  // Resolve target: prefer share ref (remote feature branch) unless --base or no share ref
+  const shareRef =
+    !useBase && (status.share.refMode === "implicit" || status.share.refMode === "configured")
+      ? status.share.ref
+      : null;
+
+  let target: string;
+  let mode: "share" | "base";
+  let totalAhead: number;
+  let unpushedCommits: number;
+
+  if (shareRef !== null) {
+    // Reset to the remote share branch
+    target = shareRef;
+    mode = "share";
+    totalAhead = status.share.toPush ?? 0;
+    unpushedCommits = status.share.toPush ?? 0;
+
+    // Already at share ref with no dirty files.
+    // toPush/toPull are non-null when refMode is implicit/configured (rev-list succeeded).
+    // If null (rev-list failed), null === 0 is false → falls through to will-reset, which is safe.
+    if (status.share.toPush === 0 && status.share.toPull === 0 && dirtyFiles === 0) {
+      return {
+        ...defaults,
+        outcome: "already-clean",
+        mode,
+        baseRemote,
+        baseRef,
+        target,
+        dirtyFiles: 0,
+        totalAhead: 0,
+        unpushedCommits: 0,
+      };
+    }
+  } else {
+    // Reset to base branch (no share ref, --base flag, or gone/noRef)
+    target = `${baseRemote}/${baseRef}`;
+    mode = "base";
+    const flags = computeFlags(status, branch);
+    totalAhead = status.base.ahead ?? 0;
+    unpushedCommits = flags.isUnpushed ? (status.share.toPush ?? totalAhead) : 0;
+
+    // Already at base ref with no dirty files
+    if (status.base.behind === 0 && totalAhead === 0 && dirtyFiles === 0) {
+      return {
+        ...defaults,
+        outcome: "already-clean",
+        mode,
+        baseRemote,
+        baseRef,
+        target,
+        dirtyFiles: 0,
+        totalAhead: 0,
+        unpushedCommits: 0,
+      };
+    }
   }
 
   return {
-    ...base,
+    ...defaults,
     outcome: "will-reset",
+    mode,
     baseRemote,
     baseRef,
     target,
@@ -155,8 +198,8 @@ function resetActionCell(a: ResetAssessment): Cell {
   return result;
 }
 
-function alreadyCleanCell(): Cell {
-  return cell("already at base");
+function alreadyCleanCell(target: string): Cell {
+  return cell(`already at ${target}`);
 }
 
 export function buildResetPlanNodes(assessments: ResetAssessment[]): OutputNode[] {
@@ -167,7 +210,7 @@ export function buildResetPlanNodes(assessments: ResetAssessment[]): OutputNode[
     if (a.outcome === "will-reset") {
       actionCell = resetActionCell(a);
     } else if (a.outcome === "already-clean") {
-      actionCell = alreadyCleanCell();
+      actionCell = alreadyCleanCell(a.target);
     } else {
       actionCell = skipCell(a.skipReason ?? "", a.skipFlag);
     }
@@ -200,18 +243,20 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
     .command("reset [repos...]")
     .option("--fetch", "Fetch from all remotes before reset (default)")
     .option("-N, --no-fetch", "Skip fetching before reset")
+    .option("--base", "Always reset to the base branch, even when a remote share branch exists")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("-n, --dry-run", "Show what would happen without executing")
     .option("-w, --where <filter>", "Only reset repos matching status filter (comma = OR, + = AND, ^ = negate)")
-    .summary("Reset all repos to the base branch")
+    .summary("Reset all repos to the share branch (or base if not pushed)")
     .description(
-      "Reset all repos (or only the named repos) to the base branch HEAD, discarding local commits and staged/unstaged changes. Resolves the correct base remote and branch per repo automatically — no need to hard-code 'origin/main'. Untracked files are preserved (no git clean). Shows a plan with what will be lost (dirty files, unpushed commits) and asks for confirmation before proceeding.\n\nTo change the base branch before resetting, use 'arb branch base <branch>'.\n\nUse --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
+      "Reset all repos (or only the named repos) to the remote share branch HEAD, discarding local commits and staged/unstaged changes. When no remote share branch exists (never pushed), falls back to the base branch. Resolves the correct remote and branch per repo automatically. Untracked files are preserved (no git clean). Shows a plan with what will be lost (dirty files, unpushed commits) and asks for confirmation before proceeding.\n\nUse --base to always reset to the base branch, even when a remote share branch exists.\n\nTo change the base branch, use 'arb branch base <branch>'.\n\nUse --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
     )
     .action(
       async (
         repoArgs: string[],
         options: {
           fetch?: boolean;
+          base?: boolean;
           yes?: boolean;
           dryRun?: boolean;
           where?: string;
@@ -236,6 +281,7 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
         const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
 
         // Phase 2: assess
+        const useBase = options.base === true;
         const assess = async (fetchFailed: string[]) => {
           const assessments = await Promise.all(
             repos.map(async (repo) => {
@@ -246,7 +292,7 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
                 if (!repoMatchesWhere(flags, where)) return null;
               }
               const headSha = await getShortHead(repoDir);
-              return assessResetRepo(status, repoDir, branch, fetchFailed, headSha);
+              return assessResetRepo(status, repoDir, branch, fetchFailed, headSha, useBase);
             }),
           );
           return assessments.filter((a): a is ResetAssessment => a !== null);
@@ -267,7 +313,7 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
         const skipped = assessments.filter((a) => a.outcome === "skip");
 
         if (willReset.length === 0) {
-          info(alreadyClean.length > 0 ? "All repos already at base" : "Nothing to do");
+          info(alreadyClean.length > 0 ? "Nothing to reset" : "Nothing to do");
           return;
         }
 
@@ -343,7 +389,7 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
         const parts: string[] = [];
         parts.push(`Reset ${plural(resetOk, "repo")}`);
         if (failed.length > 0) parts.push(`${failed.length} failed`);
-        if (alreadyClean.length > 0) parts.push(`${alreadyClean.length} already at base`);
+        if (alreadyClean.length > 0) parts.push(`${alreadyClean.length} up to date`);
         if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
         finishSummary(parts, failed.length > 0);
       },
