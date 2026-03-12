@@ -43,6 +43,13 @@ export class GitCache {
     this.deps = deps ?? defaultDeps;
   }
 
+  /** Create a GitCache and assert minimum git version. Standard command preamble. */
+  static async create(): Promise<GitCache> {
+    const cache = new GitCache();
+    await assertMinimumGitVersion(cache);
+    return cache;
+  }
+
   getRemoteNames(repoDir: string): Promise<string[]> {
     let cached = this.remoteNamesCache.get(repoDir);
     if (!cached) {
@@ -106,11 +113,4 @@ export class GitCache {
     );
     return new Map(entries);
   }
-}
-
-/** Create a GitCache and assert minimum git version. Standard command preamble. */
-export async function createCommandCache(): Promise<GitCache> {
-  const cache = new GitCache();
-  await assertMinimumGitVersion(cache);
-  return cache;
 }

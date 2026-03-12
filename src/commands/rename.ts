@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { createCommandCache, git, validateBranchName, validateWorkspaceName } from "../lib/git";
+import { GitCache, git, validateBranchName, validateWorkspaceName } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { cell } from "../lib/render";
@@ -165,7 +165,7 @@ async function runWorkspaceRename(
   }
 
   // Repos case: assess → plan → confirm → rename branches → rename workspace
-  const cache = await createCommandCache();
+  const cache = await GitCache.create();
 
   // Workspace directory rename requires worktree repair (git 2.30+)
   if (workspace !== newWorkspaceName) {

@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { createCommandCache, git, parseGitNumstat } from "../lib/git";
+import { GitCache, git, parseGitNumstat } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type DiffJsonFileStat, type DiffJsonOutput, DiffJsonOutputSchema, type DiffJsonRepo } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
@@ -125,7 +125,7 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
         const branch = await requireBranch(wsDir, workspace);
 
         const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
-        const cache = await createCommandCache();
+        const cache = await GitCache.create();
 
         if (options.fetch) {
           const allFetchDirs = workspaceRepoDirs(wsDir);

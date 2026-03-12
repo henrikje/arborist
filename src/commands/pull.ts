@@ -3,7 +3,7 @@ import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import {
-  createCommandCache,
+  GitCache,
   getCommitsBetweenFull,
   getDiffShortstat,
   getShortHead,
@@ -109,7 +109,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
 
         const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
         const selectedSet = new Set(selectedRepos);
-        const cache = await createCommandCache();
+        const cache = await GitCache.create();
         const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
         const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
 

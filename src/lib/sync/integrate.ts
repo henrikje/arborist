@@ -3,7 +3,6 @@ import { readWorkspaceConfig, writeWorkspaceConfig } from "../core/config";
 import { ArbError } from "../core/errors";
 import type { ArbContext } from "../core/types";
 import {
-  assertMinimumGitVersion,
   branchExistsLocally,
   getCommitsBetweenFull,
   getDiffShortstat,
@@ -80,8 +79,7 @@ export async function integrate(
   const where = resolveWhereFilter(options);
 
   // Resolve remotes for all repos
-  const cache = new GitCache();
-  await assertMinimumGitVersion(cache);
+  const cache = await GitCache.create();
   const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
 
   // Phase 2: fetch

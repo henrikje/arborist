@@ -3,7 +3,7 @@ import { basename, join } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { branchExistsLocally, createCommandCache, git, isRepoDirty, parseGitStatus } from "../lib/git";
+import { GitCache, branchExistsLocally, git, isRepoDirty, parseGitStatus } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
@@ -130,7 +130,7 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
         if (options.fetch !== false) {
           const presentRepos = repos.filter((repo) => existsSync(`${wsDir}/${repo}`));
           if (presentRepos.length > 0) {
-            const cache = await createCommandCache();
+            const cache = await GitCache.create();
             const fetchDirs = presentRepos.map((repo) => `${wsDir}/${repo}`);
             const remotesMap = await cache.resolveRemotesMap(presentRepos, ctx.reposDir);
             const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);

@@ -4,8 +4,8 @@ import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import {
+  GitCache,
   branchExistsLocally,
-  createCommandCache,
   detectOperation,
   git,
   remoteBranchExists,
@@ -341,7 +341,7 @@ async function runRename(
   }
 
   // Resolve remotes for all repos (canonical repos share remote config with worktrees)
-  const cache = await createCommandCache();
+  const cache = await GitCache.create();
 
   const fullRemotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
 

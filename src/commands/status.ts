@@ -2,7 +2,7 @@ import { basename, resolve } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { createCommandCache, predictMergeConflict } from "../lib/git";
+import { GitCache, predictMergeConflict } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
 import { createRenderContext, render, runPhasedRender } from "../lib/render";
@@ -77,7 +77,7 @@ async function runStatus(
   },
 ): Promise<void> {
   const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
-  const cache = await createCommandCache();
+  const cache = await GitCache.create();
 
   const where = resolveWhereFilter(options);
 
