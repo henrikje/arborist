@@ -284,10 +284,14 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
               {
                 render: async () => {
                   if (state.aborted) return placeholder;
+                  const total = metadata.toScan.length;
+                  let analyzed = 0;
                   const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
                     silent: true,
                     ageFilter,
+                    onWorkspace: () => analyzeProgress(++analyzed, total),
                   });
+                  clearScanProgress();
                   return formatListTable(statusRows, true);
                 },
                 write: (o) => process.stdout.write(o),
@@ -301,6 +305,8 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
           }
         } else if (canPhase) {
           // 2-phase: placeholder + scanning → fresh
+          const total = metadata.toScan.length;
+          let analyzed = 0;
           await runPhasedRender([
             { render: () => formatListTable(metadata.rows, true) + dim("Scanning...") },
             {
@@ -308,7 +314,9 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
                 const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
                   silent: true,
                   ageFilter,
+                  onWorkspace: () => analyzeProgress(++analyzed, total),
                 });
+                clearScanProgress();
                 return formatListTable(statusRows, true);
               },
               write: (o) => process.stdout.write(o),
