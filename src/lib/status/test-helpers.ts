@@ -1,4 +1,4 @@
-import type { RepoStatus } from "./status";
+import type { RepoStatus } from "./types";
 
 export function makeRepo(overrides: Partial<RepoStatus> = {}): RepoStatus {
   return {

@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, assertMinimumGitVersion, git, validateBranchName } from "../lib/git";
+import { createCommandCache, git, validateBranchName } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type BranchJsonOutput, BranchJsonOutputSchema, type BranchJsonRepo } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
@@ -216,8 +216,7 @@ async function runVerboseBranch(
   base: string | null,
   options: { json?: boolean; fetch?: boolean },
 ): Promise<void> {
-  const cache = new GitCache();
-  await assertMinimumGitVersion(cache);
+  const cache = await createCommandCache();
   const repoDirs = workspaceRepoDirs(wsDir);
 
   if (options.fetch !== false && !options.json && isTTY()) {
@@ -425,8 +424,7 @@ function registerBranchBaseSubcommand(parent: Command, getCtx: () => ArbContext)
 
       // Merged-base safety check
       if (!options.force && currentBase) {
-        const cache = new GitCache();
-        await assertMinimumGitVersion(cache);
+        const cache = await createCommandCache();
         const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
         const hasMergedBase = summary.repos.some((repo) => {
           const flags = computeFlags(repo, wsBranch);

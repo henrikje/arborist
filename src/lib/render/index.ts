@@ -17,6 +17,7 @@ export {
   buildConflictReport,
   buildStashPopFailureReport,
 } from "./conflict-report";
+export { type IntegrateActionDesc, integrateActionCell } from "./integrate-cells";
 export { formatBranchGraph } from "./integrate-graph";
 export {
   type Attention,
@@ -41,7 +42,7 @@ export {
 } from "./model";
 export { type RenderPhase, runPhasedRender } from "./phased-render";
 export { headShaCell, skipCell, stashHintCell, upToDateCell, withSuffixes } from "./plan-format";
-export { type RenderContext, finishSummary, render, renderCell } from "./render";
+export { type RenderContext, createRenderContext, finishSummary, render, renderCell } from "./render";
 export { buildRepoSkipHeader, repoHeaderNode } from "./repo-header";
 export { type StatusViewContext, buildStatusView } from "./status-view";
 export {

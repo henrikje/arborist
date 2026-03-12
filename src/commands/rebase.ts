@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 import type { ArbContext } from "../lib/core";
 import { integrate } from "../lib/sync";
-import { readNamesFromStdin } from "../lib/terminal";
+import { requireWorkspace, resolveReposFromArgsOrStdin } from "../lib/workspace";
 
 export function registerRebaseCommand(program: Command, getCtx: () => ArbContext): void {
   program
@@ -36,12 +36,9 @@ export function registerRebaseCommand(program: Command, getCtx: () => ArbContext
           where?: string;
         },
       ) => {
-        let repoNames = repoArgs;
-        if (repoNames.length === 0) {
-          const stdinNames = await readNamesFromStdin();
-          if (stdinNames.length > 0) repoNames = stdinNames;
-        }
         const ctx = getCtx();
+        const { wsDir } = requireWorkspace(ctx);
+        const repoNames = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
         await integrate(ctx, "rebase", options, repoNames);
       },
     );

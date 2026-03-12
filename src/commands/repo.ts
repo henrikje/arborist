@@ -4,7 +4,7 @@ import type { Command } from "commander";
 import { z } from "zod";
 import { ArbError, readProjectConfig, writeProjectConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, assertMinimumGitVersion, git, gitWithTimeout, networkTimeout } from "../lib/git";
+import { createCommandCache, git, gitWithTimeout, networkTimeout } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type RepoListJsonEntry, RepoListJsonEntrySchema } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
@@ -185,8 +185,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
         return;
       }
 
-      const cache = new GitCache();
-      await assertMinimumGitVersion(cache);
+      const cache = await createCommandCache();
       const entries: RepoListJsonEntry[] = await Promise.all(
         repos.map(async (r) => {
           const repoDir = `${ctx.reposDir}/${r}`;
@@ -289,8 +288,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
       }
 
       // Display plan
-      const removeCache = new GitCache();
-      await assertMinimumGitVersion(removeCache);
+      const removeCache = await createCommandCache();
       process.stderr.write("\n");
       for (const name of repos) {
         const repoDir = `${ctx.reposDir}/${name}`;

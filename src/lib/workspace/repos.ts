@@ -5,6 +5,7 @@ import confirm from "@inquirer/confirm";
 import { readProjectConfig } from "../core/config";
 import { ArbError } from "../core/errors";
 import { error } from "../terminal/output";
+import { readNamesFromStdin } from "../terminal/stdin";
 
 export function listWorkspaces(arbRootDir: string): string[] {
   return readdirSync(arbRootDir)
@@ -114,6 +115,16 @@ export function resolveRepoSelection(wsDir: string, repoArgs: string[]): string[
   }
 
   return allRepoNames;
+}
+
+/** Read repo names from args, falling back to stdin, then resolve against the workspace. */
+export async function resolveReposFromArgsOrStdin(wsDir: string, repoArgs: string[]): Promise<string[]> {
+  let repoNames = repoArgs;
+  if (repoNames.length === 0) {
+    const stdinNames = await readNamesFromStdin();
+    if (stdinNames.length > 0) repoNames = stdinNames;
+  }
+  return resolveRepoSelection(wsDir, repoNames);
 }
 
 export function findRepoUsage(arbRootDir: string, repoName: string): string[] {

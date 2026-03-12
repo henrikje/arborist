@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { z } from "zod";
-import type { RepoStatus, WorkspaceSummary } from "../status/status";
+import type { RepoStatus, WorkspaceSummary } from "../status/types";
 import {
   BranchJsonOutputSchema,
   DiffJsonOutputSchema,

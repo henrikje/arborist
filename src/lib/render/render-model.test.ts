@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { computeFlags } from "../status/status";
+import { computeFlags } from "../status/flags";
 import { makeRepo } from "../status/test-helpers";
 import {
   analyzeBaseDiff,

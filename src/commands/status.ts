@@ -2,10 +2,10 @@ import { basename, resolve } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, assertMinimumGitVersion, predictMergeConflict } from "../lib/git";
+import { createCommandCache, predictMergeConflict } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
-import { type RenderContext, render, runPhasedRender } from "../lib/render";
+import { createRenderContext, render, runPhasedRender } from "../lib/render";
 import { type VerboseDetail, buildStatusView, gatherVerboseDetail, toJsonVerbose } from "../lib/render";
 import {
   type RepoStatus,
@@ -18,16 +18,8 @@ import {
   resolveWhereFilter,
 } from "../lib/status";
 import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/sync";
-import {
-  clearScanProgress,
-  error,
-  isTTY,
-  listenForAbortKeypress,
-  readNamesFromStdin,
-  scanProgress,
-  stderr,
-} from "../lib/terminal";
-import { requireWorkspace, resolveRepoSelection, workspaceRepoDirs } from "../lib/workspace";
+import { clearScanProgress, error, isTTY, listenForAbortKeypress, scanProgress, stderr } from "../lib/terminal";
+import { requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
 export function registerStatusCommand(program: Command, getCtx: () => ArbContext): void {
   program
@@ -85,8 +77,7 @@ async function runStatus(
   },
 ): Promise<void> {
   const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
-  const cache = new GitCache();
-  await assertMinimumGitVersion(cache);
+  const cache = await createCommandCache();
 
   const where = resolveWhereFilter(options);
 
@@ -101,12 +92,7 @@ async function runStatus(
   }
 
   // Resolve repo selection: positional args > stdin > all
-  let repoNames = repoArgs;
-  if (repoNames.length === 0) {
-    const stdinNames = await readNamesFromStdin();
-    if (stdinNames.length > 0) repoNames = stdinNames;
-  }
-  const selectedRepos = resolveRepoSelection(wsDir, repoNames);
+  const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
   const selectedSet = new Set(selectedRepos);
 
   // Shared gather helper: scan + filter
@@ -324,12 +310,7 @@ async function renderStatusTable(
   });
 
   // Resolve render context
-  const envCols = Number(process.env.COLUMNS);
-  const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
-  const renderCtx: RenderContext = {
-    tty: isTTY(),
-    terminalWidth: termCols > 0 ? termCols : undefined,
-  };
+  const renderCtx = createRenderContext();
 
   return render(nodes, renderCtx);
 }

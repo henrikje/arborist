@@ -5,9 +5,8 @@ import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import {
-  GitCache,
   type RepoRemotes,
-  assertMinimumGitVersion,
+  createCommandCache,
   git,
   listRemoteBranches,
   validateBranchName,
@@ -15,12 +14,10 @@ import {
 } from "../lib/git";
 import { render } from "../lib/render";
 import { parallelFetch, reportFetchFailures } from "../lib/sync";
+import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
 import { bold, cyan, dim, error, info, isTTY, plural, readNamesFromStdin, success, warn } from "../lib/terminal";
 import {
   addWorktrees,
-  applyRepoTemplates,
-  applyWorkspaceTemplates,
-  displayOverlaySummary,
   listDefaultRepos,
   listRepos,
   listWorkspaces,
@@ -224,8 +221,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
         }
 
         // Hoist cache + git version check (needed for branch discovery and addWorktrees)
-        const cache = new GitCache();
-        await assertMinimumGitVersion(cache);
+        const cache = await createCommandCache();
         let remotesMap: Map<string, RepoRemotes> | undefined;
         let alreadyFetched = false;
 

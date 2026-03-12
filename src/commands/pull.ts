@@ -3,8 +3,7 @@ import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import {
-  GitCache,
-  assertMinimumGitVersion,
+  createCommandCache,
   getCommitsBetweenFull,
   getDiffShortstat,
   getShortHead,
@@ -16,7 +15,7 @@ import {
   predictStashPopConflict,
 } from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
-import { type RenderContext, finishSummary, render } from "../lib/render";
+import { createRenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
 import { buildConflictReport, buildStashPopFailureReport, skipCell, upToDateCell } from "../lib/render";
 import { VERBOSE_COMMIT_LIMIT, verboseCommitsToNodes } from "../lib/render";
@@ -24,18 +23,8 @@ import { cell, spans, suffix } from "../lib/render";
 import type { SkipFlag } from "../lib/status";
 import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
 import { confirmOrExit, runPlanFlow } from "../lib/sync";
-import {
-  dryRunNotice,
-  error,
-  info,
-  inlineResult,
-  inlineStart,
-  isTTY,
-  plural,
-  readNamesFromStdin,
-  yellow,
-} from "../lib/terminal";
-import { requireBranch, requireWorkspace, resolveRepoSelection, workspaceRepoDirs } from "../lib/workspace";
+import { dryRunNotice, error, info, inlineResult, inlineStart, isTTY, plural, yellow } from "../lib/terminal";
+import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
 type PullStrategy = "rebase-pull" | "merge-pull" | "safe-reset" | "forced-reset";
 
@@ -118,15 +107,9 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
         const { wsDir, workspace } = requireWorkspace(ctx);
         const branch = await requireBranch(wsDir, workspace);
 
-        let repoNames = repoArgs;
-        if (repoNames.length === 0) {
-          const stdinNames = await readNamesFromStdin();
-          if (stdinNames.length > 0) repoNames = stdinNames;
-        }
-        const selectedRepos = resolveRepoSelection(wsDir, repoNames);
+        const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
         const selectedSet = new Set(selectedRepos);
-        const cache = new GitCache();
-        await assertMinimumGitVersion(cache);
+        const cache = await createCommandCache();
         const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
         const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
 
@@ -467,9 +450,7 @@ export function formatPullPlan(
   verbose?: boolean,
 ): string {
   const nodes = buildPullPlanNodes(assessments, remotesMap, verbose);
-  const envCols = Number(process.env.COLUMNS);
-  const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
-  const ctx: RenderContext = { tty: isTTY(), terminalWidth: termCols > 0 ? termCols : undefined };
+  const ctx = createRenderContext();
   return render(nodes, ctx);
 }
 

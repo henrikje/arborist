@@ -1,4 +1,5 @@
-import { type GitVersion, getDefaultBranch as _getDefaultBranch, git, parseGitVersion } from "./git";
+import { getDefaultBranch as _getDefaultBranch, assertMinimumGitVersion, git } from "./git";
+import { type GitVersion, parseGitVersion } from "./parsing";
 import {
   type RepoRemotes,
   getRemoteNames as _getRemoteNames,
@@ -105,4 +106,11 @@ export class GitCache {
     );
     return new Map(entries);
   }
+}
+
+/** Create a GitCache and assert minimum git version. Standard command preamble. */
+export async function createCommandCache(): Promise<GitCache> {
+  const cache = new GitCache();
+  await assertMinimumGitVersion(cache);
+  return cache;
 }

@@ -3,12 +3,13 @@ import { basename, join } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, assertMinimumGitVersion, branchExistsLocally, git, isRepoDirty, parseGitStatus } from "../lib/git";
+import { branchExistsLocally, createCommandCache, git, isRepoDirty, parseGitStatus } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { isLocalDirty } from "../lib/status";
 import { confirmOrExit, parallelFetch, reportFetchFailures } from "../lib/sync";
+import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
 import {
   dryRunNotice,
   error,
@@ -21,9 +22,6 @@ import {
   warn,
 } from "../lib/terminal";
 import {
-  applyRepoTemplates,
-  applyWorkspaceTemplates,
-  displayOverlaySummary,
   isWorktreeRefValid,
   listRepos,
   pruneWorktreeEntriesForDir,
@@ -132,8 +130,7 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
         if (options.fetch !== false) {
           const presentRepos = repos.filter((repo) => existsSync(`${wsDir}/${repo}`));
           if (presentRepos.length > 0) {
-            const cache = new GitCache();
-            await assertMinimumGitVersion(cache);
+            const cache = await createCommandCache();
             const fetchDirs = presentRepos.map((repo) => `${wsDir}/${repo}`);
             const remotesMap = await cache.resolveRemotesMap(presentRepos, ctx.reposDir);
             const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);

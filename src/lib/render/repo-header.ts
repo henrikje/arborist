@@ -1,4 +1,4 @@
-import type { RepoFlags, RepoStatus } from "../status/status";
+import type { RepoFlags, RepoStatus } from "../status/types";
 import { cell } from "./model";
 import type { OutputNode, RepoHeaderNode } from "./model";
 

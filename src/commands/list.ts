@@ -4,10 +4,10 @@ import type { Command } from "commander";
 import { z } from "zod";
 import { ArbError, type RelativeTimeParts, formatRelativeTimeParts, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, assertMinimumGitVersion } from "../lib/git";
+import { type GitCache, createCommandCache } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type ListJsonEntry, ListJsonEntrySchema } from "../lib/json";
-import { type RenderContext, render, runPhasedRender } from "../lib/render";
+import { createRenderContext, render, runPhasedRender } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
 import { EMPTY_CELL, cell } from "../lib/render";
 import { buildStatusCountsCell } from "../lib/render";
@@ -89,8 +89,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
           return;
         }
         const ctx = getCtx();
-        const cache = new GitCache();
-        await assertMinimumGitVersion(cache);
+        const cache = await createCommandCache();
 
         // Conflict checks
         if (options.quiet && options.json) {
@@ -546,9 +545,7 @@ export function buildListTableNodes(displayRows: ListRow[], showStatus: boolean)
 
 function formatListTable(displayRows: ListRow[], showStatus: boolean): string {
   const nodes = buildListTableNodes(displayRows, showStatus);
-  const envCols = Number(process.env.COLUMNS);
-  const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
-  const ctx: RenderContext = { tty: isTTY(), terminalWidth: termCols > 0 ? termCols : undefined };
+  const ctx = createRenderContext();
   return render(nodes, ctx);
 }
 

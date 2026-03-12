@@ -13,11 +13,10 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, assertMinimumGitVersion } from "../lib/git";
+import { type GitCache, createCommandCache } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import { cell, join as joinCells } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
-import { error, info, isTTY, plural, warn, yellow } from "../lib/terminal";
 import {
   ARBTEMPLATE_EXT,
   type ConflictInfo,
@@ -32,7 +31,6 @@ import {
   checkAllTemplateVariables,
   checkUnknownVariables,
   checkWorkspaceTemplateRepoWarnings,
-  collectRepo,
   detectScopeFromPath,
   diffTemplates,
   displayRepoDirectoryWarnings,
@@ -45,13 +43,12 @@ import {
   manifestKey,
   mergeManifest,
   renderTemplate,
-  requireWorkspace,
   templateFilePath,
-  validateRepoNames,
   workspaceFilePath,
-  workspaceRepoDirs,
   workspaceRepoList,
-} from "../lib/workspace";
+} from "../lib/templates";
+import { error, info, isTTY, plural, warn, yellow } from "../lib/terminal";
+import { collectRepo, requireWorkspace, validateRepoNames, workspaceRepoDirs } from "../lib/workspace";
 
 function buildTemplateListNodes(
   templates: TemplateEntry[],
@@ -277,8 +274,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
       if (ctx.currentWorkspace) {
         const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
         if (existsSync(join(wsDir, ".arbws"))) {
-          const cache = new GitCache();
-          await assertMinimumGitVersion(cache);
+          const cache = await createCommandCache();
           const repos = workspaceRepoDirs(wsDir).map((d) => basename(d));
           diffs = await diffTemplates(ctx.arbRootDir, wsDir, repos, cache);
           unknowns = await checkAllTemplateVariables(ctx.arbRootDir, wsDir, repos, cache);
@@ -322,8 +318,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
     .action(async (file: string | undefined, options: { repo?: string[]; workspace?: boolean }) => {
       const ctx = getCtx();
       const { wsDir } = requireWorkspace(ctx);
-      const cache = new GitCache();
-      await assertMinimumGitVersion(cache);
+      const cache = await createCommandCache();
       const repos = workspaceRepoDirs(wsDir).map((d) => basename(d));
       let diffs = await diffTemplates(ctx.arbRootDir, wsDir, repos, cache);
 
@@ -425,8 +420,7 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
     .action(async (file: string | undefined, options: { repo?: string[]; workspace?: boolean; force?: boolean }) => {
       const ctx = getCtx();
       const { wsDir } = requireWorkspace(ctx);
-      const cache = new GitCache();
-      await assertMinimumGitVersion(cache);
+      const cache = await createCommandCache();
       const allRepos = workspaceRepoDirs(wsDir).map((d) => basename(d));
 
       const hasRepoFlag = options.repo && options.repo.length > 0;

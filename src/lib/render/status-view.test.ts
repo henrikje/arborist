@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { WorkspaceSummary } from "../status/status";
 import { makeRepo } from "../status/test-helpers";
+import type { WorkspaceSummary } from "../status/types";
 import type { TableNode } from "./model";
 import { type StatusViewContext, buildStatusView } from "./status-view";
 
