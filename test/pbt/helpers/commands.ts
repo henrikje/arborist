@@ -198,29 +198,36 @@ export class Push implements AsyncCommand<WorkspaceModel, RealSystem> {
 
 export class Pull implements AsyncCommand<WorkspaceModel, RealSystem> {
   check(model: Readonly<WorkspaceModel>): boolean {
-    // At least one repo has genuine external commits to pull and is clean
+    // At least one repo has genuine external commits to pull, is clean,
+    // and hasn't been rebased since last push (pull --rebase after local
+    // rebase replays base-absorbed commits onto the share tip, making
+    // base.ahead unpredictable — push first to force-push rebased commits).
     return Object.values(model.repos).some(
-      (r) => r.pushed && r.externalCommits > 0 && r.staged === 0 && r.untracked === 0,
+      (r) => r.pushed && r.externalCommits > 0 && !r.rebasedSinceLastPush && r.staged === 0 && r.untracked === 0,
     );
   }
 
   async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
     real.executedCommands.push(this.toString());
+    // Only pull repos the model considers eligible — pass explicit names so
+    // arb doesn't also pull rebased repos (which would produce unpredictable base.ahead).
+    const eligible = Object.entries(model.repos).filter(
+      ([_, r]) => r.pushed && r.externalCommits > 0 && !r.rebasedSinceLastPush && r.staged === 0 && r.untracked === 0,
+    );
+    const repoNames = eligible.map(([name]) => name);
     // arb pull always fetches (no --no-fetch option)
-    const result = await arb(real.env, ["pull", "--rebase", "--yes"], {
+    const result = await arb(real.env, ["pull", "--rebase", "--yes", ...repoNames], {
       cwd: join(real.env.projectDir, real.wsName),
     });
     if (result.exitCode !== 0) {
       throw new Error(`arb pull failed: ${result.output}`);
     }
-    for (const repo of Object.values(model.repos)) {
-      if (repo.pushed && repo.externalCommits > 0 && repo.staged === 0 && repo.untracked === 0) {
-        // After pull --rebase: external commits are absorbed into local history.
-        // Local commits are replayed on top, so toPush count stays the same.
-        repo.localCommits += repo.externalCommits;
-        repo.pushedCommits += repo.externalCommits;
-        repo.externalCommits = 0;
-      }
+    for (const [_, repo] of eligible) {
+      // After pull --rebase: external commits are absorbed into local history.
+      // Local commits are replayed on top, so toPush count stays the same.
+      repo.localCommits += repo.externalCommits;
+      repo.pushedCommits += repo.externalCommits;
+      repo.externalCommits = 0;
     }
     await assertStatus(model, real);
   }
