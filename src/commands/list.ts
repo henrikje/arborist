@@ -4,7 +4,7 @@ import type { Command } from "commander";
 import { z } from "zod";
 import { ArbError, type RelativeTimeParts, formatRelativeTimeParts, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { type GitCache, createCommandCache } from "../lib/git";
+import { GitCache } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type ListJsonEntry, ListJsonEntrySchema } from "../lib/json";
 import { createRenderContext, render, runPhasedRender } from "../lib/render";
@@ -89,7 +89,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
           return;
         }
         const ctx = getCtx();
-        const cache = await createCommandCache();
+        const cache = await GitCache.create();
 
         // Conflict checks
         if (options.quiet && options.json) {

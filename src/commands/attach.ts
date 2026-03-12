@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { createCommandCache } from "../lib/git";
+import { GitCache } from "../lib/git";
 import { render } from "../lib/render";
 import { parallelFetch, reportFetchFailures } from "../lib/sync";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
@@ -73,7 +73,7 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
       }
       const base = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base;
 
-      const cache = await createCommandCache();
+      const cache = await GitCache.create();
       const remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
 
       if (options.fetch !== false) {

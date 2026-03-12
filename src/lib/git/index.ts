@@ -28,7 +28,7 @@ export {
   validateBranchName,
   validateWorkspaceName,
 } from "./git";
-export { GitCache, createCommandCache } from "./git-cache";
+export { GitCache } from "./git-cache";
 export {
   type MergeDetectionResult,
   detectBranchMerged,

@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { createCommandCache, getShortHead, git } from "../lib/git";
+import { GitCache, getShortHead, git } from "../lib/git";
 import type { Cell, OutputNode, Span } from "../lib/render";
 import { cell, createRenderContext, finishSummary, render, skipCell, spans, suffix } from "../lib/render";
 import type { SkipFlag } from "../lib/status";
@@ -269,7 +269,7 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
 
         const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
         const selectedSet = new Set(selectedRepos);
-        const cache = await createCommandCache();
+        const cache = await GitCache.create();
         const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
         const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
 

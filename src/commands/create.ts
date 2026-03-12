@@ -5,8 +5,8 @@ import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import {
+  GitCache,
   type RepoRemotes,
-  createCommandCache,
   git,
   listRemoteBranches,
   validateBranchName,
@@ -221,7 +221,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
         }
 
         // Hoist cache + git version check (needed for branch discovery and addWorktrees)
-        const cache = await createCommandCache();
+        const cache = await GitCache.create();
         let remotesMap: Map<string, RepoRemotes> | undefined;
         let alreadyFetched = false;
 

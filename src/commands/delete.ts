@@ -10,14 +10,7 @@ import {
   formatRelativeTimeParts,
 } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import {
-  GitCache,
-  branchExistsLocally,
-  createCommandCache,
-  git,
-  remoteBranchExists,
-  validateWorkspaceName,
-} from "../lib/git";
+import { GitCache, branchExistsLocally, git, remoteBranchExists, validateWorkspaceName } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { EMPTY_CELL, cell } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -263,7 +256,7 @@ async function assessWorkspace(
   const repos = repoPaths.map((d) => basename(d));
 
   let summary: WorkspaceSummary;
-  const cache = await createCommandCache();
+  const cache = await GitCache.create();
 
   if (repos.length === 0) {
     summary = {
@@ -511,7 +504,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
           // Fetch from canonical repo dirs so each repo is only fetched once,
           // regardless of how many workspaces reference it.
           const allRepoDirs = [...allRepoNames].map((name) => `${ctx.reposDir}/${name}`);
-          const cache = await createCommandCache();
+          const cache = await GitCache.create();
           const remotesMap = await cache.resolveRemotesMap([...allRepoNames], ctx.reposDir);
           const fetchResults = await parallelFetch(allRepoDirs, undefined, remotesMap);
           reportFetchFailures([...allRepoNames], fetchResults);
