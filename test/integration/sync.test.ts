@@ -1632,3 +1632,84 @@ describe("--include-drifted", () => {
       expect(result.output).toContain("different branch than the workspace");
     }));
 });
+
+// ── push dry-run ─────────────────────────────────────────────────
+
+describe("push dry-run", () => {
+  test("arb push --dry-run shows plan without pushing", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      await write(join(env.projectDir, "my-feature/repo-a/file.txt"), "change");
+      await git(join(env.projectDir, "my-feature/repo-a"), ["add", "file.txt"]);
+      await git(join(env.projectDir, "my-feature/repo-a"), ["commit", "-m", "change"]);
+      const result = await arb(env, ["push", "--dry-run"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("1 new to push");
+      expect(result.output).toContain("Dry run");
+      // Must NOT contain the execution summary
+      expect(result.output).not.toContain("Pushed");
+      // Verify nothing was actually pushed
+      const branchResult = await git(join(env.originDir, "repo-a.git"), ["branch"]);
+      expect(branchResult).not.toContain("my-feature");
+    }));
+
+  test("arb push -n short flag works", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      await write(join(env.projectDir, "my-feature/repo-a/file.txt"), "change");
+      await git(join(env.projectDir, "my-feature/repo-a"), ["add", "file.txt"]);
+      await git(join(env.projectDir, "my-feature/repo-a"), ["commit", "-m", "change"]);
+      const result = await arb(env, ["push", "-n"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("to push");
+      expect(result.output).toContain("Dry run");
+      expect(result.output).not.toContain("Pushed");
+    }));
+
+  test("arb push --dry-run when up to date shows up to date", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      await git(join(env.projectDir, "my-feature/repo-a"), ["push", "-u", "origin", "my-feature"]);
+      const result = await arb(env, ["push", "--dry-run"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("up to date");
+    }));
+});
+
+// ── pull dry-run ─────────────────────────────────────────────────
+
+describe("pull dry-run", () => {
+  test("arb pull --dry-run shows plan without pulling", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      await write(join(env.projectDir, "my-feature/repo-a/file.txt"), "change");
+      await git(join(env.projectDir, "my-feature/repo-a"), ["add", "file.txt"]);
+      await git(join(env.projectDir, "my-feature/repo-a"), ["commit", "-m", "change"]);
+      await git(join(env.projectDir, "my-feature/repo-a"), ["push", "-u", "origin", "my-feature"]);
+
+      // Push a new commit from another clone
+      await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), join(env.testDir, "tmp-clone")]);
+      await git(join(env.testDir, "tmp-clone"), ["checkout", "my-feature"]);
+      await write(join(env.testDir, "tmp-clone/r.txt"), "remote");
+      await git(join(env.testDir, "tmp-clone"), ["add", "r.txt"]);
+      await git(join(env.testDir, "tmp-clone"), ["commit", "-m", "remote commit"]);
+      await git(join(env.testDir, "tmp-clone"), ["push"]);
+
+      const result = await arb(env, ["pull", "--dry-run"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("to pull");
+      expect(result.output).toContain("Dry run");
+      // Must NOT contain the execution summary
+      expect(result.output).not.toContain("Pulled");
+      // Verify nothing was actually pulled
+      expect(existsSync(join(env.projectDir, "my-feature/repo-a/r.txt"))).toBe(false);
+    }));
+});
