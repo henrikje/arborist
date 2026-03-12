@@ -126,13 +126,19 @@ If you intentionally want to push an already merged branch anyway (for example t
 
 Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
 
-**Starting fresh** — discard all local changes and reset every repo to the base branch:
+**Starting fresh** — discard all local changes and reset every repo to the remote share branch (or the base branch if never pushed):
 
 ```bash
 arb reset
 ```
 
-This resolves the correct base remote and branch per repo automatically — no need to hard-code `origin/main`. Untracked files are preserved. The plan shows what will be lost (dirty files, unpushed commits) and warns prominently when unpushed commits are at risk.
+This resolves the correct remote and branch per repo automatically. When a remote share branch exists (the feature branch has been pushed), it resets to that. When no remote branch exists, it falls back to the base branch. Untracked files are preserved. The plan shows what will be lost (dirty files, unpushed commits) and warns prominently when unpushed commits are at risk.
+
+To always reset to the base branch (e.g. `origin/main`), even when a remote share branch exists:
+
+```bash
+arb reset --base
+```
 
 **Changing the base branch** — switch the workspace to track a different base branch:
 
