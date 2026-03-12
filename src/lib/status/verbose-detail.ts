@@ -1,6 +1,6 @@
+import { detectRebasedCommits, detectReplacedCommits, matchDivergedCommits } from "../analysis/commit-matching";
+import { verifySquashRange } from "../analysis/merge-detection";
 import { getCommitsBetweenFull, parseGitStatusFiles } from "../git/git";
-import { verifySquashRange } from "../git/merge-detection";
-import { detectRebasedCommits, detectReplacedCommits, matchDivergedCommits } from "../git/rebase-analysis";
 import type { StatusJsonRepo } from "../json/json-types";
 import { baseRef } from "./status";
 import type { RepoStatus } from "./types";

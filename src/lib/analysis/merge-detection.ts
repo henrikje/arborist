@@ -1,5 +1,5 @@
-import { debugGit, isDebug } from "../terminal/debug";
-import { git } from "./git";
+import { git } from "../git/git";
+import { computeCumulativePatchId, computeDiffTreePatchId, computePatchIds } from "./patch-id";
 
 export interface MergeDetectionResult {
   kind: "merge" | "squash";
@@ -22,43 +22,15 @@ async function checkSquashMatch(
   if (!mergeBase) return null;
 
   // Cumulative patch-id for the entire branch range
-  const cumulativeStart = isDebug() ? performance.now() : 0;
-  const cumulativeResult = await Bun.$`git -C ${repoDir} diff ${mergeBase}..${branchRef} | git patch-id --stable`
-    .quiet()
-    .nothrow();
-  if (isDebug()) {
-    debugGit(
-      `git -C ${repoDir} diff ${mergeBase}..${branchRef} | git patch-id --stable`,
-      performance.now() - cumulativeStart,
-      cumulativeResult.exitCode,
-    );
-  }
-  if (cumulativeResult.exitCode !== 0) return null;
-  const cumulativeLine = cumulativeResult.text().trim();
-  if (!cumulativeLine) return null;
-  const cumulativePatchId = cumulativeLine.split(" ")[0];
+  const cumulativePatchId = await computeCumulativePatchId(repoDir, mergeBase, branchRef);
   if (!cumulativePatchId) return null;
 
   // Per-commit patch-ids for recent base commits
-  const perCommitStart = isDebug() ? performance.now() : 0;
-  const perCommitResult =
-    await Bun.$`git -C ${repoDir} log -p --max-count=${commitLimit} ${mergeBase}..${baseBranchRef} | git patch-id --stable`
-      .quiet()
-      .nothrow();
-  if (isDebug()) {
-    debugGit(
-      `git -C ${repoDir} log -p --max-count=${commitLimit} ${mergeBase}..${baseBranchRef} | git patch-id --stable`,
-      performance.now() - perCommitStart,
-      perCommitResult.exitCode,
-    );
-  }
-  if (perCommitResult.exitCode !== 0) return null;
+  const perCommitMap = await computePatchIds(repoDir, mergeBase, baseBranchRef, commitLimit);
+  if (!perCommitMap) return null;
 
-  for (const line of perCommitResult.text().split("\n")) {
-    const parts = line.split(" ");
-    const patchId = parts[0];
-    const commitHash = parts[1];
-    if (patchId === cumulativePatchId && commitHash) {
+  for (const [patchId, commitHash] of perCommitMap) {
+    if (patchId === cumulativePatchId) {
       // Retrieve the commit subject for PR number extraction
       const subjectResult = await git(repoDir, "log", "-1", "--format=%s", commitHash);
       const subject = subjectResult.exitCode === 0 ? subjectResult.stdout.trim() : "";
@@ -214,14 +186,11 @@ export async function verifySquashRange(
     const mergeBase = mergeBaseResult.stdout.trim();
     if (!mergeBase) return false;
 
-    const [cumulativeResult, squashResult] = await Promise.all([
-      Bun.$`git -C ${repoDir} diff ${mergeBase}..${localRef} | git patch-id --stable`.quiet().nothrow(),
-      Bun.$`git -C ${repoDir} diff-tree -p ${squashHash} | git patch-id --stable`.quiet().nothrow(),
+    const [cumulativePatchId, squashPatchId] = await Promise.all([
+      computeCumulativePatchId(repoDir, mergeBase, localRef),
+      computeDiffTreePatchId(repoDir, squashHash),
     ]);
 
-    if (cumulativeResult.exitCode !== 0 || squashResult.exitCode !== 0) return false;
-    const cumulativePatchId = cumulativeResult.text().trim().split(" ")[0];
-    const squashPatchId = squashResult.text().trim().split(" ")[0];
     if (!cumulativePatchId || !squashPatchId) return false;
 
     return cumulativePatchId === squashPatchId;

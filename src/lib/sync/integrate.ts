@@ -1,4 +1,12 @@
 import { basename } from "node:path";
+import { matchDivergedCommits } from "../analysis/commit-matching";
+import {
+  predictMergeConflict,
+  predictRebaseConflictCommits,
+  predictStashPopConflict,
+} from "../analysis/conflict-prediction";
+import { detectBranchMerged } from "../analysis/merge-detection";
+import { analyzeRetargetReplay } from "../analysis/replay-analysis";
 import { readWorkspaceConfig, writeWorkspaceConfig } from "../core/config";
 import { ArbError } from "../core/errors";
 import type { ArbContext } from "../core/types";
@@ -9,13 +17,9 @@ import {
   getMergeBase,
   getShortHead,
   git,
-  predictMergeConflict,
-  predictStashPopConflict,
   remoteBranchExists,
 } from "../git/git";
 import { GitCache } from "../git/git-cache";
-import { detectBranchMerged } from "../git/merge-detection";
-import { analyzeRetargetReplay, matchDivergedCommits, predictRebaseConflictCommits } from "../git/rebase-analysis";
 import { buildConflictReport, buildStashPopFailureReport } from "../render/conflict-report";
 import { type IntegrateActionDesc, integrateActionCell } from "../render/integrate-cells";
 import { formatBranchGraph } from "../render/integrate-graph";

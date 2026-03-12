@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
+import { predictMergeConflict, predictRebaseConflictCommits, predictStashPopConflict } from "../lib/analysis";
 import { ArbError, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import {
@@ -10,9 +11,6 @@ import {
   git,
   gitWithTimeout,
   networkTimeout,
-  predictMergeConflict,
-  predictRebaseConflictCommits,
-  predictStashPopConflict,
 } from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
 import { createRenderContext, finishSummary, render } from "../lib/render";
