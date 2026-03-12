@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fc from "fast-check";
 import { type TestEnv, arb, cleanupTestEnv, createTestEnv } from "../integration/helpers/env";
-import { MakeCommit, MakeCommitOnBase, MakeCommitOnShare, MakeDirtyFile, Push, Rebase } from "./helpers/commands";
+import { MakeCommit, MakeCommitOnBase, MakeCommitOnShare, MakeDirtyFile, Pull, Push, Rebase } from "./helpers/commands";
 import { type RealSystem, type WorkspaceModel, freshWorkspaceModel } from "./helpers/model";
 
 // ── Template ─────────────────────────────────────────────────────
@@ -59,11 +59,21 @@ const NUM_RUNS = 30;
 // ── Command arbitraries ──────────────────────────────────────────
 
 function buildCommandArbitraries() {
+  // Gated commands (Push, Pull, Rebase, MakeCommitOnShare) are weighted higher
+  // because they often fail check() and get dropped. Extra copies ensure they
+  // survive filtering often enough to produce interesting sequences.
   return [
     fc.constantFrom(...REPOS).map((repo) => new MakeCommit(repo)),
     fc.constant(new Push()),
+    fc.constant(new Push()),
+    fc.constant(new Push()),
+    fc.constant(new Pull()),
+    fc.constant(new Pull()),
+    fc.constant(new Pull()),
+    fc.constant(new Rebase()),
     fc.constant(new Rebase()),
     fc.constantFrom(...REPOS).map((repo) => new MakeCommitOnBase(repo)),
+    fc.constantFrom(...REPOS).map((repo) => new MakeCommitOnShare(repo)),
     fc.constantFrom(...REPOS).map((repo) => new MakeCommitOnShare(repo)),
     fc
       .tuple(fc.constantFrom(...REPOS), fc.constantFrom("untracked" as const, "staged" as const))
@@ -75,7 +85,7 @@ function buildCommandArbitraries() {
 
 async function runOnce(seed: number): Promise<void> {
   await fc.assert(
-    fc.asyncProperty(fc.commands(buildCommandArbitraries(), { size: "+1", maxCommands: 20 }), async (cmds) => {
+    fc.asyncProperty(fc.commands(buildCommandArbitraries(), { size: "+1", maxCommands: 30 }), async (cmds) => {
       const env = await createEnvFromTemplate();
       try {
         const result = await arb(env, ["create", WS_NAME, ...REPOS]);
