@@ -22,6 +22,14 @@ export interface RepoModel {
   remoteShareExists: boolean;
   /** Commits pushed by others to origin/<branch> since last fetch. */
   externalCommits: number;
+  /** Untracked files in working tree. */
+  untracked: number;
+  /** Staged (new) files in the index. */
+  staged: number;
+  /** Cumulative base commits absorbed via rebase since last push. */
+  baseAbsorbedSinceLastPush: number;
+  /** Whether we've rebased since the last push (changes share divergence shape). */
+  rebasedSinceLastPush: boolean;
 }
 
 export function freshRepoModel(): RepoModel {
@@ -32,6 +40,10 @@ export function freshRepoModel(): RepoModel {
     baseAdvanced: 0,
     remoteShareExists: false,
     externalCommits: 0,
+    untracked: 0,
+    staged: 0,
+    baseAbsorbedSinceLastPush: 0,
+    rebasedSinceLastPush: false,
   };
 }
 
@@ -74,6 +86,9 @@ export interface PredictedRepoStatus {
   shareSquashed: number | null;
   // local section
   localConflicts: number;
+  localStaged: number;
+  localModified: number;
+  localUntracked: number;
   // flags
   isDirty: boolean;
   isUnpushed: boolean;
@@ -101,10 +116,15 @@ export function predictRepoStatus(repo: RepoModel): PredictedRepoStatus {
     shareRefMode = "noRef";
   }
 
-  // share.toPush / toPull
+  // share.toPush / toPull — shape depends on whether we've rebased since last push
   let shareToPush: number | null;
   let shareToPull: number | null;
-  if (repo.pushed) {
+  if (repo.pushed && repo.rebasedSinceLastPush) {
+    // After rebase: all local commits have new SHAs, base commits are incorporated.
+    // merge-base moves back to the point before base commits were absorbed.
+    shareToPush = repo.localCommits + repo.baseAbsorbedSinceLastPush;
+    shareToPull = repo.pushedCommits + repo.externalCommits;
+  } else if (repo.pushed) {
     shareToPush = repo.localCommits - repo.pushedCommits;
     shareToPull = repo.externalCommits;
   } else if (repo.remoteShareExists) {
@@ -115,12 +135,29 @@ export function predictRepoStatus(repo: RepoModel): PredictedRepoStatus {
     shareToPull = null;
   }
 
-  // share.rebased / replaced / squashed — detection only runs when both toPush > 0 and toPull > 0.
-  // No force-push scenarios in v1, so when detection runs it finds 0 matches.
+  // share.rebased / replaced / squashed — detection runs when both toPush > 0 and toPull > 0.
   const detectionRan = shareToPush !== null && shareToPush > 0 && shareToPull !== null && shareToPull > 0;
-  const shareRebased = detectionRan ? 0 : null;
-  const shareReplaced = detectionRan ? 0 : null;
-  const shareSquashed = detectionRan ? 0 : null;
+  let shareRebased: number | null = null;
+  let shareReplaced: number | null = null;
+  let shareSquashed: number | null = null;
+
+  if (detectionRan) {
+    if (repo.rebasedSinceLastPush) {
+      // After rebase: old pushed commits match new rebased commits by patch-id
+      shareRebased = repo.pushedCommits;
+      const unmatchedPull = (shareToPull ?? 0) - shareRebased;
+      if (unmatchedPull > 0) {
+        // External commits don't match reflog or squash patterns
+        shareReplaced = 0;
+        shareSquashed = 0;
+      }
+    } else {
+      // No rebase: no commits match
+      shareRebased = 0;
+      shareReplaced = 0;
+      shareSquashed = 0;
+    }
+  }
 
   // flags
   let isUnpushed = false;
@@ -130,9 +167,13 @@ export function predictRepoStatus(repo: RepoModel): PredictedRepoStatus {
     isUnpushed = true;
   }
 
-  const needsPull = shareToPull !== null && shareToPull > 0;
+  // needsPull: genuine new commits on remote (excluding outdated/rebased)
+  const totalOutdatedPull = (shareRebased ?? 0) + (shareReplaced ?? 0) + (shareSquashed ?? 0);
+  const needsPull = shareToPull !== null && shareToPull > 0 && shareToPull > totalOutdatedPull;
+
   const needsRebase = baseBehind > 0;
   const isDiverged = baseAhead > 0 && baseBehind > 0;
+  const isDirty = repo.staged > 0 || repo.untracked > 0;
 
   return {
     baseAhead,
@@ -144,7 +185,10 @@ export function predictRepoStatus(repo: RepoModel): PredictedRepoStatus {
     shareReplaced,
     shareSquashed,
     localConflicts: 0,
-    isDirty: false,
+    localStaged: repo.staged,
+    localModified: 0,
+    localUntracked: repo.untracked,
+    isDirty,
     isUnpushed,
     needsPull,
     needsRebase,

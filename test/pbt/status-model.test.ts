@@ -2,9 +2,10 @@
  * Property-based test: arb status --json accuracy.
  *
  * Each run creates a single workspace, then generates a random sequence of
- * state-changing operations (make commits, push, advance base, external share
- * commits) interspersed with status checks. Every CheckStatus asserts that
- * `arb status --json` matches the lightweight model's predictions.
+ * state-changing operations (make commits, push, rebase, advance base,
+ * external share commits, dirty files) interspersed with status checks.
+ * Every CheckStatus asserts that `arb status --json` matches the
+ * lightweight model's predictions.
  */
 
 import { describe, test } from "bun:test";
@@ -15,7 +16,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fc from "fast-check";
 import { type TestEnv, arb, cleanupTestEnv, createTestEnv } from "../integration/helpers/env";
-import { CheckStatus, MakeCommit, MakeCommitOnBase, MakeCommitOnShare, Push } from "./helpers/commands";
+import {
+  CheckStatus,
+  MakeCommit,
+  MakeCommitOnBase,
+  MakeCommitOnShare,
+  MakeDirtyFiles,
+  Push,
+  Rebase,
+} from "./helpers/commands";
 import { type RealSystem, type WorkspaceModel, freshWorkspaceModel } from "./helpers/model";
 
 // ── Template ─────────────────────────────────────────────────────
@@ -58,6 +67,7 @@ const NUM_RUNS = 30;
 // ── Command arbitraries ──────────────────────────────────────────
 
 const COMMIT_COUNT = fc.integer({ min: 1, max: 4 });
+const DIRTY_COUNT = fc.integer({ min: 1, max: 3 });
 
 function buildCommandArbitraries() {
   return [
@@ -69,6 +79,9 @@ function buildCommandArbitraries() {
     // Push — no parameters
     fc.constant(new Push()),
 
+    // Rebase — no parameters
+    fc.constant(new Rebase()),
+
     // MakeCommitOnBase — pick repo + count
     fc
       .tuple(fc.constantFrom(...REPOS), COMMIT_COUNT)
@@ -79,7 +92,13 @@ function buildCommandArbitraries() {
       .tuple(fc.constantFrom(...REPOS), COMMIT_COUNT)
       .map(([repo, n]) => new MakeCommitOnShare(repo, n)),
 
-    // CheckStatus — no parameters (weighted 2x for better coverage)
+    // MakeDirtyFiles — pick repo + kind + count
+    fc
+      .tuple(fc.constantFrom(...REPOS), fc.constantFrom("untracked" as const, "staged" as const), DIRTY_COUNT)
+      .map(([repo, kind, n]) => new MakeDirtyFiles(repo, kind, n)),
+
+    // CheckStatus — no parameters (weighted 3x so intermediate states get validated)
+    fc.constant(new CheckStatus()),
     fc.constant(new CheckStatus()),
     fc.constant(new CheckStatus()),
   ];
@@ -89,7 +108,7 @@ function buildCommandArbitraries() {
 
 async function runOnce(seed: number): Promise<void> {
   await fc.assert(
-    fc.asyncProperty(fc.commands(buildCommandArbitraries(), { size: "small" }), async (cmds) => {
+    fc.asyncProperty(fc.commands(buildCommandArbitraries(), { size: "+1", maxCommands: 30 }), async (cmds) => {
       const env = await createEnvFromTemplate();
       try {
         const result = await arb(env, ["create", WS_NAME, ...REPOS]);
@@ -128,5 +147,5 @@ const runs = Array.from({ length: NUM_RUNS }, (_, i) => {
 });
 
 describe("PBT: status model", () => {
-  test.each(runs)("%s", (_, seed) => runOnce(seed), { timeout: 30_000 });
+  test.each(runs)("%s", (_, seed) => runOnce(seed), { timeout: 60_000 });
 });

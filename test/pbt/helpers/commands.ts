@@ -49,6 +49,9 @@ export class MakeCommit implements AsyncCommand<WorkspaceModel, RealSystem> {
     const repo = model.repos[this.repoName];
     if (!repo) throw new Error(`Unknown repo: ${this.repoName}`);
     repo.localCommits += this.count;
+    // git add . + git commit cleans all dirty state
+    repo.staged = 0;
+    repo.untracked = 0;
     model.dirty = true;
   }
 
@@ -62,12 +65,22 @@ export class MakeCommit implements AsyncCommand<WorkspaceModel, RealSystem> {
 export class Push implements AsyncCommand<WorkspaceModel, RealSystem> {
   check(model: Readonly<WorkspaceModel>): boolean {
     return Object.values(model.repos).some(
-      (r) => (!r.pushed && r.localCommits > 0) || (r.pushed && r.localCommits > r.pushedCommits),
+      (r) =>
+        // First push with commits
+        (!r.pushed && r.localCommits > 0) ||
+        // New commits since last push (normal push, no external divergence)
+        (r.pushed && r.localCommits > r.pushedCommits && !r.rebasedSinceLastPush && r.externalCommits === 0) ||
+        // Rebased since last push, no external commits (force-push-outdated)
+        (r.pushed && r.rebasedSinceLastPush && r.externalCommits === 0),
     );
   }
 
   async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
     real.executedCommands.push(this.toString());
+    // Fetch so local tracking refs reflect any external pushes (MakeCommitOnShare)
+    const reposDir = join(real.env.projectDir, ".arb/repos");
+    await Promise.all(REPOS.map((r) => git(join(reposDir, r), ["fetch", "--prune"]).catch(() => {})));
+
     const result = await arb(real.env, ["push", "--yes", "--no-fetch"], {
       cwd: join(real.env.projectDir, real.wsName),
     });
@@ -75,17 +88,63 @@ export class Push implements AsyncCommand<WorkspaceModel, RealSystem> {
       throw new Error(`arb push failed: ${result.output}`);
     }
     for (const repo of Object.values(model.repos)) {
-      if (repo.localCommits > 0) {
+      if (repo.rebasedSinceLastPush && repo.externalCommits === 0) {
+        // Force push (or normal push of fast-forward rebase): remote replaced with HEAD
         repo.pushedCommits = repo.localCommits;
         repo.pushed = true;
         repo.remoteShareExists = true;
+        repo.baseAbsorbedSinceLastPush = 0;
+        repo.rebasedSinceLastPush = false;
+        // externalCommits already 0
+      } else if (!repo.rebasedSinceLastPush && repo.localCommits > 0 && repo.externalCommits === 0) {
+        // Normal push or first push (only when no external divergence)
+        repo.pushedCommits = repo.localCommits;
+        repo.pushed = true;
+        repo.remoteShareExists = true;
+        repo.baseAbsorbedSinceLastPush = 0;
       }
+      // Repos with rebasedSinceLastPush + externalCommits > 0 are skipped by arb push
     }
     model.dirty = true;
   }
 
   toString(): string {
     return "Push";
+  }
+}
+
+// ── Rebase ───────────────────────────────────────────────────────
+
+export class Rebase implements AsyncCommand<WorkspaceModel, RealSystem> {
+  check(model: Readonly<WorkspaceModel>): boolean {
+    const hasWorkToDo = Object.values(model.repos).some((r) => r.baseAdvanced > 0);
+    // Rebase skips dirty repos (without --autostash). Require all clean to avoid partial rebase.
+    const allClean = Object.values(model.repos).every((r) => r.staged === 0 && r.untracked === 0);
+    return hasWorkToDo && allClean;
+  }
+
+  async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
+    real.executedCommands.push(this.toString());
+    const result = await arb(real.env, ["rebase", "--yes", "--no-fetch"], {
+      cwd: join(real.env.projectDir, real.wsName),
+    });
+    if (result.exitCode !== 0) {
+      throw new Error(`arb rebase failed: ${result.output}`);
+    }
+    for (const repo of Object.values(model.repos)) {
+      if (repo.baseAdvanced > 0) {
+        repo.baseAbsorbedSinceLastPush += repo.baseAdvanced;
+        repo.baseAdvanced = 0;
+        if (repo.pushed) {
+          repo.rebasedSinceLastPush = true;
+        }
+      }
+    }
+    model.dirty = true;
+  }
+
+  toString(): string {
+    return "Rebase";
   }
 }
 
@@ -141,7 +200,11 @@ export class MakeCommitOnShare implements AsyncCommand<WorkspaceModel, RealSyste
   }
 
   check(model: Readonly<WorkspaceModel>): boolean {
-    return model.repos[this.repoName]?.pushed === true;
+    const repo = model.repos[this.repoName];
+    // Can only push to share if it exists and hasn't been diverged by rebase
+    // (after rebase, the share branch has old commits — external pushes on top
+    // of those would make the model harder to predict)
+    return repo?.pushed === true && !repo.rebasedSinceLastPush;
   }
 
   async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
@@ -171,6 +234,49 @@ export class MakeCommitOnShare implements AsyncCommand<WorkspaceModel, RealSyste
 
   toString(): string {
     return `MakeCommitOnShare(${this.repoName}, x${this.count})`;
+  }
+}
+
+// ── MakeDirtyFiles ───────────────────────────────────────────────
+
+export class MakeDirtyFiles implements AsyncCommand<WorkspaceModel, RealSystem> {
+  readonly repoName: string;
+  readonly kind: "untracked" | "staged";
+  readonly count: number;
+
+  constructor(repoName: string, kind: "untracked" | "staged", count: number) {
+    this.repoName = repoName;
+    this.kind = kind;
+    this.count = count;
+  }
+
+  check(_model: Readonly<WorkspaceModel>): boolean {
+    return true;
+  }
+
+  async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
+    real.executedCommands.push(this.toString());
+    const worktree = join(real.env.projectDir, real.wsName, this.repoName);
+    for (let i = 0; i < this.count; i++) {
+      const id = ++real.commitCounter;
+      await write(join(worktree, `dirty-${id}.txt`), `dirty-${id}`);
+      if (this.kind === "staged") {
+        await git(worktree, ["add", `dirty-${id}.txt`]);
+      }
+    }
+
+    const repo = model.repos[this.repoName];
+    if (!repo) throw new Error(`Unknown repo: ${this.repoName}`);
+    if (this.kind === "untracked") {
+      repo.untracked += this.count;
+    } else {
+      repo.staged += this.count;
+    }
+    model.dirty = true;
+  }
+
+  toString(): string {
+    return `MakeDirtyFiles(${this.repoName}, ${this.kind}, x${this.count})`;
   }
 }
 
@@ -227,6 +333,9 @@ export class CheckStatus implements AsyncCommand<WorkspaceModel, RealSystem> {
 
       // ── Local section ──
       expect(repoJson.local.conflicts).toBe(predicted.localConflicts);
+      expect(repoJson.local.staged).toBe(predicted.localStaged);
+      expect(repoJson.local.modified).toBe(predicted.localModified);
+      expect(repoJson.local.untracked).toBe(predicted.localUntracked);
 
       // ── Identity section ──
       expect(repoJson.identity.headMode.kind).toBe("attached");
