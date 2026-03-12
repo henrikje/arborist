@@ -1372,6 +1372,42 @@ describe("--where filtering", () => {
       expect(pushResult.output).toMatch(/pushed|Pushed/);
     }));
 
+  test("rebase does not report non-merged branch as merged when cumulative diff coincidentally matches", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "false-positive-test", "repo-a"]);
+      const wt = join(env.projectDir, "false-positive-test/repo-a");
+
+      // Make 3 commits on the feature branch (do not push — share stays noRef).
+      // X1 and X2 together produce the same diff as a single commit C on main.
+      await write(join(wt, "feature.txt"), "line 1\n");
+      await git(wt, ["add", "feature.txt"]);
+      await git(wt, ["commit", "-m", "feature part 1"]);
+      await write(join(wt, "feature.txt"), "line 1\nline 2\n");
+      await git(wt, ["add", "feature.txt"]);
+      await git(wt, ["commit", "-m", "feature part 2"]);
+      await write(join(wt, "other.txt"), "other\n");
+      await git(wt, ["add", "other.txt"]);
+      await git(wt, ["commit", "-m", "add other file"]);
+
+      // On main, add a single commit with the same cumulative diff as X1+X2.
+      const bare = join(env.originDir, "repo-a.git");
+      const tmp = join(env.testDir, "tmp-false-positive");
+      await git(env.testDir, ["clone", bare, tmp]);
+      await write(join(tmp, "feature.txt"), "line 1\nline 2\n");
+      await git(tmp, ["add", "feature.txt"]);
+      await git(tmp, ["commit", "-m", "independent work that matches X1+X2"]);
+      await git(tmp, ["push", "origin", "main"]);
+      await rm(tmp, { recursive: true });
+
+      // Dry-run rebase: should NOT show "(merged)" since the branch was not merged.
+      const result = await arb(env, ["rebase", "--dry-run"], {
+        cwd: join(env.projectDir, "false-positive-test"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).not.toContain("(merged)");
+      expect(result.output).not.toContain("already merged");
+    }));
+
   test("rebase skips when all local commits are already squash-equivalent on base", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "rebase-squash-equivalent-test", "repo-a"]);

@@ -24,6 +24,7 @@ export interface RepoStatus {
       alreadyOnTarget: number;
       toReplay: number;
       contiguous: boolean;
+      mergedPrefix?: boolean;
     };
     baseMergedIntoDefault: "merge" | "squash" | null;
     detectedPr: { number: number; url: string | null; mergeCommit?: string } | null;
