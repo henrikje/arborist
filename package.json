@@ -8,6 +8,7 @@
     "test": "bun test src/ --concurrent --timeout 30000",
     "test:integration": "bun run build && bun test test/integration/ --concurrent --timeout 30000",
     "test:integration:git217": "docker build -f test/docker/git217.Dockerfile -t arb-git217 test/docker/ && docker run --rm -v \"$PWD\":/app -w /app arb-git217",
+    "test:pbt": "bun run build && bun test test/pbt/ --timeout 300000",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "typecheck": "tsc --noEmit",
@@ -33,6 +34,7 @@
     "@commitlint/config-conventional": "^20.4.1",
     "@types/bun": "latest",
     "ajv": "^8.18.0",
+    "fast-check": "^4.6.0",
     "madge": "^8.0.0",
     "typescript": "^5.9.3"
   }
