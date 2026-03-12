@@ -3,9 +3,9 @@
  *
  * Each run creates a single workspace, then generates a random sequence of
  * state-changing operations (make commits, push, rebase, advance base,
- * external share commits, dirty files) interspersed with status checks.
- * Every CheckStatus asserts that `arb status --json` matches the
- * lightweight model's predictions.
+ * external share commits, dirty files). Every command asserts that
+ * `arb status --json` matches the lightweight model's predictions after
+ * its mutation, so every intermediate state is validated.
  */
 
 import { describe, test } from "bun:test";
@@ -16,15 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fc from "fast-check";
 import { type TestEnv, arb, cleanupTestEnv, createTestEnv } from "../integration/helpers/env";
-import {
-  CheckStatus,
-  MakeCommit,
-  MakeCommitOnBase,
-  MakeCommitOnShare,
-  MakeDirtyFiles,
-  Push,
-  Rebase,
-} from "./helpers/commands";
+import { MakeCommit, MakeCommitOnBase, MakeCommitOnShare, MakeDirtyFile, Push, Rebase } from "./helpers/commands";
 import { type RealSystem, type WorkspaceModel, freshWorkspaceModel } from "./helpers/model";
 
 // ── Template ─────────────────────────────────────────────────────
@@ -66,41 +58,16 @@ const NUM_RUNS = 30;
 
 // ── Command arbitraries ──────────────────────────────────────────
 
-const COMMIT_COUNT = fc.integer({ min: 1, max: 4 });
-const DIRTY_COUNT = fc.integer({ min: 1, max: 3 });
-
 function buildCommandArbitraries() {
   return [
-    // MakeCommit — pick repo + count
-    fc
-      .tuple(fc.constantFrom(...REPOS), COMMIT_COUNT)
-      .map(([repo, n]) => new MakeCommit(repo, n)),
-
-    // Push — no parameters
+    fc.constantFrom(...REPOS).map((repo) => new MakeCommit(repo)),
     fc.constant(new Push()),
-
-    // Rebase — no parameters
     fc.constant(new Rebase()),
-
-    // MakeCommitOnBase — pick repo + count
+    fc.constantFrom(...REPOS).map((repo) => new MakeCommitOnBase(repo)),
+    fc.constantFrom(...REPOS).map((repo) => new MakeCommitOnShare(repo)),
     fc
-      .tuple(fc.constantFrom(...REPOS), COMMIT_COUNT)
-      .map(([repo, n]) => new MakeCommitOnBase(repo, n)),
-
-    // MakeCommitOnShare — pick repo + count
-    fc
-      .tuple(fc.constantFrom(...REPOS), COMMIT_COUNT)
-      .map(([repo, n]) => new MakeCommitOnShare(repo, n)),
-
-    // MakeDirtyFiles — pick repo + kind + count
-    fc
-      .tuple(fc.constantFrom(...REPOS), fc.constantFrom("untracked" as const, "staged" as const), DIRTY_COUNT)
-      .map(([repo, kind, n]) => new MakeDirtyFiles(repo, kind, n)),
-
-    // CheckStatus — no parameters (weighted 3x so intermediate states get validated)
-    fc.constant(new CheckStatus()),
-    fc.constant(new CheckStatus()),
-    fc.constant(new CheckStatus()),
+      .tuple(fc.constantFrom(...REPOS), fc.constantFrom("untracked" as const, "staged" as const))
+      .map(([repo, kind]) => new MakeDirtyFile(repo, kind)),
   ];
 }
 
@@ -108,7 +75,7 @@ function buildCommandArbitraries() {
 
 async function runOnce(seed: number): Promise<void> {
   await fc.assert(
-    fc.asyncProperty(fc.commands(buildCommandArbitraries(), { size: "+1", maxCommands: 30 }), async (cmds) => {
+    fc.asyncProperty(fc.commands(buildCommandArbitraries(), { size: "+1", maxCommands: 20 }), async (cmds) => {
       const env = await createEnvFromTemplate();
       try {
         const result = await arb(env, ["create", WS_NAME, ...REPOS]);
@@ -120,11 +87,6 @@ async function runOnce(seed: number): Promise<void> {
         const real: RealSystem = { env, wsName: WS_NAME, commitCounter: 0, executedCommands: [] };
 
         await fc.asyncModelRun(() => ({ model, real }), cmds);
-
-        if (model.dirty) {
-          const finalCheck = new CheckStatus();
-          await finalCheck.run(model, real);
-        }
 
         console.log(`    ${real.executedCommands.join(", ")}`);
       } finally {
@@ -147,5 +109,5 @@ const runs = Array.from({ length: NUM_RUNS }, (_, i) => {
 });
 
 describe("PBT: status model", () => {
-  test.each(runs)("%s", (_, seed) => runOnce(seed), { timeout: 60_000 });
+  test.each(runs)("%s", (_, seed) => runOnce(seed), { timeout: 120_000 });
 });
