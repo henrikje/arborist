@@ -157,8 +157,8 @@ export async function integrate(
 
   // Phase 4: confirm
   const willOperate = assessments.filter((a) => a.outcome === "will-operate");
-  const upToDate = assessments.filter((a) => a.outcome === "up-to-date");
-  const skipped = assessments.filter((a) => a.outcome === "skip");
+  const upToDate = assessments.filter((a) => a.outcome === "up-to-date" || isDirtyButUpToDate(a));
+  const skipped = assessments.filter((a) => a.outcome === "skip" && !isDirtyButUpToDate(a));
 
   if (willOperate.length === 0) {
     await maybeWriteRetargetConfig({
@@ -411,6 +411,11 @@ export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode, 
   };
 }
 
+/** Dirty-skip that is actually up to date (behind === 0 with a resolved base). */
+function isDirtyButUpToDate(a: RepoAssessment): boolean {
+  return a.outcome === "skip" && a.skipFlag === "dirty" && a.baseBranch != null && a.behind === 0;
+}
+
 export function buildIntegratePlanNodes(
   assessments: RepoAssessment[],
   mode: IntegrateMode,
@@ -424,7 +429,7 @@ export function buildIntegratePlanNodes(
     let actionCell: Cell;
     if (a.outcome === "will-operate") {
       actionCell = integrateActionCell(describeIntegrateAction(a, mode, branch));
-    } else if (a.outcome === "up-to-date") {
+    } else if (a.outcome === "up-to-date" || isDirtyButUpToDate(a)) {
       actionCell = upToDateCell();
     } else {
       actionCell = skipCell(a.skipReason ?? "", a.skipFlag);
@@ -642,7 +647,17 @@ export function classifyRepo(
   const flags = computeFlags(status, branch);
   if (flags.isDirty) {
     if (!autostash) {
-      return { ...base, skipReason: "uncommitted changes (use --autostash)", skipFlag: "dirty" };
+      return {
+        ...base,
+        skipReason: "uncommitted changes (use --autostash)",
+        skipFlag: "dirty",
+        // Carry base info so the plan display can show "up to date" when behind === 0
+        ...(status.base !== null &&
+          status.base.behind === 0 && {
+            baseBranch: status.base.ref,
+            ahead: status.base.ahead,
+          }),
+      };
     }
     // Only stash if there are staged or modified files (not untracked-only)
     if (status.local.staged > 0 || status.local.modified > 0) {
