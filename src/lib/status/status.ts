@@ -306,7 +306,30 @@ export async function gatherRepoStatus(
       }
     } else if (shouldCheckSquash || shouldCheckPrefixes) {
       // Phase 2: Squash merge detection via cumulative patch-id (with prefix fallback)
-      const squashResult = await detectBranchMerged(repoDir, compareRef, 200, "HEAD", prefixLimit);
+      let squashResult = await detectBranchMerged(repoDir, compareRef, 200, "HEAD", prefixLimit);
+
+      // Guard: after `reset --hard <base>` + `git pull`, the merge commit's first parent
+      // is the base tip. The prefix loop finds HEAD~k is-ancestor of base, but the feature
+      // was never merged into base — it's a local pull-merge.
+      if (squashResult?.newCommitsAfterMerge != null && squashResult.kind === "merge" && shareStatus.ref) {
+        const n = squashResult.newCommitsAfterMerge;
+        const [prefixHash, baseHash] = await Promise.all([
+          git(repoDir, "rev-parse", `HEAD~${n}`),
+          git(repoDir, "rev-parse", compareRef),
+        ]);
+        if (
+          prefixHash.exitCode === 0 &&
+          baseHash.exitCode === 0 &&
+          prefixHash.stdout.trim() === baseHash.stdout.trim()
+        ) {
+          // HEAD~k is literally the base tip. Check if share has content not in base.
+          const shareAheadResult = await git(repoDir, "rev-list", "--count", `${compareRef}..${shareStatus.ref}`);
+          if (shareAheadResult.exitCode === 0 && Number.parseInt(shareAheadResult.stdout.trim(), 10) > 0) {
+            squashResult = null;
+          }
+        }
+      }
+
       if (squashResult) {
         baseStatus.mergedIntoBase = squashResult.kind;
         if (squashResult.newCommitsAfterMerge) {

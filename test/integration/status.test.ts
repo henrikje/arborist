@@ -1493,6 +1493,172 @@ describe("diverged commit matching", () => {
       const json = JSON.parse(jsonResult.stdout);
       expect(json.repos[0].base.detectedPr.number).toBe(88);
     }));
+
+  // ── pull-merge false positive ──────────────────────────────────
+
+  describe("pull-merge false positive", () => {
+    test("reset + pull does not show merged", () =>
+      withEnv(async (env) => {
+        await arb(env, ["create", "my-feature", "repo-a"]);
+        const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+
+        // Push a feature commit
+        await write(join(wtRepoA, "feature.txt"), "feature");
+        await git(wtRepoA, ["add", "feature.txt"]);
+        await git(wtRepoA, ["commit", "-m", "feature work"]);
+        await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
+
+        // Advance main on origin so base and feature diverge
+        const repoA = join(env.projectDir, ".arb/repos/repo-a");
+        await write(join(repoA, "upstream.txt"), "upstream");
+        await git(repoA, ["add", "upstream.txt"]);
+        await git(repoA, ["commit", "-m", "upstream"]);
+        await git(repoA, ["push"]);
+
+        // Simulate `arb reset`: reset worktree to origin/main
+        await git(wtRepoA, ["fetch", "origin"]);
+        await git(wtRepoA, ["reset", "--hard", "origin/main"]);
+
+        // Simulate `arb pull`: pull from origin/my-feature (creates three-way merge)
+        await git(wtRepoA, ["-c", "pull.rebase=false", "pull", "origin", "my-feature", "--no-edit"]);
+
+        await fetchAllRepos(env);
+        const result = await arb(env, ["status"], { cwd: join(env.projectDir, "my-feature") });
+        expect(result.exitCode).toBe(0);
+        expect(result.output).not.toContain("merged");
+
+        // Verify JSON output
+        const jsonResult = await arb(env, ["status", "--no-fetch", "--json"], {
+          cwd: join(env.projectDir, "my-feature"),
+        });
+        const json = JSON.parse(jsonResult.stdout);
+        expect(json.repos[0].base.mergedIntoBase).toBeNull();
+      }));
+
+    test("FF merge + new commit still shows merged", () =>
+      withEnv(async (env) => {
+        await arb(env, ["create", "my-feature", "repo-a"]);
+        const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+
+        // Push a feature commit
+        await write(join(wtRepoA, "feature.txt"), "feature");
+        await git(wtRepoA, ["add", "feature.txt"]);
+        await git(wtRepoA, ["commit", "-m", "feature work"]);
+        await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
+
+        // FF merge into main on origin (keep remote branch so prefix loop has toPush-based limit)
+        const repoA = join(env.projectDir, ".arb/repos/repo-a");
+        await git(repoA, ["merge", "origin/my-feature"]);
+        await git(repoA, ["push"]);
+
+        // Add a new commit locally on the feature branch
+        await write(join(wtRepoA, "extra.txt"), "extra");
+        await git(wtRepoA, ["add", "extra.txt"]);
+        await git(wtRepoA, ["commit", "-m", "extra commit"]);
+
+        await fetchAllRepos(env);
+        const jsonResult = await arb(env, ["status", "--no-fetch", "--json"], {
+          cwd: join(env.projectDir, "my-feature"),
+        });
+        const json = JSON.parse(jsonResult.stdout);
+        expect(json.repos[0].base.mergedIntoBase).toBe("merge");
+        expect(json.repos[0].base.newCommitsAfterMerge).toBe(1);
+      }));
+
+    test("non-FF merge + new commit still shows merged", () =>
+      withEnv(async (env) => {
+        await arb(env, ["create", "my-feature", "repo-a"]);
+        const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+
+        // Push a feature commit
+        await write(join(wtRepoA, "feature.txt"), "feature");
+        await git(wtRepoA, ["add", "feature.txt"]);
+        await git(wtRepoA, ["commit", "-m", "feature work"]);
+        await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
+
+        // Merge into main with --no-ff (keep remote branch so prefix loop has toPush-based limit)
+        const repoA = join(env.projectDir, ".arb/repos/repo-a");
+        await git(repoA, ["merge", "origin/my-feature", "--no-ff", "-m", "Merge my-feature into main"]);
+        await git(repoA, ["push"]);
+
+        // Add a new commit locally on the feature branch
+        await write(join(wtRepoA, "extra.txt"), "extra");
+        await git(wtRepoA, ["add", "extra.txt"]);
+        await git(wtRepoA, ["commit", "-m", "extra commit"]);
+
+        await fetchAllRepos(env);
+        const jsonResult = await arb(env, ["status", "--no-fetch", "--json"], {
+          cwd: join(env.projectDir, "my-feature"),
+        });
+        const json = JSON.parse(jsonResult.stdout);
+        expect(json.repos[0].base.mergedIntoBase).toBe("merge");
+      }));
+
+    test("squash merge + new commit still shows merged", () =>
+      withEnv(async (env) => {
+        await arb(env, ["create", "my-feature", "repo-a"]);
+        const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+
+        // Push a feature commit
+        await write(join(wtRepoA, "feature.txt"), "feature");
+        await git(wtRepoA, ["add", "feature.txt"]);
+        await git(wtRepoA, ["commit", "-m", "feature work"]);
+        await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
+
+        // Squash merge into main
+        const repoA = join(env.projectDir, ".arb/repos/repo-a");
+        await git(repoA, ["merge", "--squash", "origin/my-feature"]);
+        await git(repoA, ["commit", "-m", "squash merge my-feature"]);
+        await git(repoA, ["push"]);
+        // Delete remote branch
+        await git(join(env.originDir, "repo-a.git"), ["branch", "-D", "my-feature"]);
+        await git(repoA, ["fetch", "--prune"]);
+
+        // Add a new commit locally on the feature branch
+        await write(join(wtRepoA, "extra.txt"), "extra");
+        await git(wtRepoA, ["add", "extra.txt"]);
+        await git(wtRepoA, ["commit", "-m", "extra commit"]);
+
+        await fetchAllRepos(env);
+        const jsonResult = await arb(env, ["status", "--no-fetch", "--json"], {
+          cwd: join(env.projectDir, "my-feature"),
+        });
+        const json = JSON.parse(jsonResult.stdout);
+        expect(json.repos[0].base.mergedIntoBase).toBe("squash");
+      }));
+
+    test("reset + pull with multiple repos", () =>
+      withEnv(async (env) => {
+        await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+
+        for (const repo of ["repo-a", "repo-b"]) {
+          const wt = join(env.projectDir, "my-feature", repo);
+
+          // Push a feature commit
+          await write(join(wt, "feature.txt"), "feature");
+          await git(wt, ["add", "feature.txt"]);
+          await git(wt, ["commit", "-m", "feature work"]);
+          await git(wt, ["push", "-u", "origin", "my-feature"]);
+
+          // Advance main on origin
+          const canonical = join(env.projectDir, ".arb/repos", repo);
+          await write(join(canonical, "upstream.txt"), "upstream");
+          await git(canonical, ["add", "upstream.txt"]);
+          await git(canonical, ["commit", "-m", "upstream"]);
+          await git(canonical, ["push"]);
+
+          // Simulate reset + pull
+          await git(wt, ["fetch", "origin"]);
+          await git(wt, ["reset", "--hard", "origin/main"]);
+          await git(wt, ["-c", "pull.rebase=false", "pull", "origin", "my-feature", "--no-edit"]);
+        }
+
+        await fetchAllRepos(env);
+        const result = await arb(env, ["status"], { cwd: join(env.projectDir, "my-feature") });
+        expect(result.exitCode).toBe(0);
+        expect(result.output).not.toContain("merged");
+      }));
+  });
 });
 
 test("arb status -v shows (same as ...) when feature commit is cherry-picked onto base", () =>
