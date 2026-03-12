@@ -52,12 +52,10 @@ export function freshRepoModel(): RepoModel {
 /** Single-workspace model: just a map of repo name → state. */
 export interface WorkspaceModel {
   repos: Record<string, RepoModel>;
-  /** True when state has changed since the last CheckStatus. */
-  dirty: boolean;
 }
 
 export function freshWorkspaceModel(repoNames: string[]): WorkspaceModel {
-  return { repos: Object.fromEntries(repoNames.map((r) => [r, freshRepoModel()])), dirty: true };
+  return { repos: Object.fromEntries(repoNames.map((r) => [r, freshRepoModel()])) };
 }
 
 // ── Real system wrapper ──────────────────────────────────────────
