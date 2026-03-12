@@ -298,7 +298,19 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
       : a.newBranch
         ? ` (new branch: ${remoteBranch})`
         : "";
-    let base = cell(`${plural(a.ahead, "commit")} to push${newBranchSuffix}`);
+    let desc: string;
+    if (a.baseAhead > 0 || a.rebased > 0) {
+      const fromBase = Math.max(0, a.ahead - a.baseAhead);
+      const newCount = Math.max(0, a.ahead - fromBase - a.rebased);
+      const parts: string[] = [];
+      if (fromBase > 0) parts.push(`${fromBase} from ${a.baseRef}`);
+      if (a.rebased > 0) parts.push(`${a.rebased} rebased`);
+      if (newCount > 0) parts.push(`${newCount} new`);
+      desc = parts.length > 0 ? parts.join(" + ") : plural(a.ahead, "commit");
+    } else {
+      desc = plural(a.ahead, "commit");
+    }
+    let base = cell(`${desc} to push${newBranchSuffix}`);
     if (a.behindBase > 0) {
       base = suffix(base, ` (${a.behindBase} behind base)`, "attention");
     }
@@ -310,14 +322,14 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
   // will-force-push-outdated — all remote commits are accounted for (rebased or replaced)
   if (a.outcome === "will-force-push-outdated") {
     const outdatedSuffix = ` (replaces ${a.behind} outdated on ${a.shareRemote})`;
-    if (a.rebased > 0) {
+    if (a.baseAhead > 0 || a.rebased > 0) {
       const fromBase = Math.max(0, a.ahead - a.baseAhead);
-      const newCount = Math.max(0, a.baseAhead - a.rebased);
+      const newCount = Math.max(0, a.ahead - fromBase - a.rebased);
       const parts: string[] = [];
       if (fromBase > 0) parts.push(`${fromBase} from ${a.baseRef}`);
       if (a.rebased > 0) parts.push(`${a.rebased} rebased`);
       if (newCount > 0) parts.push(`${newCount} new`);
-      const desc = parts.join(" + ");
+      const desc = parts.length > 0 ? parts.join(" + ") : plural(a.ahead, "commit");
       let base = cell(`${desc} to push${outdatedSuffix}`);
       if (a.behindBase > 0) {
         base = suffix(base, ` (${a.behindBase} behind base)`, "attention");
@@ -334,14 +346,14 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
   }
 
   // will-force-push
-  if (a.rebased > 0) {
+  if (a.baseAhead > 0 || a.rebased > 0) {
     const fromBase = Math.max(0, a.ahead - a.baseAhead);
-    const newCount = Math.max(0, a.baseAhead - a.rebased);
+    const newCount = Math.max(0, a.ahead - fromBase - a.rebased);
     const parts: string[] = [];
     if (fromBase > 0) parts.push(`${fromBase} from ${a.baseRef}`);
     if (a.rebased > 0) parts.push(`${a.rebased} rebased`);
     if (newCount > 0) parts.push(`${newCount} new`);
-    const desc = parts.join(" + ");
+    const desc = parts.length > 0 ? parts.join(" + ") : plural(a.ahead, "commit");
     let base = cell(`${desc} to push (force)`);
     if (a.behindBase > 0) {
       base = suffix(base, ` (${a.behindBase} behind base)`, "attention");
