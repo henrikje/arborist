@@ -55,6 +55,7 @@ describe("computeFlags", () => {
           toPull: 0,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       "feature",
@@ -73,6 +74,7 @@ describe("computeFlags", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -101,6 +103,7 @@ describe("computeFlags", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -135,6 +138,7 @@ describe("computeFlags", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       "feature",
@@ -153,6 +157,7 @@ describe("computeFlags", () => {
           toPull: 3,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       "feature",
@@ -171,6 +176,7 @@ describe("computeFlags", () => {
           toPull: 1,
           rebased: 0,
           replaced: 1,
+          squashed: null,
         },
       }),
       "feature",
@@ -189,6 +195,7 @@ describe("computeFlags", () => {
           toPull: 3,
           rebased: 2,
           replaced: 1,
+          squashed: null,
         },
       }),
       "feature",
@@ -207,6 +214,45 @@ describe("computeFlags", () => {
           toPull: 3,
           rebased: 0,
           replaced: 1,
+          squashed: null,
+        },
+      }),
+      "feature",
+    );
+    expect(flags.needsPull).toBe(true);
+  });
+
+  test("needsPull is false when all pull commits are squashed", () => {
+    const flags = computeFlags(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 1,
+          toPull: 3,
+          rebased: 0,
+          replaced: 0,
+          squashed: 3,
+        },
+      }),
+      "feature",
+    );
+    expect(flags.needsPull).toBe(false);
+  });
+
+  test("needsPull is true when squashed only partially covers pull", () => {
+    const flags = computeFlags(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 1,
+          toPull: 3,
+          rebased: 0,
+          replaced: 0,
+          squashed: 1,
         },
       }),
       "feature",
@@ -331,6 +377,7 @@ describe("computeFlags", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       "feature",
@@ -515,6 +562,7 @@ describe("isAtRisk", () => {
           toPull: 3,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       "feature",
@@ -533,6 +581,7 @@ describe("isAtRisk", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       "feature",
@@ -597,6 +646,7 @@ describe("flagLabels", () => {
           toPull: 0,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       "feature",
@@ -685,6 +735,7 @@ describe("flagLabels", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       "feature",
@@ -714,6 +765,7 @@ describe("flagLabels", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       "feature",
@@ -824,6 +876,7 @@ describe("wouldLoseWork", () => {
           toPull: 0,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       "feature",
@@ -867,6 +920,7 @@ describe("wouldLoseWork", () => {
           toPull: 3,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       "feature",
@@ -933,6 +987,7 @@ describe("wouldLoseWork", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: null,
       }),
@@ -952,6 +1007,7 @@ describe("wouldLoseWork", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -993,6 +1049,7 @@ describe("isWorkspaceSafe", () => {
           toPull: 0,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
     ];
@@ -1011,6 +1068,7 @@ describe("isWorkspaceSafe", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -1058,6 +1116,7 @@ describe("isWorkspaceSafe", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
     ];
@@ -1119,6 +1178,7 @@ describe("computeSummaryAggregates decoupled display gate", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
     ];
@@ -1161,6 +1221,7 @@ describe("computeSummaryAggregates decoupled display gate", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
     ];
@@ -1193,6 +1254,7 @@ describe("computeSummaryAggregates decoupled display gate", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       // Non-merged repo: behind base should be kept
@@ -1263,6 +1325,7 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
           toPull: 0,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
     ];
@@ -1282,6 +1345,7 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
           toPull: 2,
           rebased: 2,
           replaced: null,
+          squashed: null,
         },
       }),
       makeRepo({
@@ -1294,6 +1358,7 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
           toPull: 2,
           rebased: 2,
           replaced: null,
+          squashed: null,
         },
       }),
     ];
@@ -1313,6 +1378,7 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
           toPull: 2,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
     ];
@@ -1332,6 +1398,7 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
           toPull: 1,
           rebased: 0,
           replaced: 1,
+          squashed: null,
         },
       }),
     ];
@@ -1351,6 +1418,7 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
           toPull: 3,
           rebased: 2,
           replaced: 1,
+          squashed: null,
         },
       }),
     ];
@@ -1370,11 +1438,32 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
           toPull: 2,
           rebased: 1,
           replaced: 1,
+          squashed: null,
         },
       }),
     ];
     const result = computeSummaryAggregates(repos, "feature");
     expect(result.rebasedOnlyCount).toBe(0);
+  });
+
+  test("counts repos where all unpushed commits are squashed", () => {
+    const repos = [
+      makeRepo({
+        name: "a",
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 1,
+          toPull: 2,
+          rebased: 0,
+          replaced: 0,
+          squashed: 2,
+        },
+      }),
+    ];
+    const result = computeSummaryAggregates(repos, "feature");
+    expect(result.rebasedOnlyCount).toBe(1);
   });
 });
 

@@ -82,7 +82,9 @@ export function remoteDiffParts(repo: RepoStatus): {
       const outdatedFromRebased = rebased > 0 ? Math.min(rebased, toPull) : 0;
       const replaced = repo.share.replaced ?? 0;
       const outdatedFromReplaced = Math.min(replaced, toPull - outdatedFromRebased);
-      const totalOutdated = outdatedFromRebased + outdatedFromReplaced;
+      const squashed = repo.share.squashed ?? 0;
+      const outdatedFromSquashed = Math.min(squashed, toPull - outdatedFromRebased - outdatedFromReplaced);
+      const totalOutdated = outdatedFromRebased + outdatedFromReplaced + outdatedFromSquashed;
       const newPull = Math.max(0, toPull - totalOutdated);
       if (totalOutdated > 0) pullParts.push(`${totalOutdated} outdated`);
       if (newPull > 0) {

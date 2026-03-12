@@ -417,6 +417,142 @@ describe("push [repos...] and --force", () => {
       expect(result.output).toContain("--force");
     }));
 
+  test("arb push auto-pushes squash via cumulative patch-id (no reflog needed)", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Make 2 commits and push
+      await write(join(repoA, "a.txt"), "a");
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "commit a"]);
+      await write(join(repoA, "b.txt"), "b");
+      await git(repoA, ["add", "b.txt"]);
+      await git(repoA, ["commit", "-m", "commit b"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Expire the reflog so detectReplacedCommits cannot find old hashes
+      await git(repoA, ["reflog", "expire", "--expire=now", "--all"]);
+
+      // Squash 2 commits into 1
+      await git(repoA, ["reset", "--soft", "HEAD~2"]);
+      await git(repoA, ["commit", "-m", "squashed: a + b"]);
+
+      // Fetch so arb sees the remote state
+      await fetchAllRepos(env);
+
+      // Push without --force — cumulative patch-id detection should match
+      const result = await arb(env, ["push", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("replaces");
+      expect(result.output).not.toContain("diverged");
+      expect(result.output).toContain("Pushed");
+    }));
+
+  test("arb push requires --force when squash changes content", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Make 2 commits and push
+      await write(join(repoA, "a.txt"), "a");
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "commit a"]);
+      await write(join(repoA, "b.txt"), "b");
+      await git(repoA, ["add", "b.txt"]);
+      await git(repoA, ["commit", "-m", "commit b"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Expire reflog and squash with DIFFERENT content
+      await git(repoA, ["reflog", "expire", "--expire=now", "--all"]);
+      await git(repoA, ["reset", "--soft", "HEAD~2"]);
+      await write(join(repoA, "a.txt"), "changed-a"); // different content!
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "squashed with changes"]);
+
+      await fetchAllRepos(env);
+
+      // Should require --force because cumulative diffs differ
+      const result = await arb(env, ["push", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.output).toContain("diverged");
+      expect(result.output).toContain("--force");
+    }));
+
+  test("arb push blocks when genuinely diverged (someone else pushed)", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Make 1 commit and push
+      await write(join(repoA, "a.txt"), "a");
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "commit a"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Simulate colleague pushing a new commit to remote
+      const bare = join(env.originDir, "repo-a.git");
+      const tmp = join(env.testDir, "tmp-colleague-push");
+      await git(env.testDir, ["clone", bare, tmp]);
+      await git(tmp, ["checkout", "my-feature"]);
+      await write(join(tmp, "colleague.txt"), "colleague work");
+      await git(tmp, ["add", "colleague.txt"]);
+      await git(tmp, ["commit", "-m", "colleague commit"]);
+      await git(tmp, ["push", "origin", "my-feature"]);
+
+      // Squash locally (different content from remote)
+      await git(repoA, ["reflog", "expire", "--expire=now", "--all"]);
+      await git(repoA, ["reset", "--soft", "HEAD~1"]);
+      await git(repoA, ["commit", "-m", "squashed"]);
+
+      await fetchAllRepos(env);
+
+      // Should require --force because colleague added genuinely new content
+      const result = await arb(env, ["push", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.output).toContain("diverged");
+    }));
+
+  test("arb push auto-pushes partial squash (same cumulative diff)", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Make 3 commits: a, b, c
+      await write(join(repoA, "a.txt"), "a");
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "commit a"]);
+      await write(join(repoA, "b.txt"), "b");
+      await git(repoA, ["add", "b.txt"]);
+      await git(repoA, ["commit", "-m", "commit b"]);
+      await write(join(repoA, "c.txt"), "c");
+      await git(repoA, ["add", "c.txt"]);
+      await git(repoA, ["commit", "-m", "commit c"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Expire reflog so only cumulative patch-id can detect
+      await git(repoA, ["reflog", "expire", "--expire=now", "--all"]);
+
+      // Keep commit a, squash b+c into one
+      await git(repoA, ["reset", "--soft", "HEAD~2"]);
+      await git(repoA, ["commit", "-m", "squashed b+c"]);
+
+      await fetchAllRepos(env);
+
+      // Cumulative diffs match (same net changes), should auto-push
+      const result = await arb(env, ["push", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("replaces");
+      expect(result.output).not.toContain("diverged");
+      expect(result.output).toContain("Pushed");
+    }));
+
   test("arb pull skips rebased repo", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);

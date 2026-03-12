@@ -239,6 +239,45 @@ export async function detectReplacedCommits(
   return { count: replacedHashes.size, replacedHashes };
 }
 
+export async function detectSquashedCommits(
+  repoDir: string,
+  trackingRef: string,
+  toPull: number,
+): Promise<{ count: number } | null> {
+  const mergeBaseResult = await git(repoDir, "merge-base", "HEAD", trackingRef);
+  if (mergeBaseResult.exitCode !== 0) return null;
+  const mergeBase = mergeBaseResult.stdout.trim();
+  if (!mergeBase) return null;
+
+  const squashStart = isDebug() ? performance.now() : 0;
+  const [localResult, remoteResult] = await Promise.all([
+    Bun.$`git -C ${repoDir} diff ${mergeBase}..HEAD | git patch-id --stable`.quiet().nothrow(),
+    Bun.$`git -C ${repoDir} diff ${mergeBase}..${trackingRef} | git patch-id --stable`.quiet().nothrow(),
+  ]);
+  if (isDebug()) {
+    const elapsed = performance.now() - squashStart;
+    debugGit(`git -C ${repoDir} diff ${mergeBase}..HEAD | git patch-id --stable`, elapsed, localResult.exitCode);
+    debugGit(
+      `git -C ${repoDir} diff ${mergeBase}..${trackingRef} | git patch-id --stable`,
+      elapsed,
+      remoteResult.exitCode,
+    );
+  }
+
+  if (localResult.exitCode !== 0 || remoteResult.exitCode !== 0) return null;
+
+  const localPatchId = localResult.text().trim().split(" ")[0];
+  const remotePatchId = remoteResult.text().trim().split(" ")[0];
+
+  if (!localPatchId || !remotePatchId) return null;
+
+  if (localPatchId === remotePatchId) {
+    return { count: toPull };
+  }
+
+  return { count: 0 };
+}
+
 export async function predictRebaseConflictCommits(
   repoDir: string,
   targetRef: string,

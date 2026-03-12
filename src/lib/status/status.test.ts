@@ -50,6 +50,7 @@ describe("shouldRunMergeDetection", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     }).share;
     expect(shouldRunMergeDetection(baseStatus, shareStatus, false, "feature")).toBe(true);
@@ -77,6 +78,7 @@ describe("shouldRunMergeDetection", () => {
         toPull: null,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     }).share;
     expect(shouldRunMergeDetection(baseStatus, shareStatus, false, "feature")).toBe(true);
@@ -138,6 +140,7 @@ describe("shouldRunMergeDetection", () => {
         toPull: null,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     }).share;
     expect(shouldRunMergeDetection(baseStatus, shareStatus, false, "feature")).toBe(false);
@@ -177,6 +180,7 @@ describe("computeMergeDetectionStrategy", () => {
         toPull: null,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
@@ -205,6 +209,7 @@ describe("computeMergeDetectionStrategy", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
@@ -233,6 +238,7 @@ describe("computeMergeDetectionStrategy", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
@@ -261,6 +267,7 @@ describe("computeMergeDetectionStrategy", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
@@ -289,6 +296,7 @@ describe("computeMergeDetectionStrategy", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
@@ -317,6 +325,7 @@ describe("computeMergeDetectionStrategy", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
@@ -345,6 +354,7 @@ describe("computeMergeDetectionStrategy", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
@@ -374,6 +384,7 @@ describe("computeMergeDetectionStrategy", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);

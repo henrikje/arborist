@@ -154,7 +154,10 @@ export async function gatherVerboseDetail(repo: RepoStatus, wsDir: string): Prom
         hash: c.fullHash,
         shortHash: c.shortHash,
         subject: c.subject,
-        superseded: (rebasedRemoteHashes?.has(c.fullHash) ?? false) || (replacedHashes?.has(c.fullHash) ?? false),
+        superseded:
+          (rebasedRemoteHashes?.has(c.fullHash) ?? false) ||
+          (replacedHashes?.has(c.fullHash) ?? false) ||
+          (repo.share.squashed != null && repo.share.squashed > 0),
       }));
     }
   }

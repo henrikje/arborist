@@ -100,7 +100,7 @@ export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags, hasPullCon
   const replaced = repo.share.replaced ?? 0;
   const toPush = repo.share.toPush ?? 0;
   const baseAhead = repo.base?.ahead ?? toPush;
-  const totalMatched = rebased + replaced;
+  const totalMatched = rebased + replaced + (repo.share.squashed ?? 0);
   const newCount = Math.max(0, Math.min(baseAhead, toPush) - totalMatched);
   const pushNeedsAttention = flags.isUnpushed && (totalMatched === 0 || newCount > 0);
   const pushSpans = pushSideSpans(pushText, pushNewText, pushNeedsAttention);

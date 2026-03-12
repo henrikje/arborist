@@ -73,6 +73,7 @@ describe("assessPushRepo", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -106,6 +107,7 @@ describe("assessPushRepo", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -139,6 +141,7 @@ describe("assessPushRepo", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -195,6 +198,7 @@ describe("assessPushRepo", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -254,6 +258,7 @@ describe("assessPushRepo", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -286,6 +291,7 @@ describe("assessPushRepo", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -318,6 +324,7 @@ describe("assessPushRepo", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -350,6 +357,7 @@ describe("assessPushRepo", () => {
           toPull: 3,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       DIR,
@@ -373,6 +381,7 @@ describe("assessPushRepo", () => {
           toPull: 2,
           rebased: 1,
           replaced: null,
+          squashed: null,
         },
       }),
       DIR,
@@ -396,6 +405,7 @@ describe("assessPushRepo", () => {
           toPull: 3,
           rebased: 0,
           replaced: 3,
+          squashed: null,
         },
       }),
       DIR,
@@ -419,6 +429,7 @@ describe("assessPushRepo", () => {
           toPull: 3,
           rebased: 3,
           replaced: null,
+          squashed: null,
         },
       }),
       DIR,
@@ -442,6 +453,7 @@ describe("assessPushRepo", () => {
           toPull: 3,
           rebased: 2,
           replaced: 1,
+          squashed: null,
         },
       }),
       DIR,
@@ -464,6 +476,7 @@ describe("assessPushRepo", () => {
           toPull: 3,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       DIR,
@@ -488,6 +501,121 @@ describe("assessPushRepo", () => {
           toPull: 3,
           rebased: 1,
           replaced: 0,
+          squashed: null,
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("will-force-push");
+    expect(a.ahead).toBe(2);
+    expect(a.behind).toBe(3);
+  });
+
+  test("will-force-push-outdated when squashed covers all remote commits", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 1,
+          toPull: 3,
+          rebased: 0,
+          replaced: 0,
+          squashed: 3,
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("will-force-push-outdated");
+    expect(a.ahead).toBe(1);
+    expect(a.behind).toBe(3);
+    expect(a.squashed).toBe(3);
+  });
+
+  test("will-force-push-outdated when rebased + squashed covers all remote commits", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 2,
+          toPull: 3,
+          rebased: 1,
+          replaced: 0,
+          squashed: 2,
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("will-force-push-outdated");
+    expect(a.ahead).toBe(2);
+    expect(a.behind).toBe(3);
+  });
+
+  test("will-force-push-outdated when replaced + squashed covers all remote commits", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 1,
+          toPull: 3,
+          rebased: 0,
+          replaced: 1,
+          squashed: 2,
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("will-force-push-outdated");
+    expect(a.ahead).toBe(1);
+    expect(a.behind).toBe(3);
+  });
+
+  test("will-force-push when squashed is null (detection failed)", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 1,
+          toPull: 3,
+          rebased: null,
+          replaced: null,
+          squashed: null,
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("will-force-push");
+  });
+
+  test("will-force-push when squashed does not cover all remote commits", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 2,
+          toPull: 3,
+          rebased: 0,
+          replaced: 0,
+          squashed: 1,
         },
       }),
       DIR,
@@ -510,6 +638,7 @@ describe("assessPushRepo", () => {
           toPull: 0,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       DIR,
@@ -541,6 +670,7 @@ describe("assessPushRepo", () => {
           toPull: 0,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       DIR,
@@ -568,6 +698,7 @@ describe("assessPushRepo", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       DIR,
@@ -600,6 +731,7 @@ describe("assessPushRepo", () => {
           toPull: 0,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
       DIR,
@@ -644,6 +776,7 @@ describe("formatPushPlan", () => {
       behind: 0,
       rebased: 0,
       replaced: 0,
+      squashed: 0,
       baseAhead: 0,
       baseRef: "main",
       branch: "feature",
@@ -791,6 +924,25 @@ describe("formatPushPlan", () => {
   test("shows outdated count for will-force-push-outdated (squash scenario, no base info)", () => {
     const plan = formatPushPlan(
       [makeAssessment({ outcome: "will-force-push-outdated", ahead: 1, behind: 3, rebased: 0, replaced: 3 })],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("1 commit to push");
+    expect(plan).toContain("replaces 3 outdated on origin");
+    expect(plan).not.toContain("force");
+  });
+
+  test("shows outdated count for will-force-push-outdated (cumulative squash scenario)", () => {
+    const plan = formatPushPlan(
+      [
+        makeAssessment({
+          outcome: "will-force-push-outdated",
+          ahead: 1,
+          behind: 3,
+          rebased: 0,
+          replaced: 0,
+          squashed: 3,
+        }),
+      ],
       makeRemotesMap(["repo-a", {}]),
     );
     expect(plan).toContain("1 commit to push");

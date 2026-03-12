@@ -172,6 +172,7 @@ describe("buildStatusView", () => {
         toPull: 3,
         rebased: 0,
         replaced: null,
+        squashed: null,
       },
     });
     const nodes = buildStatusView(
