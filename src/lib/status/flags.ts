@@ -46,7 +46,7 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
   }
 
   // needsPull: share remote has genuinely new commits (not just outdated/replaced)
-  const totalOutdatedPull = (repo.share.rebased ?? 0) + (repo.share.replaced ?? 0);
+  const totalOutdatedPull = (repo.share.rebased ?? 0) + (repo.share.replaced ?? 0) + (repo.share.squashed ?? 0);
   const needsPull = repo.share.toPull !== null && repo.share.toPull > 0 && repo.share.toPull > totalOutdatedPull;
 
   // needsRebase: behind base branch
@@ -129,7 +129,7 @@ export function computeSummaryAggregates(
 
   let rebasedOnlyCount = 0;
   for (const repo of repos) {
-    const totalMatched = (repo.share.rebased ?? 0) + (repo.share.replaced ?? 0);
+    const totalMatched = (repo.share.rebased ?? 0) + (repo.share.replaced ?? 0) + (repo.share.squashed ?? 0);
     if (totalMatched > 0) {
       const netNew = (repo.share.toPush ?? 0) - totalMatched;
       if (netNew <= 0) rebasedOnlyCount++;

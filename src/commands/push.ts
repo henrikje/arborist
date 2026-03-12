@@ -24,6 +24,7 @@ export interface PushAssessment {
   behind: number;
   rebased: number;
   replaced: number;
+  squashed: number;
   baseAhead: number;
   baseRef: string;
   branch: string;
@@ -319,7 +320,7 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
     return base;
   }
 
-  // will-force-push-outdated — all remote commits are accounted for (rebased or replaced)
+  // will-force-push-outdated — all remote commits are accounted for (rebased, replaced, or squashed)
   if (a.outcome === "will-force-push-outdated") {
     const outdatedSuffix = ` (replaces ${a.behind} outdated on ${a.shareRemote})`;
     if (a.baseAhead > 0 || a.rebased > 0) {
@@ -416,6 +417,7 @@ export function assessPushRepo(
     behind: 0,
     rebased: 0,
     replaced: 0,
+    squashed: 0,
     baseAhead: status.base?.ahead ?? 0,
     baseRef: status.base?.ref ?? "base",
     branch,
@@ -516,11 +518,20 @@ export function assessPushRepo(
   if (toPush > 0 && toPull > 0) {
     const rebased = status.share.rebased ?? 0;
     const replaced = status.share.replaced ?? 0;
-    const allOutdated = rebased + replaced >= toPull;
+    const squashed = status.share.squashed ?? 0;
+    const allOutdated = rebased + replaced + squashed >= toPull;
     if (allOutdated) {
-      return { ...base, outcome: "will-force-push-outdated", ahead: toPush, behind: toPull, rebased, replaced };
+      return {
+        ...base,
+        outcome: "will-force-push-outdated",
+        ahead: toPush,
+        behind: toPull,
+        rebased,
+        replaced,
+        squashed,
+      };
     }
-    return { ...base, outcome: "will-force-push", ahead: toPush, behind: toPull, rebased, replaced };
+    return { ...base, outcome: "will-force-push", ahead: toPush, behind: toPull, rebased, replaced, squashed };
   }
 
   return { ...base, outcome: "will-push", ahead: toPush };

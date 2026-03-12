@@ -264,6 +264,7 @@ describe("analyzeRemoteDiff", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     });
     const flags = computeFlags(repo, "feature");
@@ -292,6 +293,7 @@ describe("analyzeRemoteDiff", () => {
         toPull: 2,
         rebased: 2,
         replaced: null,
+        squashed: null,
       },
     });
     const flags = computeFlags(repo, "feature");
@@ -313,6 +315,7 @@ describe("analyzeRemoteDiff", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
       base: {
         remote: "origin",
@@ -345,6 +348,7 @@ describe("analyzeRemoteDiff", () => {
         toPull: null,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
       base: {
         remote: "origin",
@@ -382,6 +386,7 @@ describe("analyzeRemoteDiff", () => {
         toPull: 3,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     });
     const flags = computeFlags(repo, "feature");
@@ -501,6 +506,7 @@ describe("plainRemoteDiff", () => {
             toPull: null,
             rebased: null,
             replaced: null,
+            squashed: null,
           },
           base: {
             remote: "origin",

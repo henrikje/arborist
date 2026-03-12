@@ -132,6 +132,7 @@ describe("plainRemoteDiff", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -159,6 +160,7 @@ describe("plainRemoteDiff", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -186,6 +188,7 @@ describe("plainRemoteDiff", () => {
           toPull: 0,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -213,6 +216,7 @@ describe("plainRemoteDiff", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -240,6 +244,7 @@ describe("plainRemoteDiff", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -267,6 +272,7 @@ describe("plainRemoteDiff", () => {
           toPull: 0,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -294,6 +300,7 @@ describe("plainRemoteDiff", () => {
           toPull: 3,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -321,6 +328,7 @@ describe("plainRemoteDiff", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -348,6 +356,7 @@ describe("plainRemoteDiff", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -380,6 +389,7 @@ describe("plainRemoteDiff", () => {
           toPull: 3,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
       }),
     );
@@ -397,6 +407,7 @@ describe("plainRemoteDiff", () => {
           toPull: 2,
           rebased: 2,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -425,6 +436,7 @@ describe("plainRemoteDiff", () => {
           toPull: 2,
           rebased: 2,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -453,6 +465,7 @@ describe("plainRemoteDiff", () => {
           toPull: 0,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -481,6 +494,7 @@ describe("plainRemoteDiff", () => {
           toPull: 0,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -509,6 +523,7 @@ describe("plainRemoteDiff", () => {
           toPull: null,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",
@@ -537,6 +552,7 @@ describe("plainRemoteDiff", () => {
           toPull: 0,
           rebased: null,
           replaced: null,
+          squashed: null,
         },
         base: {
           remote: "origin",

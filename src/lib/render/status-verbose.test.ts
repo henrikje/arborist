@@ -91,6 +91,7 @@ describe("formatVerboseDetail", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     });
     const verbose = {
@@ -111,6 +112,7 @@ describe("formatVerboseDetail", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     });
     const verbose = {
@@ -142,6 +144,7 @@ describe("formatVerboseDetail", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     });
     const verbose = {
@@ -165,10 +168,20 @@ describe("formatVerboseDetail", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     });
     const repoNoRef = makeRepo({
-      share: { remote: "origin", ref: null, refMode: "noRef", toPush: 1, toPull: 0, rebased: null, replaced: null },
+      share: {
+        remote: "origin",
+        ref: null,
+        refMode: "noRef",
+        toPush: 1,
+        toPull: 0,
+        rebased: null,
+        replaced: null,
+        squashed: null,
+      },
     });
     const verbose = {
       unpushed: [{ hash: "aaa", shortHash: "aaa1234", subject: "commit", rebased: false }],
@@ -444,6 +457,7 @@ describe("verboseDetailToNodes", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     });
     const verbose = {
@@ -480,6 +494,7 @@ describe("verboseDetailToNodes", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     });
     const verbose = {
@@ -553,6 +568,7 @@ describe("verboseDetailToNodes", () => {
         toPull: 0,
         rebased: null,
         replaced: null,
+        squashed: null,
       },
     });
     const verbose = {

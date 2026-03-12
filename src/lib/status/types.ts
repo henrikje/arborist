@@ -36,6 +36,7 @@ export interface RepoStatus {
     toPull: number | null; // null = unknown
     rebased: number | null; // count of patch-id-matched commits between push/pull sets
     replaced: number | null; // count of remote-only commits found in local branch reflog
+    squashed: number | null; // count of remote commits matched by cumulative patch-id (squash detection)
   };
   operation: GitOperation;
   lastCommit: string | null;
