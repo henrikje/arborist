@@ -134,6 +134,16 @@ arb reset
 
 This resolves the correct base remote and branch per repo automatically — no need to hard-code `origin/main`. Untracked files are preserved. The plan shows what will be lost (dirty files, unpushed commits) and warns prominently when unpushed commits are at risk.
 
+**Changing the base branch** — switch the workspace to track a different base branch:
+
+```bash
+arb branch base develop        # set base to develop
+arb branch base --unset        # remove base (track repo default)
+arb branch base                # show current base
+```
+
+This only changes the config — it does not rebase or reset. To start fresh from the new base, follow up with `arb reset`. To replay your commits onto the new base, use `arb rebase --retarget` instead.
+
 All sync commands support `--where` (`-w`) to filter which repos are included in the plan:
 
 ```bash

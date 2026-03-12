@@ -397,6 +397,7 @@ _arb() {
                         local -a branch_subcmds=(
                             'show:Show the workspace branch (default)'
                             'rename:Rename the workspace branch across all repos'
+                            'base:Show, set, or remove the base branch'
                         )
                         _describe 'branch command' branch_subcmds
                         # Also offer show-options since show is the default
@@ -431,6 +432,13 @@ _arb() {
                                     '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                                     '--include-in-progress[Rename repos even if they have an in-progress git operation]' \
                                     '1:new-name:'
+                                ;;
+                            base)
+                                shift words; (( CURRENT-- ))
+                                _arguments \
+                                    '--unset[Remove the base branch (track repo default)]' \
+                                    '(-f --force)'{-f,--force}'[Bypass merged-base safety check]' \
+                                    '1:branch:'
                                 ;;
                         esac
                     fi

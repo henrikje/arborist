@@ -1,17 +1,17 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError, readWorkspaceConfig } from "../lib/core";
+import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, assertMinimumGitVersion, git } from "../lib/git";
+import { GitCache, assertMinimumGitVersion, git, validateBranchName } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type BranchJsonOutput, BranchJsonOutputSchema, type BranchJsonRepo } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { runPhasedRender } from "../lib/render";
-import { type RepoStatus, gatherWorkspaceSummary } from "../lib/status";
+import { type RepoStatus, computeFlags, gatherWorkspaceSummary } from "../lib/status";
 import { fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/sync";
-import { error, isTTY, listenForAbortKeypress, stderr } from "../lib/terminal";
+import { error, info, isTTY, listenForAbortKeypress, stderr } from "../lib/terminal";
 import { workspaceBranch, workspaceRepoDirs } from "../lib/workspace";
 import { requireWorkspace } from "../lib/workspace";
 import { registerBranchRenameSubcommand } from "./branch-rename";
@@ -115,8 +115,8 @@ function buildVerboseNodes(repos: RepoStatus[], branch: string, base: string | n
 export function registerBranchCommand(program: Command, getCtx: () => ArbContext): void {
   const branch = program
     .command("branch")
-    .summary("Inspect and rename the workspace branch")
-    .description("Inspect or rename the workspace branch. When invoked without a subcommand, defaults to 'show'.");
+    .summary("Inspect and manage the workspace branch")
+    .description("Inspect or manage the workspace branch. When invoked without a subcommand, defaults to 'show'.");
 
   branch
     .command("show", { isDefault: true })
@@ -147,6 +147,7 @@ export function registerBranchCommand(program: Command, getCtx: () => ArbContext
     );
 
   registerBranchRenameSubcommand(branch, getCtx);
+  registerBranchBaseSubcommand(branch, getCtx);
 }
 
 async function runBranch(
@@ -365,4 +366,86 @@ function formatVerboseJson(repos: RepoStatus[], branch: string, base: string | n
 
   const output: BranchJsonOutput = { branch, base: base ?? null, repos: jsonRepos };
   return `${JSON.stringify(output, null, 2)}\n`;
+}
+
+// ── Base subcommand ──────────────────────────────────────────────
+
+function registerBranchBaseSubcommand(parent: Command, getCtx: () => ArbContext): void {
+  parent
+    .command("base [branch]")
+    .option("--unset", "Remove the base branch (track repo default)")
+    .option("-f, --force", "Bypass merged-base safety check")
+    .summary("Show, set, or remove the base branch")
+    .description(
+      "View, change, or remove the workspace's base branch.\n\nWith no arguments, shows the current base branch. With a branch name, sets the base. With --unset, removes the base so the workspace tracks each repo's default branch.\n\nWhen setting a new base, checks whether the current base was merged into the default branch (squash or regular merge). If so, blocks the config change and guides you toward 'arb rebase --retarget', which rebases safely. Use --force to change the config anyway.\n\nSee 'arb help stacked' for stacked workspace workflows.",
+    )
+    .action(async (branchArg: string | undefined, options: { unset?: boolean; force?: boolean }) => {
+      const ctx = getCtx();
+      const { wsDir } = requireWorkspace(ctx);
+      const configFile = `${wsDir}/.arbws/config.json`;
+      const config = readWorkspaceConfig(configFile);
+      const currentBase = config?.base ?? null;
+      const wsBranch = config?.branch ?? (ctx.currentWorkspace as string);
+
+      // Unset mode
+      if (options.unset) {
+        if (branchArg) {
+          error("Cannot combine a branch argument with --unset.");
+          throw new ArbError("Cannot combine a branch argument with --unset.");
+        }
+        if (!currentBase) {
+          info("No base branch configured — already tracking repo default");
+          return;
+        }
+        writeWorkspaceConfig(configFile, { branch: wsBranch });
+        info("Base branch removed (now tracking repo default)");
+        return;
+      }
+
+      // Show mode
+      if (!branchArg) {
+        if (currentBase) {
+          process.stdout.write(`${currentBase}\n`);
+        } else {
+          info("No base branch configured — tracking repo default");
+        }
+        return;
+      }
+
+      // Set mode
+      if (!validateBranchName(branchArg)) {
+        error(`Invalid branch name: ${branchArg}`);
+        throw new ArbError(`Invalid branch name: ${branchArg}`);
+      }
+
+      if (branchArg === wsBranch) {
+        error(`Cannot set base to ${branchArg} — that is the workspace branch.`);
+        throw new ArbError(`Cannot set base to ${branchArg} — that is the workspace branch.`);
+      }
+
+      // Merged-base safety check
+      if (!options.force && currentBase) {
+        const cache = new GitCache();
+        await assertMinimumGitVersion(cache);
+        const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
+        const hasMergedBase = summary.repos.some((repo) => {
+          const flags = computeFlags(repo, wsBranch);
+          return flags.isBaseMerged;
+        });
+        if (hasMergedBase) {
+          error(`Base branch ${currentBase} was merged into the default branch.`);
+          error("Use 'arb rebase --retarget' to rebase onto the new base safely.");
+          error("'arb branch base' only changes the config — it does not rebase.");
+          error("Use --force to change the config anyway.");
+          throw new ArbError(`Base branch ${currentBase} was merged — use --retarget or --force.`);
+        }
+      }
+
+      writeWorkspaceConfig(configFile, { branch: wsBranch, base: branchArg });
+      if (currentBase) {
+        info(`Base branch changed from ${currentBase} to ${branchArg}`);
+      } else {
+        info(`Base branch set to ${branchArg}`);
+      }
+    });
 }

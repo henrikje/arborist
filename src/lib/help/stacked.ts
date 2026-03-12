@@ -31,6 +31,18 @@ export const stackedTopic: HelpTopic = {
     out(`    ${bold("base-missing")}   The configured base branch was not found;`);
     out("                   fell back to the default branch");
     out("");
+    out(bold("MANAGING THE BASE"));
+    out("");
+    out(`  ${dim("arb branch base")}`);
+    out("    Show the current base branch.");
+    out("");
+    out(`  ${dim("arb branch base <branch>")}`);
+    out("    Change the base branch (config only — does not rebase or reset).");
+    out("    Blocks if the current base was merged; use --force to override.");
+    out("");
+    out(`  ${dim("arb branch base --unset")}`);
+    out("    Remove the base (track repo default).");
+    out("");
     out(bold("RETARGETING"));
     out("");
     out("  When a base branch is merged, the stacked workspace needs to be");
