@@ -308,6 +308,7 @@ Templates let you capture files and have them seeded into every new workspace. C
 ```bash
 arb --help              # list all commands
 arb create --help       # detailed usage for a specific command
+arb help where          # additional information on special topics
 ```
 
 Every command supports `--help`. If you're unsure what flags are available or how a command works, `--help` is the fastest way to find out.
