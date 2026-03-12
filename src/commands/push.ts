@@ -80,11 +80,18 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
         const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
         const allRepos = fetchDirs.map((d) => basename(d));
 
-        const assess = async (_fetchFailed: string[]) => {
+        const prevStatuses = new Map<string, RepoStatus>();
+        const assess = async (_fetchFailed: string[], unchangedRepos: Set<string>) => {
           const assessments = await Promise.all(
             selectedRepos.map(async (repo) => {
               const repoDir = `${wsDir}/${repo}`;
-              const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo), cache);
+              let status: RepoStatus;
+              if (unchangedRepos.has(repo) && prevStatuses.has(repo)) {
+                status = prevStatuses.get(repo) as RepoStatus;
+              } else {
+                status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo), cache);
+              }
+              prevStatuses.set(repo, status);
               if (where) {
                 const flags = computeFlags(status, branch);
                 if (!repoMatchesWhere(flags, where)) return null;

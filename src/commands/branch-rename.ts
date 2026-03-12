@@ -349,7 +349,7 @@ async function runRename(
 
   const shouldFetch = options.fetch !== false;
 
-  const assess = async (_fetchFailed: string[]): Promise<RepoAssessment[]> => {
+  const assess = async (_fetchFailed: string[], _unchangedRepos: Set<string>): Promise<RepoAssessment[]> => {
     return Promise.all(
       repoDirs.map((repoDir) => {
         const repo = basename(repoDir);

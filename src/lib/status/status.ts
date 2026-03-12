@@ -423,7 +423,7 @@ export async function gatherWorkspaceSummary(
   reposDir: string,
   onProgress: ((scanned: number, total: number) => void) | undefined,
   cache: GitCache,
-  options?: { gatherActivity?: boolean },
+  options?: { gatherActivity?: boolean; previousResults?: Map<string, RepoStatus> },
 ): Promise<WorkspaceSummary> {
   const workspace = basename(wsDir);
   const wb = await workspaceBranch(wsDir);
@@ -436,6 +436,18 @@ export async function gatherWorkspaceSummary(
     repoDirs.map(async (repoDir) => {
       const repo = basename(repoDir);
       const canonicalPath = `${reposDir}/${repo}`;
+
+      // Reuse previous scan result when the caller knows the repo is unchanged (e.g. fetch was a no-op).
+      const previous = options?.previousResults?.get(repo);
+      if (previous) {
+        const [commitDate, activityDate] = await Promise.all([
+          getHeadCommitDate(repoDir),
+          options?.gatherActivity ? getRepoActivityDate(repoDir) : Promise.resolve(null),
+        ]);
+        scanned++;
+        onProgress?.(scanned, repoDirs.length);
+        return { status: previous, commitDate, activityDate };
+      }
 
       const remotes = await cache.resolveRemotes(canonicalPath);
 

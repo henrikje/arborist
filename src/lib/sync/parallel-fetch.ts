@@ -103,16 +103,25 @@ export async function parallelFetch(
         }
       }
 
-      results.set(repo, { repo, exitCode: lastExitCode, output: allOutput });
-
-      // Auto-detect remote HEAD on the base remote (only when we know which remote is base)
+      // Auto-detect remote HEAD on the base remote (only when we know which remote is base).
+      // Track whether set-head changed the remote HEAD pointer so callers can detect
+      // default-branch renames even when no branch refs were updated by the fetch itself.
       if (baseRemote && lastExitCode === 0) {
         try {
-          await git(repoDir, "remote", "set-head", baseRemote, "--auto");
+          const prevHead = await git(repoDir, "symbolic-ref", "--short", `refs/remotes/${baseRemote}/HEAD`);
+          await gitWithTimeout(repoDir, 0, ["remote", "set-head", baseRemote, "--auto"], {
+            signal: controller.signal,
+          });
+          const newHead = await git(repoDir, "symbolic-ref", "--short", `refs/remotes/${baseRemote}/HEAD`);
+          if (prevHead.exitCode === 0 && newHead.exitCode === 0 && prevHead.stdout.trim() !== newHead.stdout.trim()) {
+            allOutput += `${allOutput ? "\n" : ""}remote HEAD changed: ${prevHead.stdout.trim()} -> ${newHead.stdout.trim()}`;
+          }
         } catch {
           // set-head failure is non-fatal — the fetch itself succeeded
         }
       }
+
+      results.set(repo, { repo, exitCode: lastExitCode, output: allOutput });
     } catch {
       results.set(repo, { repo, exitCode: 1, output: "fetch failed" });
     }
@@ -174,6 +183,17 @@ export function reportFetchFailures(
 export function fetchSuffix(count: number, options?: { abortable?: boolean }): string {
   const hint = options?.abortable && isTTY() && process.stdin.isTTY ? " <Esc to cancel>" : "";
   return dim(`Fetching ${plural(count, "repo")}...${hint}`);
+}
+
+/** Repos where the fetch was a no-op: exitCode 0 and no output (no refs changed). */
+export function getUnchangedRepos(results: Map<string, FetchResult>): Set<string> {
+  const unchanged = new Set<string>();
+  for (const [repo, result] of results) {
+    if (result.exitCode === 0 && result.output === "") {
+      unchanged.add(repo);
+    }
+  }
+  return unchanged;
 }
 
 export function getFetchFailedRepos(
