@@ -1439,3 +1439,196 @@ describe("--where filtering", () => {
       expect(rebaseResult.output).not.toContain("conflict");
     }));
 });
+
+// ── --include-drifted ────────────────────────────────────────────
+
+describe("--include-drifted", () => {
+  test("arb push skips drifted repo by default with hint", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wt = join(env.projectDir, "my-feature/repo-a");
+
+      // Drift: checkout a different branch
+      await git(wt, ["checkout", "-b", "experiment"]);
+      await write(join(wt, "file.txt"), "content");
+      await git(wt, ["add", "file.txt"]);
+      await git(wt, ["commit", "-m", "experiment commit"]);
+
+      const result = await arb(env, ["push", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("--include-drifted");
+      expect(result.output).not.toContain("Pushed");
+    }));
+
+  test("arb push --include-drifted pushes drifted repo to its actual branch", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wt = join(env.projectDir, "my-feature/repo-a");
+
+      // Drift: checkout a different branch and commit
+      await git(wt, ["checkout", "-b", "experiment"]);
+      await write(join(wt, "file.txt"), "content");
+      await git(wt, ["add", "file.txt"]);
+      await git(wt, ["commit", "-m", "experiment commit"]);
+
+      const result = await arb(env, ["push", "--include-drifted", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Pushed");
+      expect(result.output).toContain("(branch: experiment)");
+
+      // Verify: the experiment branch exists on origin, not my-feature
+      const canonical = join(env.projectDir, ".arb/repos/repo-a");
+      await git(canonical, ["fetch", "--prune"]);
+      const refs = await git(canonical, ["branch", "-r"]);
+      expect(refs).toContain("origin/experiment");
+    }));
+
+  test("arb pull skips drifted repo by default with hint", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wt = join(env.projectDir, "my-feature/repo-a");
+
+      // Push my-feature first, then drift
+      await write(join(wt, "file.txt"), "content");
+      await git(wt, ["add", "file.txt"]);
+      await git(wt, ["commit", "-m", "initial"]);
+      await git(wt, ["push", "-u", "origin", "my-feature"]);
+      await git(wt, ["checkout", "-b", "experiment"]);
+
+      const result = await arb(env, ["pull", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("--include-drifted");
+    }));
+
+  test("arb pull --include-drifted pulls drifted repo from its actual branch", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wt = join(env.projectDir, "my-feature/repo-a");
+
+      // Create experiment branch, push it, then drift to it
+      await git(wt, ["checkout", "-b", "experiment"]);
+      await write(join(wt, "file.txt"), "content");
+      await git(wt, ["add", "file.txt"]);
+      await git(wt, ["commit", "-m", "local commit"]);
+      await git(wt, ["push", "-u", "origin", "experiment"]);
+
+      // Push a remote commit to experiment from a tmp clone
+      const tmpClone = join(env.testDir, "tmp-clone");
+      await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpClone]);
+      await git(tmpClone, ["checkout", "experiment"]);
+      await write(join(tmpClone, "remote.txt"), "remote change");
+      await git(tmpClone, ["add", "remote.txt"]);
+      await git(tmpClone, ["commit", "-m", "remote commit"]);
+      await git(tmpClone, ["push"]);
+
+      const result = await arb(env, ["pull", "--include-drifted", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Pulled");
+      expect(result.output).toContain("(branch: experiment)");
+
+      // Verify: the remote commit is now in the worktree
+      const log = await git(wt, ["log", "--oneline"]);
+      expect(log).toContain("remote commit");
+    }));
+
+  test("arb rebase skips drifted repo by default with hint", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wt = join(env.projectDir, "my-feature/repo-a");
+
+      // Drift: checkout a different branch
+      await git(wt, ["checkout", "-b", "experiment"]);
+
+      // Push upstream change to main
+      const mainRepo = join(env.projectDir, ".arb/repos/repo-a");
+      await write(join(mainRepo, "upstream.txt"), "upstream");
+      await git(mainRepo, ["add", "upstream.txt"]);
+      await git(mainRepo, ["commit", "-m", "upstream change"]);
+      await git(mainRepo, ["push"]);
+
+      const result = await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("--include-drifted");
+    }));
+
+  test("arb rebase --include-drifted rebases drifted repo onto base", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wt = join(env.projectDir, "my-feature/repo-a");
+
+      // Drift: checkout a different branch with a commit
+      await git(wt, ["checkout", "-b", "experiment"]);
+      await write(join(wt, "exp.txt"), "experiment");
+      await git(wt, ["add", "exp.txt"]);
+      await git(wt, ["commit", "-m", "experiment commit"]);
+
+      // Push upstream change to main
+      const mainRepo = join(env.projectDir, ".arb/repos/repo-a");
+      await write(join(mainRepo, "upstream.txt"), "upstream");
+      await git(mainRepo, ["add", "upstream.txt"]);
+      await git(mainRepo, ["commit", "-m", "upstream change"]);
+      await git(mainRepo, ["push"]);
+
+      const result = await arb(env, ["rebase", "--include-drifted", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Rebased");
+      expect(result.output).toContain("rebase experiment onto");
+
+      // Verify: upstream change is now in the drifted branch
+      const log = await git(wt, ["log", "--oneline"]);
+      expect(log).toContain("upstream change");
+    }));
+
+  test("arb merge --include-drifted merges base into drifted repo", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wt = join(env.projectDir, "my-feature/repo-a");
+
+      // Drift: checkout a different branch with a commit
+      await git(wt, ["checkout", "-b", "experiment"]);
+      await write(join(wt, "exp.txt"), "experiment");
+      await git(wt, ["add", "exp.txt"]);
+      await git(wt, ["commit", "-m", "experiment commit"]);
+
+      // Push upstream change to main
+      const mainRepo = join(env.projectDir, ".arb/repos/repo-a");
+      await write(join(mainRepo, "upstream.txt"), "upstream");
+      await git(mainRepo, ["add", "upstream.txt"]);
+      await git(mainRepo, ["commit", "-m", "upstream change"]);
+      await git(mainRepo, ["push"]);
+
+      const result = await arb(env, ["merge", "--include-drifted", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Merged");
+      expect(result.output).toContain("merge");
+      expect(result.output).toContain("into experiment");
+
+      // Verify: upstream change is now in the drifted branch
+      const log = await git(wt, ["log", "--oneline"]);
+      expect(log).toContain("upstream change");
+    }));
+
+  test("arb push --include-drifted shows drifted hint in plan", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wt = join(env.projectDir, "my-feature/repo-a");
+
+      await git(wt, ["checkout", "-b", "experiment"]);
+      await write(join(wt, "file.txt"), "content");
+      await git(wt, ["add", "file.txt"]);
+      await git(wt, ["commit", "-m", "experiment commit"]);
+
+      const result = await arb(env, ["push", "--include-drifted", "--dry-run"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.output).toContain("different branch than the workspace");
+    }));
+});

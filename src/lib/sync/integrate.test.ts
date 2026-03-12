@@ -90,7 +90,30 @@ describe("classifyRepo", () => {
     );
     expect(a.outcome).toBe("skip");
     expect(a.skipReason).toContain("on branch other, expected feature");
+    expect(a.skipReason).toContain("--include-drifted");
     expect(a.skipFlag).toBe("drifted");
+  });
+
+  test("includes drifted branch with includeDrifted", () => {
+    const a = classifyRepo(
+      makeRepo({
+        identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
+      }),
+      DIR,
+      "feature",
+      [],
+      false,
+      SHA,
+      true,
+    );
+    expect(a.outcome).toBe("up-to-date");
+    expect(a.drifted).toBe(true);
+    expect(a.branch).toBe("other");
+  });
+
+  test("non-drifted branch has workspace branch", () => {
+    const a = classifyRepo(makeRepo(), DIR, "feature", [], false, SHA);
+    expect(a.branch).toBe("feature");
   });
 
   test("skips dirty without autostash", () => {
@@ -487,6 +510,7 @@ describe("formatIntegratePlan", () => {
       repo: "repo-a",
       repoDir: "/tmp/repo-a",
       outcome: "will-operate",
+      branch: "feature",
       behind: 3,
       ahead: 1,
       baseRemote: "origin",
@@ -498,58 +522,58 @@ describe("formatIntegratePlan", () => {
   }
 
   test("shows rebase action", () => {
-    const plan = formatIntegratePlan([makeAssessment()], "rebase", "feature");
+    const plan = formatIntegratePlan([makeAssessment()], "rebase");
     expect(plan).toContain("rebase feature onto origin/main");
   });
 
   test("shows merge action", () => {
-    const plan = formatIntegratePlan([makeAssessment()], "merge", "feature");
+    const plan = formatIntegratePlan([makeAssessment()], "merge");
     expect(plan).toContain("merge origin/main into feature");
   });
 
   test("shows behind/ahead counts", () => {
-    const plan = formatIntegratePlan([makeAssessment({ behind: 5, ahead: 2 })], "rebase", "feature");
+    const plan = formatIntegratePlan([makeAssessment({ behind: 5, ahead: 2 })], "rebase");
     expect(plan).toContain("5 behind");
     expect(plan).toContain("2 ahead");
   });
 
   test("shows fast-forward for merge with ahead=0", () => {
-    const plan = formatIntegratePlan([makeAssessment({ ahead: 0 })], "merge", "feature");
+    const plan = formatIntegratePlan([makeAssessment({ ahead: 0 })], "merge");
     expect(plan).toContain("(fast-forward)");
   });
 
   test("shows three-way for merge with ahead>0", () => {
-    const plan = formatIntegratePlan([makeAssessment({ ahead: 2 })], "merge", "feature");
+    const plan = formatIntegratePlan([makeAssessment({ ahead: 2 })], "merge");
     expect(plan).toContain("(three-way)");
   });
 
   test("shows conflict likely for rebase", () => {
-    const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "conflict" })], "rebase", "feature");
+    const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "conflict" })], "rebase");
     expect(plan).toContain("conflict likely");
   });
 
   test("shows will conflict for merge", () => {
-    const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "conflict" })], "merge", "feature");
+    const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "conflict" })], "merge");
     expect(plan).toContain("will conflict");
   });
 
   test("shows no conflict for rebase with no-conflict prediction", () => {
-    const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "no-conflict" })], "rebase", "feature");
+    const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "no-conflict" })], "rebase");
     expect(plan).toContain("no conflict");
   });
 
   test("shows no conflict for merge with no-conflict prediction", () => {
-    const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "no-conflict" })], "merge", "feature");
+    const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "no-conflict" })], "merge");
     expect(plan).toContain("no conflict");
   });
 
   test("shows conflict unlikely for rebase", () => {
-    const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "clean" })], "rebase", "feature");
+    const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "clean" })], "rebase");
     expect(plan).toContain("conflict unlikely");
   });
 
   test("shows no conflict for merge", () => {
-    const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "clean" })], "merge", "feature");
+    const plan = formatIntegratePlan([makeAssessment({ conflictPrediction: "clean" })], "merge");
     expect(plan).toContain("no conflict");
   });
 
@@ -557,7 +581,6 @@ describe("formatIntegratePlan", () => {
     const plan = formatIntegratePlan(
       [makeAssessment({ retargetFrom: "feat/old", retargetTo: "main", baseBranch: "main" })],
       "rebase",
-      "feature",
     );
     expect(plan).toContain("rebase onto origin/main from feat/old (retarget)");
   });
@@ -576,7 +599,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
     );
     expect(plan).toContain("rebase onto origin/main (merged) — rebase 1 new commit, skip 11 already merged");
     expect(plan).not.toContain("retarget");
@@ -596,7 +618,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
     );
     expect(plan).toContain("rebase onto origin/main (merged) — rebase 3 new commits, skip 8 already merged");
   });
@@ -612,7 +633,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
     );
     expect(plan).toContain("base branch feat/old may not be merged");
   });
@@ -621,7 +641,6 @@ describe("formatIntegratePlan", () => {
     const plan = formatIntegratePlan(
       [makeAssessment({ retargetFrom: "feat/old", retargetTo: "main", baseBranch: "main", needsStash: true })],
       "rebase",
-      "feature",
     );
     expect(plan).toContain("(retarget)");
     expect(plan).toContain("(autostash)");
@@ -639,7 +658,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
     );
     expect(plan).toContain("(retarget)");
     expect(plan).toContain("stash pop conflict likely");
@@ -657,14 +675,13 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
     );
     expect(plan).toContain("(retarget)");
     expect(plan).toContain("stash pop conflict unlikely");
   });
 
   test("shows autostash hint", () => {
-    const plan = formatIntegratePlan([makeAssessment({ needsStash: true })], "rebase", "feature");
+    const plan = formatIntegratePlan([makeAssessment({ needsStash: true })], "rebase");
     expect(plan).toContain("(autostash)");
   });
 
@@ -672,22 +689,17 @@ describe("formatIntegratePlan", () => {
     const plan = formatIntegratePlan(
       [makeAssessment({ needsStash: true, stashPopConflictFiles: ["file.ts"] })],
       "rebase",
-      "feature",
     );
     expect(plan).toContain("stash pop conflict likely");
   });
 
   test("shows stash pop conflict unlikely hint", () => {
-    const plan = formatIntegratePlan(
-      [makeAssessment({ needsStash: true, stashPopConflictFiles: [] })],
-      "rebase",
-      "feature",
-    );
+    const plan = formatIntegratePlan([makeAssessment({ needsStash: true, stashPopConflictFiles: [] })], "rebase");
     expect(plan).toContain("stash pop conflict unlikely");
   });
 
   test("shows up-to-date", () => {
-    const plan = formatIntegratePlan([makeAssessment({ outcome: "up-to-date" })], "rebase", "feature");
+    const plan = formatIntegratePlan([makeAssessment({ outcome: "up-to-date" })], "rebase");
     expect(plan).toContain("up to date");
   });
 
@@ -703,7 +715,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
     );
     expect(plan).toContain("up to date");
     expect(plan).not.toContain("skipped");
@@ -713,30 +724,25 @@ describe("formatIntegratePlan", () => {
     const plan = formatIntegratePlan(
       [makeAssessment({ outcome: "skip", skipFlag: "dirty", skipReason: "uncommitted changes", behind: 3 })],
       "rebase",
-      "feature",
     );
     expect(plan).toContain("skipped");
     expect(plan).not.toContain("up to date");
   });
 
   test("shows skipped with reason", () => {
-    const plan = formatIntegratePlan(
-      [makeAssessment({ outcome: "skip", skipReason: "HEAD is detached" })],
-      "rebase",
-      "feature",
-    );
+    const plan = formatIntegratePlan([makeAssessment({ outcome: "skip", skipReason: "HEAD is detached" })], "rebase");
     expect(plan).toContain("skipped");
     expect(plan).toContain("HEAD is detached");
   });
 
   test("shows shallow clone warning", () => {
-    const plan = formatIntegratePlan([makeAssessment({ shallow: true })], "rebase", "feature");
+    const plan = formatIntegratePlan([makeAssessment({ shallow: true })], "rebase");
     expect(plan).toContain("shallow clone");
     expect(plan).toContain("rebase may fail");
   });
 
   test("no shallow warning when not shallow", () => {
-    const plan = formatIntegratePlan([makeAssessment({ shallow: false })], "rebase", "feature");
+    const plan = formatIntegratePlan([makeAssessment({ shallow: false })], "rebase");
     expect(plan).not.toContain("shallow clone");
   });
 
@@ -752,7 +758,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
       true,
     );
     expect(plan).toContain("Incoming from origin/main:");
@@ -771,7 +776,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
       false,
     );
     expect(plan).not.toContain("Incoming from");
@@ -787,7 +791,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
       true,
     );
     expect(plan).toContain("... and 29 more");
@@ -803,7 +806,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
       true,
     );
     expect(plan).not.toContain("Incoming from");
@@ -820,31 +822,25 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
       true,
     );
     expect(plan).not.toContain("Incoming from");
   });
 
   test("shows matched count breakdown in behind string", () => {
-    const plan = formatIntegratePlan(
-      [makeAssessment({ behind: 5, ahead: 3, matchedCount: 3 })],
-      "rebase",
-      "feature",
-      true,
-    );
+    const plan = formatIntegratePlan([makeAssessment({ behind: 5, ahead: 3, matchedCount: 3 })], "rebase", true);
     expect(plan).toContain("5 behind (3 same, 2 new)");
   });
 
   test("preserves existing behind format when matchedCount is 0", () => {
-    const plan = formatIntegratePlan([makeAssessment({ behind: 5, ahead: 3, matchedCount: 0 })], "rebase", "feature");
+    const plan = formatIntegratePlan([makeAssessment({ behind: 5, ahead: 3, matchedCount: 0 })], "rebase");
     expect(plan).toContain("5 behind");
     expect(plan).not.toContain("same");
     expect(plan).not.toContain("new)");
   });
 
   test("preserves existing behind format when matchedCount is undefined", () => {
-    const plan = formatIntegratePlan([makeAssessment({ behind: 5, ahead: 3 })], "rebase", "feature");
+    const plan = formatIntegratePlan([makeAssessment({ behind: 5, ahead: 3 })], "rebase");
     expect(plan).toContain("5 behind");
     expect(plan).not.toContain("same");
     expect(plan).not.toContain("new)");
@@ -862,7 +858,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
       true,
     );
     expect(plan).toContain("(same as def5678)");
@@ -882,7 +877,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
       true,
     );
     expect(plan).toContain("(squash of aaa1111..bbb2222)");
@@ -891,7 +885,7 @@ describe("formatIntegratePlan", () => {
   // ── Graph tests ─────────────────────────────────────────────
 
   test("shows graph for will-operate repos", () => {
-    const plan = formatIntegratePlan([makeAssessment({ mergeBaseSha: "ghi9012" })], "rebase", "feature", false, true);
+    const plan = formatIntegratePlan([makeAssessment({ mergeBaseSha: "ghi9012" })], "rebase", false, true);
     expect(plan).toContain("merge-base");
     expect(plan).toContain("ghi9012");
     expect(plan).toContain("origin/main");
@@ -901,7 +895,6 @@ describe("formatIntegratePlan", () => {
     const plan = formatIntegratePlan(
       [makeAssessment({ outcome: "up-to-date", mergeBaseSha: "ghi9012" })],
       "rebase",
-      "feature",
       false,
       true,
     );
@@ -912,7 +905,6 @@ describe("formatIntegratePlan", () => {
     const plan = formatIntegratePlan(
       [makeAssessment({ outcome: "skip", skipReason: "HEAD is detached", mergeBaseSha: "ghi9012" })],
       "rebase",
-      "feature",
       false,
       true,
     );
@@ -929,7 +921,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
       true,
       true,
     );
@@ -949,7 +940,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
       true,
     );
     expect(plan).toContain("47 files changed, +320, -180");
@@ -964,7 +954,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
       true,
     );
     expect(plan).not.toContain("files changed");
@@ -982,7 +971,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
     );
     expect(plan).toContain("5 local, 3 already on target, 2 to rebase");
   });
@@ -999,7 +987,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
     );
     expect(plan).toContain("4 to rebase");
     expect(plan).not.toContain("already on target");
@@ -1009,7 +996,6 @@ describe("formatIntegratePlan", () => {
     const plan = formatIntegratePlan(
       [makeAssessment({ retargetFrom: "feat/old", retargetTo: "main", baseBranch: "main" })],
       "rebase",
-      "feature",
     );
     expect(plan).not.toContain("to rebase");
     expect(plan).not.toContain("already on target");
@@ -1028,7 +1014,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
       false,
       true,
     );
@@ -1046,7 +1031,6 @@ describe("formatIntegratePlan", () => {
         }),
       ],
       "rebase",
-      "feature",
       false,
       true,
     );
@@ -1059,7 +1043,7 @@ describe("formatIntegratePlan", () => {
   // ── Header & alignment tests ────────────────────────────────
 
   test("includes REPO and ACTION column headers", () => {
-    const plan = formatIntegratePlan([makeAssessment()], "rebase", "feature");
+    const plan = formatIntegratePlan([makeAssessment()], "rebase");
     expect(plan).toContain("REPO");
     expect(plan).toContain("ACTION");
   });
@@ -1068,7 +1052,6 @@ describe("formatIntegratePlan", () => {
     const plan = formatIntegratePlan(
       [makeAssessment({ repo: "short" }), makeAssessment({ repo: "much-longer-repo-name", outcome: "up-to-date" })],
       "rebase",
-      "feature",
     );
     // Both action texts should start at the same column
     const lines = plan.split("\n").filter((l) => l.trim().length > 0);
@@ -1081,6 +1064,28 @@ describe("formatIntegratePlan", () => {
     expect(nonNeg[0]).toBe(nonNeg[1]);
   });
 
+  // ── Drifted annotation tests ────────────────────────────────
+
+  test("shows drifted hint when drifted repos are included", () => {
+    const plan = formatIntegratePlan([makeAssessment({ drifted: true, branch: "other-branch" })], "rebase");
+    expect(plan).toContain("1 repo on a different branch than the workspace");
+  });
+
+  test("uses drifted branch in rebase action", () => {
+    const plan = formatIntegratePlan([makeAssessment({ drifted: true, branch: "other-branch" })], "rebase");
+    expect(plan).toContain("rebase other-branch onto origin/main");
+  });
+
+  test("uses drifted branch in merge action", () => {
+    const plan = formatIntegratePlan([makeAssessment({ drifted: true, branch: "other-branch" })], "merge");
+    expect(plan).toContain("merge origin/main into other-branch");
+  });
+
+  test("no drifted hint when no drifted repos", () => {
+    const plan = formatIntegratePlan([makeAssessment()], "rebase");
+    expect(plan).not.toContain("different branch than the workspace");
+  });
+
   test("afterRow emits verbose commits for will-operate repos", () => {
     const plan = formatIntegratePlan(
       [
@@ -1091,7 +1096,6 @@ describe("formatIntegratePlan", () => {
         makeAssessment({ repo: "repo-b", outcome: "up-to-date" }),
       ],
       "rebase",
-      "feature",
       true,
     );
     expect(plan).toContain("Incoming from origin/main:");
@@ -1105,6 +1109,7 @@ describe("resolveRetargetConfigTarget", () => {
       repo: "repo-a",
       repoDir: "/tmp/repo-a",
       outcome: "will-operate",
+      branch: "feature",
       behind: 3,
       ahead: 1,
       baseRemote: "origin",
@@ -1170,6 +1175,7 @@ describe("maybeWriteRetargetConfig", () => {
       repo: "repo-a",
       repoDir: "/tmp/repo-a",
       outcome: "up-to-date",
+      branch: "feature",
       behind: 0,
       ahead: 2,
       baseRemote: "origin",
@@ -1321,6 +1327,7 @@ describe("describeIntegrateAction", () => {
       repo: "repo-a",
       repoDir: "/tmp/repo-a",
       outcome: "will-operate",
+      branch: "feature",
       behind: 3,
       ahead: 1,
       baseRemote: "origin",
@@ -1332,7 +1339,7 @@ describe("describeIntegrateAction", () => {
   }
 
   test("normal rebase", () => {
-    const desc = describeIntegrateAction(makeAssessment(), "rebase", "feature");
+    const desc = describeIntegrateAction(makeAssessment(), "rebase");
     expect(desc.kind).toBe("rebase");
     expect(desc.baseRef).toBe("origin/main");
     expect(desc.branch).toBe("feature");
@@ -1342,54 +1349,54 @@ describe("describeIntegrateAction", () => {
   });
 
   test("normal merge with fast-forward", () => {
-    const desc = describeIntegrateAction(makeAssessment({ ahead: 0 }), "merge", "feature");
+    const desc = describeIntegrateAction(makeAssessment({ ahead: 0 }), "merge");
     expect(desc.kind).toBe("merge");
     expect(desc.mergeType).toBe("fast-forward");
   });
 
   test("normal merge with three-way", () => {
-    const desc = describeIntegrateAction(makeAssessment({ ahead: 2 }), "merge", "feature");
+    const desc = describeIntegrateAction(makeAssessment({ ahead: 2 }), "merge");
     expect(desc.kind).toBe("merge");
     expect(desc.mergeType).toBe("three-way");
   });
 
   test("conflict prediction rebase — conflict → likely", () => {
-    const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "conflict" }), "rebase", "feature");
+    const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "conflict" }), "rebase");
     expect(desc.conflictRisk).toBe("likely");
   });
 
   test("conflict prediction merge — conflict → will-conflict", () => {
-    const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "conflict" }), "merge", "feature");
+    const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "conflict" }), "merge");
     expect(desc.conflictRisk).toBe("will-conflict");
   });
 
   test("conflict prediction rebase — clean → unlikely", () => {
-    const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "clean" }), "rebase", "feature");
+    const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "clean" }), "rebase");
     expect(desc.conflictRisk).toBe("unlikely");
   });
 
   test("conflict prediction merge — clean → no-conflict", () => {
-    const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "clean" }), "merge", "feature");
+    const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "clean" }), "merge");
     expect(desc.conflictRisk).toBe("no-conflict");
   });
 
   test("conflict prediction no-conflict", () => {
-    const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "no-conflict" }), "rebase", "feature");
+    const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: "no-conflict" }), "rebase");
     expect(desc.conflictRisk).toBe("no-conflict");
   });
 
   test("conflict prediction null", () => {
-    const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: null }), "rebase", "feature");
+    const desc = describeIntegrateAction(makeAssessment({ conflictPrediction: null }), "rebase");
     expect(desc.conflictRisk).toBeNull();
   });
 
   test("stash classification — none", () => {
-    const desc = describeIntegrateAction(makeAssessment(), "rebase", "feature");
+    const desc = describeIntegrateAction(makeAssessment(), "rebase");
     expect(desc.stash).toBe("none");
   });
 
   test("stash classification — autostash", () => {
-    const desc = describeIntegrateAction(makeAssessment({ needsStash: true }), "rebase", "feature");
+    const desc = describeIntegrateAction(makeAssessment({ needsStash: true }), "rebase");
     expect(desc.stash).toBe("autostash");
   });
 
@@ -1397,17 +1404,12 @@ describe("describeIntegrateAction", () => {
     const desc = describeIntegrateAction(
       makeAssessment({ needsStash: true, stashPopConflictFiles: ["file.ts"] }),
       "rebase",
-      "feature",
     );
     expect(desc.stash).toBe("pop-conflict-likely");
   });
 
   test("stash classification — pop-conflict-unlikely", () => {
-    const desc = describeIntegrateAction(
-      makeAssessment({ needsStash: true, stashPopConflictFiles: [] }),
-      "rebase",
-      "feature",
-    );
+    const desc = describeIntegrateAction(makeAssessment({ needsStash: true, stashPopConflictFiles: [] }), "rebase");
     expect(desc.stash).toBe("pop-conflict-unlikely");
   });
 
@@ -1421,7 +1423,6 @@ describe("describeIntegrateAction", () => {
         ahead: 5,
       }),
       "rebase",
-      "feature",
     );
     expect(desc.kind).toBe("retarget-merged");
     expect(desc.replayCount).toBe(2);
@@ -1437,7 +1438,6 @@ describe("describeIntegrateAction", () => {
         ahead: 5,
       }),
       "rebase",
-      "feature",
     );
     expect(desc.replayCount).toBe(5);
   });
@@ -1452,7 +1452,6 @@ describe("describeIntegrateAction", () => {
         retargetWarning: "base branch feat/old may not be merged",
       }),
       "rebase",
-      "feature",
     );
     expect(desc.kind).toBe("retarget-config");
     expect(desc.retargetFrom).toBe("feat/old");
@@ -1462,7 +1461,7 @@ describe("describeIntegrateAction", () => {
   });
 
   test("matchedCount passes through in diff", () => {
-    const desc = describeIntegrateAction(makeAssessment({ matchedCount: 5 }), "rebase", "feature");
+    const desc = describeIntegrateAction(makeAssessment({ matchedCount: 5 }), "rebase");
     expect(desc.diff?.matchedCount).toBe(5);
   });
 });

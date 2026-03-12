@@ -54,7 +54,31 @@ describe("assessPullRepo", () => {
     );
     expect(a.outcome).toBe("skip");
     expect(a.skipReason).toContain("on branch other, expected feature");
+    expect(a.skipReason).toContain("--include-drifted");
     expect(a.skipFlag).toBe("drifted");
+  });
+
+  test("includes drifted branch with includeDrifted", () => {
+    const a = assessPullRepo(
+      makeRepo({
+        identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
+      }),
+      DIR,
+      "feature",
+      [],
+      "merge",
+      false,
+      SHA,
+      true,
+    );
+    expect(a.outcome).not.toBe("skip");
+    expect(a.drifted).toBe(true);
+    expect(a.branch).toBe("other");
+  });
+
+  test("non-drifted branch has workspace branch", () => {
+    const a = assessPullRepo(makeRepo(), DIR, "feature", [], "merge", false, SHA);
+    expect(a.branch).toBe("feature");
   });
 
   test("skips dirty without autostash", () => {
@@ -433,6 +457,7 @@ describe("formatPullPlan", () => {
       fromBaseCount: 0,
       pullMode: "merge",
       pullStrategy: "merge-pull",
+      branch: "feature",
       headSha: "abc1234",
       ...overrides,
     };
@@ -703,6 +728,34 @@ describe("formatPullPlan", () => {
     expect(nonNeg.length).toBe(2);
     expect(nonNeg[0]).toBe(nonNeg[1]);
   });
+
+  // ── Drifted annotation tests ────────────────────────────────
+
+  test("shows drifted branch annotation in action cell", () => {
+    const plan = formatPullPlan(
+      [makeAssessment({ drifted: true, branch: "other-branch" })],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("(branch: other-branch)");
+  });
+
+  test("shows drifted hint when drifted repos are included", () => {
+    const plan = formatPullPlan(
+      [makeAssessment({ drifted: true, branch: "other-branch" })],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("1 repo on a different branch than the workspace");
+  });
+
+  test("no drifted hint when no drifted repos", () => {
+    const plan = formatPullPlan([makeAssessment()], makeRemotesMap(["repo-a", {}]));
+    expect(plan).not.toContain("different branch than the workspace");
+  });
+
+  test("no drifted annotation when not drifted", () => {
+    const plan = formatPullPlan([makeAssessment()], makeRemotesMap(["repo-a", {}]));
+    expect(plan).not.toContain("(branch:");
+  });
 });
 
 describe("forceRebasedSkips", () => {
@@ -718,6 +771,7 @@ describe("forceRebasedSkips", () => {
       fromBaseCount: 0,
       pullMode: "merge",
       pullStrategy: "merge-pull",
+      branch: "feature",
       headSha: "abc1234",
       skipReason: "rebased locally (push --force, or pull --force to reset)",
       skipFlag: "rebased-locally",
@@ -735,7 +789,7 @@ describe("forceRebasedSkips", () => {
 
   test("converts rebased-locally skip to will-pull with forced-reset when net-new commits exist", () => {
     const assessments = [makeAssessment({ toPush: 3, rebased: 2 })];
-    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]), "feature");
+    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
     expect(assessments[0]?.outcome).toBe("will-pull");
     expect(assessments[0]?.pullStrategy).toBe("forced-reset");
     expect(assessments[0]?.safeResetTarget).toBe("origin/feature");
@@ -746,7 +800,7 @@ describe("forceRebasedSkips", () => {
 
   test("converts rebased-locally skip to will-pull with safe-reset when no net-new commits", () => {
     const assessments = [makeAssessment({ toPush: 2, rebased: 2 })];
-    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]), "feature");
+    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
     expect(assessments[0]?.outcome).toBe("will-pull");
     expect(assessments[0]?.pullStrategy).toBe("safe-reset");
     expect(assessments[0]?.safeResetTarget).toBe("origin/feature");
@@ -756,13 +810,13 @@ describe("forceRebasedSkips", () => {
   test("uses safe-reset when excess toPush is from-base commits", () => {
     // toPush=3, rebased=2, fromBaseCount=1 → netNew = 3-2-1 = 0 → safe
     const assessments = [makeAssessment({ toPush: 3, rebased: 2, fromBaseCount: 1 })];
-    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]), "feature");
+    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
     expect(assessments[0]?.pullStrategy).toBe("safe-reset");
   });
 
   test("works for rebase pull mode", () => {
     const assessments = [makeAssessment({ pullMode: "rebase", toPush: 2, rebased: 2 })];
-    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]), "feature");
+    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
     expect(assessments[0]?.outcome).toBe("will-pull");
     expect(assessments[0]?.pullStrategy).toBe("safe-reset");
   });
@@ -773,7 +827,7 @@ describe("forceRebasedSkips", () => {
       makeAssessment({ skipFlag: "detached-head", skipReason: "HEAD is detached" }),
       makeAssessment({ skipFlag: "not-pushed", skipReason: "no remote branch" }),
     ];
-    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]), "feature");
+    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
     expect(assessments[0]?.outcome).toBe("skip");
     expect(assessments[1]?.outcome).toBe("skip");
     expect(assessments[2]?.outcome).toBe("skip");
@@ -784,15 +838,21 @@ describe("forceRebasedSkips", () => {
       makeAssessment({ outcome: "will-pull", skipFlag: undefined, skipReason: undefined }),
       makeAssessment({ outcome: "up-to-date", skipFlag: undefined, skipReason: undefined }),
     ];
-    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]), "feature");
+    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
     expect(assessments[0]?.outcome).toBe("will-pull");
     expect(assessments[1]?.outcome).toBe("up-to-date");
   });
 
   test("uses share remote from remotesMap", () => {
     const assessments = [makeAssessment()];
-    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", { share: "fork" }]), "feature");
+    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", { share: "fork" }]));
     expect(assessments[0]?.safeResetTarget).toBe("fork/feature");
+  });
+
+  test("uses assessment branch for drifted repos", () => {
+    const assessments = [makeAssessment({ branch: "other-branch", drifted: true })];
+    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
+    expect(assessments[0]?.safeResetTarget).toBe("origin/other-branch");
   });
 });
 

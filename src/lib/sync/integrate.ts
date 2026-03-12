@@ -48,6 +48,7 @@ export async function integrate(
     dryRun?: boolean;
     retarget?: string | boolean;
     autostash?: boolean;
+    includeDrifted?: boolean;
     verbose?: boolean;
     graph?: boolean;
     where?: string;
@@ -90,6 +91,7 @@ export async function integrate(
   const repos = fetchDirs.map((d) => basename(d));
 
   const autostash = options.autostash === true;
+  const includeDrifted = options.includeDrifted === true;
   const prevStatuses = new Map<string, RepoStatus>();
   const assess = async (fetchFailed: string[], unchangedRepos: Set<string>) => {
     const assessments = await Promise.all(
@@ -106,7 +108,18 @@ export async function integrate(
           const flags = computeFlags(status, branch);
           if (!repoMatchesWhere(flags, where)) return null;
         }
-        return assessRepo(status, repoDir, branch, fetchFailed, retarget, retargetExplicit, autostash, cache, mode);
+        return assessRepo(
+          status,
+          repoDir,
+          branch,
+          fetchFailed,
+          retarget,
+          retargetExplicit,
+          autostash,
+          includeDrifted,
+          cache,
+          mode,
+        );
       }),
     );
     return assessments.filter((a): a is RepoAssessment => a !== null);
@@ -129,7 +142,7 @@ export async function integrate(
     remotesMap,
     assess,
     postAssess,
-    formatPlan: (nextAssessments) => formatIntegratePlan(nextAssessments, mode, branch, options.verbose, options.graph),
+    formatPlan: (nextAssessments) => formatIntegratePlan(nextAssessments, mode, options.verbose, options.graph),
     onPostFetch: () => cache.invalidateAfterFetch(),
   });
 
@@ -207,14 +220,14 @@ export async function integrate(
       const progressMsg =
         a.retargetReason === "branch-merged"
           ? `rebasing ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`
-          : `rebasing ${branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
+          : `rebasing ${a.branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
       inlineStart(a.repo, progressMsg);
       const retargetArgs = ["rebase"];
       if (a.needsStash) retargetArgs.push("--autostash");
       retargetArgs.push("--onto", ref, oldBaseRef);
       result = await git(a.repoDir, ...retargetArgs);
     } else if (mode === "rebase") {
-      const progressMsg = `rebasing ${branch} onto ${ref}`;
+      const progressMsg = `rebasing ${a.branch} onto ${ref}`;
       inlineStart(a.repo, progressMsg);
       const rebaseArgs = ["rebase"];
       if (a.needsStash) rebaseArgs.push("--autostash");
@@ -222,7 +235,7 @@ export async function integrate(
       result = await git(a.repoDir, ...rebaseArgs);
     } else {
       // Merge mode
-      const progressMsg = `merging ${ref} into ${branch}`;
+      const progressMsg = `merging ${ref} into ${a.branch}`;
       inlineStart(a.repo, progressMsg);
       if (a.needsStash) {
         await git(a.repoDir, "stash", "push", "-m", "arb: autostash before merge");
@@ -245,9 +258,9 @@ export async function integrate(
         const n = a.retargetReplayCount ?? a.ahead;
         doneMsg = `rebased ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`;
       } else if (a.retargetFrom) {
-        doneMsg = `rebased ${branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
+        doneMsg = `rebased ${a.branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
       } else {
-        doneMsg = mode === "rebase" ? `rebased ${branch} onto ${ref}` : `merged ${ref} into ${branch}`;
+        doneMsg = mode === "rebase" ? `rebased ${a.branch} onto ${ref}` : `merged ${ref} into ${a.branch}`;
       }
       if (!stashPopOk) {
         doneMsg += ` ${yellow("(stash pop failed)")}`;
@@ -374,7 +387,7 @@ function classifyConflictRisk(
   return null;
 }
 
-export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode, branch: string): IntegrateActionDesc {
+export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode): IntegrateActionDesc {
   const baseRef = `${a.baseRemote}/${a.baseBranch}`;
   const stash = classifyStash(a);
 
@@ -383,7 +396,7 @@ export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode, 
       return {
         kind: "retarget-merged",
         baseRef,
-        branch,
+        branch: a.branch,
         replayCount: a.retargetReplayCount ?? a.ahead,
         skipCount: a.retargetAlreadyOnTarget,
         conflictRisk: null,
@@ -395,7 +408,7 @@ export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode, 
     return {
       kind: "retarget-config",
       baseRef,
-      branch,
+      branch: a.branch,
       retargetFrom: a.retargetFrom,
       replayCount: a.retargetReplayCount,
       skipCount: a.retargetAlreadyOnTarget,
@@ -409,7 +422,7 @@ export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode, 
   return {
     kind: mode,
     baseRef,
-    branch,
+    branch: a.branch,
     diff: { behind: a.behind, ahead: a.ahead, matchedCount: a.matchedCount },
     mergeType: mode === "merge" ? (a.ahead === 0 ? "fast-forward" : "three-way") : undefined,
     conflictRisk: classifyConflictRisk(a.conflictPrediction, mode),
@@ -426,7 +439,6 @@ function isDirtyButUpToDate(a: RepoAssessment): boolean {
 export function buildIntegratePlanNodes(
   assessments: RepoAssessment[],
   mode: IntegrateMode,
-  branch: string,
   verbose?: boolean,
   graph?: boolean,
 ): OutputNode[] {
@@ -435,7 +447,7 @@ export function buildIntegratePlanNodes(
   const rows = assessments.map((a) => {
     let actionCell: Cell;
     if (a.outcome === "will-operate") {
-      actionCell = integrateActionCell(describeIntegrateAction(a, mode, branch));
+      actionCell = integrateActionCell(describeIntegrateAction(a, mode));
     } else if (a.outcome === "up-to-date" || isDirtyButUpToDate(a)) {
       actionCell = upToDateCell();
     } else {
@@ -445,7 +457,7 @@ export function buildIntegratePlanNodes(
     let afterRow: OutputNode[] | undefined;
     if (a.outcome === "will-operate") {
       if (graph) {
-        const graphText = formatBranchGraph(a, branch, !!verbose);
+        const graphText = formatBranchGraph(a, a.branch, !!verbose);
         if (graphText) afterRow = [{ kind: "rawText", text: graphText }];
       } else if (verbose && a.commits && a.commits.length > 0) {
         const label = `Incoming from ${a.baseRemote}/${a.baseBranch}:`;
@@ -471,6 +483,15 @@ export function buildIntegratePlanNodes(
     rows,
   });
 
+  // Drifted repos hint
+  const driftedCount = assessments.filter((a) => a.drifted && a.outcome === "will-operate").length;
+  if (driftedCount > 0) {
+    nodes.push({
+      kind: "hint",
+      cell: cell(`  hint: ${plural(driftedCount, "repo")} on a different branch than the workspace`, "muted"),
+    });
+  }
+
   // Shallow clone warnings
   const shallowRepos = assessments.filter((a) => a.shallow);
   for (const a of shallowRepos) {
@@ -488,11 +509,10 @@ export function buildIntegratePlanNodes(
 export function formatIntegratePlan(
   assessments: RepoAssessment[],
   mode: IntegrateMode,
-  branch: string,
   verbose?: boolean,
   graph?: boolean,
 ): string {
-  const nodes = buildIntegratePlanNodes(assessments, mode, branch, verbose, graph);
+  const nodes = buildIntegratePlanNodes(assessments, mode, verbose, graph);
   const envCols = Number(process.env.COLUMNS);
   const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
   const ctx: RenderContext = { tty: isTTY(), terminalWidth: termCols > 0 ? termCols : undefined };
@@ -616,11 +636,13 @@ export function classifyRepo(
   fetchFailed: string[],
   autostash: boolean,
   headSha: string,
+  includeDrifted?: boolean,
 ): RepoAssessment {
   const base: RepoAssessment = {
     repo: status.name,
     repoDir,
     outcome: "skip",
+    branch,
     behind: 0,
     ahead: 0,
     baseRemote: "",
@@ -643,11 +665,15 @@ export function classifyRepo(
     return { ...base, skipReason: "HEAD is detached", skipFlag: "detached-head" };
   }
   if (status.identity.headMode.branch !== branch) {
-    return {
-      ...base,
-      skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}`,
-      skipFlag: "drifted",
-    };
+    if (!includeDrifted) {
+      return {
+        ...base,
+        skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch} (use --include-drifted)`,
+        skipFlag: "drifted",
+      };
+    }
+    base.branch = status.identity.headMode.branch;
+    base.drifted = true;
   }
 
   // Dirty check
@@ -728,11 +754,12 @@ async function assessRepo(
   retarget: boolean,
   retargetExplicit: string | null,
   autostash: boolean,
+  includeDrifted: boolean,
   cache: GitCache,
   mode: IntegrateMode,
 ): Promise<RepoAssessment> {
   const headSha = await getShortHead(repoDir);
-  const classified = classifyRepo(status, repoDir, branch, fetchFailed, autostash, headSha);
+  const classified = classifyRepo(status, repoDir, branch, fetchFailed, autostash, headSha, includeDrifted);
 
   // Hard skips from basic checks (steps 1–7) — retarget can't help.
   // Only the baseMergedIntoDefault skip should pass through to retarget logic.

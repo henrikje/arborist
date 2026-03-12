@@ -466,6 +466,7 @@ _arb() {
                         '(--merge)--rebase[Pull with rebase]' \
                         '(--rebase)--merge[Pull with merge]' \
                         '--autostash[Stash uncommitted changes before pull, re-apply after]' \
+                        '--include-drifted[Include repos on a different branch than the workspace]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($ws_repo_names)'
                     ;;
@@ -473,6 +474,7 @@ _arb() {
 					_arguments \
 						'(-f --force)'{-f,--force}'[Force push with lease]' \
 						'--include-merged[Include branches already merged into base]' \
+						'--include-drifted[Include repos on a different branch than the workspace]' \
 						'(-N --fetch --no-fetch)--fetch[Fetch before push (default)]' \
 						'(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before push]' \
 						'(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
@@ -491,6 +493,7 @@ _arb() {
                         '(-g --graph)'{-g,--graph}'[Show branch divergence graph in the plan]' \
                         '--retarget=-[Retarget repos whose base has been merged; optionally specify branch]::branch:' \
                         '--autostash[Stash uncommitted changes before rebase, re-apply after]' \
+                        '--include-drifted[Include repos on a different branch than the workspace]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($ws_repo_names)'
                     ;;
@@ -503,6 +506,7 @@ _arb() {
                         '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \
                         '(-g --graph)'{-g,--graph}'[Show branch divergence graph in the plan]' \
                         '--autostash[Stash uncommitted changes before merge, re-apply after]' \
+                        '--include-drifted[Include repos on a different branch than the workspace]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($ws_repo_names)'
                     ;;
