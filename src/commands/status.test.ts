@@ -411,7 +411,7 @@ describe("plainRemoteDiff", () => {
       }),
     );
     // pull: outdated = min(2,2) = 2
-    expect(text).toBe("2 rebased, 1 new → 2 outdated");
+    expect(text).toBe("2 rebased + 1 new → 2 outdated");
   });
 
   test("shows rebased-only when all pushes are rebased", () => {

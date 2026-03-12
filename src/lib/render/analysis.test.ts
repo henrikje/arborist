@@ -588,7 +588,7 @@ describe("plainRemoteDiff", () => {
       },
     });
     // fromBase = 7-4 = 3, rebased = 2, newCount = 4-2 = 2; pull: outdated = 2, newPull = 3-2 = 1
-    expect(plainRemoteDiff(repo)).toBe("3 from main, 2 rebased, 2 new → 2 outdated, 1 new");
+    expect(plainRemoteDiff(repo)).toBe("3 from main + 2 rebased + 2 new → 2 outdated + 1 new");
   });
 
   test("simple push count", () => {
@@ -670,7 +670,7 @@ describe("plainRemoteDiff", () => {
       },
     });
     // fromBase = 5-2 = 3, rebased = 2, newCount = 2-2 = 0; pull: outdated = 2
-    expect(plainRemoteDiff(repo)).toBe("3 from main, 2 rebased → 2 outdated");
+    expect(plainRemoteDiff(repo)).toBe("3 from main + 2 rebased → 2 outdated");
   });
 
   test("rebased + new (no fromBase)", () => {
@@ -696,7 +696,7 @@ describe("plainRemoteDiff", () => {
       },
     });
     // fromBase = 5-5 = 0, rebased = 2, newCount = 5-2 = 3; pull: outdated = 2
-    expect(plainRemoteDiff(repo)).toBe("2 rebased, 3 new → 2 outdated");
+    expect(plainRemoteDiff(repo)).toBe("2 rebased + 3 new → 2 outdated");
   });
 
   test("push-side new count is bounded by toPush (not base ahead)", () => {
@@ -772,7 +772,7 @@ describe("plainRemoteDiff", () => {
       },
     });
     // fromBase = 3-5 = 0, rebased = 1, newCount = 3-1 = 2; pull: outdated = 1+1 = 2, new = 1
-    expect(plainRemoteDiff(repo)).toBe("1 rebased, 2 new → 2 outdated, 1 new");
+    expect(plainRemoteDiff(repo)).toBe("1 rebased + 2 new → 2 outdated + 1 new");
   });
 
   test("all pull commits replaced shows only outdated", () => {
@@ -814,7 +814,7 @@ describe("plainRemoteDiff", () => {
       },
     });
     // Fallback: newPush = 5-2 = 3; pull: outdated = 2, newPull = 3-2 = 1
-    expect(plainRemoteDiff(repo)).toBe("3 to push, 2 rebased → 2 outdated, 1 new");
+    expect(plainRemoteDiff(repo)).toBe("3 to push + 2 rebased → 2 outdated + 1 new");
   });
 
   test("uses base ref name in from label", () => {
@@ -840,7 +840,7 @@ describe("plainRemoteDiff", () => {
       },
     });
     // pull: outdated = 2
-    expect(plainRemoteDiff(repo)).toBe("3 from develop, 2 rebased → 2 outdated");
+    expect(plainRemoteDiff(repo)).toBe("3 from develop + 2 rebased → 2 outdated");
   });
 });
 
@@ -949,7 +949,7 @@ describe("analyzeRemoteDiff", () => {
     const flags = computeFlags(repo, "feature");
     // fromBase=3, rebased=2, newCount=2; pull: outdated=2, newPull=1
     const result = analyzeRemoteDiff(repo, flags, false);
-    expect(result.plain).toBe("3 from main, 2 rebased, 2 new → 2 outdated, 1 new");
+    expect(result.plain).toBe("3 from main + 2 rebased + 2 new → 2 outdated + 1 new");
     const pullNew = result.spans.filter((s) => s.text === "1 new").at(-1);
     expect(pullNew?.attention).toBe("default");
   });
@@ -978,7 +978,7 @@ describe("analyzeRemoteDiff", () => {
     });
     const flags = computeFlags(repo, "feature");
     const result = analyzeRemoteDiff(repo, flags, true);
-    expect(result.plain).toBe("3 from main, 2 rebased, 2 new → 2 outdated, 1 new");
+    expect(result.plain).toBe("3 from main + 2 rebased + 2 new → 2 outdated + 1 new");
     const pullNew = result.spans.filter((s) => s.text === "1 new").at(-1);
     expect(pullNew?.attention).toBe("attention");
   });
@@ -1007,7 +1007,7 @@ describe("analyzeRemoteDiff", () => {
     });
     const flags = computeFlags(repo, "feature");
     const result = analyzeRemoteDiff(repo, flags);
-    expect(result.plain).toBe("3 from main, 2 rebased, 2 new");
+    expect(result.plain).toBe("3 from main + 2 rebased + 2 new");
     const fromMain = result.spans.find((s) => s.text.includes("from main"));
     const pushNew = result.spans.find((s) => s.text === "2 new");
     expect(fromMain?.attention).toBe("default");
@@ -1039,7 +1039,7 @@ describe("analyzeRemoteDiff", () => {
     const flags = computeFlags(repo, "feature");
     // fromBase=3, rebased=2, newCount=0 → push default; pull: 2 outdated
     const result = analyzeRemoteDiff(repo, flags);
-    expect(result.plain).toBe("3 from main, 2 rebased → 2 outdated");
+    expect(result.plain).toBe("3 from main + 2 rebased → 2 outdated");
     expect(result.spans[0]?.attention).toBe("default");
   });
 
@@ -1207,7 +1207,7 @@ describe("analyzeRemoteDiff", () => {
     });
     const flags = computeFlags(repo, "feature");
     const result = analyzeRemoteDiff(repo, flags, false);
-    expect(result.plain).toBe("1 rebased, 2 new → 2 outdated, 1 new");
+    expect(result.plain).toBe("1 rebased + 2 new → 2 outdated + 1 new");
     // Pull "1 new" should be default (no pull conflict)
     const pullNew = result.spans.filter((s) => s.text === "1 new").at(-1);
     expect(pullNew?.attention).toBe("default");
@@ -1237,7 +1237,7 @@ describe("analyzeRemoteDiff", () => {
     });
     const flags = computeFlags(repo, "feature");
     const result = analyzeRemoteDiff(repo, flags, true);
-    expect(result.plain).toBe("1 rebased, 2 new → 2 outdated, 1 new");
+    expect(result.plain).toBe("1 rebased + 2 new → 2 outdated + 1 new");
     // Pull "1 new" should be attention (pull conflict predicted)
     const pullNew = result.spans.filter((s) => s.text === "1 new").at(-1);
     expect(pullNew?.attention).toBe("attention");
