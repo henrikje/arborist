@@ -1,0 +1,265 @@
+/**
+ * Property-based testing commands for the status model.
+ *
+ * Each command implements fast-check's AsyncCommand interface:
+ *   check(model) — returns true if preconditions are met
+ *   run(model, real) — mutates real system, updates model, optionally asserts
+ *   toString() — human-readable label for shrinking output
+ *
+ * All commands operate on a single pre-created workspace (name stored in RealSystem).
+ */
+
+import { expect } from "bun:test";
+import { rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { AsyncCommand } from "fast-check";
+import { arb, git, write } from "../../integration/helpers/env";
+import { type RealSystem, type WorkspaceModel, predictRepoStatus } from "./model";
+
+const REPOS = ["repo-a", "repo-b"] as const;
+
+// ── MakeCommit ───────────────────────────────────────────────────
+
+export class MakeCommit implements AsyncCommand<WorkspaceModel, RealSystem> {
+  readonly repoName: string;
+  readonly count: number;
+  private firstCommitId = 0;
+
+  constructor(repoName: string, count: number) {
+    this.repoName = repoName;
+    this.count = count;
+  }
+
+  check(_model: Readonly<WorkspaceModel>): boolean {
+    return true;
+  }
+
+  async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
+    this.firstCommitId = real.commitCounter + 1;
+    real.executedCommands.push(this.toString());
+    const worktree = join(real.env.projectDir, real.wsName, this.repoName);
+    for (let i = 0; i < this.count; i++) {
+      const id = ++real.commitCounter;
+      await write(join(worktree, `commit-${id}.txt`), `content-${id}`);
+      await git(worktree, ["add", "."]);
+      await git(worktree, ["commit", "-m", `commit ${id}`]);
+    }
+    const repo = model.repos[this.repoName];
+    if (!repo) throw new Error(`Unknown repo: ${this.repoName}`);
+    repo.localCommits += this.count;
+    model.dirty = true;
+  }
+
+  toString(): string {
+    return `MakeCommit(${this.repoName}, x${this.count})`;
+  }
+}
+
+// ── Push ─────────────────────────────────────────────────────────
+
+export class Push implements AsyncCommand<WorkspaceModel, RealSystem> {
+  check(model: Readonly<WorkspaceModel>): boolean {
+    return Object.values(model.repos).some(
+      (r) => (!r.pushed && r.localCommits > 0) || (r.pushed && r.localCommits > r.pushedCommits),
+    );
+  }
+
+  async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
+    real.executedCommands.push(this.toString());
+    const result = await arb(real.env, ["push", "--yes", "--no-fetch"], {
+      cwd: join(real.env.projectDir, real.wsName),
+    });
+    if (result.exitCode !== 0) {
+      throw new Error(`arb push failed: ${result.output}`);
+    }
+    for (const repo of Object.values(model.repos)) {
+      if (repo.localCommits > 0) {
+        repo.pushedCommits = repo.localCommits;
+        repo.pushed = true;
+        repo.remoteShareExists = true;
+      }
+    }
+    model.dirty = true;
+  }
+
+  toString(): string {
+    return "Push";
+  }
+}
+
+// ── MakeCommitOnBase ─────────────────────────────────────────────
+
+export class MakeCommitOnBase implements AsyncCommand<WorkspaceModel, RealSystem> {
+  readonly repoName: string;
+  readonly count: number;
+
+  constructor(repoName: string, count: number) {
+    this.repoName = repoName;
+    this.count = count;
+  }
+
+  check(_model: Readonly<WorkspaceModel>): boolean {
+    return true;
+  }
+
+  async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
+    real.executedCommands.push(this.toString());
+    const canonicalRepo = join(real.env.projectDir, ".arb/repos", this.repoName);
+    await git(canonicalRepo, ["checkout", "main"]);
+    for (let i = 0; i < this.count; i++) {
+      const id = ++real.commitCounter;
+      await write(join(canonicalRepo, `base-${id}.txt`), `base-${id}`);
+      await git(canonicalRepo, ["add", "."]);
+      await git(canonicalRepo, ["commit", "-m", `base commit ${id}`]);
+    }
+    await git(canonicalRepo, ["push", "origin", "main"]);
+    const head = (await git(canonicalRepo, ["rev-parse", "HEAD"])).trim();
+    await git(canonicalRepo, ["checkout", "--detach", head]);
+
+    const repo = model.repos[this.repoName];
+    if (!repo) throw new Error(`Unknown repo: ${this.repoName}`);
+    repo.baseAdvanced += this.count;
+    model.dirty = true;
+  }
+
+  toString(): string {
+    return `MakeCommitOnBase(${this.repoName}, x${this.count})`;
+  }
+}
+
+// ── MakeCommitOnShare ────────────────────────────────────────────
+
+export class MakeCommitOnShare implements AsyncCommand<WorkspaceModel, RealSystem> {
+  readonly repoName: string;
+  readonly count: number;
+
+  constructor(repoName: string, count: number) {
+    this.repoName = repoName;
+    this.count = count;
+  }
+
+  check(model: Readonly<WorkspaceModel>): boolean {
+    return model.repos[this.repoName]?.pushed === true;
+  }
+
+  async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
+    real.executedCommands.push(this.toString());
+    const bareOrigin = join(real.env.originDir, `${this.repoName}.git`);
+    const tmpDir = await mkdtemp(join(tmpdir(), "arb-pbt-share-"));
+    try {
+      await git(tmpDir, ["clone", bareOrigin, "clone"]);
+      const cloneDir = join(tmpDir, "clone");
+      await git(cloneDir, ["checkout", real.wsName]);
+      for (let i = 0; i < this.count; i++) {
+        const id = ++real.commitCounter;
+        await write(join(cloneDir, `external-${id}.txt`), `external-${id}`);
+        await git(cloneDir, ["add", "."]);
+        await git(cloneDir, ["commit", "-m", `external commit ${id}`]);
+      }
+      await git(cloneDir, ["push", "origin", real.wsName]);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+
+    const repo = model.repos[this.repoName];
+    if (!repo) throw new Error(`Unknown repo: ${this.repoName}`);
+    repo.externalCommits += this.count;
+    model.dirty = true;
+  }
+
+  toString(): string {
+    return `MakeCommitOnShare(${this.repoName}, x${this.count})`;
+  }
+}
+
+// ── CheckStatus ──────────────────────────────────────────────────
+
+export class CheckStatus implements AsyncCommand<WorkspaceModel, RealSystem> {
+  check(model: Readonly<WorkspaceModel>): boolean {
+    return model.dirty;
+  }
+
+  async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
+    real.executedCommands.push(this.toString());
+    model.dirty = false;
+    // Fetch first so status sees remote changes
+    const reposDir = join(real.env.projectDir, ".arb/repos");
+    await Promise.all(REPOS.map((r) => git(join(reposDir, r), ["fetch", "--prune"]).catch(() => {})));
+
+    const result = await arb(real.env, ["status", "--no-fetch", "--json"], {
+      cwd: join(real.env.projectDir, real.wsName),
+    });
+    if (result.exitCode !== 0) {
+      throw new Error(`arb status --json failed: ${result.output}`);
+    }
+
+    const json = JSON.parse(result.stdout);
+
+    for (const repoJson of json.repos) {
+      const repoName: string = repoJson.name;
+      const repoModel = model.repos[repoName];
+      if (!repoModel) {
+        throw new Error(`Unexpected repo in status output: ${repoName}`);
+      }
+
+      const predicted = predictRepoStatus(repoModel);
+
+      // ── Base section ──
+      expect(repoJson.base.ahead).toBe(predicted.baseAhead);
+      expect(repoJson.base.behind).toBe(predicted.baseBehind);
+
+      // ── Share section ──
+      expect(repoJson.share.refMode).toBe(predicted.shareRefMode);
+      expect(repoJson.share.toPush).toBe(predicted.shareToPush);
+      expect(repoJson.share.toPull).toBe(predicted.shareToPull);
+
+      if (predicted.shareRebased !== null) {
+        expect(repoJson.share.rebased).toBe(predicted.shareRebased);
+      }
+      if (predicted.shareReplaced !== null) {
+        expect(repoJson.share.replaced).toBe(predicted.shareReplaced);
+      }
+      if (predicted.shareSquashed !== null) {
+        expect(repoJson.share.squashed).toBe(predicted.shareSquashed);
+      }
+
+      // ── Local section ──
+      expect(repoJson.local.conflicts).toBe(predicted.localConflicts);
+
+      // ── Identity section ──
+      expect(repoJson.identity.headMode.kind).toBe("attached");
+      expect(repoJson.identity.headMode.branch).toBe(real.wsName);
+
+      // ── Operation ──
+      expect(repoJson.operation).toBeNull();
+
+      // ── Flags (derived from workspace-level statusLabels) ──
+      assertFlag(json, predicted.isDirty, "dirty");
+      assertFlag(json, predicted.isUnpushed, "unpushed");
+      assertFlag(json, predicted.needsPull, "behind share");
+      assertFlag(json, predicted.needsRebase, "behind base");
+      assertFlag(json, predicted.isDiverged, "diverged");
+    }
+  }
+
+  toString(): string {
+    return "CheckStatus";
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────
+
+/**
+ * Assert a flag label is present in statusLabels when predicted true.
+ *
+ * statusLabels is workspace-level (not per-repo), so we can only check
+ * that the label is present when at least one repo predicts it. We cannot
+ * assert absence for a single repo since the other repo may have that flag.
+ */
+function assertFlag(json: { statusLabels: string[] }, expected: boolean, label: string): void {
+  if (expected) {
+    expect(json.statusLabels).toContain(label);
+  }
+}
