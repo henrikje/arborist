@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, assertMinimumGitVersion } from "../lib/git";
+import { createCommandCache } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { repoHeaderNode } from "../lib/render";
 import { computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
@@ -56,8 +56,7 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
         const workspace = ctx.currentWorkspace ?? "";
         const branch = await requireBranch(wsDir, workspace);
         const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
-        const cache = new GitCache();
-        await assertMinimumGitVersion(cache);
+        const cache = await createCommandCache();
         await Promise.all(
           repoDirs.map(async (repoDir) => {
             const repo = basename(repoDir);

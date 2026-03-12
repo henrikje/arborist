@@ -2,26 +2,18 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { diffTemplates } from "./diff";
+import { hashContent, manifestKey, mergeManifest, readManifest, writeManifest } from "./manifest";
+import { forceOverlayDirectory, overlayDirectory } from "./overlay";
+import { checkUnknownVariables, renderTemplate } from "./render";
 import {
-  ARBTEMPLATE_EXT,
-  type RepoInfo,
-  type TemplateContext,
   applyRepoTemplates,
   applyWorkspaceTemplates,
-  checkUnknownVariables,
   detectScopeFromPath,
-  diffTemplates,
-  forceOverlayDirectory,
-  hashContent,
   listTemplates,
-  manifestKey,
-  mergeManifest,
-  overlayDirectory,
-  readManifest,
-  renderTemplate,
   templateFilePath,
-  writeManifest,
 } from "./templates";
+import { ARBTEMPLATE_EXT, type RepoInfo, type TemplateContext } from "./types";
 
 const noRemote = { name: "", url: "" };
 function wt(name: string, path: string): RepoInfo {

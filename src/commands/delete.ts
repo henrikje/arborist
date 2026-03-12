@@ -12,8 +12,8 @@ import {
 import type { ArbContext } from "../lib/core";
 import {
   GitCache,
-  assertMinimumGitVersion,
   branchExistsLocally,
+  createCommandCache,
   git,
   remoteBranchExists,
   validateWorkspaceName,
@@ -36,6 +36,12 @@ import {
 } from "../lib/status";
 import { confirmOrExit, parallelFetch, reportFetchFailures } from "../lib/sync";
 import {
+  type TemplateDiff,
+  diffTemplates,
+  displayAggregatedTemplateDiffs,
+  displayTemplateDiffs,
+} from "../lib/templates";
+import {
   analyzeDone,
   analyzeProgress,
   checkboxWithPreview,
@@ -52,15 +58,7 @@ import {
   success,
   warn,
 } from "../lib/terminal";
-import {
-  type TemplateDiff,
-  diffTemplates,
-  displayAggregatedTemplateDiffs,
-  displayTemplateDiffs,
-  listWorkspaces,
-  workspaceBranch,
-  workspaceRepoDirs,
-} from "../lib/workspace";
+import { listWorkspaces, workspaceBranch, workspaceRepoDirs } from "../lib/workspace";
 
 interface WorkspaceAssessment {
   name: string;
@@ -265,7 +263,7 @@ async function assessWorkspace(
   const repos = repoPaths.map((d) => basename(d));
 
   let summary: WorkspaceSummary;
-  const cache = new GitCache();
+  const cache = await createCommandCache();
 
   if (repos.length === 0) {
     summary = {
@@ -286,7 +284,6 @@ async function assessWorkspace(
     // Gather workspace summary using the canonical status model.
     // Delete must be resilient to repos with broken/missing/ambiguous remotes —
     // if we can't determine the state, treat the workspace as at-risk.
-    await assertMinimumGitVersion(cache);
     try {
       summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache, gatherOpts);
     } catch (e) {
@@ -514,8 +511,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
           // Fetch from canonical repo dirs so each repo is only fetched once,
           // regardless of how many workspaces reference it.
           const allRepoDirs = [...allRepoNames].map((name) => `${ctx.reposDir}/${name}`);
-          const cache = new GitCache();
-          await assertMinimumGitVersion(cache);
+          const cache = await createCommandCache();
           const remotesMap = await cache.resolveRemotesMap([...allRepoNames], ctx.reposDir);
           const fetchResults = await parallelFetch(allRepoDirs, undefined, remotesMap);
           reportFetchFailures([...allRepoNames], fetchResults);

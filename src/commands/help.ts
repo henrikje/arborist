@@ -1,4 +1,5 @@
 import type { Command } from "commander";
+import { ArbError } from "../lib/core";
 import { findTopic } from "../lib/help";
 import { error } from "../lib/terminal";
 
@@ -32,6 +33,6 @@ export function registerHelpCommand(program: Command): void {
 
       // Unknown
       error(`Unknown command or topic: '${arg}'. Run 'arb help' for available commands.`);
-      process.exitCode = 1;
+      throw new ArbError(`Unknown command or topic: '${arg}'.`);
     });
 }

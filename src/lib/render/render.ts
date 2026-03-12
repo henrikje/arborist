@@ -43,6 +43,13 @@ export interface RenderContext {
   terminalWidth?: number;
 }
 
+/** Create a RenderContext from the current terminal environment. */
+export function createRenderContext(): RenderContext {
+  const envCols = Number(process.env.COLUMNS);
+  const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
+  return { tty: isTTY(), terminalWidth: termCols > 0 ? termCols : undefined };
+}
+
 // ── Cell Rendering ──
 
 /** Render a Cell to a string, applying ANSI colors when tty is true */

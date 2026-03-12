@@ -2,16 +2,22 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, assertMinimumGitVersion } from "../lib/git";
+import { createCommandCache } from "../lib/git";
 import { render } from "../lib/render";
 import { parallelFetch, reportFetchFailures } from "../lib/sync";
+import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
 import { error, info, plural, success, warn } from "../lib/terminal";
 import { readNamesFromStdin } from "../lib/terminal";
 import { isTTY } from "../lib/terminal";
-import { listDefaultRepos, listRepos, selectInteractive, workspaceRepoDirs } from "../lib/workspace";
-import { requireBranch, requireWorkspace } from "../lib/workspace";
-import { addWorktrees } from "../lib/workspace";
-import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/workspace";
+import {
+  addWorktrees,
+  listDefaultRepos,
+  listRepos,
+  requireBranch,
+  requireWorkspace,
+  selectInteractive,
+  workspaceRepoDirs,
+} from "../lib/workspace";
 
 export function registerAttachCommand(program: Command, getCtx: () => ArbContext): void {
   program
@@ -67,8 +73,7 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
       }
       const base = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base;
 
-      const cache = new GitCache();
-      await assertMinimumGitVersion(cache);
+      const cache = await createCommandCache();
       const remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
 
       if (options.fetch !== false) {

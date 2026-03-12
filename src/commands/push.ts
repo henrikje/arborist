@@ -2,24 +2,17 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import {
-  GitCache,
-  assertMinimumGitVersion,
-  getCommitsBetweenFull,
-  getShortHead,
-  gitWithTimeout,
-  networkTimeout,
-} from "../lib/git";
+import { createCommandCache, getCommitsBetweenFull, getShortHead, gitWithTimeout, networkTimeout } from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
-import { type RenderContext, finishSummary, render } from "../lib/render";
+import { createRenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
 import { VERBOSE_COMMIT_LIMIT, skipCell, upToDateCell, verboseCommitsToNodes } from "../lib/render";
 import { cell, suffix } from "../lib/render";
 import type { SkipFlag } from "../lib/status";
 import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
 import { classifyNetworkError, confirmOrExit, runPlanFlow } from "../lib/sync";
-import { dryRunNotice, info, inlineResult, inlineStart, isTTY, plural, readNamesFromStdin, red } from "../lib/terminal";
-import { requireBranch, requireWorkspace, resolveRepoSelection, workspaceRepoDirs } from "../lib/workspace";
+import { dryRunNotice, info, inlineResult, inlineStart, plural, red } from "../lib/terminal";
+import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
 export interface PushAssessment {
   repo: string;
@@ -76,14 +69,8 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
         const branch = await requireBranch(wsDir, workspace);
         const where = resolveWhereFilter(options);
 
-        let repoNames = repoArgs;
-        if (repoNames.length === 0) {
-          const stdinNames = await readNamesFromStdin();
-          if (stdinNames.length > 0) repoNames = stdinNames;
-        }
-        const selectedRepos = resolveRepoSelection(wsDir, repoNames);
-        const cache = new GitCache();
-        await assertMinimumGitVersion(cache);
+        const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
+        const cache = await createCommandCache();
         const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
         const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
 
@@ -216,9 +203,7 @@ export function formatPushPlan(
   verbose?: boolean,
 ): string {
   const nodes = buildPushPlanNodes(assessments, remotesMap, verbose);
-  const envCols = Number(process.env.COLUMNS);
-  const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
-  const ctx: RenderContext = { tty: isTTY(), terminalWidth: termCols > 0 ? termCols : undefined };
+  const ctx = createRenderContext();
   return render(nodes, ctx);
 }
 

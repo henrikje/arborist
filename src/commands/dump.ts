@@ -3,7 +3,7 @@ import { basename, join } from "node:path";
 import type { Command } from "commander";
 import type { ArbContext } from "../lib/core";
 import { readWorkspaceConfig } from "../lib/core";
-import { GitCache, assertMinimumGitVersion, getRemoteNames, getRemoteUrl } from "../lib/git";
+import { createCommandCache, getRemoteNames, getRemoteUrl } from "../lib/git";
 import { computeFlags, gatherWorkspaceSummary } from "../lib/status";
 import { listRepos, listWorkspaces, readGitdirFromWorktree, workspaceRepoDirs } from "../lib/workspace";
 import { ARB_VERSION } from "../version";
@@ -123,8 +123,7 @@ async function gitTimed(repoDir: string, ...args: string[]): Promise<GitTimedRes
 }
 
 async function runDump(ctx: ArbContext): Promise<void> {
-  const cache = new GitCache();
-  await assertMinimumGitVersion(cache);
+  const cache = await createCommandCache();
 
   // Errors encountered while producing the dump — always included in output.
   const dumpErrors: string[] = [];

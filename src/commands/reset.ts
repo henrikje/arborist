@@ -2,24 +2,14 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, assertMinimumGitVersion, getShortHead, git } from "../lib/git";
+import { createCommandCache, getShortHead, git } from "../lib/git";
 import type { Cell, OutputNode, Span } from "../lib/render";
-import { type RenderContext, cell, finishSummary, render, skipCell, spans, suffix } from "../lib/render";
+import { cell, createRenderContext, finishSummary, render, skipCell, spans, suffix } from "../lib/render";
 import type { SkipFlag } from "../lib/status";
 import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
 import { confirmOrExit, runPlanFlow } from "../lib/sync";
-import {
-  dryRunNotice,
-  info,
-  inlineResult,
-  inlineStart,
-  isTTY,
-  plural,
-  readNamesFromStdin,
-  warn,
-  yellow,
-} from "../lib/terminal";
-import { requireBranch, requireWorkspace, resolveRepoSelection, workspaceRepoDirs } from "../lib/workspace";
+import { dryRunNotice, info, inlineResult, inlineStart, isTTY, plural, warn, yellow } from "../lib/terminal";
+import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
 // ── Assessment ──
 
@@ -199,9 +189,7 @@ export function buildResetPlanNodes(assessments: ResetAssessment[]): OutputNode[
 
 export function formatResetPlan(assessments: ResetAssessment[]): string {
   const nodes = buildResetPlanNodes(assessments);
-  const envCols = Number(process.env.COLUMNS);
-  const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
-  const ctx: RenderContext = { tty: isTTY(), terminalWidth: termCols > 0 ? termCols : undefined };
+  const ctx = createRenderContext();
   return render(nodes, ctx);
 }
 
@@ -234,15 +222,9 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
         const { wsDir, workspace } = requireWorkspace(ctx);
         const branch = await requireBranch(wsDir, workspace);
 
-        let repoNames = repoArgs;
-        if (repoNames.length === 0) {
-          const stdinNames = await readNamesFromStdin();
-          if (stdinNames.length > 0) repoNames = stdinNames;
-        }
-        const selectedRepos = resolveRepoSelection(wsDir, repoNames);
+        const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
         const selectedSet = new Set(selectedRepos);
-        const cache = new GitCache();
-        await assertMinimumGitVersion(cache);
+        const cache = await createCommandCache();
         const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
         const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
 

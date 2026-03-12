@@ -1,5 +1,6 @@
 import { type RelativeTimeParts, formatRelativeTimeParts } from "../core/time";
-import { type WorkspaceSummary, computeFlags } from "../status/status";
+import { computeFlags } from "../status/flags";
+import type { WorkspaceSummary } from "../status/types";
 import {
   analyzeBaseDiff,
   analyzeBaseName,

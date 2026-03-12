@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, assertMinimumGitVersion, git, parseGitNumstat } from "../lib/git";
+import { createCommandCache, git, parseGitNumstat } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type DiffJsonFileStat, type DiffJsonOutput, DiffJsonOutputSchema, type DiffJsonRepo } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
@@ -16,8 +16,8 @@ import {
   resolveWhereFilter,
 } from "../lib/status";
 import { parallelFetch, reportFetchFailures } from "../lib/sync";
-import { error, isTTY, plural, readNamesFromStdin, stdout, success } from "../lib/terminal";
-import { requireBranch, requireWorkspace, resolveRepoSelection, workspaceRepoDirs } from "../lib/workspace";
+import { error, isTTY, plural, stdout, success } from "../lib/terminal";
+import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
 interface RepoDiffStat {
   files: number;
@@ -124,14 +124,8 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
         const { wsDir, workspace } = requireWorkspace(ctx);
         const branch = await requireBranch(wsDir, workspace);
 
-        let repoNames = repoArgs;
-        if (repoNames.length === 0) {
-          const stdinNames = await readNamesFromStdin();
-          if (stdinNames.length > 0) repoNames = stdinNames;
-        }
-        const selectedRepos = resolveRepoSelection(wsDir, repoNames);
-        const cache = new GitCache();
-        await assertMinimumGitVersion(cache);
+        const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
+        const cache = await createCommandCache();
 
         if (options.fetch) {
           const allFetchDirs = workspaceRepoDirs(wsDir);

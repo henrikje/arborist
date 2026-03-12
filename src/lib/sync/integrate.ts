@@ -3,36 +3,32 @@ import { readWorkspaceConfig, writeWorkspaceConfig } from "../core/config";
 import { ArbError } from "../core/errors";
 import type { ArbContext } from "../core/types";
 import {
-  analyzeRetargetReplay,
+  assertMinimumGitVersion,
   branchExistsLocally,
-  detectBranchMerged,
   getCommitsBetweenFull,
   getDiffShortstat,
   getMergeBase,
   getShortHead,
   git,
-  matchDivergedCommits,
   predictMergeConflict,
-  predictRebaseConflictCommits,
   predictStashPopConflict,
   remoteBranchExists,
 } from "../git/git";
-import { assertMinimumGitVersion } from "../git/git";
 import { GitCache } from "../git/git-cache";
+import { detectBranchMerged } from "../git/merge-detection";
+import { analyzeRetargetReplay, matchDivergedCommits, predictRebaseConflictCommits } from "../git/rebase-analysis";
 import { buildConflictReport, buildStashPopFailureReport } from "../render/conflict-report";
+import { type IntegrateActionDesc, integrateActionCell } from "../render/integrate-cells";
 import { formatBranchGraph } from "../render/integrate-graph";
 import type { Cell, OutputNode } from "../render/model";
-import { cell, suffix } from "../render/model";
+import { cell } from "../render/model";
 import { skipCell, upToDateCell } from "../render/plan-format";
 import { type RenderContext, finishSummary, render } from "../render/render";
 import { VERBOSE_COMMIT_LIMIT, verboseCommitsToNodes } from "../render/status-verbose";
-import {
-  type RepoStatus,
-  computeFlags,
-  gatherRepoStatus,
-  repoMatchesWhere,
-  resolveWhereFilter,
-} from "../status/status";
+import { computeFlags } from "../status/flags";
+import { gatherRepoStatus } from "../status/status";
+import type { RepoStatus } from "../status/types";
+import { repoMatchesWhere, resolveWhereFilter } from "../status/where";
 import { dryRunNotice, error, info, inlineResult, inlineStart, plural, yellow } from "../terminal/output";
 import { isTTY } from "../terminal/tty";
 import { workspaceBranch } from "../workspace/branch";
@@ -356,21 +352,6 @@ export async function maybeWriteRetargetConfig(options: {
 
 // ── Semantic intermediate for integrate plan ──
 
-export interface IntegrateActionDesc {
-  kind: "retarget-merged" | "retarget-config" | "rebase" | "merge";
-  baseRef: string;
-  branch: string;
-  retargetFrom?: string;
-  replayCount?: number;
-  skipCount?: number;
-  diff?: { behind: number; ahead: number; matchedCount?: number };
-  mergeType?: "fast-forward" | "three-way";
-  conflictRisk: "will-conflict" | "likely" | "unlikely" | "no-conflict" | null;
-  stash: "none" | "autostash" | "pop-conflict-likely" | "pop-conflict-unlikely";
-  warning?: string;
-  headSha?: string;
-}
-
 function classifyStash(a: RepoAssessment): IntegrateActionDesc["stash"] {
   if (!a.needsStash) return "none";
   if (a.stashPopConflictFiles && a.stashPopConflictFiles.length > 0) return "pop-conflict-likely";
@@ -430,81 +411,6 @@ export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode, 
     stash,
     headSha: a.headSha,
   };
-}
-
-export function integrateActionCell(desc: IntegrateActionDesc): Cell {
-  let result: Cell;
-
-  if (desc.kind === "retarget-merged") {
-    const n = desc.replayCount ?? 0;
-    const merged = desc.skipCount ?? 0;
-    const commitWord = n === 1 ? "commit" : "commits";
-    let text = `rebase onto ${desc.baseRef} (merged) \u2014 rebase ${n} new ${commitWord}`;
-    if (merged > 0) text += `, skip ${merged} already merged`;
-    result = cell(text);
-  } else if (desc.kind === "retarget-config") {
-    let text = `rebase onto ${desc.baseRef} from ${desc.retargetFrom} (retarget)`;
-    if (desc.skipCount != null && desc.skipCount > 0) {
-      const total = (desc.replayCount ?? 0) + desc.skipCount;
-      text += ` \u2014 ${total} local, ${desc.skipCount} already on target, ${desc.replayCount ?? 0} to rebase`;
-    } else if (desc.replayCount != null && desc.replayCount > 0) {
-      text += ` \u2014 ${desc.replayCount} to rebase`;
-    }
-    result = cell(text);
-  } else {
-    const diff = desc.diff;
-    const behindStr =
-      diff && diff.behind > 0
-        ? diff.matchedCount && diff.matchedCount > 0
-          ? `${diff.behind} behind (${diff.matchedCount} same, ${diff.behind - diff.matchedCount} new)`
-          : `${diff.behind} behind`
-        : "";
-    const diffParts = [diff && diff.behind > 0 && behindStr, diff && diff.ahead > 0 && `${diff.ahead} ahead`]
-      .filter(Boolean)
-      .join(", ");
-    const diffStr = diffParts ? ` \u2014 ${diffParts}` : "";
-
-    const mergeType = desc.mergeType ? ` (${desc.mergeType})` : "";
-    const action =
-      desc.kind === "rebase"
-        ? `rebase ${desc.branch} onto ${desc.baseRef}`
-        : `merge ${desc.baseRef} into ${desc.branch}${mergeType}`;
-
-    result = cell(`${action}${diffStr}`);
-  }
-
-  // Conflict risk
-  if (desc.conflictRisk) {
-    const labels = {
-      "will-conflict": "will conflict",
-      likely: "conflict likely",
-      unlikely: "conflict unlikely",
-      "no-conflict": "no conflict",
-    } as const;
-    const isAttention = desc.conflictRisk === "will-conflict" || desc.conflictRisk === "likely";
-    result = suffix(result, ` (${labels[desc.conflictRisk]})`, isAttention ? "attention" : "default");
-  }
-
-  // Retarget warning
-  if (desc.warning) {
-    result = suffix(result, ` (${desc.warning})`, "attention");
-  }
-
-  // Stash hint
-  if (desc.stash === "autostash") {
-    result = suffix(result, " (autostash)");
-  } else if (desc.stash === "pop-conflict-likely") {
-    result = suffix(result, " (autostash, stash pop conflict likely)", "attention");
-  } else if (desc.stash === "pop-conflict-unlikely") {
-    result = suffix(result, " (autostash, stash pop conflict unlikely)");
-  }
-
-  // HEAD sha
-  if (desc.headSha) {
-    result = suffix(result, `  (HEAD ${desc.headSha})`, "muted");
-  }
-
-  return result;
 }
 
 export function buildIntegratePlanNodes(
