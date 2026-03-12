@@ -1,24 +1,15 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
+import { readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { ArbError } from "../lib/core";
-import {
-  GitCache,
-  assertMinimumGitVersion,
-  branchExistsLocally,
-  getShortHead,
-  git,
-  remoteBranchExists,
-} from "../lib/git";
-import type { Cell, OutputNode } from "../lib/render";
-import { type RenderContext, cell, finishSummary, render, skipCell, suffix } from "../lib/render";
+import { GitCache, assertMinimumGitVersion, getShortHead, git } from "../lib/git";
+import type { Cell, OutputNode, Span } from "../lib/render";
+import { type RenderContext, cell, finishSummary, render, skipCell, spans, suffix } from "../lib/render";
 import type { SkipFlag } from "../lib/status";
 import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
 import { confirmOrExit, runPlanFlow } from "../lib/sync";
 import {
   dryRunNotice,
-  error,
   info,
   inlineResult,
   inlineStart,
@@ -28,13 +19,7 @@ import {
   warn,
   yellow,
 } from "../lib/terminal";
-import {
-  requireBranch,
-  requireWorkspace,
-  resolveRepoSelection,
-  workspaceBranch,
-  workspaceRepoDirs,
-} from "../lib/workspace";
+import { requireBranch, requireWorkspace, resolveRepoSelection, workspaceRepoDirs } from "../lib/workspace";
 
 // ── Assessment ──
 
@@ -48,10 +33,9 @@ export interface ResetAssessment {
   baseRef: string;
   target: string;
   dirtyFiles: number;
+  totalAhead: number;
   unpushedCommits: number;
   headSha: string;
-  retargetFrom?: string;
-  retargetTo?: string;
 }
 
 export function assessResetRepo(
@@ -69,6 +53,7 @@ export function assessResetRepo(
     baseRef: "",
     target: "",
     dirtyFiles: 0,
+    totalAhead: 0,
     unpushedCommits: 0,
     headSha,
   };
@@ -111,10 +96,11 @@ export function assessResetRepo(
 
   const dirtyFiles = status.local.staged + status.local.modified + status.local.conflicts;
   const flags = computeFlags(status, branch);
-  const unpushedCommits = flags.isUnpushed ? (status.share.toPush ?? status.base?.ahead ?? 0) : 0;
+  const totalAhead = status.base.ahead ?? 0;
+  const unpushedCommits = flags.isUnpushed ? (status.share.toPush ?? totalAhead) : 0;
 
   // Check if already at the base ref with no dirty files
-  if (status.base.behind === 0 && status.base.ahead === 0 && dirtyFiles === 0) {
+  if (status.base.behind === 0 && totalAhead === 0 && dirtyFiles === 0) {
     return {
       ...base,
       outcome: "already-clean",
@@ -122,6 +108,7 @@ export function assessResetRepo(
       baseRef,
       target,
       dirtyFiles: 0,
+      totalAhead: 0,
       unpushedCommits: 0,
     };
   }
@@ -133,19 +120,47 @@ export function assessResetRepo(
     baseRef,
     target,
     dirtyFiles,
+    totalAhead,
     unpushedCommits,
   };
 }
 
 // ── Plan formatting ──
 
+function commitLossSpans(totalAhead: number, unpushed: number): Span[] {
+  if (totalAhead === 0) return [];
+  if (unpushed === totalAhead) {
+    return [{ text: plural(totalAhead, "unpushed commit"), attention: "attention" }];
+  }
+  if (unpushed === 0) {
+    return [{ text: `${plural(totalAhead, "commit")} (pushed)`, attention: "default" }];
+  }
+  return [
+    { text: `${plural(totalAhead, "commit")} (`, attention: "default" },
+    { text: `${unpushed} unpushed`, attention: "attention" },
+    { text: ")", attention: "default" },
+  ];
+}
+
 function resetActionCell(a: ResetAssessment): Cell {
-  const parts: string[] = [];
-  if (a.dirtyFiles > 0) parts.push(plural(a.dirtyFiles, "dirty file"));
-  if (a.unpushedCommits > 0) parts.push(plural(a.unpushedCommits, "unpushed commit"));
-  const lossText = parts.length > 0 ? ` — lose ${parts.join(", ")}` : "";
-  const retargetText = a.retargetFrom ? ` (retarget from ${a.retargetFrom})` : "";
-  let result = cell(`reset to ${a.target}${retargetText}${lossText}`);
+  const commitSpans = commitLossSpans(a.totalAhead, a.unpushedCommits);
+  const hasDirty = a.dirtyFiles > 0;
+  const hasCommits = commitSpans.length > 0;
+
+  if (!hasDirty && !hasCommits) {
+    let result = cell(`reset to ${a.target}`);
+    if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
+    return result;
+  }
+
+  const allSpans: Span[] = [{ text: `reset to ${a.target} — discard `, attention: "default" }];
+  if (hasDirty) {
+    allSpans.push({ text: plural(a.dirtyFiles, "dirty file"), attention: "default" });
+    if (hasCommits) allSpans.push({ text: ", ", attention: "default" });
+  }
+  allSpans.push(...commitSpans);
+
+  let result = spans(...allSpans);
   if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
   return result;
 }
@@ -199,11 +214,10 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
     .option("-N, --no-fetch", "Skip fetching before reset")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("-n, --dry-run", "Show what would happen without executing")
-    .option("-b, --base <branch>", "Reset to a different base branch and retarget the workspace")
     .option("-w, --where <filter>", "Only reset repos matching status filter (comma = OR, + = AND, ^ = negate)")
     .summary("Reset all repos to the base branch")
     .description(
-      "Reset all repos (or only the named repos) to the base branch HEAD, discarding local commits and staged/unstaged changes. Resolves the correct base remote and branch per repo automatically — no need to hard-code 'origin/main'. Untracked files are preserved (no git clean). Shows a plan with what will be lost (dirty files, unpushed commits) and asks for confirmation before proceeding.\n\nUse --base <branch> to retarget the workspace to a different base branch. This resets all repos to the new base and updates the workspace config.\n\nUse --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
+      "Reset all repos (or only the named repos) to the base branch HEAD, discarding local commits and staged/unstaged changes. Resolves the correct base remote and branch per repo automatically — no need to hard-code 'origin/main'. Untracked files are preserved (no git clean). Shows a plan with what will be lost (dirty files, unpushed commits) and asks for confirmation before proceeding.\n\nTo change the base branch before resetting, use 'arb branch base <branch>'.\n\nUse --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
     )
     .action(
       async (
@@ -212,7 +226,6 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
           fetch?: boolean;
           yes?: boolean;
           dryRun?: boolean;
-          base?: string;
           where?: string;
         },
       ) => {
@@ -220,12 +233,6 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
         const ctx = getCtx();
         const { wsDir, workspace } = requireWorkspace(ctx);
         const branch = await requireBranch(wsDir, workspace);
-        const baseOverride = options.base ?? null;
-
-        if (baseOverride === branch) {
-          error(`Cannot reset to ${baseOverride} — that is the current feature branch.`);
-          throw new ArbError(`Cannot reset to ${baseOverride} — that is the current feature branch.`);
-        }
 
         let repoNames = repoArgs;
         if (repoNames.length === 0) {
@@ -257,34 +264,7 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
                 if (!repoMatchesWhere(flags, where)) return null;
               }
               const headSha = await getShortHead(repoDir);
-              const assessment = assessResetRepo(status, repoDir, branch, fetchFailed, headSha);
-
-              // Apply --base override: retarget to a different base branch
-              if (baseOverride && assessment.outcome !== "skip" && baseOverride !== assessment.baseRef) {
-                const baseRemote = assessment.baseRemote || status.base?.remote;
-                // Prefer remote branch, fall back to local branch
-                const remoteExists = baseRemote ? await remoteBranchExists(repoDir, baseOverride, baseRemote) : false;
-                const localExists = !remoteExists ? await branchExistsLocally(repoDir, baseOverride) : false;
-                if (!remoteExists && !localExists) {
-                  return {
-                    ...assessment,
-                    outcome: "skip" as const,
-                    skipReason: `branch ${baseOverride} not found`,
-                    skipFlag: "retarget-target-not-found" as const,
-                  };
-                }
-                const target = remoteExists ? `${baseRemote}/${baseOverride}` : baseOverride;
-                return {
-                  ...assessment,
-                  outcome: "will-reset" as const,
-                  retargetFrom: assessment.baseRef,
-                  retargetTo: baseOverride,
-                  baseRef: baseOverride,
-                  target,
-                };
-              }
-
-              return assessment;
+              return assessResetRepo(status, repoDir, branch, fetchFailed, headSha);
             }),
           );
           return assessments.filter((a): a is ResetAssessment => a !== null);
@@ -314,7 +294,7 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
         if (withUnpushed.length > 0) {
           const totalUnpushed = withUnpushed.reduce((sum, a) => sum + a.unpushedCommits, 0);
           warn(
-            `Warning: ${plural(totalUnpushed, "unpushed commit")} in ${plural(withUnpushed.length, "repo")} will be lost`,
+            `Warning: ${plural(totalUnpushed, "unpushed commit")} in ${plural(withUnpushed.length, "repo")} will be permanently lost`,
           );
         }
 
@@ -336,11 +316,10 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
         const failed: { assessment: ResetAssessment; stderr: string }[] = [];
 
         for (const a of willReset) {
-          const retargetSuffix = a.retargetFrom ? ` (retarget from ${a.retargetFrom})` : "";
-          inlineStart(a.repo, `resetting to ${a.target}${retargetSuffix}`);
+          inlineStart(a.repo, `resetting to ${a.target}`);
           const result = await git(a.repoDir, "reset", "--hard", a.target);
           if (result.exitCode === 0) {
-            inlineResult(a.repo, `reset to ${a.target}${retargetSuffix}`);
+            inlineResult(a.repo, `reset to ${a.target}`);
             resetOk++;
           } else {
             inlineResult(a.repo, yellow("failed"));
@@ -377,31 +356,10 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
           process.stderr.write(render(failureNodes, reportCtx));
         }
 
-        // Phase 5: update workspace config after retarget (only if all retargeted repos succeeded)
-        const retargetedRepos = willReset.filter((a) => a.retargetTo);
-        const retargetFailed = retargetedRepos.some((a) => failed.some((f) => f.assessment === a));
-        if (baseOverride && resetOk > 0 && !retargetFailed) {
-          const firstRetargeted = willReset.find((a) => a.retargetTo);
-          if (firstRetargeted) {
-            const configFile = `${wsDir}/.arbws/config.json`;
-            const wb = await workspaceBranch(wsDir);
-            const wsBranch = wb?.branch ?? branch;
-            const repoDefault = await cache.getDefaultBranch(firstRetargeted.repoDir, firstRetargeted.baseRemote);
-            if (repoDefault && baseOverride === repoDefault) {
-              writeWorkspaceConfig(configFile, { branch: wsBranch });
-            } else {
-              writeWorkspaceConfig(configFile, { branch: wsBranch, base: baseOverride });
-            }
-          }
-        }
-
-        // Phase 6: summary
+        // Phase 5: summary
         process.stderr.write("\n");
-        const retargetedCount = willReset.filter((a) => a.retargetTo && !failed.some((f) => f.assessment === a)).length;
-        const normalResetCount = resetOk - retargetedCount;
         const parts: string[] = [];
-        if (retargetedCount > 0) parts.push(`Retargeted ${plural(retargetedCount, "repo")}`);
-        if (normalResetCount > 0 || retargetedCount === 0) parts.push(`Reset ${plural(normalResetCount, "repo")}`);
+        parts.push(`Reset ${plural(resetOk, "repo")}`);
         if (failed.length > 0) parts.push(`${failed.length} failed`);
         if (alreadyClean.length > 0) parts.push(`${alreadyClean.length} already at base`);
         if (skipped.length > 0) parts.push(`${skipped.length} skipped`);

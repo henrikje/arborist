@@ -134,14 +134,6 @@ arb reset
 
 This resolves the correct base remote and branch per repo automatically — no need to hard-code `origin/main`. Untracked files are preserved. The plan shows what will be lost (dirty files, unpushed commits) and warns prominently when unpushed commits are at risk.
 
-**Retargeting via reset** — switch the workspace to a different base branch and start fresh:
-
-```bash
-arb reset --base develop
-```
-
-This resets all repos to the new base branch and updates the workspace config. Unlike `arb rebase --retarget`, local commits are discarded rather than replayed.
-
 All sync commands support `--where` (`-w`) to filter which repos are included in the plan:
 
 ```bash
