@@ -578,6 +578,8 @@ async function blockingFetchRepos(ctx: ArbContext, cache: GitCache, repoNames: s
 }
 
 function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
+  row.base = summary.base ?? "";
+  row.baseCell = cell(row.base);
   if (summary.statusCounts.length === 0) {
     row.statusCell = cell("no issues");
   } else {
