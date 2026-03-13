@@ -128,6 +128,83 @@ describe("exec", () => {
       expect(args).toContain("-d");
       expect(args).toContain("--verbose");
     }));
+
+  test("arb exec --parallel runs in all repos", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const result = await arb(env, ["exec", "--parallel", "echo", "hello"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("==> repo-a <==");
+      expect(result.output).toContain("==> repo-b <==");
+      expect(result.output).toContain("hello");
+    }));
+
+  test("arb exec --parallel outputs repos in alphabetical order", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const result = await arb(env, ["exec", "--parallel", "echo", "done"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      const aIdx = result.output.indexOf("==> repo-a <==");
+      const bIdx = result.output.indexOf("==> repo-b <==");
+      expect(aIdx).toBeLessThan(bIdx);
+    }));
+
+  test("arb exec -p works as shorthand for --parallel", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const result = await arb(env, ["exec", "-p", "echo", "hello"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("hello");
+    }));
+
+  test("arb exec --parallel reports failures", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const result = await arb(env, ["exec", "--parallel", "false"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Failed:");
+    }));
+
+  test("arb exec --parallel --repo targets specific repo", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const result = await arb(env, ["exec", "--parallel", "--repo", "repo-a", "pwd"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("repo-a");
+      expect(result.output).not.toContain("==> repo-b <==");
+    }));
+
+  test("arb exec --parallel --dirty runs only in dirty repos", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      await write(join(env.projectDir, "my-feature/repo-a/dirty.txt"), "dirty");
+      const result = await arb(env, ["exec", "--parallel", "--dirty", "pwd"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("repo-a");
+      expect(result.output).not.toContain("repo-b");
+    }));
+
+  test("arb exec --parallel shows success summary", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const result = await arb(env, ["exec", "--parallel", "true"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Ran in 2 repos");
+    }));
 });
 
 // ── open ─────────────────────────────────────────────────────────

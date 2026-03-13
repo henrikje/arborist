@@ -557,7 +557,7 @@ __arb_complete_exec() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--repo -d --dirty -w --where" -- "$cur"))
+        COMPREPLY=($(compgen -W "--repo -d --dirty -w --where -p --parallel" -- "$cur"))
         return
     fi
 }

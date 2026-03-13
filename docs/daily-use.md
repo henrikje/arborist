@@ -175,7 +175,16 @@ arb exec --dirty git diff -d                 # --dirty is arb's, -d goes to git 
 arb exec --where behind-base git status      # check working trees before rebase
 ```
 
-Runs the given command in each repo sequentially. It supports running interactive commands. Each execution of the command uses the corresponding repo directory as working directory. Use `--dirty` (`-d`) to limit to repos with uncommitted changes, or `--where` (`-w`) for any status filter. Arb flags come before the command — everything after the command name passes through verbatim. See `arb exec --help` for all options.
+Runs the given command in each repo sequentially. It supports running interactive commands. Each execution of the command uses the corresponding repo directory as working directory. Use `--dirty` (`-d`) to limit to repos with uncommitted changes, or `--where` (`-w`) for any status filter. Arb flags come before the command — everything after the command name passes through verbatim.
+
+Use `--parallel` (`-p`) to run concurrently across all repos — useful for non-interactive commands like installs or builds:
+
+```bash
+arb exec -p npm install
+arb exec -p --dirty npm test
+```
+
+Output is buffered per repo and printed in alphabetical order. Stdin is disabled in parallel mode. See `arb exec --help` for all options.
 
 ## Open in your editor
 
