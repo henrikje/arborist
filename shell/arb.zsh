@@ -216,6 +216,7 @@ _arb() {
                         '(-a --all-safe)'{-a,--all-safe}'[Remove all safe workspaces]' \
                         '(-w --where)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
                         '--older-than[Only delete workspaces not touched in the given duration (e.g. 30d, 2w, 3m, 1y)]:duration:' \
+                        '--newer-than[Only delete workspaces touched within the given duration (e.g. 7d, 2w)]:duration:' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-N --fetch --no-fetch)--fetch[Fetch before assessing workspace status (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching]'

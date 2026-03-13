@@ -80,6 +80,13 @@ describe("help", () => {
       expect(result.output).toContain("arb help where");
     }));
 
+  test("arb delete --help shows newer-than option", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, ["delete", "--help"]);
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("--newer-than <duration>");
+    }));
+
   test("arb help remotes shows remote roles reference", () =>
     withBareEnv(async (env) => {
       const result = await arb(env, ["help", "remotes"]);
