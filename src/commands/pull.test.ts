@@ -802,36 +802,37 @@ describe("forceRebasedSkips", () => {
 
   test("converts rebased-locally skip to will-pull with forced-reset when net-new commits exist", () => {
     const assessments = [makeAssessment({ toPush: 3, rebased: 2 })];
-    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
-    expect(assessments[0]?.outcome).toBe("will-pull");
-    expect(assessments[0]?.pullStrategy).toBe("forced-reset");
-    expect(assessments[0]?.safeReset?.target).toBe("origin/feature");
-    expect(assessments[0]?.safeReset?.reason).toBe("discards local rebase");
-    expect(assessments[0]?.skipReason).toBeUndefined();
-    expect(assessments[0]?.skipFlag).toBeUndefined();
+    const nextAssessments = forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
+    expect(nextAssessments[0]?.outcome).toBe("will-pull");
+    expect(nextAssessments[0]?.pullStrategy).toBe("forced-reset");
+    expect(nextAssessments[0]?.safeReset?.target).toBe("origin/feature");
+    expect(nextAssessments[0]?.safeReset?.reason).toBe("discards local rebase");
+    expect(nextAssessments[0]?.skipReason).toBeUndefined();
+    expect(nextAssessments[0]?.skipFlag).toBeUndefined();
+    expect(assessments[0]?.outcome).toBe("skip");
   });
 
   test("converts rebased-locally skip to will-pull with safe-reset when no net-new commits", () => {
     const assessments = [makeAssessment({ toPush: 2, rebased: 2 })];
-    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
-    expect(assessments[0]?.outcome).toBe("will-pull");
-    expect(assessments[0]?.pullStrategy).toBe("safe-reset");
-    expect(assessments[0]?.safeReset?.target).toBe("origin/feature");
-    expect(assessments[0]?.safeReset?.reason).toBe("discards local rebase");
+    const nextAssessments = forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
+    expect(nextAssessments[0]?.outcome).toBe("will-pull");
+    expect(nextAssessments[0]?.pullStrategy).toBe("safe-reset");
+    expect(nextAssessments[0]?.safeReset?.target).toBe("origin/feature");
+    expect(nextAssessments[0]?.safeReset?.reason).toBe("discards local rebase");
   });
 
   test("uses safe-reset when excess toPush is from-base commits", () => {
     // toPush=3, rebased=2, fromBaseCount=1 → netNew = 3-2-1 = 0 → safe
     const assessments = [makeAssessment({ toPush: 3, rebased: 2, fromBaseCount: 1 })];
-    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
-    expect(assessments[0]?.pullStrategy).toBe("safe-reset");
+    const nextAssessments = forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
+    expect(nextAssessments[0]?.pullStrategy).toBe("safe-reset");
   });
 
   test("works for rebase pull mode", () => {
     const assessments = [makeAssessment({ pullMode: "rebase", toPush: 2, rebased: 2 })];
-    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
-    expect(assessments[0]?.outcome).toBe("will-pull");
-    expect(assessments[0]?.pullStrategy).toBe("safe-reset");
+    const nextAssessments = forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
+    expect(nextAssessments[0]?.outcome).toBe("will-pull");
+    expect(nextAssessments[0]?.pullStrategy).toBe("safe-reset");
   });
 
   test("does not affect other skip types", () => {
@@ -840,10 +841,10 @@ describe("forceRebasedSkips", () => {
       makeAssessment({ skipFlag: "detached-head", skipReason: "HEAD is detached" }),
       makeAssessment({ skipFlag: "not-pushed", skipReason: "no remote branch" }),
     ];
-    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
-    expect(assessments[0]?.outcome).toBe("skip");
-    expect(assessments[1]?.outcome).toBe("skip");
-    expect(assessments[2]?.outcome).toBe("skip");
+    const nextAssessments = forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
+    expect(nextAssessments[0]?.outcome).toBe("skip");
+    expect(nextAssessments[1]?.outcome).toBe("skip");
+    expect(nextAssessments[2]?.outcome).toBe("skip");
   });
 
   test("does not affect will-pull or up-to-date repos", () => {
@@ -851,21 +852,21 @@ describe("forceRebasedSkips", () => {
       makeAssessment({ outcome: "will-pull", skipFlag: undefined, skipReason: undefined }),
       makeAssessment({ outcome: "up-to-date", skipFlag: undefined, skipReason: undefined }),
     ];
-    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
-    expect(assessments[0]?.outcome).toBe("will-pull");
-    expect(assessments[1]?.outcome).toBe("up-to-date");
+    const nextAssessments = forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
+    expect(nextAssessments[0]?.outcome).toBe("will-pull");
+    expect(nextAssessments[1]?.outcome).toBe("up-to-date");
   });
 
   test("uses share remote from remotesMap", () => {
     const assessments = [makeAssessment()];
-    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", { share: "fork" }]));
-    expect(assessments[0]?.safeReset?.target).toBe("fork/feature");
+    const nextAssessments = forceRebasedSkips(assessments, makeRemotesMap(["repo-a", { share: "fork" }]));
+    expect(nextAssessments[0]?.safeReset?.target).toBe("fork/feature");
   });
 
   test("uses assessment branch for drifted repos", () => {
     const assessments = [makeAssessment({ branch: "other-branch", drifted: true })];
-    forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
-    expect(assessments[0]?.safeReset?.target).toBe("origin/other-branch");
+    const nextAssessments = forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
+    expect(nextAssessments[0]?.safeReset?.target).toBe("origin/other-branch");
   });
 });
 

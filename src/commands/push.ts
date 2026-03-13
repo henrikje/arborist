@@ -85,23 +85,15 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
               });
             }),
           );
-          return assessments
-            .filter((a): a is PushAssessment => a !== null)
-            .map<PushAssessment>((a) => {
-              if (a.outcome !== "will-force-push" || options.force) return a;
-              const rebasedHint = a.rebased > 0 ? `, ${a.rebased} rebased` : "";
-              return {
-                ...a,
-                outcome: "skip" as const,
-                skipReason: `diverged from ${a.shareRemote}${rebasedHint} (use --force)`,
-                skipFlag: "diverged",
-              };
-            });
+          return applyForcePushPolicy(
+            assessments.filter((a): a is PushAssessment => a !== null),
+            options.force === true,
+          );
         };
 
         const postAssess = options.verbose
           ? (nextAssessments: PushAssessment[]) => gatherPushVerboseCommits(nextAssessments, remotesMap)
-          : undefined;
+          : async (nextAssessments: PushAssessment[]) => nextAssessments;
 
         const assessments = await runPlanFlow({
           shouldFetch,
@@ -367,33 +359,47 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
   return result;
 }
 
+export function applyForcePushPolicy(assessments: PushAssessment[], allowForce: boolean): PushAssessment[] {
+  return assessments.map((a) => {
+    if (a.outcome !== "will-force-push" || allowForce) return a;
+    const rebasedHint = a.rebased > 0 ? `, ${a.rebased} rebased` : "";
+    return {
+      ...a,
+      outcome: "skip",
+      skipReason: `diverged from ${a.shareRemote}${rebasedHint} (use --force)`,
+      skipFlag: "diverged",
+    };
+  });
+}
+
 async function gatherPushVerboseCommits(
   assessments: PushAssessment[],
   remotesMap: Map<string, RepoRemotes>,
-): Promise<void> {
-  await Promise.all(
-    assessments
-      .filter(
-        (a) => a.outcome === "will-push" || a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated",
-      )
-      .map(async (a) => {
-        const shareRemote = remotesMap.get(a.repo)?.share;
-        if (!shareRemote) return;
-        // For new branches or recreated branches, use the base remote's base branch
-        const ref =
-          a.newBranch || a.recreate
-            ? `${remotesMap.get(a.repo)?.base ?? shareRemote}/HEAD`
-            : `${shareRemote}/${a.branch}`;
-        const commits = await getCommitsBetweenFull(a.repoDir, ref, "HEAD");
-        const total = commits.length;
-        a.verbose = {
+): Promise<PushAssessment[]> {
+  return Promise.all(
+    assessments.map(async (a) => {
+      if (!(a.outcome === "will-push" || a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated")) {
+        return a;
+      }
+      const shareRemote = remotesMap.get(a.repo)?.share;
+      if (!shareRemote) return a;
+      const ref =
+        a.newBranch || a.recreate
+          ? `${remotesMap.get(a.repo)?.base ?? shareRemote}/HEAD`
+          : `${shareRemote}/${a.branch}`;
+      const commits = await getCommitsBetweenFull(a.repoDir, ref, "HEAD");
+      const total = commits.length;
+      return {
+        ...a,
+        verbose: {
           commits: commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
             shortHash: c.shortHash,
             subject: c.subject,
           })),
           totalCommits: total,
-        };
-      }),
+        },
+      };
+    }),
   );
 }
 

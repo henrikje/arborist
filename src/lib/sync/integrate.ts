@@ -139,6 +139,7 @@ export async function integrate(
     if (options.graph) {
       await gatherIntegrateGraphData(nextAssessments, !!options.verbose);
     }
+    return nextAssessments;
   };
 
   const assessments = await runPlanFlow({
