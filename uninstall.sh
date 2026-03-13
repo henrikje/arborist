@@ -23,9 +23,12 @@ if [[ -f "$BIN_DIR/arb" ]]; then
     found_items+=("binary: $BIN_DIR/arb")
 fi
 
-if [[ -d "$SHARE_DIR" ]]; then
-    found_items+=("shell files: $SHARE_DIR/")
-fi
+SHELL_FILES=("$SHARE_DIR/arb.zsh" "$SHARE_DIR/arb.bash")
+for shell_file in "${SHELL_FILES[@]}"; do
+    if [[ -f "$shell_file" ]]; then
+        found_items+=("shell file: $shell_file")
+    fi
+done
 
 RC_FILES=("$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc")
 rc_files_modified=()
@@ -95,9 +98,15 @@ done
 
 # ── Remove shell files ───────────────────────────────────────────
 
-if [[ -d "$SHARE_DIR" ]]; then
-    rm -rf "$SHARE_DIR"
-    log "Removed $SHARE_DIR/"
+for shell_file in "${SHELL_FILES[@]}"; do
+    if [[ -f "$shell_file" ]]; then
+        rm -f "$shell_file"
+        log "Removed $shell_file"
+    fi
+done
+
+if [[ -d "$SHARE_DIR" ]] && [[ -z "$(ls -A "$SHARE_DIR")" ]]; then
+    rmdir "$SHARE_DIR"
 fi
 
 if [[ -d "$HOME/.local/share" ]] && [[ -z "$(ls -A "$HOME/.local/share")" ]]; then
