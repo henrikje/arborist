@@ -22,6 +22,7 @@ import { RETARGET_EXEMPT_SKIPS } from "../status/skip-flags";
 import { resolveWhereFilter } from "../status/where";
 import { dryRunNotice, error, info, inlineResult, inlineStart, plural, yellow } from "../terminal/output";
 import { isTTY } from "../terminal/tty";
+import { rejectExplicitBaseRemotePrefix, resolveWorkspaceBaseResolution } from "../workspace/base";
 import { workspaceBranch } from "../workspace/branch";
 import { requireBranch, requireWorkspace } from "../workspace/context";
 import { resolveRepoSelection, workspaceRepoDirs } from "../workspace/repos";
@@ -56,16 +57,26 @@ export async function integrate(
   // Phase 1: context & repo selection
   const { wsDir, workspace } = requireWorkspace(ctx);
   const branch = await requireBranch(wsDir, workspace);
+  const cache = await GitCache.create();
   const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
+  const workspaceBaseResolution = retargetExplicit
+    ? await resolveWorkspaceBaseResolution(wsDir, ctx.reposDir, cache)
+    : null;
+  const normalizedRetargetExplicit =
+    retargetExplicit && workspaceBaseResolution
+      ? rejectExplicitBaseRemotePrefix(retargetExplicit, workspaceBaseResolution)
+      : retargetExplicit;
 
-  if (retargetExplicit) {
-    if (retargetExplicit === branch) {
-      error(`Cannot retarget to ${retargetExplicit} — that is the current feature branch.`);
-      throw new ArbError(`Cannot retarget to ${retargetExplicit} — that is the current feature branch.`);
+  if (normalizedRetargetExplicit) {
+    if (normalizedRetargetExplicit === branch) {
+      error(`Cannot retarget to ${normalizedRetargetExplicit} — that is the current feature branch.`);
+      throw new ArbError(`Cannot retarget to ${normalizedRetargetExplicit} — that is the current feature branch.`);
     }
-    if (retargetExplicit === configBase) {
-      error(`Cannot retarget to ${retargetExplicit} — that is already the configured base branch.`);
-      throw new ArbError(`Cannot retarget to ${retargetExplicit} — that is already the configured base branch.`);
+    if (normalizedRetargetExplicit === configBase) {
+      error(`Cannot retarget to ${normalizedRetargetExplicit} — that is already the configured base branch.`);
+      throw new ArbError(
+        `Cannot retarget to ${normalizedRetargetExplicit} — that is already the configured base branch.`,
+      );
     }
   }
 
@@ -73,7 +84,6 @@ export async function integrate(
   const where = resolveWhereFilter(options);
 
   // Resolve remotes for all repos
-  const cache = await GitCache.create();
   const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
 
   // Phase 2: fetch
@@ -97,7 +107,7 @@ export async function integrate(
     classify: ({ repoDir, status, fetchFailed }) =>
       assessIntegrateRepo(status, repoDir, branch, fetchFailed, {
         retarget,
-        retargetExplicit,
+        retargetExplicit: normalizedRetargetExplicit,
         autostash,
         includeDrifted,
         cache,

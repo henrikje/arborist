@@ -610,6 +610,35 @@ describe("explicit retarget to non-default branch", () => {
       expect(JSON.parse(config).base).toBeUndefined();
     }));
 
+  test("arb rebase --retarget origin/main rejects matching remote-qualified input", () =>
+    withEnv(async (env) => {
+      const repoA = join(env.projectDir, ".arb/repos/repo-a");
+      await git(repoA, ["checkout", "-b", "feat/auth"]);
+      await write(join(repoA, "auth.txt"), "auth");
+      await git(repoA, ["add", "auth.txt"]);
+      await git(repoA, ["commit", "-m", "auth feature"]);
+      await git(repoA, ["push", "-u", "origin", "feat/auth"]);
+      await git(repoA, ["checkout", "--detach"]);
+
+      await arb(env, ["create", "stacked", "--base", "feat/auth", "-b", "feat/auth-ui", "repo-a"]);
+
+      await write(join(env.projectDir, "stacked/repo-a/ui.txt"), "ui");
+      await git(join(env.projectDir, "stacked/repo-a"), ["add", "ui.txt"]);
+      await git(join(env.projectDir, "stacked/repo-a"), ["commit", "-m", "ui feature"]);
+
+      const tmpMerge = join(env.testDir, "tmp-merge-qualified");
+      await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpMerge]);
+      await git(tmpMerge, ["merge", "origin/feat/auth", "--no-ff", "-m", "merge feat/auth"]);
+      await git(tmpMerge, ["push"]);
+
+      const result = await arb(env, ["rebase", "--retarget", "origin/main", "--yes"], {
+        cwd: join(env.projectDir, "stacked"),
+      });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("includes the resolved base remote 'origin'");
+      expect(result.output).toContain("Use 'main' instead");
+    }));
+
   test("arb rebase --retarget main updates config in no-op retarget path", () =>
     withEnv(async (env) => {
       const repoA = join(env.projectDir, ".arb/repos/repo-a");
