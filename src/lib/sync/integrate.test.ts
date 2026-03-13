@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { formatVerboseCommits } from "../render/status-verbose";
 import { makeRepo } from "../status/test-helpers";
+import { classifyRepo } from "./classify-integrate";
 import {
   type RepoAssessment,
-  classifyRepo,
   describeIntegrateAction,
   formatIntegratePlan,
   maybeWriteRetargetConfig,
