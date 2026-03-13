@@ -199,6 +199,7 @@ describe("stacked base merge detection", () => {
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("retarget");
       expect(result.output).toContain("Retargeted");
+      expect(result.output).toContain("base branch changed from feat/auth to main");
 
       const logOutput = await git(join(env.projectDir, "stacked/repo-a"), ["log", "--oneline"]);
       expect(logOutput).toContain("ui feature");
@@ -237,6 +238,7 @@ describe("stacked base merge detection", () => {
       });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("retarget");
+      expect(result.output).toContain("base branch changed from feat/auth to main");
 
       const logOutput = await git(join(env.projectDir, "stacked/repo-a"), ["log", "--oneline"]);
       expect(logOutput).toContain("ui feature");
@@ -468,6 +470,7 @@ describe("stacked base merge detection (branch deleted)", () => {
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("retarget");
       expect(result.output).toContain("Retargeted");
+      expect(result.output).toContain("base branch changed from feat/auth to main");
 
       const logOutput = await git(join(env.projectDir, "stacked/repo-a"), ["log", "--oneline"]);
       expect(logOutput).toContain("ui feature");
@@ -506,6 +509,7 @@ describe("stacked base merge detection (branch deleted)", () => {
       });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("retarget");
+      expect(result.output).toContain("base branch changed from feat/auth to main");
 
       const logOutput = await git(join(env.projectDir, "stacked/repo-a"), ["log", "--oneline"]);
       expect(logOutput).toContain("ui feature");
@@ -561,6 +565,7 @@ describe("explicit retarget to non-default branch", () => {
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("retarget");
       expect(result.output).toContain("Retargeted");
+      expect(result.output).toContain("base branch changed from feat/B to feat/A");
 
       const logOutput = await git(join(env.projectDir, "stacked-C/repo-a"), ["log", "--oneline"]);
       expect(logOutput).toContain("feat C");
@@ -636,6 +641,7 @@ describe("explicit retarget to non-default branch", () => {
         cwd: join(env.projectDir, "stacked"),
       });
       expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("base branch changed from feat/auth to main");
       expect(result.output).toContain("All repos up to date");
 
       const after = await readFile(join(env.projectDir, "stacked/.arbws/config.json"), "utf-8");

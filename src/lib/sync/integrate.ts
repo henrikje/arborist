@@ -155,6 +155,10 @@ export async function integrate(
     }
   }
   const retargetConfigTarget = retarget ? resolveRetargetConfigTarget(assessments) : null;
+  const retargetConfigFrom = retargetConfigTarget
+    ? (assessments.find((a) => a.retarget?.to === retargetConfigTarget && a.retarget?.reason !== "branch-merged")
+        ?.retarget?.from ?? null)
+    : null;
 
   // Phase 4: confirm
   const willOperate = assessments.filter((a) => a.outcome === "will-operate");
@@ -162,7 +166,7 @@ export async function integrate(
   const skipped = assessments.filter((a) => a.outcome === "skip" && !isDirtyButUpToDate(a));
 
   if (willOperate.length === 0) {
-    await maybeWriteRetargetConfig({
+    const wroteRetargetConfig = await maybeWriteRetargetConfig({
       dryRun: options.dryRun,
       wsDir,
       branch,
@@ -170,6 +174,10 @@ export async function integrate(
       retargetConfigTarget,
       cache,
     });
+    if (wroteRetargetConfig && retargetConfigTarget && retargetConfigFrom) {
+      inlineResult(workspace, `base branch changed from ${retargetConfigFrom} to ${retargetConfigTarget}`);
+      process.stderr.write("\n");
+    }
     info(upToDate.length > 0 ? "All repos up to date" : "Nothing to do");
     return;
   }
@@ -275,7 +283,7 @@ export async function integrate(
   if (stashNodes.length > 0) process.stderr.write(render(stashNodes, reportCtx));
 
   // Update config after successful retarget (skip branch-merged replays — base doesn't change)
-  await maybeWriteRetargetConfig({
+  const wroteRetargetConfig = await maybeWriteRetargetConfig({
     dryRun: options.dryRun,
     wsDir,
     branch,
@@ -284,6 +292,9 @@ export async function integrate(
     cache,
     hasConflicts: conflicted.length > 0,
   });
+  if (wroteRetargetConfig && retargetConfigTarget && retargetConfigFrom) {
+    inlineResult(workspace, `base branch changed from ${retargetConfigFrom} to ${retargetConfigTarget}`);
+  }
 
   // Phase 6: summary
   process.stderr.write("\n");
