@@ -207,7 +207,6 @@ async function selectFromAssessments(
     {
       message: header,
       choices,
-      pageSize: choices.length,
       loop: false,
       preview: (selectedIndices: number[]) => buildDeletePreview(assessments, selectedIndices, forceAtRisk),
       theme: {

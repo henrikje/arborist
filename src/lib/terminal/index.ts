@@ -1,5 +1,6 @@
 export type { AbortKeypress } from "./abort-keypress";
 export { checkboxWithPreview } from "./checkbox-with-preview";
+export { checkboxWithStatus } from "./checkbox-with-status";
 export { listenForAbortKeypress } from "./abort-keypress";
 export { debugGit, debugLog, enableDebug, getGitCallCount, isDebug } from "./debug";
 export {
@@ -30,6 +31,7 @@ export {
   yellow,
 } from "./output";
 export { readNamesFromStdin } from "./stdin";
+export { selectWithStatus } from "./select-with-status";
 export type { StdinSuppression } from "./suppress-stdin";
 export { suppressStdin } from "./suppress-stdin";
 export { isTTY } from "./tty";
