@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { RepoRemotes } from "../lib/git";
 import { makeRepo } from "../lib/status";
-import { type PushAssessment, assessPushRepo, formatPushPlan } from "./push";
+import { type PushAssessment, applyForcePushPolicy, assessPushRepo, formatPushPlan } from "./push";
 
 const DIR = "/tmp/test-repo";
 const SHA = "abc1234";
@@ -1188,5 +1188,56 @@ describe("formatPushPlan", () => {
     const nonNeg = actionStarts.filter((s) => s >= 0);
     expect(nonNeg.length).toBe(2);
     expect(nonNeg[0]).toBe(nonNeg[1]);
+  });
+});
+
+describe("applyForcePushPolicy", () => {
+  function makeAssessment(overrides: Record<string, unknown> = {}): PushAssessment {
+    return {
+      repo: "repo-a",
+      repoDir: "/tmp/repo-a",
+      outcome: "will-force-push",
+      ahead: 2,
+      behind: 1,
+      rebased: 1,
+      replaced: 0,
+      squashed: 0,
+      baseAhead: 0,
+      baseRef: "main",
+      branch: "feature",
+      shareRemote: "origin",
+      newBranch: false,
+      headSha: "abc1234",
+      recreate: false,
+      behindBase: 0,
+      ...normalizePushAssessment(overrides),
+    } as PushAssessment;
+  }
+
+  test("downgrades will-force-push to skip when force is not allowed", () => {
+    const assessments = [makeAssessment()];
+    const nextAssessments = applyForcePushPolicy(assessments, false);
+    expect(nextAssessments[0]?.outcome).toBe("skip");
+    expect(nextAssessments[0]?.skipFlag).toBe("diverged");
+    expect(nextAssessments[0]?.skipReason).toContain("use --force");
+    expect(assessments[0]?.outcome).toBe("will-force-push");
+  });
+
+  test("preserves will-force-push when force is allowed", () => {
+    const assessments = [makeAssessment()];
+    const nextAssessments = applyForcePushPolicy(assessments, true);
+    expect(nextAssessments[0]?.outcome).toBe("will-force-push");
+  });
+
+  test("leaves other outcomes unchanged", () => {
+    const assessments = [
+      makeAssessment({ outcome: "will-push" }),
+      makeAssessment({ outcome: "will-force-push-outdated" }),
+      makeAssessment({ outcome: "skip", skipFlag: "detached-head", skipReason: "HEAD is detached" }),
+    ];
+    const nextAssessments = applyForcePushPolicy(assessments, false);
+    expect(nextAssessments[0]?.outcome).toBe("will-push");
+    expect(nextAssessments[1]?.outcome).toBe("will-force-push-outdated");
+    expect(nextAssessments[2]?.outcome).toBe("skip");
   });
 });

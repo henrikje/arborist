@@ -19,7 +19,7 @@ export interface PlanFlowOptions<TAssessment> {
   reposForFetchReport: string[];
   remotesMap: Map<string, RepoRemotes>;
   assess: (fetchFailed: string[], unchangedRepos: Set<string>) => Promise<TAssessment[]>;
-  postAssess?: (assessments: TAssessment[]) => Promise<void>;
+  postAssess?: (assessments: TAssessment[]) => Promise<TAssessment[]>;
   formatPlan: (assessments: TAssessment[]) => string;
   onPostFetch?: () => void;
 }
@@ -31,7 +31,7 @@ async function assessWithPost<TAssessment>(
 ): Promise<TAssessment[]> {
   const assessments = await options.assess(fetchFailed, unchangedRepos);
   if (options.postAssess) {
-    await options.postAssess(assessments);
+    return options.postAssess(assessments);
   }
   return assessments;
 }

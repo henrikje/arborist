@@ -134,15 +134,16 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
         };
 
         const postAssess = async (nextAssessments: PullAssessment[]) => {
-          await reviveRebasedSkipsForSafeReset(nextAssessments, remotesMap);
-          await resolvePullStrategies(nextAssessments, remotesMap);
+          let assessments = await reviveRebasedSkipsForSafeReset(nextAssessments, remotesMap);
+          assessments = await resolvePullStrategies(assessments, remotesMap);
           if (options.force) {
-            forceRebasedSkips(nextAssessments, remotesMap);
+            assessments = forceRebasedSkips(assessments, remotesMap);
           }
-          await predictPullConflicts(nextAssessments, remotesMap);
+          assessments = await predictPullConflicts(assessments, remotesMap);
           if (options.verbose) {
-            await gatherPullVerboseCommits(nextAssessments, remotesMap);
+            assessments = await gatherPullVerboseCommits(assessments, remotesMap);
           }
+          return assessments;
         };
 
         const assessments = await runPlanFlow({
@@ -409,20 +410,14 @@ export function assessPullRepo(
   }
 
   // Already merged into base — but only skip if share has nothing to pull
-<<<<<<< HEAD
   // (e.g. on main behind origin/main, merge is set but toPull > 0)
   if (status.base?.merge != null && (status.share.toPull ?? 0) === 0) {
-    return { ...base, skipReason: `already merged into ${status.base.ref}`, skipFlag: "already-merged" };
-=======
-  // (e.g. on main behind origin/main, mergedIntoBase is set but toPull > 0)
-  if (status.base?.mergedIntoBase != null && (status.share.toPull ?? 0) === 0) {
     return {
       ...base,
       outcome: "skip",
       skipReason: `already merged into ${status.base.ref}`,
       skipFlag: "already-merged",
     };
->>>>>>> 702c54f (refactor: model sync assessments as unions)
   }
 
   // Check toPull count
@@ -608,13 +603,16 @@ export function pullActionCell(a: PullAssessment, remotesMap: Map<string, RepoRe
   return result;
 }
 
-export function forceRebasedSkips(assessments: PullAssessment[], remotesMap: Map<string, RepoRemotes>): void {
-  for (const [index, a] of assessments.entries()) {
-    if (a.outcome !== "skip" || a.skipFlag !== "rebased-locally") continue;
+export function forceRebasedSkips(
+  assessments: PullAssessment[],
+  remotesMap: Map<string, RepoRemotes>,
+): PullAssessment[] {
+  return assessments.map((a) => {
+    if (a.outcome !== "skip" || a.skipFlag !== "rebased-locally") return a;
     const shareRemote = remotesMap.get(a.repo)?.share;
-    if (!shareRemote) continue;
+    if (!shareRemote) return a;
     const netNew = a.toPush - a.rebased - a.fromBaseCount;
-    assessments[index] = {
+    return {
       ...withoutSkipFields(a),
       outcome: "will-pull",
       pullStrategy: netNew > 0 ? "forced-reset" : "safe-reset",
@@ -624,18 +622,18 @@ export function forceRebasedSkips(assessments: PullAssessment[], remotesMap: Map
         reason: "discards local rebase",
       },
     };
-  }
+  });
 }
 
 async function reviveRebasedSkipsForSafeReset(
   assessments: PullAssessment[],
   remotesMap: Map<string, RepoRemotes>,
-): Promise<void> {
-  await Promise.all(
-    assessments.map(async (a, index) => {
-      if (!(a.outcome === "skip" && a.skipFlag === "rebased-locally" && a.pullMode === "merge")) return;
+): Promise<PullAssessment[]> {
+  return Promise.all(
+    assessments.map(async (a) => {
+      if (!(a.outcome === "skip" && a.skipFlag === "rebased-locally" && a.pullMode === "merge")) return a;
       const shareRemote = remotesMap.get(a.repo)?.share;
-      if (!shareRemote) return;
+      if (!shareRemote) return a;
       const result = await evaluateSafeResetEligibility({
         repoDir: a.repoDir,
         shareRemote,
@@ -644,8 +642,8 @@ async function reviveRebasedSkipsForSafeReset(
         rebased: a.rebased,
         rebasedKnown: a.rebasedKnown,
       });
-      if (!result.eligible) return;
-      assessments[index] = {
+      if (!result.eligible) return a;
+      return {
         ...withoutSkipFields(a),
         outcome: "will-pull",
       };
@@ -656,76 +654,87 @@ async function reviveRebasedSkipsForSafeReset(
 async function resolvePullStrategies(
   assessments: PullAssessment[],
   remotesMap: Map<string, RepoRemotes>,
-): Promise<void> {
-  await Promise.all(
-    assessments
-      .filter((a) => a.outcome === "will-pull")
-      .map(async (a) => {
-        if (a.pullMode === "rebase") {
-          a.pullStrategy = "rebase-pull";
-          return;
-        }
-        a.pullStrategy = "merge-pull";
-        if (a.behind <= 0 || a.toPush <= 0) return;
-        const shareRemote = remotesMap.get(a.repo)?.share;
-        if (!shareRemote) return;
-        const result = await evaluateSafeResetEligibility({
-          repoDir: a.repoDir,
-          shareRemote,
-          branch: a.branch,
-          toPush: a.toPush,
-          rebased: a.rebased,
-          rebasedKnown: a.rebasedKnown,
-        });
-        if (result.eligible) {
-          a.pullStrategy = "safe-reset";
-          a.safeReset = {
+): Promise<PullAssessment[]> {
+  return Promise.all(
+    assessments.map(async (a) => {
+      if (a.outcome !== "will-pull") return a;
+      if (a.pullMode === "rebase") {
+        return { ...a, pullStrategy: "rebase-pull" };
+      }
+      if (a.behind <= 0 || a.toPush <= 0) {
+        return { ...a, pullStrategy: "merge-pull" };
+      }
+      const shareRemote = remotesMap.get(a.repo)?.share;
+      if (!shareRemote) {
+        return { ...a, pullStrategy: "merge-pull" };
+      }
+      const result = await evaluateSafeResetEligibility({
+        repoDir: a.repoDir,
+        shareRemote,
+        branch: a.branch,
+        toPush: a.toPush,
+        rebased: a.rebased,
+        rebasedKnown: a.rebasedKnown,
+      });
+      if (result.eligible) {
+        return {
+          ...a,
+          pullStrategy: "safe-reset",
+          safeReset: {
             ...a.safeReset,
             reason: result.reason,
             target: `${shareRemote}/${a.branch}`,
             oldRemoteTip: result.oldTipShort,
-          };
-        } else if (result.blockedBy) {
-          a.safeReset = { ...a.safeReset, blockedBy: result.blockedBy };
-        }
-      }),
+          },
+        };
+      }
+      if (result.blockedBy) {
+        return {
+          ...a,
+          pullStrategy: "merge-pull",
+          safeReset: { ...a.safeReset, blockedBy: result.blockedBy },
+        };
+      }
+      return { ...a, pullStrategy: "merge-pull" };
+    }),
   );
 }
 
 async function predictPullConflicts(
   assessments: PullAssessment[],
   remotesMap: Map<string, RepoRemotes>,
-): Promise<void> {
-  await Promise.all(
-    assessments
-      .filter((a) => a.outcome === "will-pull")
-      .map(async (a) => {
-        const strategy = a.pullStrategy ?? (a.pullMode === "rebase" ? "rebase-pull" : "merge-pull");
-        if (strategy === "safe-reset" || strategy === "forced-reset") {
-          a.conflictPrediction = "no-conflict";
-          return;
-        }
-        const shareRemote = remotesMap.get(a.repo)?.share;
-        if (!shareRemote) return;
-        const ref = `${shareRemote}/${a.branch}`;
-        if (a.behind > 0 && a.toPush > 0) {
-          const prediction = await predictMergeConflict(a.repoDir, ref);
-          a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
-          // Per-commit conflict detail for rebase-mode pulls
-          if (prediction?.hasConflict && a.pullMode === "rebase") {
-            const conflictCommits = await predictRebaseConflictCommits(a.repoDir, ref);
-            if (conflictCommits.length > 0) {
-              a.verbose = { ...a.verbose, conflictCommits };
-            }
+): Promise<PullAssessment[]> {
+  return Promise.all(
+    assessments.map(async (a) => {
+      if (a.outcome !== "will-pull") return a;
+      const strategy = a.pullStrategy ?? (a.pullMode === "rebase" ? "rebase-pull" : "merge-pull");
+      if (strategy === "safe-reset" || strategy === "forced-reset") {
+        return { ...a, conflictPrediction: "no-conflict" };
+      }
+      const shareRemote = remotesMap.get(a.repo)?.share;
+      if (!shareRemote) return a;
+      const ref = `${shareRemote}/${a.branch}`;
+      let conflictPrediction: PullAssessment["conflictPrediction"];
+      let verbose = a.verbose;
+      if (a.behind > 0 && a.toPush > 0) {
+        const prediction = await predictMergeConflict(a.repoDir, ref);
+        conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
+        if (prediction?.hasConflict && a.pullMode === "rebase") {
+          const conflictCommits = await predictRebaseConflictCommits(a.repoDir, ref);
+          if (conflictCommits.length > 0) {
+            verbose = { ...verbose, conflictCommits };
           }
-        } else {
-          a.conflictPrediction = "no-conflict";
         }
-        if (a.needsStash) {
-          const stashPrediction = await predictStashPopConflict(a.repoDir, ref);
-          a.stashPopConflictFiles = stashPrediction.overlapping;
-        }
-      }),
+      } else {
+        conflictPrediction = "no-conflict";
+      }
+      let stashPopConflictFiles = a.stashPopConflictFiles;
+      if (a.needsStash) {
+        const stashPrediction = await predictStashPopConflict(a.repoDir, ref);
+        stashPopConflictFiles = stashPrediction.overlapping;
+      }
+      return { ...a, conflictPrediction, stashPopConflictFiles, verbose };
+    }),
   );
 }
 
@@ -855,17 +864,18 @@ function buildPullFailureReport(entries: PullFailure[]): OutputNode[] {
 async function gatherPullVerboseCommits(
   assessments: PullAssessment[],
   remotesMap: Map<string, RepoRemotes>,
-): Promise<void> {
-  await Promise.all(
-    assessments
-      .filter((a) => a.outcome === "will-pull")
-      .map(async (a) => {
-        const shareRemote = remotesMap.get(a.repo)?.share;
-        if (!shareRemote) return;
-        const ref = `${shareRemote}/${a.branch}`;
-        const commits = await getCommitsBetweenFull(a.repoDir, "HEAD", ref);
-        const total = commits.length;
-        a.verbose = {
+): Promise<PullAssessment[]> {
+  return Promise.all(
+    assessments.map(async (a) => {
+      if (a.outcome !== "will-pull") return a;
+      const shareRemote = remotesMap.get(a.repo)?.share;
+      if (!shareRemote) return a;
+      const ref = `${shareRemote}/${a.branch}`;
+      const commits = await getCommitsBetweenFull(a.repoDir, "HEAD", ref);
+      const total = commits.length;
+      return {
+        ...a,
+        verbose: {
           ...a.verbose,
           commits: commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
             shortHash: c.shortHash,
@@ -873,8 +883,9 @@ async function gatherPullVerboseCommits(
           })),
           totalCommits: total,
           diffStats: (await getDiffShortstat(a.repoDir, "HEAD", ref)) ?? undefined,
-        };
-      }),
+        },
+      };
+    }),
   );
 }
 
