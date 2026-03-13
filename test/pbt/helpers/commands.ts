@@ -63,13 +63,18 @@ export async function assertStatus(model: WorkspaceModel, real: RealSystem): Pro
     expect(repoJson.share.toPull).toBe(predicted.shareToPull);
 
     if (predicted.shareRebased !== null) {
-      expect(repoJson.share.rebased).toBe(predicted.shareRebased);
-    }
-    if (predicted.shareReplaced !== null) {
-      expect(repoJson.share.replaced).toBe(predicted.shareReplaced);
-    }
-    if (predicted.shareSquashed !== null) {
-      expect(repoJson.share.squashed).toBe(predicted.shareSquashed);
+      const total = predicted.shareRebased + (predicted.shareReplaced ?? 0) + (predicted.shareSquashed ?? 0);
+      if (total === 0) {
+        // Implementation omits outdated when total is 0
+        expect(repoJson.share.outdated).toBeUndefined();
+      } else {
+        expect(repoJson.share.outdated).toEqual({
+          total,
+          rebased: predicted.shareRebased,
+          replaced: predicted.shareReplaced ?? 0,
+          squashed: predicted.shareSquashed ?? 0,
+        });
+      }
     }
 
     // ── Local section ──
@@ -85,7 +90,7 @@ export async function assertStatus(model: WorkspaceModel, real: RealSystem): Pro
     // ── Operation ──
     expect(repoJson.operation).toBeNull();
 
-    // ── Flags (derived from workspace-level statusLabels) ──
+    // ── Flags (derived from workspace-level statusCounts) ──
     assertFlag(json, predicted.isDirty, "dirty");
     assertFlag(json, predicted.isUnpushed, "unpushed");
     assertFlag(json, predicted.needsPull, "behind share");
@@ -95,15 +100,20 @@ export async function assertStatus(model: WorkspaceModel, real: RealSystem): Pro
 }
 
 /**
- * Assert a flag label is present in statusLabels when predicted true.
+ * Assert a flag label is present in statusCounts when predicted true.
  *
- * statusLabels is workspace-level (not per-repo), so we can only check
+ * statusCounts is workspace-level (not per-repo), so we can only check
  * that the label is present when at least one repo predicts it. We cannot
  * assert absence for a single repo since the other repo may have that flag.
  */
-function assertFlag(json: { statusLabels: string[] }, expected: boolean, label: string): void {
+function assertFlag(
+  json: { statusCounts: { label: string; count: number }[] },
+  expected: boolean,
+  label: string,
+): void {
   if (expected) {
-    expect(json.statusLabels).toContain(label);
+    const labels = json.statusCounts.map((c) => c.label);
+    expect(labels).toContain(label);
   }
 }
 
