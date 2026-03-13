@@ -71,9 +71,8 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
           throw new ArbError("No repos selected.");
         }
       }
-      const base = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base;
-
       const cache = await GitCache.create();
+      const base = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
       const remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
 
       if (options.fetch !== false) {
@@ -88,7 +87,7 @@ export function registerAttachCommand(program: Command, getCtx: () => ArbContext
         repos,
         ctx.reposDir,
         ctx.arbRootDir,
-        base,
+        base ?? undefined,
         remotesMap,
         cache,
       );
