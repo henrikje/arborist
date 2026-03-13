@@ -483,7 +483,7 @@ __arb_complete_pull() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-f --force -y --yes -n --dry-run -v --verbose --rebase --merge --autostash --include-drifted -w --where" -- "$cur"))
+        COMPREPLY=($(compgen -W "--reset -y --yes -n --dry-run -v --verbose --rebase --merge --autostash --include-drifted -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
