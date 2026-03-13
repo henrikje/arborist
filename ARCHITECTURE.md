@@ -37,6 +37,10 @@ Commands must use shared functions (`isAtRisk`, `wouldLoseWork`, `flagLabels`) r
 
 Commands compose small, focused library functions rather than inheriting from base classes. `integrate.ts` demonstrates how to parameterize shared logic: rebase and merge share the exact same five-phase flow, differing only in the git subcommand and verb strings.
 
+Mutation commands model their assess-phase results as discriminated unions in `sync/types.ts`. `RepoAssessment`, `PullAssessment`, and `PushAssessment` are the source of truth for plan/execution state; command code narrows on `outcome` instead of relying on optional flat fields. Command-specific classification stays near the command domain (`classify-integrate.ts`, `pull.ts`, `push.ts`), while orchestration stays in the top-level command flow.
+
+Cross-command status reuse lives in `sync/assess-with-cache.ts`. `buildCachedStatusAssess()` owns the common mechanics for mutation commands that assess from `RepoStatus`: previous-status caching, no-op fetch reuse via `unchangedRepos`, `gatherRepoStatus()`, and `--where` filtering. `runPlanFlow()` remains an orchestration primitive; it does not know command-specific assessment rules.
+
 ### Parallel fetch, sequential mutations
 
 Network I/O (fetching) runs in parallel for speed. State-changing git operations (push, pull, rebase, merge) run sequentially for predictable ordering, clear errors, and the ability to stop on first failure. `parallelFetch()` batches all network I/O upfront to avoid per-repo latency during the sequential phase. `pull` is excluded from the fetch flag system — `git pull` inherently fetches. Quiet mode (`-q`) on dashboard commands skips fetching by default for scripting speed.
@@ -44,20 +48,6 @@ Network I/O (fetching) runs in parallel for speed. State-changing git operations
 ### Output separation: stderr for UX, stdout for data
 
 All human-facing output (progress, prompts, summaries, errors) goes to stderr. Only machine-parseable data goes to stdout. The `output.ts` module enforces this with `success`/`info`/`warn`/`error` helpers (stderr) and a separate `stdout` helper.
-
-### Detail sections
-
-Supplementary information that follows main per-repo output — verbose commit/file detail in `arb status --verbose`, template drift warnings in `arb delete`, unknown template variable warnings in `arb template apply` and `arb template list`.
-
-A detail section is a labeled, indented block of related items appearing between per-repo results and the summary line, set apart by blank lines:
-
-- **Header**: 6-space indent (`SECTION_INDENT`) + descriptive label (yellow for warnings, dim for neutral). Ends with `:\n`.
-- **Items**: 10-space indent (`ITEM_INDENT`) + one line per item.
-- **Spacing**: blank line before the header. No trailing blank line — the caller provides the final separator.
-
-`SECTION_INDENT` and `ITEM_INDENT` are defined in `render/status-verbose.ts`; `displayTemplateDiffs` and `displayUnknownVariables` in `workspace/templates.ts` use the same literal values.
-
-When to use: any supplementary list (commits, files, variables, warnings) below the main table or per-repo output. When not to use: inline per-repo annotations (use the `[repo] result` line pattern) or top-level error messages (use `warn()` / `error()`).
 
 ### Context validation guards
 
