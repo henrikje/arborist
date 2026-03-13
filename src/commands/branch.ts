@@ -12,8 +12,13 @@ import { runPhasedRender } from "../lib/render";
 import { type RepoStatus, computeFlags, gatherWorkspaceSummary } from "../lib/status";
 import { type FetchResult, fetchSuffix, getUnchangedRepos, parallelFetch, reportFetchFailures } from "../lib/sync";
 import { error, info, isTTY, listenForAbortKeypress, stderr } from "../lib/terminal";
-import { workspaceBranch, workspaceRepoDirs } from "../lib/workspace";
-import { requireWorkspace } from "../lib/workspace";
+import {
+  rejectExplicitBaseRemotePrefix,
+  requireWorkspace,
+  resolveWorkspaceBaseResolution,
+  workspaceBranch,
+  workspaceRepoDirs,
+} from "../lib/workspace";
 import { registerBranchRenameSubcommand } from "./branch-rename";
 
 interface RepoBranch {
@@ -419,20 +424,23 @@ function registerBranchBaseSubcommand(parent: Command, getCtx: () => ArbContext)
         return;
       }
 
+      const cache = await GitCache.create();
+      const resolution = await resolveWorkspaceBaseResolution(wsDir, ctx.reposDir, cache);
+      const normalizedBranchArg = rejectExplicitBaseRemotePrefix(branchArg, resolution) ?? branchArg;
+
       // Set mode
-      if (!validateBranchName(branchArg)) {
-        error(`Invalid branch name: ${branchArg}`);
-        throw new ArbError(`Invalid branch name: ${branchArg}`);
+      if (!validateBranchName(normalizedBranchArg)) {
+        error(`Invalid branch name: ${normalizedBranchArg}`);
+        throw new ArbError(`Invalid branch name: ${normalizedBranchArg}`);
       }
 
-      if (branchArg === wsBranch) {
-        error(`Cannot set base to ${branchArg} — that is the workspace branch.`);
-        throw new ArbError(`Cannot set base to ${branchArg} — that is the workspace branch.`);
+      if (normalizedBranchArg === wsBranch) {
+        error(`Cannot set base to ${normalizedBranchArg} — that is the workspace branch.`);
+        throw new ArbError(`Cannot set base to ${normalizedBranchArg} — that is the workspace branch.`);
       }
 
       // Merged-base safety check
       if (!options.force && currentBase) {
-        const cache = await GitCache.create();
         const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
         const hasMergedBase = summary.repos.some((repo) => {
           const flags = computeFlags(repo, wsBranch);
@@ -447,11 +455,11 @@ function registerBranchBaseSubcommand(parent: Command, getCtx: () => ArbContext)
         }
       }
 
-      writeWorkspaceConfig(configFile, { branch: wsBranch, base: branchArg });
+      writeWorkspaceConfig(configFile, { branch: wsBranch, base: normalizedBranchArg });
       if (currentBase) {
-        info(`Base branch changed from ${currentBase} to ${branchArg}`);
+        info(`Base branch changed from ${currentBase} to ${normalizedBranchArg}`);
       } else {
-        info(`Base branch set to ${branchArg}`);
+        info(`Base branch set to ${normalizedBranchArg}`);
       }
     });
 }

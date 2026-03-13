@@ -1,5 +1,10 @@
 export { type ActivityResult, getRepoActivityDate, getWorkspaceActivityDate } from "./activity";
 export { detectArbRoot, detectWorkspace } from "./arb-root";
+export {
+  type WorkspaceBaseResolution,
+  rejectExplicitBaseRemotePrefix,
+  resolveWorkspaceBaseResolution,
+} from "./base";
 export { type WorkspaceBranchResult, workspaceBranch } from "./branch";
 export {
   detectAndRepairProjectMove,

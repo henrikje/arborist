@@ -64,6 +64,30 @@ describe("branch base", () => {
       expect(config.base).toBe("release");
     }));
 
+  test("set mode rejects matching remote-qualified input", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wsDir = join(env.projectDir, "my-feature");
+
+      const result = await arb(env, ["branch", "base", "origin/main"], { cwd: wsDir });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("includes the resolved base remote 'origin'");
+      expect(result.output).toContain("Use 'main' instead");
+    }));
+
+  test("set mode still accepts slash-containing branch names", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wsDir = join(env.projectDir, "my-feature");
+
+      const result = await arb(env, ["branch", "base", "feat/auth"], { cwd: wsDir });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Base branch set to feat/auth");
+
+      const config = JSON.parse(readFileSync(join(wsDir, ".arbws/config.json"), "utf-8"));
+      expect(config.base).toBe("feat/auth");
+    }));
+
   test("set mode rejects workspace's own branch", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);

@@ -126,6 +126,40 @@ describe("fork workflow (multiple remotes)", () => {
       expect(result.output).toContain("origin/fork-status");
     }));
 
+  test("fork: branch base rejects matching base-remote prefix", () =>
+    withEnv(async (env) => {
+      await setupForkRepo(env, "repo-a");
+      await arb(env, ["create", "fork-base", "repo-a"]);
+      const wsDir = join(env.projectDir, "fork-base");
+
+      const result = await arb(env, ["branch", "base", "upstream/main"], { cwd: wsDir });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("includes the resolved base remote 'upstream'");
+      expect(result.output).toContain("Use 'main' instead");
+    }));
+
+  test("fork: branch base treats other remote prefixes literally", () =>
+    withEnv(async (env) => {
+      await setupForkRepo(env, "repo-a");
+      await arb(env, ["create", "fork-base", "repo-a"]);
+      const wsDir = join(env.projectDir, "fork-base");
+
+      const result = await arb(env, ["branch", "base", "origin/main"], { cwd: wsDir });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Base branch set to origin/main");
+    }));
+
+  test("fork: rebase --retarget treats other remote prefixes literally", () =>
+    withEnv(async (env) => {
+      await setupForkRepo(env, "repo-a");
+      await arb(env, ["create", "fork-base", "repo-a"]);
+      const wsDir = join(env.projectDir, "fork-base");
+
+      const result = await arb(env, ["rebase", "--retarget", "origin/main"], { cwd: wsDir });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("target branch origin/main not found on upstream");
+    }));
+
   test("fork: remove --delete-remote deletes from share remote", () =>
     withEnv(async (env) => {
       await setupForkRepo(env, "repo-a");
@@ -165,6 +199,17 @@ describe("fork workflow (multiple remotes)", () => {
       });
       // repo-a should show upstream/main, repo-b should show just main
       expect(result.output).toContain("upstream/main");
+    }));
+
+  test("fork: mixed workspace treats remote-qualified branch base input literally", () =>
+    withEnv(async (env) => {
+      await setupForkRepo(env, "repo-a");
+      await arb(env, ["create", "mixed-ws", "repo-a", "repo-b"]);
+      const wsDir = join(env.projectDir, "mixed-ws");
+
+      const result = await arb(env, ["branch", "base", "origin/main"], { cwd: wsDir });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Base branch set to origin/main");
     }));
 
   test("fork: convention detection — upstream remote without pushDefault", () =>
