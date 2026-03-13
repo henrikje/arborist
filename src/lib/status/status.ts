@@ -89,26 +89,30 @@ async function detectShareDivergence(
   branch: string,
   toPush: number | null,
   toPull: number | null,
-): Promise<{ rebased: number | null; replaced: number | null; squashed: number | null }> {
-  let rebased: number | null = null;
-  let replaced: number | null = null;
-  let squashed: number | null = null;
-  if (toPush !== null && toPush > 0 && toPull !== null && toPull > 0) {
-    const rebasedResult = await detectRebasedCommits(repoDir, trackingRef);
-    rebased = rebasedResult?.count ?? null;
-    const unmatchedPull = toPull - (rebased ?? 0);
-    if (unmatchedPull > 0) {
-      const rebasedRemoteHashes = rebasedResult?.rebasedRemoteHashes ?? new Set<string>();
-      const replacedResult = await detectReplacedCommits(repoDir, trackingRef, branch, rebasedRemoteHashes);
-      replaced = replacedResult?.count ?? null;
-    }
-    const unmatchedAfterReplace = toPull - (rebased ?? 0) - (replaced ?? 0);
-    if (unmatchedAfterReplace > 0) {
-      const squashedResult = await detectSquashedCommits(repoDir, trackingRef, toPull);
-      squashed = squashedResult?.count ?? null;
-    }
+): Promise<{ outdated?: NonNullable<RepoStatus["share"]["outdated"]> }> {
+  if (toPush === null || toPush <= 0 || toPull === null || toPull <= 0) return {};
+
+  let rebased = 0;
+  let replaced = 0;
+  let squashed = 0;
+
+  const rebasedResult = await detectRebasedCommits(repoDir, trackingRef);
+  rebased = rebasedResult?.count ?? 0;
+  const unmatchedPull = toPull - rebased;
+  if (unmatchedPull > 0) {
+    const rebasedRemoteHashes = rebasedResult?.rebasedRemoteHashes ?? new Set<string>();
+    const replacedResult = await detectReplacedCommits(repoDir, trackingRef, branch, rebasedRemoteHashes);
+    replaced = replacedResult?.count ?? 0;
   }
-  return { rebased, replaced, squashed };
+  const unmatchedAfterReplace = toPull - rebased - replaced;
+  if (unmatchedAfterReplace > 0) {
+    const squashedResult = await detectSquashedCommits(repoDir, trackingRef, toPull);
+    squashed = squashedResult?.count ?? 0;
+  }
+
+  const total = rebased + replaced + squashed;
+  if (total === 0) return {};
+  return { outdated: { total, rebased, replaced, squashed } };
 }
 
 // ── Status Gathering ──
@@ -181,9 +185,7 @@ export async function gatherRepoStatus(
           configuredRef: fellBack ? configBase : null,
           ahead,
           behind,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         };
       }
     }
@@ -245,9 +247,6 @@ export async function gatherRepoStatus(
         refMode: isGone ? "gone" : "noRef",
         toPush: null,
         toPull: null,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       };
     }
   } else {
@@ -258,9 +257,6 @@ export async function gatherRepoStatus(
       refMode: "noRef",
       toPush: null,
       toPull: null,
-      rebased: null,
-      replaced: null,
-      squashed: null,
     };
   }
 
@@ -298,14 +294,15 @@ export async function gatherRepoStatus(
     let mergeCommitHash: string | undefined;
     const ancestorResult = await git(repoDir, "merge-base", "--is-ancestor", "HEAD", compareRef);
     if (ancestorResult.exitCode === 0) {
-      baseStatus.mergedIntoBase = "merge";
+      const merge: NonNullable<typeof baseStatus.merge> = { kind: "merge" };
       // Try to find the merge commit that references this branch for PR attribution
       const mergeCommit = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, "HEAD");
       if (mergeCommit) {
         mergeMatchingCommit = mergeCommit;
         mergeCommitHash = mergeCommit.hash;
-        baseStatus.mergeCommitHash = mergeCommit.hash;
+        merge.commitHash = mergeCommit.hash;
       }
+      baseStatus.merge = merge;
       // Ticket fallback: if no merge commit found, or merge commit doesn't yield a PR number
       if (!mergeMatchingCommit || !extractPrNumber(mergeMatchingCommit.subject)) {
         const ticket = detectTicketFromName(actualBranch);
@@ -341,13 +338,13 @@ export async function gatherRepoStatus(
       }
 
       if (squashResult) {
-        baseStatus.mergedIntoBase = squashResult.kind;
+        const merge: NonNullable<typeof baseStatus.merge> = { kind: squashResult.kind };
         if (squashResult.newCommitsAfterMerge) {
-          baseStatus.newCommitsAfterMerge = squashResult.newCommitsAfterMerge;
+          merge.newCommitsAfter = squashResult.newCommitsAfterMerge;
         }
         if (squashResult.matchingCommit) {
           mergeMatchingCommit = squashResult.matchingCommit;
-          baseStatus.mergeCommitHash = squashResult.matchingCommit.hash;
+          merge.commitHash = squashResult.matchingCommit.hash;
         } else if (squashResult.kind === "merge" && squashResult.newCommitsAfterMerge) {
           // Regular merge detected via prefix — find the merge commit for attribution
           const n = squashResult.newCommitsAfterMerge;
@@ -355,9 +352,10 @@ export async function gatherRepoStatus(
           if (mc) {
             mergeMatchingCommit = mc;
             mergeCommitHash = mc.hash;
-            baseStatus.mergeCommitHash = mc.hash;
+            merge.commitHash = mc.hash;
           }
         }
+        baseStatus.merge = merge;
         // Ticket fallback: if squash commit doesn't yield a PR number
         if (!mergeMatchingCommit || !extractPrNumber(mergeMatchingCommit.subject)) {
           const ticket = detectTicketFromName(actualBranch);
@@ -370,7 +368,7 @@ export async function gatherRepoStatus(
     }
 
     // Extract PR number from matching commit subject
-    if (baseStatus.mergedIntoBase && mergeMatchingCommit) {
+    if (baseStatus.merge && mergeMatchingCommit) {
       const prNumber = extractPrNumber(mergeMatchingCommit.subject);
       if (prNumber) {
         // Try to construct a PR URL from the share remote URL
@@ -380,7 +378,7 @@ export async function gatherRepoStatus(
           const parsed = parseRemoteUrl(remoteUrl);
           if (parsed) prUrl = buildPrUrl(parsed, prNumber);
         }
-        baseStatus.detectedPr = { number: prNumber, url: prUrl, mergeCommit: mergeCommitHash };
+        baseStatus.merge.detectedPr = { number: prNumber, url: prUrl, mergeCommit: mergeCommitHash };
       }
     }
   }
@@ -479,7 +477,7 @@ export async function gatherWorkspaceSummary(
     return r.status;
   });
 
-  const { atRiskCount, rebasedOnlyCount, statusLabels, statusCounts } = computeSummaryAggregates(repos, branch);
+  const { atRiskCount, outdatedOnlyCount, statusCounts } = computeSummaryAggregates(repos, branch);
 
   const lastCommit = latestCommitDate(repoResults.map((r) => r.commitDate));
 
@@ -504,8 +502,7 @@ export async function gatherWorkspaceSummary(
     repos,
     total: repos.length,
     atRiskCount,
-    rebasedOnlyCount,
-    statusLabels,
+    outdatedOnlyCount,
     statusCounts,
     lastCommit,
     lastActivity,

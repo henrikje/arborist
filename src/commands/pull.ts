@@ -428,8 +428,8 @@ export function assessPullRepo(
   }
 
   // Already merged into base — but only skip if share has nothing to pull
-  // (e.g. on main behind origin/main, mergedIntoBase is set but toPull > 0)
-  if (status.base?.mergedIntoBase != null && (status.share.toPull ?? 0) === 0) {
+  // (e.g. on main behind origin/main, merge is set but toPull > 0)
+  if (status.base?.merge != null && (status.share.toPull ?? 0) === 0) {
     return { ...base, skipReason: `already merged into ${status.base.ref}`, skipFlag: "already-merged" };
   }
 
@@ -440,7 +440,7 @@ export function assessPullRepo(
   }
 
   // Skip if all to-pull commits are rebased locally
-  const rebased = status.share.rebased ?? 0;
+  const rebased = status.share.outdated?.rebased ?? 0;
   if (rebased > 0 && rebased >= toPull) {
     const toPush = status.share.toPush ?? 0;
     const baseAhead = status.base?.ahead ?? toPush;
@@ -450,7 +450,7 @@ export function assessPullRepo(
       behind: toPull,
       toPush,
       rebased,
-      rebasedKnown: status.share.rebased != null,
+      rebasedKnown: status.share.outdated != null,
       fromBaseCount,
       skipReason: "rebased locally (push --force, or pull --force to reset)",
       skipFlag: "rebased-locally",
@@ -464,7 +464,7 @@ export function assessPullRepo(
     behind: toPull,
     toPush,
     rebased,
-    rebasedKnown: status.share.rebased != null,
+    rebasedKnown: status.share.outdated != null,
   };
 }
 

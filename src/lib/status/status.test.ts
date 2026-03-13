@@ -36,9 +36,7 @@ describe("shouldRunMergeDetection", () => {
         configuredRef: null,
         ahead: 3,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     }).base;
     const shareStatus = makeRepo({
@@ -48,9 +46,6 @@ describe("shouldRunMergeDetection", () => {
         refMode: "configured",
         toPush: 1,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     }).share;
     expect(shouldRunMergeDetection(baseStatus, shareStatus, false, "feature")).toBe(true);
@@ -64,9 +59,7 @@ describe("shouldRunMergeDetection", () => {
         configuredRef: null,
         ahead: 0,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     }).base;
     const shareStatus = makeRepo({
@@ -76,9 +69,6 @@ describe("shouldRunMergeDetection", () => {
         refMode: "gone",
         toPush: null,
         toPull: null,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     }).share;
     expect(shouldRunMergeDetection(baseStatus, shareStatus, false, "feature")).toBe(true);
@@ -92,9 +82,7 @@ describe("shouldRunMergeDetection", () => {
         configuredRef: null,
         ahead: 3,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     }).base;
     const shareStatus = makeRepo().share;
@@ -109,9 +97,7 @@ describe("shouldRunMergeDetection", () => {
         configuredRef: null,
         ahead: 3,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     }).base;
     const shareStatus = makeRepo().share;
@@ -126,9 +112,7 @@ describe("shouldRunMergeDetection", () => {
         configuredRef: null,
         ahead: 0,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     }).base;
     const shareStatus = makeRepo({
@@ -138,9 +122,6 @@ describe("shouldRunMergeDetection", () => {
         refMode: "noRef",
         toPush: null,
         toPull: null,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     }).share;
     expect(shouldRunMergeDetection(baseStatus, shareStatus, false, "feature")).toBe(false);
@@ -166,9 +147,7 @@ describe("computeMergeDetectionStrategy", () => {
         configuredRef: null,
         ahead: 3,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const shareStatus = makeRepo({
@@ -178,9 +157,6 @@ describe("computeMergeDetectionStrategy", () => {
         refMode: "gone",
         toPush: null,
         toPull: null,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
@@ -195,9 +171,7 @@ describe("computeMergeDetectionStrategy", () => {
         configuredRef: null,
         ahead: 3,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const shareStatus = makeRepo({
@@ -207,9 +181,6 @@ describe("computeMergeDetectionStrategy", () => {
         refMode: "configured",
         toPush: 0,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
@@ -224,9 +195,7 @@ describe("computeMergeDetectionStrategy", () => {
         configuredRef: null,
         ahead: 3,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const shareStatus = makeRepo({
@@ -236,9 +205,6 @@ describe("computeMergeDetectionStrategy", () => {
         refMode: "configured",
         toPush: 2,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
@@ -253,9 +219,7 @@ describe("computeMergeDetectionStrategy", () => {
         configuredRef: null,
         ahead: 3,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const shareStatus = makeRepo({
@@ -265,9 +229,6 @@ describe("computeMergeDetectionStrategy", () => {
         refMode: "configured",
         toPush: 5,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
@@ -282,9 +243,7 @@ describe("computeMergeDetectionStrategy", () => {
         configuredRef: null,
         ahead: 3,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const shareStatus = makeRepo({
@@ -294,9 +253,6 @@ describe("computeMergeDetectionStrategy", () => {
         refMode: "configured",
         toPush: 5,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
@@ -311,9 +267,7 @@ describe("computeMergeDetectionStrategy", () => {
         configuredRef: null,
         ahead: 3,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const shareStatus = makeRepo({
@@ -323,9 +277,6 @@ describe("computeMergeDetectionStrategy", () => {
         refMode: "configured",
         toPush: 20,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
@@ -340,9 +291,7 @@ describe("computeMergeDetectionStrategy", () => {
         configuredRef: null,
         ahead: 5,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const shareStatus = makeRepo({
@@ -352,9 +301,6 @@ describe("computeMergeDetectionStrategy", () => {
         refMode: "configured",
         toPush: 0,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
@@ -370,9 +316,7 @@ describe("computeMergeDetectionStrategy", () => {
         configuredRef: null,
         ahead: 1,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const shareStatus = makeRepo({
@@ -382,9 +326,6 @@ describe("computeMergeDetectionStrategy", () => {
         refMode: "configured",
         toPush: 0,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     }).share;
     const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);

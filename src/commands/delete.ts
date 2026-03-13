@@ -94,7 +94,7 @@ function buildCheckboxName(
   } else if (a.summary.statusCounts.length === 0) {
     status = "no issues";
   } else {
-    status = formatStatusCounts(a.summary.statusCounts, a.summary.rebasedOnlyCount, LOSE_WORK_FLAGS);
+    status = formatStatusCounts(a.summary.statusCounts, a.summary.outdatedOnlyCount, LOSE_WORK_FLAGS);
   }
 
   return `${name}  ${lastCommit}  ${repoCount}  ${status}`;
@@ -266,8 +266,7 @@ async function assessWorkspace(
       repos: [],
       total: 0,
       atRiskCount: 0,
-      rebasedOnlyCount: 0,
-      statusLabels: [],
+      outdatedOnlyCount: 0,
       statusCounts: [],
       lastCommit: null,
       lastActivity: null,
@@ -288,8 +287,7 @@ async function assessWorkspace(
         repos: [],
         total: repos.length,
         atRiskCount: repos.length,
-        rebasedOnlyCount: 0,
-        statusLabels: [],
+        outdatedOnlyCount: 0,
         statusCounts: [],
         lastCommit: null,
         lastActivity: null,
@@ -358,7 +356,7 @@ function buildDeleteTableNodes(assessments: WorkspaceAssessment[]): OutputNode[]
     } else if (a.summary.statusCounts.length === 0) {
       statusCell = cell("no issues");
     } else {
-      statusCell = cell(formatStatusCounts(a.summary.statusCounts, a.summary.rebasedOnlyCount, LOSE_WORK_FLAGS));
+      statusCell = cell(formatStatusCounts(a.summary.statusCounts, a.summary.outdatedOnlyCount, LOSE_WORK_FLAGS));
     }
 
     return {

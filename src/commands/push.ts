@@ -472,8 +472,8 @@ export function assessPushRepo(
 
   // Remote branch was deleted (gone)
   if (status.share.refMode === "gone") {
-    if (status.base?.mergedIntoBase != null && !options?.includeMerged) {
-      const n = status.base.newCommitsAfterMerge;
+    if (status.base?.merge != null && !options?.includeMerged) {
+      const n = status.base.merge?.newCommitsAfter;
       if (n && n > 0) {
         return {
           ...base,
@@ -492,8 +492,8 @@ export function assessPushRepo(
   }
 
   // Merged but not gone — nothing useful to push unless forced
-  if (status.base?.mergedIntoBase != null && !options?.includeMerged) {
-    const n = status.base.newCommitsAfterMerge;
+  if (status.base?.merge != null && !options?.includeMerged) {
+    const n = status.base.merge?.newCommitsAfter;
     if (n && n > 0) {
       return {
         ...base,
@@ -536,9 +536,9 @@ export function assessPushRepo(
   }
 
   if (toPush > 0 && toPull > 0) {
-    const rebased = status.share.rebased ?? 0;
-    const replaced = status.share.replaced ?? 0;
-    const squashed = status.share.squashed ?? 0;
+    const rebased = status.share.outdated?.rebased ?? 0;
+    const replaced = status.share.outdated?.replaced ?? 0;
+    const squashed = status.share.outdated?.squashed ?? 0;
     const allOutdated = rebased + replaced + squashed >= toPull;
     if (allOutdated) {
       return {

@@ -53,9 +53,6 @@ describe("computeFlags", () => {
           refMode: "configured",
           toPush: 2,
           toPull: 0,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
       "feature",
@@ -72,9 +69,6 @@ describe("computeFlags", () => {
           refMode: "noRef",
           toPush: null,
           toPull: null,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
         base: {
           remote: "origin",
@@ -82,9 +76,7 @@ describe("computeFlags", () => {
           configuredRef: null,
           ahead: 3,
           behind: 0,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -101,9 +93,6 @@ describe("computeFlags", () => {
           refMode: "gone",
           toPush: null,
           toPull: null,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
         base: {
           remote: "origin",
@@ -111,9 +100,7 @@ describe("computeFlags", () => {
           configuredRef: null,
           ahead: 3,
           behind: 0,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -136,9 +123,6 @@ describe("computeFlags", () => {
           refMode: "noRef" as const,
           toPush: null,
           toPull: null,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
       "feature",
@@ -155,9 +139,6 @@ describe("computeFlags", () => {
           refMode: "configured",
           toPush: 0,
           toPull: 3,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
       "feature",
@@ -174,9 +155,7 @@ describe("computeFlags", () => {
           refMode: "configured",
           toPush: 1,
           toPull: 1,
-          rebased: 0,
-          replaced: 1,
-          squashed: null,
+          outdated: { total: 1, rebased: 0, replaced: 1, squashed: 0 },
         },
       }),
       "feature",
@@ -193,9 +172,7 @@ describe("computeFlags", () => {
           refMode: "configured",
           toPush: 3,
           toPull: 3,
-          rebased: 2,
-          replaced: 1,
-          squashed: null,
+          outdated: { total: 3, rebased: 2, replaced: 1, squashed: 0 },
         },
       }),
       "feature",
@@ -212,9 +189,7 @@ describe("computeFlags", () => {
           refMode: "configured",
           toPush: 2,
           toPull: 3,
-          rebased: 0,
-          replaced: 1,
-          squashed: null,
+          outdated: { total: 1, rebased: 0, replaced: 1, squashed: 0 },
         },
       }),
       "feature",
@@ -231,9 +206,7 @@ describe("computeFlags", () => {
           refMode: "configured",
           toPush: 1,
           toPull: 3,
-          rebased: 0,
-          replaced: 0,
-          squashed: 3,
+          outdated: { total: 3, rebased: 0, replaced: 0, squashed: 3 },
         },
       }),
       "feature",
@@ -250,9 +223,7 @@ describe("computeFlags", () => {
           refMode: "configured",
           toPush: 1,
           toPull: 3,
-          rebased: 0,
-          replaced: 0,
-          squashed: 1,
+          outdated: { total: 1, rebased: 0, replaced: 0, squashed: 1 },
         },
       }),
       "feature",
@@ -269,9 +240,7 @@ describe("computeFlags", () => {
           configuredRef: null,
           ahead: 0,
           behind: 2,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -288,9 +257,7 @@ describe("computeFlags", () => {
           configuredRef: null,
           ahead: 2,
           behind: 3,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -307,9 +274,7 @@ describe("computeFlags", () => {
           configuredRef: null,
           ahead: 0,
           behind: 2,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -326,9 +291,7 @@ describe("computeFlags", () => {
           configuredRef: null,
           ahead: 3,
           behind: 0,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -375,9 +338,6 @@ describe("computeFlags", () => {
           refMode: "gone",
           toPush: null,
           toPull: null,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
       "feature",
@@ -404,9 +364,8 @@ describe("computeFlags", () => {
           configuredRef: null,
           ahead: 0,
           behind: 0,
-          mergedIntoBase: "merge",
+          merge: { kind: "merge" },
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -423,9 +382,8 @@ describe("computeFlags", () => {
           configuredRef: null,
           ahead: 2,
           behind: 0,
-          mergedIntoBase: "squash",
+          merge: { kind: "squash" },
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -452,9 +410,7 @@ describe("computeFlags", () => {
           configuredRef: null,
           ahead: 0,
           behind: 3,
-          mergedIntoBase: null,
           baseMergedIntoDefault: "merge",
-          detectedPr: null,
         },
       }),
       "feature",
@@ -471,9 +427,7 @@ describe("computeFlags", () => {
           configuredRef: null,
           ahead: 0,
           behind: 3,
-          mergedIntoBase: null,
           baseMergedIntoDefault: "squash",
-          detectedPr: null,
         },
       }),
       "feature",
@@ -522,9 +476,7 @@ describe("isAtRisk", () => {
           configuredRef: null,
           ahead: 0,
           behind: 1,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -541,9 +493,7 @@ describe("isAtRisk", () => {
           configuredRef: null,
           ahead: 2,
           behind: 3,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -560,9 +510,6 @@ describe("isAtRisk", () => {
           refMode: "configured",
           toPush: 0,
           toPull: 3,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
       "feature",
@@ -579,9 +526,6 @@ describe("isAtRisk", () => {
           refMode: "gone",
           toPush: null,
           toPull: null,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
       "feature",
@@ -598,9 +542,8 @@ describe("isAtRisk", () => {
           configuredRef: null,
           ahead: 0,
           behind: 0,
-          mergedIntoBase: "squash",
+          merge: { kind: "squash" },
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -617,9 +560,7 @@ describe("isAtRisk", () => {
           configuredRef: null,
           ahead: 0,
           behind: 3,
-          mergedIntoBase: null,
           baseMergedIntoDefault: "merge",
-          detectedPr: null,
         },
       }),
       "feature",
@@ -644,9 +585,6 @@ describe("flagLabels", () => {
           refMode: "configured",
           toPush: 2,
           toPull: 0,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
       "feature",
@@ -665,9 +603,7 @@ describe("flagLabels", () => {
           configuredRef: null,
           ahead: 0,
           behind: 2,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
         operation: "rebase",
       }),
@@ -685,9 +621,7 @@ describe("flagLabels", () => {
           configuredRef: null,
           ahead: 2,
           behind: 3,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -704,9 +638,8 @@ describe("flagLabels", () => {
           configuredRef: null,
           ahead: 0,
           behind: 0,
-          mergedIntoBase: "squash",
+          merge: { kind: "squash" },
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -723,9 +656,8 @@ describe("flagLabels", () => {
           configuredRef: null,
           ahead: 0,
           behind: 2,
-          mergedIntoBase: "squash",
+          merge: { kind: "squash" },
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
         share: {
           remote: "origin",
@@ -733,9 +665,6 @@ describe("flagLabels", () => {
           refMode: "gone",
           toPush: null,
           toPull: null,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
       "feature",
@@ -753,9 +682,8 @@ describe("flagLabels", () => {
           configuredRef: null,
           ahead: 0,
           behind: 2,
-          mergedIntoBase: "squash",
+          merge: { kind: "squash" },
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
         share: {
           remote: "origin",
@@ -763,9 +691,6 @@ describe("flagLabels", () => {
           refMode: "gone",
           toPush: null,
           toPull: null,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
       "feature",
@@ -782,9 +707,7 @@ describe("flagLabels", () => {
           configuredRef: null,
           ahead: 0,
           behind: 3,
-          mergedIntoBase: null,
           baseMergedIntoDefault: "merge",
-          detectedPr: null,
         },
       }),
       "feature",
@@ -801,9 +724,8 @@ describe("flagLabels", () => {
           configuredRef: null,
           ahead: 0,
           behind: 5,
-          mergedIntoBase: "merge",
+          merge: { kind: "merge" },
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -821,9 +743,8 @@ describe("flagLabels", () => {
           configuredRef: null,
           ahead: 3,
           behind: 5,
-          mergedIntoBase: "squash",
+          merge: { kind: "squash" },
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -842,9 +763,7 @@ describe("flagLabels", () => {
           configuredRef: null,
           ahead: 2,
           behind: 3,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -874,9 +793,6 @@ describe("wouldLoseWork", () => {
           refMode: "configured",
           toPush: 2,
           toPull: 0,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
       "feature",
@@ -918,9 +834,6 @@ describe("wouldLoseWork", () => {
           refMode: "configured",
           toPush: 0,
           toPull: 3,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
       "feature",
@@ -937,9 +850,7 @@ describe("wouldLoseWork", () => {
           configuredRef: null,
           ahead: 0,
           behind: 2,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -956,9 +867,7 @@ describe("wouldLoseWork", () => {
           configuredRef: null,
           ahead: 2,
           behind: 3,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -985,9 +894,6 @@ describe("wouldLoseWork", () => {
           refMode: "noRef" as const,
           toPush: null,
           toPull: null,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
         base: null,
       }),
@@ -1005,9 +911,6 @@ describe("wouldLoseWork", () => {
           refMode: "gone",
           toPush: null,
           toPull: null,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
         base: {
           remote: "origin",
@@ -1015,9 +918,7 @@ describe("wouldLoseWork", () => {
           configuredRef: null,
           ahead: 0,
           behind: 0,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
       "feature",
@@ -1047,9 +948,6 @@ describe("isWorkspaceSafe", () => {
           refMode: "configured",
           toPush: 2,
           toPull: 0,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
     ];
@@ -1066,9 +964,6 @@ describe("isWorkspaceSafe", () => {
           refMode: "noRef" as const,
           toPush: null,
           toPull: null,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
         base: {
           remote: "origin",
@@ -1076,9 +971,7 @@ describe("isWorkspaceSafe", () => {
           configuredRef: null,
           ahead: 3,
           behind: 0,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
     ];
@@ -1095,9 +988,7 @@ describe("isWorkspaceSafe", () => {
           configuredRef: null,
           ahead: 0,
           behind: 5,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
     ];
@@ -1114,9 +1005,6 @@ describe("isWorkspaceSafe", () => {
           refMode: "gone",
           toPush: null,
           toPull: null,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
     ];
@@ -1166,9 +1054,8 @@ describe("computeSummaryAggregates decoupled display gate", () => {
           configuredRef: null,
           ahead: 0,
           behind: 2,
-          mergedIntoBase: "squash",
+          merge: { kind: "squash" },
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
         share: {
           remote: "origin",
@@ -1176,15 +1063,11 @@ describe("computeSummaryAggregates decoupled display gate", () => {
           refMode: "gone",
           toPush: null,
           toPull: null,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
     ];
     const result = computeSummaryAggregates(repos, "feature");
     expect(result.statusCounts.map((c) => c.label)).toEqual(["dirty", "merged", "gone"]);
-    expect(result.statusLabels).toEqual(["dirty", "merged", "gone"]);
   });
 
   test("statusCounts includes stale flags even when not at-risk", () => {
@@ -1197,16 +1080,13 @@ describe("computeSummaryAggregates decoupled display gate", () => {
           configuredRef: null,
           ahead: 0,
           behind: 2,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
     ];
     const result = computeSummaryAggregates(repos, "feature");
     expect(result.atRiskCount).toBe(0);
     expect(result.statusCounts.some((c) => c.key === "needsRebase")).toBe(true);
-    expect(result.statusLabels).toContain("behind base");
   });
 
   test("statusCounts includes gone flag even when not at-risk", () => {
@@ -1219,16 +1099,12 @@ describe("computeSummaryAggregates decoupled display gate", () => {
           refMode: "gone",
           toPush: null,
           toPull: null,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
     ];
     const result = computeSummaryAggregates(repos, "feature");
     expect(result.atRiskCount).toBe(0);
     expect(result.statusCounts.some((c) => c.key === "isGone")).toBe(true);
-    expect(result.statusLabels).toContain("gone");
   });
 
   test("suppresses implied flags for merged repos but keeps them for non-merged repos", () => {
@@ -1242,9 +1118,8 @@ describe("computeSummaryAggregates decoupled display gate", () => {
           configuredRef: null,
           ahead: 3,
           behind: 5,
-          mergedIntoBase: "squash",
+          merge: { kind: "squash" },
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
         share: {
           remote: "origin",
@@ -1252,9 +1127,6 @@ describe("computeSummaryAggregates decoupled display gate", () => {
           refMode: "gone",
           toPush: null,
           toPull: null,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
       // Non-merged repo: behind base should be kept
@@ -1266,9 +1138,7 @@ describe("computeSummaryAggregates decoupled display gate", () => {
           configuredRef: null,
           ahead: 0,
           behind: 2,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
     ];
@@ -1281,9 +1151,9 @@ describe("computeSummaryAggregates decoupled display gate", () => {
     const diverged = result.statusCounts.find((c) => c.key === "isDiverged");
     expect(diverged).toBeUndefined();
     // "merged" and "gone" should appear
-    expect(result.statusLabels).toContain("merged");
-    expect(result.statusLabels).toContain("gone");
-    expect(result.statusLabels).toContain("behind base");
+    expect(result.statusCounts.some((c) => c.label === "merged")).toBe(true);
+    expect(result.statusCounts.some((c) => c.label === "gone")).toBe(true);
+    expect(result.statusCounts.some((c) => c.label === "behind base")).toBe(true);
   });
 
   test("atRiskCount only counts repos with at-risk flags", () => {
@@ -1300,9 +1170,7 @@ describe("computeSummaryAggregates decoupled display gate", () => {
           configuredRef: null,
           ahead: 0,
           behind: 2,
-          mergedIntoBase: null,
           baseMergedIntoDefault: null,
-          detectedPr: null,
         },
       }),
     ];
@@ -1312,7 +1180,7 @@ describe("computeSummaryAggregates decoupled display gate", () => {
   });
 });
 
-describe("computeSummaryAggregates rebasedOnlyCount", () => {
+describe("computeSummaryAggregates outdatedOnlyCount", () => {
   test("returns 0 when no repos are rebased", () => {
     const repos = [
       makeRepo({
@@ -1323,14 +1191,11 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
           refMode: "configured",
           toPush: 2,
           toPull: 0,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
     ];
     const result = computeSummaryAggregates(repos, "feature");
-    expect(result.rebasedOnlyCount).toBe(0);
+    expect(result.outdatedOnlyCount).toBe(0);
   });
 
   test("counts repos where all unpushed commits are rebased", () => {
@@ -1343,9 +1208,7 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
           refMode: "configured",
           toPush: 2,
           toPull: 2,
-          rebased: 2,
-          replaced: null,
-          squashed: null,
+          outdated: { total: 2, rebased: 2, replaced: 0, squashed: 0 },
         },
       }),
       makeRepo({
@@ -1356,17 +1219,15 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
           refMode: "configured",
           toPush: 3,
           toPull: 2,
-          rebased: 2,
-          replaced: null,
-          squashed: null,
+          outdated: { total: 2, rebased: 2, replaced: 0, squashed: 0 },
         },
       }),
     ];
     const result = computeSummaryAggregates(repos, "feature");
-    expect(result.rebasedOnlyCount).toBe(1);
+    expect(result.outdatedOnlyCount).toBe(1);
   });
 
-  test("returns 0 when rebased is null", () => {
+  test("returns 0 when outdated is absent", () => {
     const repos = [
       makeRepo({
         name: "a",
@@ -1376,14 +1237,11 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
           refMode: "configured",
           toPush: 2,
           toPull: 2,
-          rebased: null,
-          replaced: null,
-          squashed: null,
         },
       }),
     ];
     const result = computeSummaryAggregates(repos, "feature");
-    expect(result.rebasedOnlyCount).toBe(0);
+    expect(result.outdatedOnlyCount).toBe(0);
   });
 
   test("counts repos where all unpushed commits are replaced (no rebased)", () => {
@@ -1396,14 +1254,12 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
           refMode: "configured",
           toPush: 1,
           toPull: 1,
-          rebased: 0,
-          replaced: 1,
-          squashed: null,
+          outdated: { total: 1, rebased: 0, replaced: 1, squashed: 0 },
         },
       }),
     ];
     const result = computeSummaryAggregates(repos, "feature");
-    expect(result.rebasedOnlyCount).toBe(1);
+    expect(result.outdatedOnlyCount).toBe(1);
   });
 
   test("counts repos where all unpushed commits are rebased + replaced combined", () => {
@@ -1416,14 +1272,12 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
           refMode: "configured",
           toPush: 3,
           toPull: 3,
-          rebased: 2,
-          replaced: 1,
-          squashed: null,
+          outdated: { total: 3, rebased: 2, replaced: 1, squashed: 0 },
         },
       }),
     ];
     const result = computeSummaryAggregates(repos, "feature");
-    expect(result.rebasedOnlyCount).toBe(1);
+    expect(result.outdatedOnlyCount).toBe(1);
   });
 
   test("does not count repos where replaced + rebased < toPush", () => {
@@ -1436,14 +1290,12 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
           refMode: "configured",
           toPush: 5,
           toPull: 2,
-          rebased: 1,
-          replaced: 1,
-          squashed: null,
+          outdated: { total: 2, rebased: 1, replaced: 1, squashed: 0 },
         },
       }),
     ];
     const result = computeSummaryAggregates(repos, "feature");
-    expect(result.rebasedOnlyCount).toBe(0);
+    expect(result.outdatedOnlyCount).toBe(0);
   });
 
   test("counts repos where all unpushed commits are squashed", () => {
@@ -1456,42 +1308,40 @@ describe("computeSummaryAggregates rebasedOnlyCount", () => {
           refMode: "configured",
           toPush: 1,
           toPull: 2,
-          rebased: 0,
-          replaced: 0,
-          squashed: 2,
+          outdated: { total: 2, rebased: 0, replaced: 0, squashed: 2 },
         },
       }),
     ];
     const result = computeSummaryAggregates(repos, "feature");
-    expect(result.rebasedOnlyCount).toBe(1);
+    expect(result.outdatedOnlyCount).toBe(1);
   });
 });
 
-describe("formatStatusCounts with rebased", () => {
-  test("shows yellow unpushed when no rebased repos", () => {
+describe("formatStatusCounts with outdated", () => {
+  test("shows yellow unpushed when no outdated repos", () => {
     const statusCounts = [{ label: "unpushed", count: 3, key: "isUnpushed" as const }];
     const result = formatStatusCounts(statusCounts, 0);
     expect(result).toContain("unpushed");
   });
 
-  test("shows rebased instead of unpushed when all are rebased-only", () => {
+  test("shows outdated instead of unpushed when all are outdated-only", () => {
     const statusCounts = [{ label: "unpushed", count: 3, key: "isUnpushed" as const }];
     const result = formatStatusCounts(statusCounts, 3);
-    expect(result).toBe("rebased");
+    expect(result).toBe("outdated");
   });
 
-  test("shows both unpushed and rebased when mixed", () => {
+  test("shows both unpushed and outdated when mixed", () => {
     const statusCounts = [{ label: "unpushed", count: 3, key: "isUnpushed" as const }];
     const result = formatStatusCounts(statusCounts, 2);
     expect(result).toContain("unpushed");
-    expect(result).toContain("rebased");
+    expect(result).toContain("outdated");
   });
 
   test("does not affect non-unpushed labels", () => {
     const statusCounts = [{ label: "dirty", count: 2, key: "isDirty" as const }];
     const result = formatStatusCounts(statusCounts, 1);
     expect(result).toContain("dirty");
-    expect(result).not.toContain("rebased");
+    expect(result).not.toContain("outdated");
   });
 
   test("uses custom yellowKeys when provided", () => {

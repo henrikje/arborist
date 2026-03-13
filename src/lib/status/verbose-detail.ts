@@ -95,16 +95,17 @@ export async function gatherVerboseDetail(repo: RepoStatus, wsDir: string): Prom
   if (
     verbose.aheadOfBase &&
     verbose.behindBase &&
-    repo.base?.mergedIntoBase === "squash" &&
-    repo.base.mergeCommitHash &&
-    repo.base.newCommitsAfterMerge
+    repo.base?.merge?.kind === "squash" &&
+    repo.base.merge?.commitHash &&
+    repo.base.merge?.newCommitsAfter
   ) {
-    const n = repo.base.newCommitsAfterMerge;
+    const n = repo.base.merge.newCommitsAfter;
+    const commitHash = repo.base.merge.commitHash;
     const mergedCommits = verbose.aheadOfBase.slice(n);
-    const squashEntry = verbose.behindBase.find((c) => c.hash === repo.base?.mergeCommitHash && !c.squashOf);
-    if (squashEntry && mergedCommits.length > 1) {
+    const squashEntry = verbose.behindBase.find((c) => c.hash === commitHash && !c.squashOf);
+    if (squashEntry && mergedCommits.length > 1 && commitHash) {
       const ref = baseRef(repo.base);
-      const verified = await verifySquashRange(repoDir, ref, repo.base.mergeCommitHash, n);
+      const verified = await verifySquashRange(repoDir, ref, commitHash, n);
       if (verified) {
         const reversed = [...mergedCommits].reverse();
         squashEntry.squashOf = {
@@ -118,7 +119,7 @@ export async function gatherVerboseDetail(repo: RepoStatus, wsDir: string): Prom
   // Unpushed to remote
   if (repo.share.toPush !== null && repo.share.toPush > 0 && repo.share.ref) {
     let rebasedHashes: Set<string> | null = null;
-    if (repo.share.rebased != null && repo.share.rebased > 0) {
+    if (repo.share.outdated && repo.share.outdated.rebased > 0) {
       const detection = await detectRebasedCommits(repoDir, repo.share.ref);
       rebasedHashes = detection?.rebasedLocalHashes ?? null;
     }
@@ -136,12 +137,12 @@ export async function gatherVerboseDetail(repo: RepoStatus, wsDir: string): Prom
   // To pull from remote
   if (repo.share.toPull !== null && repo.share.toPull > 0 && repo.share.ref) {
     let rebasedRemoteHashes: Set<string> | null = null;
-    if (repo.share.rebased != null && repo.share.rebased > 0) {
+    if (repo.share.outdated && repo.share.outdated.rebased > 0) {
       const detection = await detectRebasedCommits(repoDir, repo.share.ref);
       rebasedRemoteHashes = detection?.rebasedRemoteHashes ?? null;
     }
     let replacedHashes: Set<string> | null = null;
-    if (repo.share.replaced != null && repo.share.replaced > 0) {
+    if (repo.share.outdated && repo.share.outdated.replaced > 0) {
       const branch = repo.identity.headMode.kind === "attached" ? repo.identity.headMode.branch : "";
       if (branch) {
         const result = await detectReplacedCommits(repoDir, repo.share.ref, branch, rebasedRemoteHashes ?? undefined);
@@ -157,7 +158,7 @@ export async function gatherVerboseDetail(repo: RepoStatus, wsDir: string): Prom
         superseded:
           (rebasedRemoteHashes?.has(c.fullHash) ?? false) ||
           (replacedHashes?.has(c.fullHash) ?? false) ||
-          (repo.share.squashed != null && repo.share.squashed > 0),
+          (repo.share.outdated != null && repo.share.outdated.squashed > 0),
       }));
     }
   }
@@ -179,12 +180,12 @@ export async function gatherVerboseDetail(repo: RepoStatus, wsDir: string): Prom
 
 export function toJsonVerbose(
   detail: VerboseDetail,
-  base?: { newCommitsAfterMerge?: number; mergeCommitHash?: string } | null,
+  base?: { merge?: { newCommitsAfter?: number; commitHash?: string } } | null,
 ): StatusJsonRepo["verbose"] {
   const { aheadOfBase, behindBase, unpushed, toPull, ...rest } = detail;
   const stripShort = ({ hash, subject }: VerboseCommit) => ({ hash, subject });
-  const n = base?.newCommitsAfterMerge;
-  const mergeHash = base?.mergeCommitHash;
+  const n = base?.merge?.newCommitsAfter;
+  const mergeHash = base?.merge?.commitHash;
   return {
     ...rest,
     ...(aheadOfBase && {

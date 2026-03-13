@@ -1299,7 +1299,7 @@ describe("diverged commit matching", () => {
         cwd: join(env.projectDir, "my-feature"),
       });
       const json = JSON.parse(jsonResult.stdout);
-      expect(json.repos[0].base.detectedPr).toBeNull();
+      expect(json.repos[0].base.merge.detectedPr).toBeUndefined();
     }));
 
   test("arb status detects PR number from merge commit", () =>
@@ -1328,7 +1328,7 @@ describe("diverged commit matching", () => {
         cwd: join(env.projectDir, "my-feature"),
       });
       const json = JSON.parse(jsonResult.stdout);
-      expect(json.repos[0].base.detectedPr.number).toBe(42);
+      expect(json.repos[0].base.merge.detectedPr.number).toBe(42);
     }));
 
   test("arb status detects PR from merge commit via parentage", () =>
@@ -1365,7 +1365,7 @@ describe("diverged commit matching", () => {
         cwd: join(env.projectDir, "my-feature"),
       });
       const json = JSON.parse(jsonResult.stdout);
-      expect(json.repos[0].base.detectedPr.number).toBe(77);
+      expect(json.repos[0].base.merge.detectedPr.number).toBe(77);
     }));
 
   test("arb status detects PR number from squash merge commit", () =>
@@ -1395,7 +1395,7 @@ describe("diverged commit matching", () => {
         cwd: join(env.projectDir, "my-feature"),
       });
       const json = JSON.parse(jsonResult.stdout);
-      expect(json.repos[0].base.detectedPr.number).toBe(55);
+      expect(json.repos[0].base.merge.detectedPr.number).toBe(55);
     }));
 
   test("arb status detects MR number from GitLab squash merge commit", () =>
@@ -1425,7 +1425,7 @@ describe("diverged commit matching", () => {
         cwd: join(env.projectDir, "my-feature"),
       });
       const json = JSON.parse(jsonResult.stdout);
-      expect(json.repos[0].base.detectedPr.number).toBe(55);
+      expect(json.repos[0].base.merge.detectedPr.number).toBe(55);
     }));
 
   test("arb status detects PR via ticket fallback", () =>
@@ -1457,7 +1457,7 @@ describe("diverged commit matching", () => {
         cwd: join(env.projectDir, "proj-99-feature"),
       });
       const json = JSON.parse(jsonResult.stdout);
-      expect(json.repos[0].base.detectedPr.number).toBe(77);
+      expect(json.repos[0].base.merge.detectedPr.number).toBe(77);
     }));
 
   test("arb status detects PR via ticket fallback on squash merge", () =>
@@ -1491,7 +1491,7 @@ describe("diverged commit matching", () => {
         cwd: join(env.projectDir, "proj-99-squash"),
       });
       const json = JSON.parse(jsonResult.stdout);
-      expect(json.repos[0].base.detectedPr.number).toBe(88);
+      expect(json.repos[0].base.merge.detectedPr.number).toBe(88);
     }));
 
   // ── pull-merge false positive ──────────────────────────────────
@@ -1532,7 +1532,7 @@ describe("diverged commit matching", () => {
           cwd: join(env.projectDir, "my-feature"),
         });
         const json = JSON.parse(jsonResult.stdout);
-        expect(json.repos[0].base.mergedIntoBase).toBeNull();
+        expect(json.repos[0].base.merge).toBeUndefined();
       }));
 
     test("FF merge + new commit still shows merged", () =>
@@ -1561,8 +1561,8 @@ describe("diverged commit matching", () => {
           cwd: join(env.projectDir, "my-feature"),
         });
         const json = JSON.parse(jsonResult.stdout);
-        expect(json.repos[0].base.mergedIntoBase).toBe("merge");
-        expect(json.repos[0].base.newCommitsAfterMerge).toBe(1);
+        expect(json.repos[0].base.merge.kind).toBe("merge");
+        expect(json.repos[0].base.merge.newCommitsAfter).toBe(1);
       }));
 
     test("non-FF merge + new commit still shows merged", () =>
@@ -1591,7 +1591,7 @@ describe("diverged commit matching", () => {
           cwd: join(env.projectDir, "my-feature"),
         });
         const json = JSON.parse(jsonResult.stdout);
-        expect(json.repos[0].base.mergedIntoBase).toBe("merge");
+        expect(json.repos[0].base.merge.kind).toBe("merge");
       }));
 
     test("squash merge + new commit still shows merged", () =>
@@ -1624,7 +1624,7 @@ describe("diverged commit matching", () => {
           cwd: join(env.projectDir, "my-feature"),
         });
         const json = JSON.parse(jsonResult.stdout);
-        expect(json.repos[0].base.mergedIntoBase).toBe("squash");
+        expect(json.repos[0].base.merge.kind).toBe("squash");
       }));
 
     test("reset + pull with multiple repos", () =>

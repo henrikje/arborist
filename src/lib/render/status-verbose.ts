@@ -17,19 +17,21 @@ export function formatVerboseDetail(repo: RepoStatus, verbose: VerboseDetail | u
   const sections: string[] = [];
 
   // Merged into base
-  if (repo.base?.mergedIntoBase) {
+  if (repo.base?.merge) {
     const ref = baseRef(repo.base);
-    const strategy = repo.base.mergedIntoBase === "squash" ? "squash" : "merge";
+    const strategy = repo.base.merge.kind === "squash" ? "squash" : "merge";
     let prSuffix = "";
-    if (repo.base.detectedPr) {
-      const commitSuffix = repo.base.detectedPr.mergeCommit ? ` [${repo.base.detectedPr.mergeCommit.slice(0, 7)}]` : "";
-      prSuffix = repo.base.detectedPr.url
-        ? ` — detected PR #${repo.base.detectedPr.number} (${repo.base.detectedPr.url})${commitSuffix}`
-        : ` — detected PR #${repo.base.detectedPr.number}${commitSuffix}`;
+    if (repo.base.merge.detectedPr) {
+      const commitSuffix = repo.base.merge.detectedPr.mergeCommit
+        ? ` [${repo.base.merge.detectedPr.mergeCommit.slice(0, 7)}]`
+        : "";
+      prSuffix = repo.base.merge.detectedPr.url
+        ? ` — detected PR #${repo.base.merge.detectedPr.number} (${repo.base.merge.detectedPr.url})${commitSuffix}`
+        : ` — detected PR #${repo.base.merge.detectedPr.number}${commitSuffix}`;
     }
     sections.push(`\n${SECTION_INDENT}Branch merged into ${ref} (${strategy})${prSuffix}\n`);
-    if (repo.base.newCommitsAfterMerge && repo.base.newCommitsAfterMerge > 0) {
-      const n = repo.base.newCommitsAfterMerge;
+    if (repo.base.merge.newCommitsAfter && repo.base.merge.newCommitsAfter > 0) {
+      const n = repo.base.merge.newCommitsAfter;
       sections.push(
         `${SECTION_INDENT}${yellow(`${n} new ${n === 1 ? "commit" : "commits"} after merge — run 'arb rebase' to replay onto updated base`)}\n`,
       );
@@ -56,7 +58,7 @@ export function formatVerboseDetail(repo: RepoStatus, verbose: VerboseDetail | u
   // Ahead of base
   if (verbose?.aheadOfBase && repo.base) {
     const ref = baseRef(repo.base);
-    const n = repo.base.newCommitsAfterMerge;
+    const n = repo.base.merge?.newCommitsAfter;
     const total = verbose.aheadOfBase.length;
     const matchedNewCount = n && n > 0 ? verbose.aheadOfBase.slice(0, n).filter((c) => c.matchedOnBase).length : 0;
     const effectiveNew = n && n > 0 ? n - matchedNewCount : 0;
@@ -64,7 +66,7 @@ export function formatVerboseDetail(repo: RepoStatus, verbose: VerboseDetail | u
     const headerSuffix =
       n && n > 0 && mergedCount > 0 ? ` ${dim(`(${effectiveNew} new, ${mergedCount} already merged)`)}` : "";
     let section = `\n${SECTION_INDENT}Ahead of ${ref}:${headerSuffix}\n`;
-    const mergeHash = repo.base.mergeCommitHash;
+    const mergeHash = repo.base.merge?.commitHash;
     const mergeTag = mergeHash ? dim(` (merged as ${mergeHash.slice(0, 7)})`) : dim(" (already merged)");
     for (let i = 0; i < verbose.aheadOfBase.length; i++) {
       const c = verbose.aheadOfBase[i];
@@ -103,7 +105,7 @@ export function formatVerboseDetail(repo: RepoStatus, verbose: VerboseDetail | u
   // Unpushed to remote — suppress when merged and all unpushed are already shown in ahead-of-base
   if (verbose?.unpushed && repo.share) {
     const aheadHashes = verbose?.aheadOfBase ? new Set(verbose.aheadOfBase.map((c) => c.hash)) : new Set();
-    const allCoveredByAhead = repo.base?.mergedIntoBase && verbose.unpushed.every((c) => aheadHashes.has(c.hash));
+    const allCoveredByAhead = repo.base?.merge && verbose.unpushed.every((c) => aheadHashes.has(c.hash));
     if (!allCoveredByAhead) {
       const shareLabel = repo.share.ref ?? repo.share.remote;
       let section = `\n${SECTION_INDENT}Unpushed to ${shareLabel}:\n`;
@@ -162,20 +164,22 @@ export function verboseDetailToNodes(repo: RepoStatus, verbose: VerboseDetail | 
   const nodes: OutputNode[] = [];
 
   // Merged into base
-  if (repo.base?.mergedIntoBase) {
+  if (repo.base?.merge) {
     const ref = baseRef(repo.base);
-    const strategy = repo.base.mergedIntoBase === "squash" ? "squash" : "merge";
+    const strategy = repo.base.merge.kind === "squash" ? "squash" : "merge";
     let headerText = `Branch merged into ${ref} (${strategy})`;
-    if (repo.base.detectedPr) {
-      const commitSuffix = repo.base.detectedPr.mergeCommit ? ` [${repo.base.detectedPr.mergeCommit.slice(0, 7)}]` : "";
-      headerText += repo.base.detectedPr.url
-        ? ` — detected PR #${repo.base.detectedPr.number} (${repo.base.detectedPr.url})${commitSuffix}`
-        : ` — detected PR #${repo.base.detectedPr.number}${commitSuffix}`;
+    if (repo.base.merge.detectedPr) {
+      const commitSuffix = repo.base.merge.detectedPr.mergeCommit
+        ? ` [${repo.base.merge.detectedPr.mergeCommit.slice(0, 7)}]`
+        : "";
+      headerText += repo.base.merge.detectedPr.url
+        ? ` — detected PR #${repo.base.merge.detectedPr.number} (${repo.base.merge.detectedPr.url})${commitSuffix}`
+        : ` — detected PR #${repo.base.merge.detectedPr.number}${commitSuffix}`;
     }
     nodes.push({ kind: "gap" }, { kind: "section", header: cell(headerText), items: [] });
 
-    if (repo.base.newCommitsAfterMerge && repo.base.newCommitsAfterMerge > 0) {
-      const n = repo.base.newCommitsAfterMerge;
+    if (repo.base.merge.newCommitsAfter && repo.base.merge.newCommitsAfter > 0) {
+      const n = repo.base.merge.newCommitsAfter;
       nodes.push({
         kind: "section",
         header: cell(
@@ -219,7 +223,7 @@ export function verboseDetailToNodes(repo: RepoStatus, verbose: VerboseDetail | 
   // Ahead of base
   if (verbose?.aheadOfBase && repo.base) {
     const ref = baseRef(repo.base);
-    const n = repo.base.newCommitsAfterMerge;
+    const n = repo.base.merge?.newCommitsAfter;
     const total = verbose.aheadOfBase.length;
     const matchedNewCount = n && n > 0 ? verbose.aheadOfBase.slice(0, n).filter((c) => c.matchedOnBase).length : 0;
     const effectiveNew = n && n > 0 ? n - matchedNewCount : 0;
@@ -235,7 +239,7 @@ export function verboseDetailToNodes(repo: RepoStatus, verbose: VerboseDetail | 
       header = cell(`Ahead of ${ref}:`);
     }
 
-    const mergeHash = repo.base.mergeCommitHash;
+    const mergeHash = repo.base.merge?.commitHash;
     const mergeTag = mergeHash ? ` (merged as ${mergeHash.slice(0, 7)})` : " (already merged)";
     const items: Cell[] = [];
     for (let i = 0; i < verbose.aheadOfBase.length; i++) {
@@ -281,7 +285,7 @@ export function verboseDetailToNodes(repo: RepoStatus, verbose: VerboseDetail | 
   // Unpushed to remote — suppress when merged and all unpushed are already shown in ahead-of-base
   if (verbose?.unpushed && repo.share) {
     const aheadHashes = verbose?.aheadOfBase ? new Set(verbose.aheadOfBase.map((c) => c.hash)) : new Set();
-    const allCoveredByAhead = repo.base?.mergedIntoBase && verbose.unpushed.every((c) => aheadHashes.has(c.hash));
+    const allCoveredByAhead = repo.base?.merge && verbose.unpushed.every((c) => aheadHashes.has(c.hash));
     if (!allCoveredByAhead) {
       const shareLabel = repo.share.ref ?? repo.share.remote;
       const items: Cell[] = [];

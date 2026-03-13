@@ -715,8 +715,8 @@ export function classifyRepo(
   base.baseRemote = status.base.remote;
 
   // Feature branch already merged into base (merge or squash)
-  if (status.base.mergedIntoBase != null) {
-    const strategy = status.base.mergedIntoBase === "squash" ? "squash-merged" : "merged";
+  if (status.base.merge != null) {
+    const strategy = status.base.merge.kind === "squash" ? "squash-merged" : "merged";
     return {
       ...base,
       skipReason: `already ${strategy} into ${status.base.ref}`,
@@ -770,7 +770,7 @@ async function assessRepo(
   // Also allow already-merged with new commits to pass through for replay recovery.
   const base = status.base;
   const isMergedNewWork =
-    classified.skipFlag === "already-merged" && base?.newCommitsAfterMerge && base.newCommitsAfterMerge > 0;
+    classified.skipFlag === "already-merged" && base?.merge?.newCommitsAfter && base.merge.newCommitsAfter > 0;
   if (classified.outcome === "skip" && classified.skipFlag !== "base-merged-into-default" && !isMergedNewWork) {
     return classified;
   }
@@ -792,7 +792,7 @@ async function assessRepo(
     };
   }
   if (isMergedNewWork && base) {
-    const n = base.newCommitsAfterMerge ?? 0;
+    const n = base.merge?.newCommitsAfter ?? 0;
     const boundaryResult = await git(repoDir, "rev-parse", `HEAD~${n}`);
     if (boundaryResult.exitCode === 0) {
       const boundarySha = boundaryResult.stdout.trim();
@@ -899,7 +899,7 @@ async function assessRepo(
     retargetExplicit === null &&
     classified.outcome === "will-operate" &&
     base?.replayPlan?.contiguous &&
-    !(base.replayPlan.mergedPrefix && base.mergedIntoBase == null)
+    !(base.replayPlan.mergedPrefix && base.merge == null)
   ) {
     const replayPlan = base.replayPlan;
     if (replayPlan.alreadyOnTarget > 0 && replayPlan.toReplay === 0) {

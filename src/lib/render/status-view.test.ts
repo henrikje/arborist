@@ -12,8 +12,7 @@ function makeSummary(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummar
     repos: [makeRepo()],
     total: 1,
     atRiskCount: 0,
-    rebasedOnlyCount: 0,
-    statusLabels: [],
+    outdatedOnlyCount: 0,
     statusCounts: [],
     lastCommit: null,
     lastActivity: null,
@@ -147,9 +146,7 @@ describe("buildStatusView", () => {
         configuredRef: null,
         ahead: 2,
         behind: 3,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const nodes = buildStatusView(
@@ -170,9 +167,7 @@ describe("buildStatusView", () => {
         refMode: "configured",
         toPush: 5,
         toPull: 3,
-        rebased: 0,
-        replaced: null,
-        squashed: null,
+        outdated: { total: 0, rebased: 0, replaced: 0, squashed: 0 },
       },
     });
     const nodes = buildStatusView(

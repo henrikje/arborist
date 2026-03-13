@@ -119,9 +119,7 @@ describe("analyzeBaseName", () => {
         configuredRef: "feat/old",
         ahead: 0,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const flags = computeFlags(repo, "feature");
@@ -138,9 +136,7 @@ describe("analyzeBaseName", () => {
         configuredRef: "feat/old",
         ahead: 0,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: "merge",
-        detectedPr: null,
       },
     });
     const flags = computeFlags(repo, "feature");
@@ -175,9 +171,7 @@ describe("analyzeBaseDiff", () => {
         configuredRef: null,
         ahead: 2,
         behind: 3,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const flags = computeFlags(repo, "feature");
@@ -193,9 +187,7 @@ describe("analyzeBaseDiff", () => {
         configuredRef: "feat/old",
         ahead: 0,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: "merge",
-        detectedPr: null,
       },
     });
     const flags = computeFlags(repo, "feature");
@@ -262,9 +254,6 @@ describe("analyzeRemoteDiff", () => {
         refMode: "configured",
         toPush: 3,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     });
     const flags = computeFlags(repo, "feature");
@@ -281,9 +270,7 @@ describe("analyzeRemoteDiff", () => {
         configuredRef: null,
         ahead: 2,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
       share: {
         remote: "origin",
@@ -291,9 +278,7 @@ describe("analyzeRemoteDiff", () => {
         refMode: "configured",
         toPush: 2,
         toPull: 2,
-        rebased: 2,
-        replaced: null,
-        squashed: null,
+        outdated: { total: 2, rebased: 2, replaced: 0, squashed: 0 },
       },
     });
     const flags = computeFlags(repo, "feature");
@@ -313,9 +298,6 @@ describe("analyzeRemoteDiff", () => {
         refMode: "configured",
         toPush: 1,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
       base: {
         remote: "origin",
@@ -323,10 +305,8 @@ describe("analyzeRemoteDiff", () => {
         configuredRef: null,
         ahead: 12,
         behind: 1,
-        mergedIntoBase: "squash",
-        newCommitsAfterMerge: 1,
+        merge: { kind: "squash", newCommitsAfter: 1 },
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const flags = computeFlags(repo, "feature");
@@ -346,9 +326,6 @@ describe("analyzeRemoteDiff", () => {
         refMode: "noRef",
         toPush: null,
         toPull: null,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
       base: {
         remote: "origin",
@@ -356,9 +333,7 @@ describe("analyzeRemoteDiff", () => {
         configuredRef: null,
         ahead: 0,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const flags = computeFlags(repo, "feature");
@@ -384,9 +359,6 @@ describe("analyzeRemoteDiff", () => {
         refMode: "configured",
         toPush: 0,
         toPull: 3,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     });
     const flags = computeFlags(repo, "feature");
@@ -466,9 +438,7 @@ describe("plainBaseDiff", () => {
         configuredRef: null,
         ahead: 0,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       }),
     ).toBe("equal");
   });
@@ -481,9 +451,8 @@ describe("plainBaseDiff", () => {
         configuredRef: null,
         ahead: 0,
         behind: 0,
-        mergedIntoBase: "squash",
+        merge: { kind: "squash" },
         baseMergedIntoDefault: null,
-        detectedPr: null,
       }),
     ).toBe("merged");
   });
@@ -504,9 +473,6 @@ describe("plainRemoteDiff", () => {
             refMode: "gone",
             toPush: null,
             toPull: null,
-            rebased: null,
-            replaced: null,
-            squashed: null,
           },
           base: {
             remote: "origin",
@@ -514,9 +480,8 @@ describe("plainRemoteDiff", () => {
             configuredRef: null,
             ahead: 0,
             behind: 0,
-            mergedIntoBase: "merge",
+            merge: { kind: "merge" },
             baseMergedIntoDefault: null,
-            detectedPr: null,
           },
         }),
       ),

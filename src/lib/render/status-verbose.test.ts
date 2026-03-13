@@ -13,11 +13,8 @@ describe("formatVerboseDetail", () => {
         configuredRef: null,
         ahead: 3,
         behind: 1,
-        mergedIntoBase: "squash",
-        newCommitsAfterMerge: 1,
-        mergeCommitHash: "abcdef1234567890",
+        merge: { kind: "squash", newCommitsAfter: 1, commitHash: "abcdef1234567890" },
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const verbose = {
@@ -43,11 +40,8 @@ describe("formatVerboseDetail", () => {
         configuredRef: null,
         ahead: 2,
         behind: 2,
-        mergedIntoBase: "squash",
-        newCommitsAfterMerge: 1,
-        mergeCommitHash: "squash123456",
+        merge: { kind: "squash", newCommitsAfter: 1, commitHash: "squash123456" },
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const verbose = {
@@ -78,10 +72,8 @@ describe("formatVerboseDetail", () => {
         configuredRef: null,
         ahead: 1,
         behind: 0,
-        mergedIntoBase: "merge",
-        newCommitsAfterMerge: 1,
+        merge: { kind: "merge", newCommitsAfter: 1 },
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
       share: {
         remote: "origin",
@@ -89,9 +81,6 @@ describe("formatVerboseDetail", () => {
         refMode: "configured",
         toPush: 1,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     });
     const verbose = {
@@ -110,9 +99,6 @@ describe("formatVerboseDetail", () => {
         refMode: "configured",
         toPush: 1,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     });
     const verbose = {
@@ -131,10 +117,8 @@ describe("formatVerboseDetail", () => {
         configuredRef: null,
         ahead: 1,
         behind: 0,
-        mergedIntoBase: "merge",
-        newCommitsAfterMerge: 1,
+        merge: { kind: "merge", newCommitsAfter: 1 },
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
       share: {
         remote: "origin",
@@ -142,9 +126,6 @@ describe("formatVerboseDetail", () => {
         refMode: "configured",
         toPush: 2,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     });
     const verbose = {
@@ -166,9 +147,6 @@ describe("formatVerboseDetail", () => {
         refMode: "configured",
         toPush: 1,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     });
     const repoNoRef = makeRepo({
@@ -178,9 +156,6 @@ describe("formatVerboseDetail", () => {
         refMode: "noRef",
         toPush: 1,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     });
     const verbose = {
@@ -190,7 +165,7 @@ describe("formatVerboseDetail", () => {
     expect(formatVerboseDetail(repoNoRef, verbose)).toContain("Unpushed to origin");
   });
 
-  test("shows no annotations when no newCommitsAfterMerge", () => {
+  test("shows no annotations when no merge", () => {
     const repo = makeRepo({
       base: {
         remote: "origin",
@@ -198,9 +173,7 @@ describe("formatVerboseDetail", () => {
         configuredRef: null,
         ahead: 2,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const verbose = {
@@ -242,9 +215,8 @@ describe("verboseDetailToNodes", () => {
         configuredRef: null,
         ahead: 0,
         behind: 0,
-        mergedIntoBase: "merge",
+        merge: { kind: "merge" },
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const nodes = verboseDetailToNodes(repo, undefined);
@@ -262,9 +234,8 @@ describe("verboseDetailToNodes", () => {
         configuredRef: null,
         ahead: 0,
         behind: 0,
-        mergedIntoBase: "squash",
+        merge: { kind: "squash" },
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const secs = sections(verboseDetailToNodes(repo, undefined));
@@ -279,9 +250,8 @@ describe("verboseDetailToNodes", () => {
         configuredRef: null,
         ahead: 0,
         behind: 0,
-        mergedIntoBase: "merge",
+        merge: { kind: "merge", detectedPr: { number: 42, url: "https://github.com/org/repo/pull/42" } },
         baseMergedIntoDefault: null,
-        detectedPr: { number: 42, url: "https://github.com/org/repo/pull/42" },
       },
     });
     const secs = sections(verboseDetailToNodes(repo, undefined));
@@ -297,10 +267,8 @@ describe("verboseDetailToNodes", () => {
         configuredRef: null,
         ahead: 2,
         behind: 0,
-        mergedIntoBase: "squash",
-        newCommitsAfterMerge: 2,
+        merge: { kind: "squash", newCommitsAfter: 2 },
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const secs = sections(verboseDetailToNodes(repo, undefined));
@@ -317,9 +285,7 @@ describe("verboseDetailToNodes", () => {
         configuredRef: "feature-base",
         ahead: 0,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: "merge",
-        detectedPr: null,
       },
     });
     const secs = sections(verboseDetailToNodes(repo, undefined));
@@ -337,9 +303,7 @@ describe("verboseDetailToNodes", () => {
         configuredRef: "missing-branch",
         ahead: 0,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const secs = sections(verboseDetailToNodes(repo, undefined));
@@ -357,9 +321,7 @@ describe("verboseDetailToNodes", () => {
         configuredRef: null,
         ahead: 2,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const verbose = {
@@ -385,11 +347,8 @@ describe("verboseDetailToNodes", () => {
         configuredRef: null,
         ahead: 3,
         behind: 1,
-        mergedIntoBase: "squash",
-        newCommitsAfterMerge: 1,
-        mergeCommitHash: "abcdef1234567890",
+        merge: { kind: "squash", newCommitsAfter: 1, commitHash: "abcdef1234567890" },
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const verbose = {
@@ -419,9 +378,7 @@ describe("verboseDetailToNodes", () => {
         configuredRef: null,
         ahead: 0,
         behind: 2,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const verbose = {
@@ -455,9 +412,6 @@ describe("verboseDetailToNodes", () => {
         refMode: "configured",
         toPush: 2,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     });
     const verbose = {
@@ -481,10 +435,8 @@ describe("verboseDetailToNodes", () => {
         configuredRef: null,
         ahead: 1,
         behind: 0,
-        mergedIntoBase: "merge",
-        newCommitsAfterMerge: 1,
+        merge: { kind: "merge", newCommitsAfter: 1 },
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
       share: {
         remote: "origin",
@@ -492,9 +444,6 @@ describe("verboseDetailToNodes", () => {
         refMode: "configured",
         toPush: 1,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     });
     const verbose = {
@@ -535,9 +484,7 @@ describe("verboseDetailToNodes", () => {
         configuredRef: null,
         ahead: 1,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const verbose = {
@@ -556,9 +503,7 @@ describe("verboseDetailToNodes", () => {
         configuredRef: null,
         ahead: 1,
         behind: 1,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
       share: {
         remote: "origin",
@@ -566,9 +511,6 @@ describe("verboseDetailToNodes", () => {
         refMode: "configured",
         toPush: 1,
         toPull: 0,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     });
     const verbose = {
@@ -632,9 +574,11 @@ describe("formatVerboseDetail — PR suffix", () => {
         configuredRef: null,
         ahead: 0,
         behind: 0,
-        mergedIntoBase: "merge",
+        merge: {
+          kind: "merge",
+          detectedPr: { number: 99, url: "https://github.com/org/repo/pull/99", mergeCommit: "deadbeef12345678" },
+        },
         baseMergedIntoDefault: null,
-        detectedPr: { number: 99, url: "https://github.com/org/repo/pull/99", mergeCommit: "deadbeef12345678" },
       },
     });
     const output = formatVerboseDetail(repo, undefined);
@@ -650,9 +594,8 @@ describe("formatVerboseDetail — PR suffix", () => {
         configuredRef: null,
         ahead: 0,
         behind: 0,
-        mergedIntoBase: "merge",
+        merge: { kind: "merge", detectedPr: { number: 55, url: null } },
         baseMergedIntoDefault: null,
-        detectedPr: { number: 55, url: null },
       },
     });
     const output = formatVerboseDetail(repo, undefined);
@@ -672,9 +615,7 @@ describe("formatVerboseDetail — baseMergedIntoDefault", () => {
         configuredRef: null,
         ahead: 0,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: "squash",
-        detectedPr: null,
       },
     });
     const output = formatVerboseDetail(repo, undefined);
@@ -690,9 +631,7 @@ describe("formatVerboseDetail — baseMergedIntoDefault", () => {
         configuredRef: "release/v2",
         ahead: 0,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: "merge",
-        detectedPr: null,
       },
     });
     const output = formatVerboseDetail(repo, undefined);
@@ -707,9 +646,7 @@ describe("formatVerboseDetail — baseMergedIntoDefault", () => {
         configuredRef: null,
         ahead: 0,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: "merge",
-        detectedPr: null,
       },
     });
     const output = formatVerboseDetail(repo, undefined);
@@ -728,9 +665,7 @@ describe("formatVerboseDetail — configuredRef not found", () => {
         configuredRef: "old-branch",
         ahead: 0,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const output = formatVerboseDetail(repo, undefined);
@@ -746,9 +681,7 @@ describe("formatVerboseDetail — configuredRef not found", () => {
         configuredRef: "old-branch",
         ahead: 0,
         behind: 0,
-        mergedIntoBase: null,
         baseMergedIntoDefault: "merge",
-        detectedPr: null,
       },
     });
     const output = formatVerboseDetail(repo, undefined);
@@ -854,7 +787,7 @@ describe("toJsonVerbose", () => {
     expect(result?.aheadOfBase?.[0]?.mergedAs).toBe("base999");
   });
 
-  test("newCommitsAfterMerge annotation: commits beyond N get mergedAs with mergeCommitHash", () => {
+  test("newCommitsAfter annotation: commits beyond N get mergedAs with commitHash", () => {
     const detail = {
       aheadOfBase: [
         { hash: "new1", shortHash: "new1234", subject: "new commit" },
@@ -862,7 +795,7 @@ describe("toJsonVerbose", () => {
         { hash: "old2", shortHash: "old2345", subject: "old commit 2" },
       ],
     };
-    const base = { newCommitsAfterMerge: 1, mergeCommitHash: "merge123456" };
+    const base = { merge: { newCommitsAfter: 1, commitHash: "merge123456" } };
     const result = toJsonVerbose(detail, base);
     const ahead = result?.aheadOfBase;
     expect(ahead?.[0]?.mergedAs).toBeUndefined();
@@ -882,9 +815,7 @@ describe("formatVerboseDetail — behind base annotations", () => {
         configuredRef: null,
         ahead: 0,
         behind: 1,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const verbose = {
@@ -910,9 +841,7 @@ describe("formatVerboseDetail — behind base annotations", () => {
         configuredRef: null,
         ahead: 0,
         behind: 1,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const verbose = {
@@ -937,9 +866,7 @@ describe("formatVerboseDetail — behind base annotations", () => {
         configuredRef: null,
         ahead: 0,
         behind: 1,
-        mergedIntoBase: null,
         baseMergedIntoDefault: null,
-        detectedPr: null,
       },
     });
     const verbose = {
@@ -968,9 +895,6 @@ describe("formatVerboseDetail — to pull section", () => {
         refMode: "configured",
         toPush: 0,
         toPull: 2,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     });
     const verbose = {
@@ -993,9 +917,6 @@ describe("formatVerboseDetail — to pull section", () => {
         refMode: "configured",
         toPush: 0,
         toPull: 2,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     });
     const verbose = {
@@ -1132,9 +1053,6 @@ describe("verboseDetailToNodes — to pull section", () => {
         refMode: "configured",
         toPush: 0,
         toPull: 2,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     });
     const verbose = {
@@ -1158,9 +1076,6 @@ describe("verboseDetailToNodes — to pull section", () => {
         refMode: "configured",
         toPush: 0,
         toPull: 1,
-        rebased: null,
-        replaced: null,
-        squashed: null,
       },
     });
     const verbose = {
