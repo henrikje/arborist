@@ -6,8 +6,8 @@ import { GitCache, getShortHead, git } from "../lib/git";
 import type { Cell, OutputNode, Span } from "../lib/render";
 import { cell, createRenderContext, finishSummary, render, skipCell, spans, suffix } from "../lib/render";
 import type { SkipFlag } from "../lib/status";
-import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
-import { confirmOrExit, runPlanFlow } from "../lib/sync";
+import { type RepoStatus, computeFlags, resolveWhereFilter } from "../lib/status";
+import { buildCachedStatusAssess, confirmOrExit, runPlanFlow } from "../lib/sync";
 import { dryRunNotice, info, inlineResult, inlineStart, isTTY, plural, warn, yellow } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
@@ -282,28 +282,20 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
 
         // Phase 2: assess
         const useBase = options.base === true;
-        const prevStatuses = new Map<string, RepoStatus>();
-        const assess = async (fetchFailed: string[], unchangedRepos: Set<string>) => {
-          const assessments = await Promise.all(
-            repos.map(async (repo) => {
-              const repoDir = `${wsDir}/${repo}`;
-              let status: RepoStatus;
-              if (unchangedRepos.has(repo) && prevStatuses.has(repo)) {
-                status = prevStatuses.get(repo) as RepoStatus;
-              } else {
-                status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo), cache);
-              }
-              prevStatuses.set(repo, status);
-              if (where) {
-                const flags = computeFlags(status, branch);
-                if (!repoMatchesWhere(flags, where)) return null;
-              }
-              const headSha = await getShortHead(repoDir);
-              return assessResetRepo(status, repoDir, branch, fetchFailed, headSha, useBase);
-            }),
-          );
-          return assessments.filter((a): a is ResetAssessment => a !== null);
-        };
+        const assess = buildCachedStatusAssess<ResetAssessment>({
+          repos,
+          wsDir,
+          reposDir: ctx.reposDir,
+          branch,
+          configBase,
+          remotesMap,
+          cache,
+          where,
+          classify: async ({ repoDir, status, fetchFailed }) => {
+            const headSha = await getShortHead(repoDir);
+            return assessResetRepo(status, repoDir, branch, fetchFailed, headSha, useBase);
+          },
+        });
 
         const assessments = await runPlanFlow({
           shouldFetch,

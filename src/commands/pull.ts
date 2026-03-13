@@ -18,8 +18,8 @@ import type { Cell, OutputNode } from "../lib/render";
 import { buildConflictReport, buildStashPopFailureReport, skipCell, upToDateCell } from "../lib/render";
 import { cell, spans, suffix } from "../lib/render";
 import { verboseCommitsToNodes } from "../lib/render";
-import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
-import { VERBOSE_COMMIT_LIMIT, confirmOrExit, runPlanFlow } from "../lib/sync";
+import { type RepoStatus, computeFlags, resolveWhereFilter } from "../lib/status";
+import { VERBOSE_COMMIT_LIMIT, buildCachedStatusAssess, confirmOrExit, runPlanFlow } from "../lib/sync";
 export type { PullAssessment } from "../lib/sync";
 import type { PullAssessment } from "../lib/sync";
 import { dryRunNotice, error, info, inlineResult, inlineStart, isTTY, plural, yellow } from "../lib/terminal";
@@ -100,38 +100,30 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
         const autostash = options.autostash === true;
 
         // Phase 2: assess
-        const prevStatuses = new Map<string, RepoStatus>();
-        const assess = async (fetchFailed: string[], unchangedRepos: Set<string>) => {
-          const assessments = await Promise.all(
-            repos.map(async (repo) => {
-              const repoDir = `${wsDir}/${repo}`;
-              let status: RepoStatus;
-              if (unchangedRepos.has(repo) && prevStatuses.has(repo)) {
-                status = prevStatuses.get(repo) as RepoStatus;
-              } else {
-                status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo), cache);
-              }
-              prevStatuses.set(repo, status);
-              if (where) {
-                const flags = computeFlags(status, branch);
-                if (!repoMatchesWhere(flags, where)) return null;
-              }
-              const headSha = await getShortHead(repoDir);
-              const pullMode = flagMode ?? (await detectPullMode(repoDir, branch));
-              return assessPullRepo(
-                status,
-                repoDir,
-                branch,
-                fetchFailed,
-                pullMode,
-                autostash,
-                headSha,
-                options.includeDrifted,
-              );
-            }),
-          );
-          return assessments.filter((a): a is PullAssessment => a !== null);
-        };
+        const assess = buildCachedStatusAssess<PullAssessment>({
+          repos,
+          wsDir,
+          reposDir: ctx.reposDir,
+          branch,
+          configBase,
+          remotesMap,
+          cache,
+          where,
+          classify: async ({ repoDir, status, fetchFailed }) => {
+            const headSha = await getShortHead(repoDir);
+            const pullMode = flagMode ?? (await detectPullMode(repoDir, branch));
+            return assessPullRepo(
+              status,
+              repoDir,
+              branch,
+              fetchFailed,
+              pullMode,
+              autostash,
+              headSha,
+              options.includeDrifted,
+            );
+          },
+        });
 
         const postAssess = async (nextAssessments: PullAssessment[]) => {
           let assessments = await reviveRebasedSkipsForSafeReset(nextAssessments, remotesMap);

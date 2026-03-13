@@ -8,8 +8,14 @@ import { createRenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
 import { skipCell, upToDateCell, verboseCommitsToNodes } from "../lib/render";
 import { cell, suffix } from "../lib/render";
-import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
-import { VERBOSE_COMMIT_LIMIT, classifyNetworkError, confirmOrExit, runPlanFlow } from "../lib/sync";
+import { type RepoStatus, resolveWhereFilter } from "../lib/status";
+import {
+  VERBOSE_COMMIT_LIMIT,
+  buildCachedStatusAssess,
+  classifyNetworkError,
+  confirmOrExit,
+  runPlanFlow,
+} from "../lib/sync";
 export type { PushAssessment } from "../lib/sync";
 import type { PushAssessment } from "../lib/sync";
 import { dryRunNotice, info, inlineResult, inlineStart, plural, red } from "../lib/terminal";
@@ -61,35 +67,26 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
         const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
         const allRepos = fetchDirs.map((d) => basename(d));
 
-        const prevStatuses = new Map<string, RepoStatus>();
-        const assess = async (_fetchFailed: string[], unchangedRepos: Set<string>) => {
-          const assessments = await Promise.all(
-            selectedRepos.map(async (repo) => {
-              const repoDir = `${wsDir}/${repo}`;
-              let status: RepoStatus;
-              if (unchangedRepos.has(repo) && prevStatuses.has(repo)) {
-                status = prevStatuses.get(repo) as RepoStatus;
-              } else {
-                status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, remotesMap.get(repo), cache);
-              }
-              prevStatuses.set(repo, status);
-              if (where) {
-                const flags = computeFlags(status, branch);
-                if (!repoMatchesWhere(flags, where)) return null;
-              }
-              const headSha = await getShortHead(repoDir);
-              return assessPushRepo(status, repoDir, branch, headSha, {
-                force: options.force,
-                includeMerged: options.includeMerged,
-                includeDrifted: options.includeDrifted,
-              });
-            }),
-          );
-          return applyForcePushPolicy(
-            assessments.filter((a): a is PushAssessment => a !== null),
-            options.force === true,
-          );
-        };
+        const assessWithCache = buildCachedStatusAssess<PushAssessment>({
+          repos: selectedRepos,
+          wsDir,
+          reposDir: ctx.reposDir,
+          branch,
+          configBase,
+          remotesMap,
+          cache,
+          where,
+          classify: async ({ repoDir, status }) => {
+            const headSha = await getShortHead(repoDir);
+            return assessPushRepo(status, repoDir, branch, headSha, {
+              force: options.force,
+              includeMerged: options.includeMerged,
+              includeDrifted: options.includeDrifted,
+            });
+          },
+        });
+        const assess = async (fetchFailed: string[], unchangedRepos: Set<string>) =>
+          applyForcePushPolicy(await assessWithCache(fetchFailed, unchangedRepos), options.force === true);
 
         const postAssess = options.verbose
           ? (nextAssessments: PushAssessment[]) => gatherPushVerboseCommits(nextAssessments, remotesMap)
