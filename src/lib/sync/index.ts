@@ -6,6 +6,7 @@ export {
   integrate,
 } from "./integrate";
 export { assessIntegrateRepo, classifyRepo, type IntegrateMode } from "./classify-integrate";
+export { buildCachedStatusAssess } from "./assess-with-cache";
 export type { PullAssessment, PushAssessment } from "./types";
 export { type PlanFlowOptions, confirmOrExit, runPlanFlow } from "./mutation-flow";
 export {
