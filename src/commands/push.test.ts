@@ -6,6 +6,24 @@ import { type PushAssessment, assessPushRepo, formatPushPlan } from "./push";
 const DIR = "/tmp/test-repo";
 const SHA = "abc1234";
 
+function normalizePushAssessment(overrides: Record<string, unknown>): Record<string, unknown> {
+  const { commits, totalCommits, ...next } = overrides;
+  const verbose = {
+    commits: commits as PushAssessment["verbose"] extends infer TVerbose
+      ? TVerbose extends { commits?: infer TCommits }
+        ? TCommits
+        : never
+      : never,
+    totalCommits: totalCommits as number | undefined,
+  };
+
+  if (verbose.commits || verbose.totalCommits) {
+    next.verbose = verbose;
+  }
+
+  return next;
+}
+
 describe("assessPushRepo", () => {
   test("up-to-date when nothing to push or pull", () => {
     const a = assessPushRepo(makeRepo(), DIR, "feature", SHA);
@@ -725,7 +743,7 @@ describe("assessPushRepo", () => {
 });
 
 describe("formatPushPlan", () => {
-  function makeAssessment(overrides: Partial<PushAssessment> = {}): PushAssessment {
+  function makeAssessment(overrides: Record<string, unknown> = {}): PushAssessment {
     return {
       repo: "repo-a",
       repoDir: "/tmp/repo-a",
@@ -743,8 +761,8 @@ describe("formatPushPlan", () => {
       headSha: "abc1234",
       recreate: false,
       behindBase: 0,
-      ...overrides,
-    };
+      ...normalizePushAssessment(overrides),
+    } as PushAssessment;
   }
 
   function makeRemotesMap(...entries: [string, Partial<RepoRemotes>][]): Map<string, RepoRemotes> {

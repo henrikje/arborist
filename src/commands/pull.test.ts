@@ -12,6 +12,53 @@ import {
 const DIR = "/tmp/test-repo";
 const SHA = "abc1234";
 
+function normalizePullAssessment(overrides: Record<string, unknown>): Record<string, unknown> {
+  const {
+    safeResetReason,
+    safeResetBlockedBy,
+    safeResetTarget,
+    oldRemoteTip,
+    commits,
+    totalCommits,
+    diffStats,
+    conflictCommits,
+    ...next
+  } = overrides;
+  const safeReset = {
+    reason: safeResetReason as string | undefined,
+    blockedBy: safeResetBlockedBy as string | undefined,
+    target: safeResetTarget as string | undefined,
+    oldRemoteTip: oldRemoteTip as string | undefined,
+  };
+  const verbose = {
+    commits: commits as PullAssessment["verbose"] extends infer TVerbose
+      ? TVerbose extends { commits?: infer TCommits }
+        ? TCommits
+        : never
+      : never,
+    totalCommits: totalCommits as number | undefined,
+    diffStats: diffStats as PullAssessment["verbose"] extends infer TVerbose
+      ? TVerbose extends { diffStats?: infer TDiff }
+        ? TDiff
+        : never
+      : never,
+    conflictCommits: conflictCommits as PullAssessment["verbose"] extends infer TVerbose
+      ? TVerbose extends { conflictCommits?: infer TConflicts }
+        ? TConflicts
+        : never
+      : never,
+  };
+
+  if (safeReset.reason || safeReset.blockedBy || safeReset.target || safeReset.oldRemoteTip) {
+    next.safeReset = safeReset;
+  }
+  if (verbose.commits || verbose.totalCommits || verbose.diffStats || verbose.conflictCommits) {
+    next.verbose = verbose;
+  }
+
+  return next;
+}
+
 describe("assessPullRepo", () => {
   test("up-to-date when nothing to pull", () => {
     const a = assessPullRepo(makeRepo(), DIR, "feature", [], "merge", false, SHA);
@@ -411,7 +458,7 @@ describe("assessPullRepo", () => {
 });
 
 describe("formatPullPlan", () => {
-  function makeAssessment(overrides: Partial<PullAssessment> = {}): PullAssessment {
+  function makeAssessment(overrides: Record<string, unknown> = {}): PullAssessment {
     return {
       repo: "repo-a",
       repoDir: "/tmp/repo-a",
@@ -425,8 +472,8 @@ describe("formatPullPlan", () => {
       pullStrategy: "merge-pull",
       branch: "feature",
       headSha: "abc1234",
-      ...overrides,
-    };
+      ...normalizePullAssessment(overrides),
+    } as PullAssessment;
   }
 
   function makeRemotesMap(...entries: [string, Partial<RepoRemotes>][]): Map<string, RepoRemotes> {
@@ -725,7 +772,7 @@ describe("formatPullPlan", () => {
 });
 
 describe("forceRebasedSkips", () => {
-  function makeAssessment(overrides: Partial<PullAssessment> = {}): PullAssessment {
+  function makeAssessment(overrides: Record<string, unknown> = {}): PullAssessment {
     return {
       repo: "repo-a",
       repoDir: "/tmp/repo-a",
@@ -741,8 +788,8 @@ describe("forceRebasedSkips", () => {
       headSha: "abc1234",
       skipReason: "rebased locally (push --force, or pull --force to reset)",
       skipFlag: "rebased-locally",
-      ...overrides,
-    };
+      ...normalizePullAssessment(overrides),
+    } as PullAssessment;
   }
 
   function makeRemotesMap(...entries: [string, Partial<RepoRemotes>][]): Map<string, RepoRemotes> {
@@ -758,8 +805,8 @@ describe("forceRebasedSkips", () => {
     forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
     expect(assessments[0]?.outcome).toBe("will-pull");
     expect(assessments[0]?.pullStrategy).toBe("forced-reset");
-    expect(assessments[0]?.safeResetTarget).toBe("origin/feature");
-    expect(assessments[0]?.safeResetReason).toBe("discards local rebase");
+    expect(assessments[0]?.safeReset?.target).toBe("origin/feature");
+    expect(assessments[0]?.safeReset?.reason).toBe("discards local rebase");
     expect(assessments[0]?.skipReason).toBeUndefined();
     expect(assessments[0]?.skipFlag).toBeUndefined();
   });
@@ -769,8 +816,8 @@ describe("forceRebasedSkips", () => {
     forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
     expect(assessments[0]?.outcome).toBe("will-pull");
     expect(assessments[0]?.pullStrategy).toBe("safe-reset");
-    expect(assessments[0]?.safeResetTarget).toBe("origin/feature");
-    expect(assessments[0]?.safeResetReason).toBe("discards local rebase");
+    expect(assessments[0]?.safeReset?.target).toBe("origin/feature");
+    expect(assessments[0]?.safeReset?.reason).toBe("discards local rebase");
   });
 
   test("uses safe-reset when excess toPush is from-base commits", () => {
@@ -812,13 +859,13 @@ describe("forceRebasedSkips", () => {
   test("uses share remote from remotesMap", () => {
     const assessments = [makeAssessment()];
     forceRebasedSkips(assessments, makeRemotesMap(["repo-a", { share: "fork" }]));
-    expect(assessments[0]?.safeResetTarget).toBe("fork/feature");
+    expect(assessments[0]?.safeReset?.target).toBe("fork/feature");
   });
 
   test("uses assessment branch for drifted repos", () => {
     const assessments = [makeAssessment({ branch: "other-branch", drifted: true })];
     forceRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
-    expect(assessments[0]?.safeResetTarget).toBe("origin/other-branch");
+    expect(assessments[0]?.safeReset?.target).toBe("origin/other-branch");
   });
 });
 

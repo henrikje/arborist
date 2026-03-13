@@ -6,6 +6,7 @@ export {
   formatIntegratePlan,
   integrate,
 } from "./integrate";
+export type { PullAssessment, PushAssessment } from "./types";
 export { type PlanFlowOptions, confirmOrExit, runPlanFlow } from "./mutation-flow";
 export {
   type FetchResult,

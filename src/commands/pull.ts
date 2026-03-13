@@ -18,9 +18,10 @@ import type { Cell, OutputNode } from "../lib/render";
 import { buildConflictReport, buildStashPopFailureReport, skipCell, upToDateCell } from "../lib/render";
 import { cell, spans, suffix } from "../lib/render";
 import { verboseCommitsToNodes } from "../lib/render";
-import type { SkipFlag } from "../lib/status";
 import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
 import { VERBOSE_COMMIT_LIMIT, confirmOrExit, runPlanFlow } from "../lib/sync";
+export type { PullAssessment } from "../lib/sync";
+import type { PullAssessment } from "../lib/sync";
 import { dryRunNotice, error, info, inlineResult, inlineStart, isTTY, plural, yellow } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
@@ -34,33 +35,9 @@ interface PullFailure {
   action: string;
 }
 
-export interface PullAssessment {
-  repo: string;
-  repoDir: string;
-  outcome: "will-pull" | "up-to-date" | "skip";
-  skipReason?: string;
-  skipFlag?: SkipFlag;
-  behind: number;
-  toPush: number;
-  rebased: number;
-  rebasedKnown: boolean;
-  fromBaseCount: number;
-  pullMode: "rebase" | "merge";
-  pullStrategy?: PullStrategy;
-  branch: string;
-  headSha: string;
-  safeResetReason?: string;
-  safeResetBlockedBy?: string;
-  safeResetTarget?: string;
-  oldRemoteTip?: string;
-  conflictPrediction?: "no-conflict" | "clean" | "conflict" | null;
-  needsStash?: boolean;
-  stashPopConflictFiles?: string[];
-  commits?: { shortHash: string; subject: string }[];
-  totalCommits?: number;
-  diffStats?: { files: number; insertions: number; deletions: number };
-  conflictCommits?: { shortHash: string; files: string[] }[];
-  drifted?: boolean;
+function withoutSkipFields<T extends { skipReason?: string; skipFlag?: string }>(assessment: T) {
+  const { skipReason: _skipReason, skipFlag: _skipFlag, ...next } = assessment;
+  return next;
 }
 
 export function registerPullCommand(program: Command, getCtx: () => ArbContext): void {
@@ -242,7 +219,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
             if (a.needsStash) {
               await git(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
             }
-            const target = a.safeResetTarget ?? `${pullRemote}/${a.branch}`;
+            const target = a.safeReset?.target ?? `${pullRemote}/${a.branch}`;
             const resetLabel = strategy === "forced-reset" ? "forced reset" : "safe reset";
             const resetResult = await git(a.repoDir, "reset", "--hard", target);
             if (resetResult.exitCode === 0) {
@@ -359,34 +336,37 @@ export function assessPullRepo(
   headSha: string,
   includeDrifted?: boolean,
 ): PullAssessment {
-  const base: PullAssessment = {
+  const defaultPullStrategy: PullStrategy = pullMode === "rebase" ? "rebase-pull" : "merge-pull";
+  const base = {
     repo: status.name,
     repoDir,
-    outcome: "skip",
     behind: 0,
     toPush: 0,
     rebased: 0,
     rebasedKnown: false,
     fromBaseCount: 0,
     pullMode,
-    pullStrategy: pullMode === "rebase" ? "rebase-pull" : "merge-pull",
+    pullStrategy: defaultPullStrategy,
     branch,
     headSha,
+    drifted: undefined as boolean | undefined,
+    needsStash: undefined as boolean | undefined,
   };
 
   // Fetch failed for this repo
   if (fetchFailed.includes(status.name)) {
-    return { ...base, skipReason: "fetch failed", skipFlag: "fetch-failed" };
+    return { ...base, outcome: "skip", skipReason: "fetch failed", skipFlag: "fetch-failed" };
   }
 
   // Branch check — detached or drifted
   if (status.identity.headMode.kind === "detached") {
-    return { ...base, skipReason: "HEAD is detached", skipFlag: "detached-head" };
+    return { ...base, outcome: "skip", skipReason: "HEAD is detached", skipFlag: "detached-head" };
   }
   if (status.identity.headMode.branch !== branch) {
     if (!includeDrifted) {
       return {
         ...base,
+        outcome: "skip",
         skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch} (use --include-drifted)`,
         skipFlag: "drifted",
       };
@@ -399,7 +379,7 @@ export function assessPullRepo(
   const flags = computeFlags(status, branch);
   if (flags.isDirty) {
     if (!autostash) {
-      return { ...base, skipReason: "uncommitted changes (use --autostash)", skipFlag: "dirty" };
+      return { ...base, outcome: "skip", skipReason: "uncommitted changes (use --autostash)", skipFlag: "dirty" };
     }
     // Only stash if there are staged or modified files (not untracked-only)
     if (status.local.staged > 0 || status.local.modified > 0) {
@@ -409,12 +389,12 @@ export function assessPullRepo(
 
   // No remote branch
   if (status.share.refMode === "noRef") {
-    return { ...base, skipReason: "no remote branch", skipFlag: "not-pushed" };
+    return { ...base, outcome: "skip", skipReason: "no remote branch", skipFlag: "not-pushed" };
   }
 
   // Remote branch gone
   if (status.share.refMode === "gone") {
-    return { ...base, skipReason: "remote branch gone", skipFlag: "remote-gone" };
+    return { ...base, outcome: "skip", skipReason: "remote branch gone", skipFlag: "remote-gone" };
   }
 
   // Base branch merged into default — retarget before pulling
@@ -422,15 +402,27 @@ export function assessPullRepo(
     const baseName = status.base.configuredRef ?? status.base.ref;
     return {
       ...base,
+      outcome: "skip",
       skipReason: `base branch ${baseName} was merged into default (retarget first with 'arb rebase --retarget')`,
       skipFlag: "base-merged-into-default",
     };
   }
 
   // Already merged into base — but only skip if share has nothing to pull
+<<<<<<< HEAD
   // (e.g. on main behind origin/main, merge is set but toPull > 0)
   if (status.base?.merge != null && (status.share.toPull ?? 0) === 0) {
     return { ...base, skipReason: `already merged into ${status.base.ref}`, skipFlag: "already-merged" };
+=======
+  // (e.g. on main behind origin/main, mergedIntoBase is set but toPull > 0)
+  if (status.base?.mergedIntoBase != null && (status.share.toPull ?? 0) === 0) {
+    return {
+      ...base,
+      outcome: "skip",
+      skipReason: `already merged into ${status.base.ref}`,
+      skipFlag: "already-merged",
+    };
+>>>>>>> 702c54f (refactor: model sync assessments as unions)
   }
 
   // Check toPull count
@@ -447,6 +439,7 @@ export function assessPullRepo(
     const fromBaseCount = Math.max(0, toPush - baseAhead);
     return {
       ...base,
+      outcome: "skip",
       behind: toPull,
       toPush,
       rebased,
@@ -496,13 +489,13 @@ export function buildPullPlanNodes(
     }
 
     let afterRow: OutputNode[] | undefined;
-    if (verbose && a.outcome === "will-pull" && a.commits && a.commits.length > 0) {
+    if (verbose && a.outcome === "will-pull" && a.verbose?.commits && a.verbose.commits.length > 0) {
       const remotes = remotesMap.get(a.repo);
       const shareRemote = remotes?.share ?? "origin";
       const label = `Incoming from ${shareRemote}:`;
-      afterRow = verboseCommitsToNodes(a.commits, a.totalCommits ?? a.commits.length, label, {
-        diffStats: a.diffStats,
-        conflictCommits: a.conflictCommits,
+      afterRow = verboseCommitsToNodes(a.verbose.commits, a.verbose.totalCommits ?? a.verbose.commits.length, label, {
+        diffStats: a.verbose.diffStats,
+        conflictCommits: a.verbose.conflictCommits,
       });
     }
 
@@ -540,10 +533,10 @@ export function pullActionCell(a: PullAssessment, remotesMap: Map<string, RepoRe
 
   if (strategy === "safe-reset" || strategy === "forced-reset") {
     const resetLabel = strategy === "forced-reset" ? "forced reset" : "safe reset";
-    const target = a.safeResetTarget ?? `${remotes?.share ?? "origin"}/?`;
+    const target = a.safeReset?.target ?? `${remotes?.share ?? "origin"}/?`;
     let safeText = `${plural(a.behind, "commit")} to pull (${resetLabel} to ${target}`;
-    if (a.safeResetReason) {
-      safeText += `: ${a.safeResetReason}`;
+    if (a.safeReset?.reason) {
+      safeText += `: ${a.safeReset.reason}`;
     }
     safeText += ")";
     let result = cell(safeText);
@@ -616,17 +609,21 @@ export function pullActionCell(a: PullAssessment, remotesMap: Map<string, RepoRe
 }
 
 export function forceRebasedSkips(assessments: PullAssessment[], remotesMap: Map<string, RepoRemotes>): void {
-  for (const a of assessments) {
+  for (const [index, a] of assessments.entries()) {
     if (a.outcome !== "skip" || a.skipFlag !== "rebased-locally") continue;
     const shareRemote = remotesMap.get(a.repo)?.share;
     if (!shareRemote) continue;
-    a.outcome = "will-pull";
-    a.skipReason = undefined;
-    a.skipFlag = undefined;
     const netNew = a.toPush - a.rebased - a.fromBaseCount;
-    a.pullStrategy = netNew > 0 ? "forced-reset" : "safe-reset";
-    a.safeResetTarget = `${shareRemote}/${a.branch}`;
-    a.safeResetReason = "discards local rebase";
+    assessments[index] = {
+      ...withoutSkipFields(a),
+      outcome: "will-pull",
+      pullStrategy: netNew > 0 ? "forced-reset" : "safe-reset",
+      safeReset: {
+        ...a.safeReset,
+        target: `${shareRemote}/${a.branch}`,
+        reason: "discards local rebase",
+      },
+    };
   }
 }
 
@@ -635,24 +632,24 @@ async function reviveRebasedSkipsForSafeReset(
   remotesMap: Map<string, RepoRemotes>,
 ): Promise<void> {
   await Promise.all(
-    assessments
-      .filter((a) => a.outcome === "skip" && a.skipFlag === "rebased-locally" && a.pullMode === "merge")
-      .map(async (a) => {
-        const shareRemote = remotesMap.get(a.repo)?.share;
-        if (!shareRemote) return;
-        const result = await evaluateSafeResetEligibility({
-          repoDir: a.repoDir,
-          shareRemote,
-          branch: a.branch,
-          toPush: a.toPush,
-          rebased: a.rebased,
-          rebasedKnown: a.rebasedKnown,
-        });
-        if (!result.eligible) return;
-        a.outcome = "will-pull";
-        a.skipReason = undefined;
-        a.skipFlag = undefined;
-      }),
+    assessments.map(async (a, index) => {
+      if (!(a.outcome === "skip" && a.skipFlag === "rebased-locally" && a.pullMode === "merge")) return;
+      const shareRemote = remotesMap.get(a.repo)?.share;
+      if (!shareRemote) return;
+      const result = await evaluateSafeResetEligibility({
+        repoDir: a.repoDir,
+        shareRemote,
+        branch: a.branch,
+        toPush: a.toPush,
+        rebased: a.rebased,
+        rebasedKnown: a.rebasedKnown,
+      });
+      if (!result.eligible) return;
+      assessments[index] = {
+        ...withoutSkipFields(a),
+        outcome: "will-pull",
+      };
+    }),
   );
 }
 
@@ -682,11 +679,14 @@ async function resolvePullStrategies(
         });
         if (result.eligible) {
           a.pullStrategy = "safe-reset";
-          a.safeResetReason = result.reason;
-          a.safeResetTarget = `${shareRemote}/${a.branch}`;
-          a.oldRemoteTip = result.oldTipShort;
+          a.safeReset = {
+            ...a.safeReset,
+            reason: result.reason,
+            target: `${shareRemote}/${a.branch}`,
+            oldRemoteTip: result.oldTipShort,
+          };
         } else if (result.blockedBy) {
-          a.safeResetBlockedBy = result.blockedBy;
+          a.safeReset = { ...a.safeReset, blockedBy: result.blockedBy };
         }
       }),
   );
@@ -714,7 +714,9 @@ async function predictPullConflicts(
           // Per-commit conflict detail for rebase-mode pulls
           if (prediction?.hasConflict && a.pullMode === "rebase") {
             const conflictCommits = await predictRebaseConflictCommits(a.repoDir, ref);
-            if (conflictCommits.length > 0) a.conflictCommits = conflictCommits;
+            if (conflictCommits.length > 0) {
+              a.verbose = { ...a.verbose, conflictCommits };
+            }
           }
         } else {
           a.conflictPrediction = "no-conflict";
@@ -863,14 +865,15 @@ async function gatherPullVerboseCommits(
         const ref = `${shareRemote}/${a.branch}`;
         const commits = await getCommitsBetweenFull(a.repoDir, "HEAD", ref);
         const total = commits.length;
-        a.commits = commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
-          shortHash: c.shortHash,
-          subject: c.subject,
-        }));
-        a.totalCommits = total;
-
-        // Diff stats
-        a.diffStats = (await getDiffShortstat(a.repoDir, "HEAD", ref)) ?? undefined;
+        a.verbose = {
+          ...a.verbose,
+          commits: commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
+            shortHash: c.shortHash,
+            subject: c.subject,
+          })),
+          totalCommits: total,
+          diffStats: (await getDiffShortstat(a.repoDir, "HEAD", ref)) ?? undefined,
+        };
       }),
   );
 }
