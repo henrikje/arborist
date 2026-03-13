@@ -449,6 +449,7 @@ _arb() {
                         '*--repo[Only run in specified repos]:repo:($ws_repo_names)' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only run in dirty repos]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
+                        '(-p --parallel)'{-p,--parallel}'[Run concurrently across repos]' \
                         '*:command:'
                     ;;
                 open)

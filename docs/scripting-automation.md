@@ -93,6 +93,23 @@ arb list -q --where gone             # workspaces with gone repos
 arb status -q --where dirty          # only dirty repo names
 ```
 
+## Parallel execution
+
+Use `arb exec --parallel` (`-p`) to run commands concurrently across all repos:
+
+```bash
+arb exec -p npm install           # install dependencies in all repos simultaneously
+arb exec -p make build            # parallel builds
+arb exec -p -- git diff --stat    # parallel git operations
+```
+
+Output is buffered per repo and printed in consistent alphabetical order. Stdin is disabled in parallel mode — interactive commands will not work. Combine with `--where` or `--dirty` to narrow the scope:
+
+```bash
+arb exec -p --dirty npm test      # test only dirty repos, in parallel
+arb exec -p --repo api --repo web -- npm test
+```
+
 ## Stdin piping
 
 Commands that accept `[repos...]` or `[names...]` also read names from stdin when piped. Positional args take precedence over stdin, and stdin takes precedence over the default (all).
