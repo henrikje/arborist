@@ -48,8 +48,6 @@ interface IntegrateAssessmentBase {
   repo: string;
   repoDir: string;
   branch: string;
-  skipReason?: string;
-  skipFlag?: SkipFlag;
   baseBranch?: string;
   baseRemote: string;
   behind: number;
@@ -72,10 +70,14 @@ export interface IntegrateSkipAssessment extends IntegrateAssessmentBase {
 
 export interface IntegrateUpToDateAssessment extends IntegrateAssessmentBase {
   outcome: "up-to-date";
+  skipReason?: never;
+  skipFlag?: never;
 }
 
 export interface IntegrateWillOperateAssessment extends IntegrateAssessmentBase {
   outcome: "will-operate";
+  skipReason?: never;
+  skipFlag?: never;
 }
 
 export type RepoAssessment = IntegrateSkipAssessment | IntegrateUpToDateAssessment | IntegrateWillOperateAssessment;
@@ -83,8 +85,6 @@ export type RepoAssessment = IntegrateSkipAssessment | IntegrateUpToDateAssessme
 interface PullAssessmentBase {
   repo: string;
   repoDir: string;
-  skipReason?: string;
-  skipFlag?: SkipFlag;
   behind: number;
   toPush: number;
   rebased: number;
@@ -110,10 +110,14 @@ export interface PullSkipAssessment extends PullAssessmentBase {
 
 export interface PullUpToDateAssessment extends PullAssessmentBase {
   outcome: "up-to-date";
+  skipReason?: never;
+  skipFlag?: never;
 }
 
 export interface PullWillPullAssessment extends PullAssessmentBase {
   outcome: "will-pull";
+  skipReason?: never;
+  skipFlag?: never;
 }
 
 export interface PullSafeResetInfo {
@@ -135,8 +139,6 @@ export type PullAssessment = PullSkipAssessment | PullUpToDateAssessment | PullW
 interface PushAssessmentBase {
   repo: string;
   repoDir: string;
-  skipReason?: string;
-  skipFlag?: SkipFlag;
   ahead: number;
   behind: number;
   rebased: number;
@@ -165,18 +167,26 @@ export interface PushSkipAssessment extends PushAssessmentBase {
 
 export interface PushUpToDateAssessment extends PushAssessmentBase {
   outcome: "up-to-date";
+  skipReason?: never;
+  skipFlag?: never;
 }
 
 export interface PushWillPushAssessment extends PushAssessmentBase {
   outcome: "will-push";
+  skipReason?: never;
+  skipFlag?: never;
 }
 
 export interface PushWillForcePushAssessment extends PushAssessmentBase {
   outcome: "will-force-push";
+  skipReason?: never;
+  skipFlag?: never;
 }
 
 export interface PushWillForcePushOutdatedAssessment extends PushAssessmentBase {
   outcome: "will-force-push-outdated";
+  skipReason?: never;
+  skipFlag?: never;
 }
 
 export type PushAssessment =

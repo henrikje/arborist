@@ -2,6 +2,7 @@ import { detectBranchMerged } from "../analysis/merge-detection";
 import { analyzeRetargetReplay } from "../analysis/replay-analysis";
 import { branchExistsLocally, getShortHead, git, remoteBranchExists } from "../git/git";
 import { computeFlags } from "../status/flags";
+import type { SkipFlag } from "../status/skip-flags";
 import type { RepoStatus } from "../status/types";
 import type { RepoAssessment } from "./types";
 
@@ -27,6 +28,11 @@ const defaultDependencies: IntegrateClassifierDependencies = {
 
 interface DefaultBranchResolver {
   getDefaultBranch(repoDir: string, remote: string): Promise<string | null>;
+}
+
+function withoutSkipFields<T extends { skipReason?: string; skipFlag?: SkipFlag }>(assessment: T) {
+  const { skipReason: _skipReason, skipFlag: _skipFlag, ...next } = assessment;
+  return next;
 }
 
 export function classifyRepo(
@@ -225,10 +231,16 @@ async function assessMergedNewWork(input: {
 
   if (mode === "merge") {
     if (base.behind === 0) {
-      return { ...classified, outcome: "up-to-date", baseBranch: base.ref, behind: 0, ahead: base.ahead };
+      return {
+        ...withoutSkipFields(classified),
+        outcome: "up-to-date",
+        baseBranch: base.ref,
+        behind: 0,
+        ahead: base.ahead,
+      };
     }
     return {
-      ...classified,
+      ...withoutSkipFields(classified),
       outcome: "will-operate",
       baseBranch: base.ref,
       behind: base.behind,
@@ -241,7 +253,7 @@ async function assessMergedNewWork(input: {
   if (boundaryResult.exitCode !== 0) return null;
   const boundarySha = boundaryResult.stdout.trim();
   return {
-    ...classified,
+    ...withoutSkipFields(classified),
     outcome: "will-operate",
     baseBranch: base.ref,
     behind: base.behind,
@@ -305,7 +317,7 @@ async function assessExplicitRetarget(input: {
 
   if (base?.ref === retargetExplicit && base?.behind === 0) {
     return {
-      ...classified,
+      ...withoutSkipFields(classified),
       outcome: "up-to-date",
       baseBranch: retargetExplicit,
       retarget: {
@@ -321,7 +333,7 @@ async function assessExplicitRetarget(input: {
 
   const replayAnalysis = await deps.analyzeRetargetReplay(repoDir, oldBaseRef, targetRef);
   return {
-    ...classified,
+    ...withoutSkipFields(classified),
     outcome: "will-operate",
     baseBranch: retargetExplicit,
     retarget: {
@@ -360,11 +372,17 @@ async function assessAutoRetarget(input: {
   ) {
     const replayPlan = base.replayPlan;
     if (replayPlan.alreadyOnTarget > 0 && replayPlan.toReplay === 0) {
-      return { ...classified, outcome: "up-to-date", baseBranch: base.ref, behind: 0, ahead: base.ahead };
+      return {
+        ...withoutSkipFields(classified),
+        outcome: "up-to-date",
+        baseBranch: base.ref,
+        behind: 0,
+        ahead: base.ahead,
+      };
     }
     if (replayPlan.alreadyOnTarget > 0 && replayPlan.toReplay > 0) {
       return {
-        ...classified,
+        ...withoutSkipFields(classified),
         outcome: "will-operate",
         baseBranch: base.ref,
         behind: base.behind,
@@ -400,7 +418,7 @@ async function assessAutoRetarget(input: {
     const alreadyOnDefault = await deps.git(repoDir, "merge-base", "--is-ancestor", defaultRef, "HEAD");
     if (alreadyOnDefault.exitCode === 0) {
       return {
-        ...classified,
+        ...withoutSkipFields(classified),
         outcome: "up-to-date",
         baseBranch: trueDefault,
         retarget: {
@@ -420,7 +438,7 @@ async function assessAutoRetarget(input: {
   const replayAnalysis = await deps.analyzeRetargetReplay(repoDir, oldBaseRefForReplay, newBaseRefForReplay);
 
   return {
-    ...classified,
+    ...withoutSkipFields(classified),
     outcome: "will-operate",
     baseBranch: trueDefault,
     retarget: {
