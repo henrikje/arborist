@@ -30,7 +30,12 @@ import {
 } from "../lib/terminal";
 import { requireWorkspace, validateWorkspaceName, workspaceRepoDirs } from "../lib/workspace";
 
-export type RenameOutcome = "will-rename" | "already-on-new" | "skip-missing" | "skip-drifted" | "skip-in-progress";
+export type RenameOutcome =
+  | "will-rename"
+  | "already-on-new"
+  | "skip-missing"
+  | "skip-wrong-branch"
+  | "skip-in-progress";
 
 export interface RepoAssessment {
   repo: string;
@@ -133,12 +138,12 @@ export async function assessRepo(
   }
 
   // Old branch doesn't exist — HEAD is not on new branch either
-  // If HEAD is on some other unexpected branch, it's drifted
+  // If HEAD is on some other unexpected branch, it's on the wrong branch
   if (currentBranch && currentBranch !== oldBranch) {
     return {
       repo,
       repoDir,
-      outcome: "skip-drifted",
+      outcome: "skip-wrong-branch",
       currentBranch,
       operationType: op,
       oldRemoteExists,
@@ -224,7 +229,7 @@ export function buildRenamePlanNodes(
         localCell = cell("skip — branch not found", "attention");
         remoteCell = a.shareRemote ? cell("no remote branch") : EMPTY_CELL;
         break;
-      case "skip-drifted":
+      case "skip-wrong-branch":
         localCell = cell(`skip — on branch ${a.currentBranch ?? "?"}, expected ${oldBranch}`, "attention");
         remoteCell = a.shareRemote ? cell("no remote branch") : EMPTY_CELL;
         break;

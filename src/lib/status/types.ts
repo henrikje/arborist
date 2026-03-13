@@ -56,14 +56,14 @@ export interface RepoFlags {
   needsPull: boolean;
   needsRebase: boolean;
   isDiverged: boolean;
-  isDrifted: boolean;
+  isWrongBranch: boolean;
   isDetached: boolean;
   hasOperation: boolean;
   isGone: boolean;
   isShallow: boolean;
   isMerged: boolean;
   isBaseMerged: boolean;
-  baseFellBack: boolean;
+  isBaseMissing: boolean;
 }
 
 // ── Named flag sets ──
@@ -72,7 +72,7 @@ export const LOSE_WORK_FLAGS = new Set<keyof RepoFlags>([
   "isDirty",
   "isUnpushed",
   "isDetached",
-  "isDrifted",
+  "isWrongBranch",
   "hasOperation",
 ]);
 
@@ -80,7 +80,7 @@ export const AT_RISK_FLAGS = new Set<keyof RepoFlags>([
   ...LOSE_WORK_FLAGS,
   "isShallow",
   "isBaseMerged",
-  "baseFellBack",
+  "isBaseMissing",
 ]);
 
 export const STALE_FLAGS = new Set<keyof RepoFlags>(["needsPull", "needsRebase", "isDiverged"]);
@@ -94,9 +94,9 @@ export const FLAG_LABELS: { key: keyof RepoFlags; label: string }[] = [
   { key: "isUnpushed", label: "unpushed" },
   { key: "hasOperation", label: "operation" },
   { key: "isDetached", label: "detached" },
-  { key: "isDrifted", label: "drifted" },
+  { key: "isWrongBranch", label: "wrong branch" },
   // Other at-risk/infrastructure signals.
-  { key: "baseFellBack", label: "base missing" },
+  { key: "isBaseMissing", label: "base missing" },
   { key: "isBaseMerged", label: "base merged" },
   { key: "isShallow", label: "shallow" },
   // Lifecycle markers.

@@ -1440,10 +1440,10 @@ describe("--where filtering", () => {
     }));
 });
 
-// ── --include-drifted ────────────────────────────────────────────
+// ── --include-wrong-branch ────────────────────────────────────────
 
-describe("--include-drifted", () => {
-  test("arb push skips drifted repo by default with hint", () =>
+describe("--include-wrong-branch", () => {
+  test("arb push skips wrong-branch repo by default with hint", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const wt = join(env.projectDir, "my-feature/repo-a");
@@ -1456,11 +1456,11 @@ describe("--include-drifted", () => {
 
       const result = await arb(env, ["push", "--yes"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("--include-drifted");
+      expect(result.output).toContain("--include-wrong-branch");
       expect(result.output).not.toContain("Pushed");
     }));
 
-  test("arb push --include-drifted pushes drifted repo to its actual branch", () =>
+  test("arb push --include-wrong-branch pushes wrong-branch repo to its actual branch", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const wt = join(env.projectDir, "my-feature/repo-a");
@@ -1471,7 +1471,7 @@ describe("--include-drifted", () => {
       await git(wt, ["add", "file.txt"]);
       await git(wt, ["commit", "-m", "experiment commit"]);
 
-      const result = await arb(env, ["push", "--include-drifted", "--yes"], {
+      const result = await arb(env, ["push", "--include-wrong-branch", "--yes"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
@@ -1485,7 +1485,7 @@ describe("--include-drifted", () => {
       expect(refs).toContain("origin/experiment");
     }));
 
-  test("arb pull skips drifted repo by default with hint", () =>
+  test("arb pull skips wrong-branch repo by default with hint", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const wt = join(env.projectDir, "my-feature/repo-a");
@@ -1499,10 +1499,10 @@ describe("--include-drifted", () => {
 
       const result = await arb(env, ["pull", "--yes"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("--include-drifted");
+      expect(result.output).toContain("--include-wrong-branch");
     }));
 
-  test("arb pull --include-drifted pulls drifted repo from its actual branch", () =>
+  test("arb pull --include-wrong-branch pulls wrong-branch repo from its actual branch", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const wt = join(env.projectDir, "my-feature/repo-a");
@@ -1523,7 +1523,7 @@ describe("--include-drifted", () => {
       await git(tmpClone, ["commit", "-m", "remote commit"]);
       await git(tmpClone, ["push"]);
 
-      const result = await arb(env, ["pull", "--include-drifted", "--yes"], {
+      const result = await arb(env, ["pull", "--include-wrong-branch", "--yes"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
@@ -1535,7 +1535,7 @@ describe("--include-drifted", () => {
       expect(log).toContain("remote commit");
     }));
 
-  test("arb rebase skips drifted repo by default with hint", () =>
+  test("arb rebase skips wrong-branch repo by default with hint", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const wt = join(env.projectDir, "my-feature/repo-a");
@@ -1552,10 +1552,10 @@ describe("--include-drifted", () => {
 
       const result = await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("--include-drifted");
+      expect(result.output).toContain("--include-wrong-branch");
     }));
 
-  test("arb rebase --include-drifted rebases drifted repo onto base", () =>
+  test("arb rebase --include-wrong-branch rebases wrong-branch repo onto base", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const wt = join(env.projectDir, "my-feature/repo-a");
@@ -1573,19 +1573,19 @@ describe("--include-drifted", () => {
       await git(mainRepo, ["commit", "-m", "upstream change"]);
       await git(mainRepo, ["push"]);
 
-      const result = await arb(env, ["rebase", "--include-drifted", "--yes"], {
+      const result = await arb(env, ["rebase", "--include-wrong-branch", "--yes"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("Rebased");
       expect(result.output).toContain("rebase experiment onto");
 
-      // Verify: upstream change is now in the drifted branch
+      // Verify: upstream change is now in the wrong-branch repo
       const log = await git(wt, ["log", "--oneline"]);
       expect(log).toContain("upstream change");
     }));
 
-  test("arb merge --include-drifted merges base into drifted repo", () =>
+  test("arb merge --include-wrong-branch merges base into wrong-branch repo", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const wt = join(env.projectDir, "my-feature/repo-a");
@@ -1603,7 +1603,7 @@ describe("--include-drifted", () => {
       await git(mainRepo, ["commit", "-m", "upstream change"]);
       await git(mainRepo, ["push"]);
 
-      const result = await arb(env, ["merge", "--include-drifted", "--yes"], {
+      const result = await arb(env, ["merge", "--include-wrong-branch", "--yes"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
@@ -1611,12 +1611,12 @@ describe("--include-drifted", () => {
       expect(result.output).toContain("merge");
       expect(result.output).toContain("into experiment");
 
-      // Verify: upstream change is now in the drifted branch
+      // Verify: upstream change is now in the wrong-branch repo
       const log = await git(wt, ["log", "--oneline"]);
       expect(log).toContain("upstream change");
     }));
 
-  test("arb push --include-drifted shows drifted hint in plan", () =>
+  test("arb push --include-wrong-branch shows wrong-branch hint in plan", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const wt = join(env.projectDir, "my-feature/repo-a");
@@ -1626,7 +1626,7 @@ describe("--include-drifted", () => {
       await git(wt, ["add", "file.txt"]);
       await git(wt, ["commit", "-m", "experiment commit"]);
 
-      const result = await arb(env, ["push", "--include-drifted", "--dry-run"], {
+      const result = await arb(env, ["push", "--include-wrong-branch", "--dry-run"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.output).toContain("different branch than the workspace");

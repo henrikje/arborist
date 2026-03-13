@@ -137,7 +137,7 @@ __arb_workspace_repo_names() {
 }
 
 __arb_where_filters() {
-    printf '%s\n' dirty unpushed behind-share behind-base diverged drifted detached operation gone shallow merged base-merged base-missing at-risk stale clean pushed synced-base synced-share synced safe
+    printf '%s\n' dirty unpushed behind-share behind-base diverged wrong-branch detached operation gone shallow merged base-merged base-missing at-risk stale clean pushed synced-base synced-share synced safe
 }
 
 __arb_template_names() {
@@ -483,7 +483,7 @@ __arb_complete_pull() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--reset -y --yes -n --dry-run -v --verbose --rebase --merge --autostash --include-drifted -w --where" -- "$cur"))
+        COMPREPLY=($(compgen -W "--reset -y --yes -n --dry-run -v --verbose --rebase --merge --autostash --include-wrong-branch -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
@@ -497,7 +497,7 @@ __arb_complete_push() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-f --force --include-merged --include-drifted --fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -w --where" -- "$cur"))
+        COMPREPLY=($(compgen -W "-f --force --include-merged --include-wrong-branch --fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
@@ -511,7 +511,7 @@ __arb_complete_rebase() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --retarget --autostash --include-drifted -w --where" -- "$cur"))
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --retarget --autostash --include-wrong-branch -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
@@ -525,7 +525,7 @@ __arb_complete_merge() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --autostash --include-drifted -w --where" -- "$cur"))
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --autostash --include-wrong-branch -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))

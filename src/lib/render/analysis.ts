@@ -9,26 +9,26 @@ export { plainBaseDiff, plainLocal, plainRemoteDiff } from "../status/analysis";
 
 // ── Cell-Level Analysis Helpers ──
 
-/** Analyze the BRANCH cell — attention when drifted or detached */
+/** Analyze the BRANCH cell — attention when on wrong branch or detached */
 export function analyzeBranch(repo: RepoStatus, expectedBranch: string): Cell {
   if (repo.identity.headMode.kind === "detached") {
     return cell("(detached)", "attention");
   }
   const branch = repo.identity.headMode.branch;
-  const drifted = branch !== expectedBranch;
-  return cell(branch, drifted ? "attention" : "default");
+  const wrongBranch = branch !== expectedBranch;
+  return cell(branch, wrongBranch ? "attention" : "default");
 }
 
-/** Analyze the BASE name cell — attention when baseFellBack or baseMerged */
+/** Analyze the BASE name cell — attention when isBaseMissing or baseMerged */
 export function analyzeBaseName(repo: RepoStatus, flags: RepoFlags): Cell {
   if (!repo.base) return EMPTY_CELL;
   const branch = repo.base.configuredRef ?? repo.base.ref;
   const name = repo.base.remote ? `${repo.base.remote}/${branch}` : branch;
   const baseMerged = repo.base.baseMergedIntoDefault != null;
-  return cell(name, flags.baseFellBack || baseMerged ? "attention" : "default");
+  return cell(name, flags.isBaseMissing || baseMerged ? "attention" : "default");
 }
 
-/** Analyze the BASE diff cell — attention when conflict predicted, baseMerged, or baseFellBack */
+/** Analyze the BASE diff cell — attention when conflict predicted, baseMerged, or isBaseMissing */
 export function analyzeBaseDiff(repo: RepoStatus, flags: RepoFlags, hasConflict: boolean): Cell {
   if (!repo.base) return EMPTY_CELL;
   const isDetached = repo.identity.headMode.kind === "detached";
@@ -41,7 +41,7 @@ export function analyzeBaseDiff(repo: RepoStatus, flags: RepoFlags, hasConflict:
     text = plainBaseDiff(repo.base);
   }
 
-  const needsAttention = hasConflict || repo.base.baseMergedIntoDefault != null || flags.baseFellBack;
+  const needsAttention = hasConflict || repo.base.baseMergedIntoDefault != null || flags.isBaseMissing;
   return cell(text, needsAttention ? "attention" : "default");
 }
 
@@ -58,14 +58,14 @@ export function analyzeRemoteName(repo: RepoStatus, flags: RepoFlags): Cell {
     name = `${repo.share.remote}/${branch}`;
   }
 
-  const isDrifted = flags.isDrifted;
+  const isWrongBranch = flags.isWrongBranch;
   const isUnexpected =
     repo.share.refMode === "configured" &&
     repo.share.ref !== null &&
     repo.share.ref !==
       `${repo.share.remote}/${repo.identity.headMode.kind === "attached" ? repo.identity.headMode.branch : ""}`;
 
-  return cell(name, isDrifted || isUnexpected ? "attention" : "default");
+  return cell(name, isWrongBranch || isUnexpected ? "attention" : "default");
 }
 
 function pushSideSpans(pushText: string, pushNewText: string, pushNeedsAttention: boolean): Span[] {

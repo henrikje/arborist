@@ -1,7 +1,7 @@
 export type SkipFlag =
   // Common across commands
   | "detached-head"
-  | "drifted"
+  | "wrong-branch"
   | "base-merged-into-default"
   | "already-merged"
   | "merged-new-work"

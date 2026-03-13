@@ -42,7 +42,7 @@ describe("assessPushRepo", () => {
     expect(a.skipFlag).toBe("detached-head");
   });
 
-  test("skips drifted branch", () => {
+  test("skips wrong branch", () => {
     const a = assessPushRepo(
       makeRepo({
         identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
@@ -53,11 +53,11 @@ describe("assessPushRepo", () => {
     );
     expect(a.outcome).toBe("skip");
     expect(a.skipReason).toContain("on branch other, expected feature");
-    expect(a.skipReason).toContain("--include-drifted");
-    expect(a.skipFlag).toBe("drifted");
+    expect(a.skipReason).toContain("--include-wrong-branch");
+    expect(a.skipFlag).toBe("wrong-branch");
   });
 
-  test("includes drifted branch with includeDrifted", () => {
+  test("includes wrong branch with includeWrongBranch", () => {
     const a = assessPushRepo(
       makeRepo({
         identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
@@ -72,15 +72,15 @@ describe("assessPushRepo", () => {
       DIR,
       "feature",
       SHA,
-      { includeDrifted: true },
+      { includeWrongBranch: true },
     );
     expect(a.outcome).toBe("will-push");
-    expect(a.drifted).toBe(true);
+    expect(a.wrongBranch).toBe(true);
     expect(a.branch).toBe("other");
     expect(a.ahead).toBe(2);
   });
 
-  test("drifted up-to-date with includeDrifted", () => {
+  test("wrong branch up-to-date with includeWrongBranch", () => {
     const a = assessPushRepo(
       makeRepo({
         identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
@@ -88,10 +88,10 @@ describe("assessPushRepo", () => {
       DIR,
       "feature",
       SHA,
-      { includeDrifted: true },
+      { includeWrongBranch: true },
     );
     expect(a.outcome).toBe("up-to-date");
-    expect(a.drifted).toBe(true);
+    expect(a.wrongBranch).toBe(true);
     expect(a.branch).toBe("other");
   });
 
@@ -1139,24 +1139,24 @@ describe("formatPushPlan", () => {
     expect(plan).not.toContain("merged with new commits");
   });
 
-  test("shows drifted branch annotation in plan", () => {
+  test("shows wrong branch annotation in plan", () => {
     const plan = formatPushPlan(
-      [makeAssessment({ drifted: true, branch: "other-branch" })],
+      [makeAssessment({ wrongBranch: true, branch: "other-branch" })],
       makeRemotesMap(["repo-a", {}]),
     );
     expect(plan).toContain("(branch: other-branch)");
   });
 
-  test("shows drifted hint when drifted repos are being pushed", () => {
+  test("shows wrong branch hint when wrong branch repos are being pushed", () => {
     const plan = formatPushPlan(
-      [makeAssessment({ drifted: true, branch: "other-branch" })],
+      [makeAssessment({ wrongBranch: true, branch: "other-branch" })],
       makeRemotesMap(["repo-a", {}]),
     );
     expect(plan).toContain("hint:");
     expect(plan).toContain("on a different branch than the workspace");
   });
 
-  test("no drifted hint when no drifted repos", () => {
+  test("no wrong branch hint when no wrong branch repos", () => {
     const plan = formatPushPlan([makeAssessment()], makeRemotesMap(["repo-a", {}]));
     expect(plan).not.toContain("different branch");
   });

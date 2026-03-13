@@ -73,7 +73,7 @@ describe("status", () => {
       expect(result.output).toContain("Not inside a workspace");
     }));
 
-  test("arb status shows drifted branch in branch column", () =>
+  test("arb status shows wrong branch in branch column", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       // Manually switch repo-a to a different branch
@@ -857,7 +857,7 @@ describe("status arrow separator and verbose to-pull", () => {
 // ── compact status display ────────────────────────────────────────
 
 describe("compact status display", () => {
-  test("arb status hides BRANCH column when no repos are drifted", () =>
+  test("arb status hides BRANCH column when no repos are on wrong branch", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       const result = await arb(env, ["status"], { cwd: join(env.projectDir, "my-feature") });
@@ -867,7 +867,7 @@ describe("compact status display", () => {
       expect(result.output).toContain("SHARE");
     }));
 
-  test("arb status shows BRANCH column when a repo is drifted", () =>
+  test("arb status shows BRANCH column when a repo is on wrong branch", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       await git(join(env.projectDir, "my-feature/repo-a"), ["checkout", "-b", "experiment"]);

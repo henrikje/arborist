@@ -42,7 +42,7 @@ export async function integrate(
     dryRun?: boolean;
     retarget?: string | boolean;
     autostash?: boolean;
-    includeDrifted?: boolean;
+    includeWrongBranch?: boolean;
     verbose?: boolean;
     graph?: boolean;
     where?: string;
@@ -94,7 +94,7 @@ export async function integrate(
   const repos = fetchDirs.map((d) => basename(d));
 
   const autostash = options.autostash === true;
-  const includeDrifted = options.includeDrifted === true;
+  const includeWrongBranch = options.includeWrongBranch === true;
   const assess = buildCachedStatusAssess<RepoAssessment>({
     repos: selectedRepos,
     wsDir,
@@ -109,7 +109,7 @@ export async function integrate(
         retarget,
         retargetExplicit: normalizedRetargetExplicit,
         autostash,
-        includeDrifted,
+        includeWrongBranch,
         cache,
         mode,
       }),
@@ -485,12 +485,12 @@ export function buildIntegratePlanNodes(
     rows,
   });
 
-  // Drifted repos hint
-  const driftedCount = assessments.filter((a) => a.drifted && a.outcome === "will-operate").length;
-  if (driftedCount > 0) {
+  // Wrong branch repos hint
+  const wrongBranchCount = assessments.filter((a) => a.wrongBranch && a.outcome === "will-operate").length;
+  if (wrongBranchCount > 0) {
     nodes.push({
       kind: "hint",
-      cell: cell(`  hint: ${plural(driftedCount, "repo")} on a different branch than the workspace`, "muted"),
+      cell: cell(`  hint: ${plural(wrongBranchCount, "repo")} on a different branch than the workspace`, "muted"),
     });
   }
 

@@ -13,11 +13,11 @@ export function registerMergeCommand(program: Command, getCtx: () => ArbContext)
     .option("-v, --verbose", "Show incoming commits in the plan")
     .option("-g, --graph", "Show branch divergence graph in the plan")
     .option("--autostash", "Stash uncommitted changes before merge, re-apply after")
-    .option("--include-drifted", "Include repos on a different branch than the workspace")
+    .option("--include-wrong-branch", "Include repos on a different branch than the workspace")
     .option("-w, --where <filter>", "Only merge repos matching status filter (comma = OR, + = AND, ^ = negate)")
     .summary("Merge the base branch into feature branches")
     .description(
-      "Fetches all repos, then merges the base branch (e.g. main) into the feature branch for all repos, or only the named repos. Shows a plan and asks for confirmation before proceeding. Repos with uncommitted changes are skipped unless --autostash is used. Repos on a different branch than the workspace are skipped unless --include-drifted is used. Repos already up to date are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. Fetches before merge by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --verbose to show the incoming commits for each repo in the plan. Use --graph to show a branch divergence diagram with the merge-base point. Combine --graph --verbose to see commits inline in the diagram. Use --autostash to stash uncommitted changes before merging and re-apply them after. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
+      "Fetches all repos, then merges the base branch (e.g. main) into the feature branch for all repos, or only the named repos. Shows a plan and asks for confirmation before proceeding. Repos with uncommitted changes are skipped unless --autostash is used. Repos on a different branch than the workspace are skipped unless --include-wrong-branch is used. Repos already up to date are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. Fetches before merge by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --verbose to show the incoming commits for each repo in the plan. Use --graph to show a branch divergence diagram with the merge-base point. Combine --graph --verbose to see commits inline in the diagram. Use --autostash to stash uncommitted changes before merging and re-apply them after. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
     )
     .action(
       async (
@@ -29,7 +29,7 @@ export function registerMergeCommand(program: Command, getCtx: () => ArbContext)
           verbose?: boolean;
           graph?: boolean;
           autostash?: boolean;
-          includeDrifted?: boolean;
+          includeWrongBranch?: boolean;
           where?: string;
         },
       ) => {

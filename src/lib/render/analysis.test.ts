@@ -33,7 +33,7 @@ describe("analyzeBranch", () => {
     expect(result.spans).toEqual([{ text: "feature", attention: "default" }]);
   });
 
-  test("drifted branch returns branch name with attention", () => {
+  test("wrong branch returns branch name with attention", () => {
     const repo = makeRepo();
     const result = analyzeBranch(repo, "main");
     expect(result.plain).toBe("feature");
@@ -60,7 +60,7 @@ describe("analyzeBaseName", () => {
     expect(result.spans).toEqual([{ text: "origin/main", attention: "default" }]);
   });
 
-  test("baseFellBack (configuredRef set, baseMergedIntoDefault null) returns attention", () => {
+  test("isBaseMissing (configuredRef set, baseMergedIntoDefault null) returns attention", () => {
     const repo = makeRepo({
       base: {
         remote: "origin",
@@ -72,7 +72,7 @@ describe("analyzeBaseName", () => {
       },
     });
     const flags = computeFlags(repo, "feature");
-    expect(flags.baseFellBack).toBe(true);
+    expect(flags.isBaseMissing).toBe(true);
     const result = analyzeBaseName(repo, flags);
     // configuredRef is used as name when present
     expect(result.plain).toBe("origin/develop");
@@ -245,7 +245,7 @@ describe("analyzeBaseDiff", () => {
     expect(result.spans[0]?.attention).toBe("attention");
   });
 
-  test("baseFellBack returns attention", () => {
+  test("isBaseMissing returns attention", () => {
     const repo = makeRepo({
       base: {
         remote: "origin",
@@ -338,7 +338,7 @@ describe("analyzeRemoteName", () => {
     expect(result.plain).toBe("origin/feature");
   });
 
-  test("drifted branch returns attention", () => {
+  test("wrong branch returns attention", () => {
     const repo = makeRepo({
       share: {
         remote: "origin",
@@ -348,9 +348,9 @@ describe("analyzeRemoteName", () => {
         toPull: 0,
       },
     });
-    // expectedBranch is "main" but repo is on "feature" → drifted
+    // expectedBranch is "main" but repo is on "feature" → wrong branch
     const flags = computeFlags(repo, "main");
-    expect(flags.isDrifted).toBe(true);
+    expect(flags.isWrongBranch).toBe(true);
     const result = analyzeRemoteName(repo, flags);
     expect(result.spans[0]?.attention).toBe("attention");
   });

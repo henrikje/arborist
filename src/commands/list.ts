@@ -587,8 +587,8 @@ function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
   }
   row.lastCommit = summary.lastCommit;
   row.lastActivity = summary.lastActivity;
-  const baseFellBack = summary.repos.some((r) => r.base?.configuredRef != null);
-  if (baseFellBack) {
+  const baseMissing = summary.repos.some((r) => r.base?.configuredRef != null);
+  if (baseMissing) {
     row.baseCell = cell(row.base, "attention");
   }
 }

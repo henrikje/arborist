@@ -161,7 +161,7 @@ describe("classifyRepo", () => {
     expect(a.skipFlag).toBe("detached-head");
   });
 
-  test("skips drifted branch", () => {
+  test("skips wrong branch", () => {
     const a = classifyRepo(
       makeRepo({
         identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
@@ -174,11 +174,11 @@ describe("classifyRepo", () => {
     );
     expect(a.outcome).toBe("skip");
     expect(a.skipReason).toContain("on branch other, expected feature");
-    expect(a.skipReason).toContain("--include-drifted");
-    expect(a.skipFlag).toBe("drifted");
+    expect(a.skipReason).toContain("--include-wrong-branch");
+    expect(a.skipFlag).toBe("wrong-branch");
   });
 
-  test("includes drifted branch with includeDrifted", () => {
+  test("includes wrong branch with includeWrongBranch", () => {
     const a = classifyRepo(
       makeRepo({
         identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
@@ -191,11 +191,11 @@ describe("classifyRepo", () => {
       true,
     );
     expect(a.outcome).toBe("up-to-date");
-    expect(a.drifted).toBe(true);
+    expect(a.wrongBranch).toBe(true);
     expect(a.branch).toBe("other");
   });
 
-  test("non-drifted branch has workspace branch", () => {
+  test("non-wrong-branch repo has workspace branch", () => {
     const a = classifyRepo(makeRepo(), DIR, "feature", [], false, SHA);
     expect(a.branch).toBe("feature");
   });
@@ -1125,24 +1125,24 @@ describe("formatIntegratePlan", () => {
     expect(nonNeg[0]).toBe(nonNeg[1]);
   });
 
-  // ── Drifted annotation tests ────────────────────────────────
+  // ── Wrong branch annotation tests ────────────────────────────────
 
-  test("shows drifted hint when drifted repos are included", () => {
-    const plan = formatIntegratePlan([makeAssessment({ drifted: true, branch: "other-branch" })], "rebase");
+  test("shows wrong branch hint when wrong branch repos are included", () => {
+    const plan = formatIntegratePlan([makeAssessment({ wrongBranch: true, branch: "other-branch" })], "rebase");
     expect(plan).toContain("1 repo on a different branch than the workspace");
   });
 
-  test("uses drifted branch in rebase action", () => {
-    const plan = formatIntegratePlan([makeAssessment({ drifted: true, branch: "other-branch" })], "rebase");
+  test("uses wrong branch in rebase action", () => {
+    const plan = formatIntegratePlan([makeAssessment({ wrongBranch: true, branch: "other-branch" })], "rebase");
     expect(plan).toContain("rebase other-branch onto origin/main");
   });
 
-  test("uses drifted branch in merge action", () => {
-    const plan = formatIntegratePlan([makeAssessment({ drifted: true, branch: "other-branch" })], "merge");
+  test("uses wrong branch in merge action", () => {
+    const plan = formatIntegratePlan([makeAssessment({ wrongBranch: true, branch: "other-branch" })], "merge");
     expect(plan).toContain("merge origin/main into other-branch");
   });
 
-  test("no drifted hint when no drifted repos", () => {
+  test("no wrong branch hint when no wrong branch repos", () => {
     const plan = formatIntegratePlan([makeAssessment()], "rebase");
     expect(plan).not.toContain("different branch than the workspace");
   });

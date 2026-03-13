@@ -197,7 +197,7 @@ describe("edge cases", () => {
       expect(repoA.reason).toContain("detached");
     }));
 
-  test("arb diff detects drifted branch", () =>
+  test("arb diff detects wrong-branch status", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       await git(join(env.projectDir, "my-feature/repo-a"), ["checkout", "-b", "other-branch"]);
@@ -207,7 +207,7 @@ describe("edge cases", () => {
       expect(result.exitCode).toBe(0);
       const json = JSON.parse(result.stdout);
       const repoA = json.repos.find((r: { name: string }) => r.name === "repo-a");
-      expect(repoA.status).toBe("drifted");
+      expect(repoA.status).toBe("wrong-branch");
       expect(repoA.reason).toContain("other-branch");
       expect(repoA.reason).toContain("expected my-feature");
     }));

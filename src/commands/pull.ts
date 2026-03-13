@@ -49,12 +49,12 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
     .option("--rebase", "Pull with rebase")
     .option("--merge", "Pull with merge")
     .option("--autostash", "Stash uncommitted changes before pull, re-apply after")
-    .option("--include-drifted", "Include repos on a different branch than the workspace")
+    .option("--include-wrong-branch", "Include repos on a different branch than the workspace")
     .option("-v, --verbose", "Show incoming commits in the plan")
     .option("-w, --where <filter>", "Only pull repos matching status filter (comma = OR, + = AND, ^ = negate)")
     .summary("Pull the feature branch from the share remote")
     .description(
-      "Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos with uncommitted changes are skipped unless --autostash is used. Repos on a different branch than the workspace are skipped unless --include-drifted is used. Repos where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end. When a remote branch was rebased and local has no unique commits to preserve, arb may safely reset to the rewritten remote tip instead of attempting a three-way merge. Use --reset to override the rebased-locally skip and reset to the remote tip, discarding the local rebase. Use --verbose to show the incoming commits in the plan. Use --autostash to stash uncommitted changes before pulling and re-apply them after. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nThe pull mode (rebase or merge) is determined per-repo from git config (branch.<name>.rebase, then pull.rebase), defaulting to merge if neither is set. Use --rebase or --merge to override for all repos.\n\nSee 'arb help remotes' for remote role resolution.",
+      "Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling. Repos with uncommitted changes are skipped unless --autostash is used. Repos on a different branch than the workspace are skipped unless --include-wrong-branch is used. Repos where the remote branch has been deleted are skipped. If any repos conflict, arb continues with the remaining repos and reports all conflicts at the end. When a remote branch was rebased and local has no unique commits to preserve, arb may safely reset to the rewritten remote tip instead of attempting a three-way merge. Use --reset to override the rebased-locally skip and reset to the remote tip, discarding the local rebase. Use --verbose to show the incoming commits in the plan. Use --autostash to stash uncommitted changes before pulling and re-apply them after. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nThe pull mode (rebase or merge) is determined per-repo from git config (branch.<name>.rebase, then pull.rebase), defaulting to merge if neither is set. Use --rebase or --merge to override for all repos.\n\nSee 'arb help remotes' for remote role resolution.",
     )
     .action(
       async (
@@ -67,7 +67,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
           dryRun?: boolean;
           verbose?: boolean;
           autostash?: boolean;
-          includeDrifted?: boolean;
+          includeWrongBranch?: boolean;
           where?: string;
         },
       ) => {
@@ -120,7 +120,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
               pullMode,
               autostash,
               headSha,
-              options.includeDrifted,
+              options.includeWrongBranch,
             );
           },
         });
@@ -327,7 +327,7 @@ export function assessPullRepo(
   pullMode: "rebase" | "merge",
   autostash: boolean,
   headSha: string,
-  includeDrifted?: boolean,
+  includeWrongBranch?: boolean,
 ): PullAssessment {
   const defaultPullStrategy: PullStrategy = pullMode === "rebase" ? "rebase-pull" : "merge-pull";
   const base = {
@@ -342,7 +342,7 @@ export function assessPullRepo(
     pullStrategy: defaultPullStrategy,
     branch,
     headSha,
-    drifted: undefined as boolean | undefined,
+    wrongBranch: undefined as boolean | undefined,
     needsStash: undefined as boolean | undefined,
   };
 
@@ -351,21 +351,21 @@ export function assessPullRepo(
     return { ...base, outcome: "skip", skipReason: "fetch failed", skipFlag: "fetch-failed" };
   }
 
-  // Branch check — detached or drifted
+  // Branch check — detached or wrong branch
   if (status.identity.headMode.kind === "detached") {
     return { ...base, outcome: "skip", skipReason: "HEAD is detached", skipFlag: "detached-head" };
   }
   if (status.identity.headMode.branch !== branch) {
-    if (!includeDrifted) {
+    if (!includeWrongBranch) {
       return {
         ...base,
         outcome: "skip",
-        skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch} (use --include-drifted)`,
-        skipFlag: "drifted",
+        skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch} (use --include-wrong-branch)`,
+        skipFlag: "wrong-branch",
       };
     }
     base.branch = status.identity.headMode.branch;
-    base.drifted = true;
+    base.wrongBranch = true;
   }
 
   // Dirty check
@@ -501,11 +501,11 @@ export function buildPullPlanNodes(
     rows,
   });
 
-  const driftedCount = assessments.filter((a) => a.drifted && a.outcome === "will-pull").length;
-  if (driftedCount > 0) {
+  const wrongBranchCount = assessments.filter((a) => a.wrongBranch && a.outcome === "will-pull").length;
+  if (wrongBranchCount > 0) {
     nodes.push({
       kind: "hint",
-      cell: cell(`  hint: ${plural(driftedCount, "repo")} on a different branch than the workspace`, "muted"),
+      cell: cell(`  hint: ${plural(wrongBranchCount, "repo")} on a different branch than the workspace`, "muted"),
     });
   }
 
@@ -584,8 +584,8 @@ export function pullActionCell(a: PullAssessment, remotesMap: Map<string, RepoRe
   // Fork suffix
   if (forkText) result = suffix(result, forkText);
 
-  // Drifted annotation
-  if (a.drifted) {
+  // Wrong branch annotation
+  if (a.wrongBranch) {
     result = suffix(result, ` (branch: ${a.branch})`, "attention");
   }
 

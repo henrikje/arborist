@@ -59,7 +59,7 @@ interface IntegrateAssessmentBase {
   needsStash?: boolean;
   stashPopConflictFiles?: string[];
   verbose?: IntegrateVerboseInfo;
-  drifted?: boolean;
+  wrongBranch?: boolean;
 }
 
 export interface IntegrateSkipAssessment extends IntegrateAssessmentBase {
@@ -99,7 +99,7 @@ interface PullAssessmentBase {
   needsStash?: boolean;
   stashPopConflictFiles?: string[];
   verbose?: PullVerboseInfo;
-  drifted?: boolean;
+  wrongBranch?: boolean;
 }
 
 export interface PullSkipAssessment extends PullAssessmentBase {
@@ -152,7 +152,7 @@ interface PushAssessmentBase {
   headSha: string;
   recreate: boolean;
   behindBase: number;
-  drifted?: boolean;
+  wrongBranch?: boolean;
   verbose?: {
     commits?: CommitDisplayEntry[];
     totalCommits?: number;

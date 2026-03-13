@@ -59,18 +59,18 @@ describe("buildStatusView", () => {
     expect(keys).toContain("lastCommitUnit");
   });
 
-  test("BRANCH column is hidden when no drift", () => {
+  test("BRANCH column is hidden when no wrong branch", () => {
     const nodes = buildStatusView(makeSummary(), defaultCtx());
     const table = nodes[0] as TableNode;
     const branchCol = table.columns.find((c) => c.key === "branch");
     expect(branchCol?.show).toBe(false);
   });
 
-  test("BRANCH column shown when drifted", () => {
-    const driftedRepo = makeRepo({
+  test("BRANCH column shown when wrong branch", () => {
+    const wrongBranchRepo = makeRepo({
       identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
     });
-    const nodes = buildStatusView(makeSummary({ repos: [driftedRepo] }), defaultCtx());
+    const nodes = buildStatusView(makeSummary({ repos: [wrongBranchRepo] }), defaultCtx());
     const table = nodes[0] as TableNode;
     const branchCol = table.columns.find((c) => c.key === "branch");
     expect(branchCol?.show).toBe(true);
