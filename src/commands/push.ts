@@ -8,35 +8,12 @@ import { createRenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
 import { skipCell, upToDateCell, verboseCommitsToNodes } from "../lib/render";
 import { cell, suffix } from "../lib/render";
-import type { SkipFlag } from "../lib/status";
 import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
 import { VERBOSE_COMMIT_LIMIT, classifyNetworkError, confirmOrExit, runPlanFlow } from "../lib/sync";
+export type { PushAssessment } from "../lib/sync";
+import type { PushAssessment } from "../lib/sync";
 import { dryRunNotice, info, inlineResult, inlineStart, plural, red } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
-
-export interface PushAssessment {
-  repo: string;
-  repoDir: string;
-  outcome: "will-push" | "will-force-push" | "will-force-push-outdated" | "up-to-date" | "skip";
-  skipReason?: string;
-  skipFlag?: SkipFlag;
-  ahead: number;
-  behind: number;
-  rebased: number;
-  replaced: number;
-  squashed: number;
-  baseAhead: number;
-  baseRef: string;
-  branch: string;
-  shareRemote: string;
-  newBranch: boolean;
-  headSha: string;
-  recreate: boolean;
-  behindBase: number;
-  drifted?: boolean;
-  commits?: { shortHash: string; subject: string }[];
-  totalCommits?: number;
-}
 
 export function registerPushCommand(program: Command, getCtx: () => ArbContext): void {
   program
@@ -108,16 +85,18 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
               });
             }),
           );
-          const filtered = assessments.filter((a): a is PushAssessment => a !== null);
-          for (const a of filtered) {
-            if (a.outcome === "will-force-push" && !options.force) {
-              a.outcome = "skip";
+          return assessments
+            .filter((a): a is PushAssessment => a !== null)
+            .map<PushAssessment>((a) => {
+              if (a.outcome !== "will-force-push" || options.force) return a;
               const rebasedHint = a.rebased > 0 ? `, ${a.rebased} rebased` : "";
-              a.skipReason = `diverged from ${a.shareRemote}${rebasedHint} (use --force)`;
-              a.skipFlag = "diverged";
-            }
-          }
-          return filtered;
+              return {
+                ...a,
+                outcome: "skip" as const,
+                skipReason: `diverged from ${a.shareRemote}${rebasedHint} (use --force)`,
+                skipFlag: "diverged",
+              };
+            });
         };
 
         const postAssess = options.verbose
@@ -240,11 +219,11 @@ export function buildPushPlanNodes(
     if (
       verbose &&
       (a.outcome === "will-push" || a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated") &&
-      a.commits &&
-      a.commits.length > 0
+      a.verbose?.commits &&
+      a.verbose.commits.length > 0
     ) {
       const label = `Outgoing to ${a.shareRemote}:`;
-      afterRow = verboseCommitsToNodes(a.commits, a.totalCommits ?? a.commits.length, label);
+      afterRow = verboseCommitsToNodes(a.verbose.commits, a.verbose.totalCommits ?? a.verbose.commits.length, label);
     }
 
     return {
@@ -407,11 +386,13 @@ async function gatherPushVerboseCommits(
             : `${shareRemote}/${a.branch}`;
         const commits = await getCommitsBetweenFull(a.repoDir, ref, "HEAD");
         const total = commits.length;
-        a.commits = commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
-          shortHash: c.shortHash,
-          subject: c.subject,
-        }));
-        a.totalCommits = total;
+        a.verbose = {
+          commits: commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
+            shortHash: c.shortHash,
+            subject: c.subject,
+          })),
+          totalCommits: total,
+        };
       }),
   );
 }
@@ -425,10 +406,9 @@ export function assessPushRepo(
 ): PushAssessment {
   const behindBase = status.base?.behind ?? 0;
 
-  const base: PushAssessment = {
+  const base = {
     repo: status.name,
     repoDir,
-    outcome: "skip",
     ahead: 0,
     behind: 0,
     rebased: 0,
@@ -442,16 +422,18 @@ export function assessPushRepo(
     headSha,
     recreate: false,
     behindBase,
+    drifted: undefined as boolean | undefined,
   };
 
   // Branch check — detached or drifted
   if (status.identity.headMode.kind === "detached") {
-    return { ...base, skipReason: "HEAD is detached", skipFlag: "detached-head" };
+    return { ...base, outcome: "skip", skipReason: "HEAD is detached", skipFlag: "detached-head" };
   }
   if (status.identity.headMode.branch !== branch) {
     if (!options?.includeDrifted) {
       return {
         ...base,
+        outcome: "skip",
         skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch} (use --include-drifted)`,
         skipFlag: "drifted",
       };
@@ -465,6 +447,7 @@ export function assessPushRepo(
     const baseName = status.base.configuredRef ?? status.base.ref;
     return {
       ...base,
+      outcome: "skip",
       skipReason: `base branch ${baseName} was merged into default (retarget first with 'arb rebase --retarget')`,
       skipFlag: "base-merged-into-default",
     };
@@ -477,12 +460,14 @@ export function assessPushRepo(
       if (n && n > 0) {
         return {
           ...base,
+          outcome: "skip",
           skipReason: `branch was merged into ${status.base.ref}, but has ${n} new ${n === 1 ? "commit" : "commits"} since (rebase or use --include-merged to push)`,
           skipFlag: "merged-new-work",
         };
       }
       return {
         ...base,
+        outcome: "skip",
         skipReason: `already merged into ${status.base.ref} (use --include-merged to recreate)`,
         skipFlag: "already-merged",
       };
@@ -497,12 +482,14 @@ export function assessPushRepo(
     if (n && n > 0) {
       return {
         ...base,
+        outcome: "skip",
         skipReason: `branch was merged into ${status.base.ref}, but has ${n} new ${n === 1 ? "commit" : "commits"} since (rebase or use --include-merged to push)`,
         skipFlag: "merged-new-work",
       };
     }
     return {
       ...base,
+      outcome: "skip",
       skipReason: `already merged into ${status.base.ref} (use --include-merged)`,
       skipFlag: "already-merged",
     };

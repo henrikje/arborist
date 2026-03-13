@@ -1,35 +1,187 @@
 import type { SkipFlag } from "../status/skip-flags";
 
-export interface RepoAssessment {
+export type ConflictPrediction = "no-conflict" | "clean" | "conflict" | null;
+
+export interface CommitDisplayEntry {
+  shortHash: string;
+  subject: string;
+}
+
+export interface IntegrateCommitDisplayEntry extends CommitDisplayEntry {
+  rebaseOf?: string;
+  squashOf?: string[];
+}
+
+export interface ConflictCommitEntry {
+  shortHash: string;
+  files: string[];
+}
+
+export interface DiffStats {
+  files: number;
+  insertions: number;
+  deletions: number;
+}
+
+export interface IntegrateRetargetInfo {
+  from?: string;
+  to?: string;
+  blocked?: boolean;
+  warning?: string;
+  replayCount?: number;
+  alreadyOnTarget?: number;
+  reason?: "base-merged" | "branch-merged";
+}
+
+export interface IntegrateVerboseInfo {
+  commits?: IntegrateCommitDisplayEntry[];
+  totalCommits?: number;
+  matchedCount?: number;
+  mergeBaseSha?: string;
+  outgoingCommits?: CommitDisplayEntry[];
+  totalOutgoingCommits?: number;
+  diffStats?: DiffStats;
+  conflictCommits?: ConflictCommitEntry[];
+}
+
+interface IntegrateAssessmentBase {
   repo: string;
   repoDir: string;
-  outcome: "will-operate" | "up-to-date" | "skip";
+  branch: string;
   skipReason?: string;
   skipFlag?: SkipFlag;
-  branch: string;
   baseBranch?: string;
   baseRemote: string;
   behind: number;
   ahead: number;
   headSha: string;
   shallow: boolean;
-  conflictPrediction?: "no-conflict" | "clean" | "conflict" | null;
-  retargetFrom?: string;
-  retargetTo?: string;
-  retargetBlocked?: boolean;
-  retargetWarning?: string;
+  conflictPrediction?: ConflictPrediction;
+  retarget?: IntegrateRetargetInfo;
   needsStash?: boolean;
   stashPopConflictFiles?: string[];
-  commits?: { shortHash: string; subject: string; rebaseOf?: string; squashOf?: string[] }[];
-  totalCommits?: number;
-  matchedCount?: number;
-  mergeBaseSha?: string;
-  outgoingCommits?: { shortHash: string; subject: string }[];
-  totalOutgoingCommits?: number;
-  diffStats?: { files: number; insertions: number; deletions: number };
-  conflictCommits?: { shortHash: string; files: string[] }[];
-  retargetReplayCount?: number;
-  retargetAlreadyOnTarget?: number;
-  retargetReason?: "base-merged" | "branch-merged";
+  verbose?: IntegrateVerboseInfo;
   drifted?: boolean;
 }
+
+export interface IntegrateSkipAssessment extends IntegrateAssessmentBase {
+  outcome: "skip";
+  skipReason: string;
+  skipFlag: SkipFlag;
+}
+
+export interface IntegrateUpToDateAssessment extends IntegrateAssessmentBase {
+  outcome: "up-to-date";
+}
+
+export interface IntegrateWillOperateAssessment extends IntegrateAssessmentBase {
+  outcome: "will-operate";
+}
+
+export type RepoAssessment = IntegrateSkipAssessment | IntegrateUpToDateAssessment | IntegrateWillOperateAssessment;
+
+interface PullAssessmentBase {
+  repo: string;
+  repoDir: string;
+  skipReason?: string;
+  skipFlag?: SkipFlag;
+  behind: number;
+  toPush: number;
+  rebased: number;
+  rebasedKnown: boolean;
+  fromBaseCount: number;
+  pullMode: "rebase" | "merge";
+  pullStrategy?: "rebase-pull" | "merge-pull" | "safe-reset" | "forced-reset";
+  branch: string;
+  headSha: string;
+  safeReset?: PullSafeResetInfo;
+  conflictPrediction?: ConflictPrediction;
+  needsStash?: boolean;
+  stashPopConflictFiles?: string[];
+  verbose?: PullVerboseInfo;
+  drifted?: boolean;
+}
+
+export interface PullSkipAssessment extends PullAssessmentBase {
+  outcome: "skip";
+  skipReason: string;
+  skipFlag: SkipFlag;
+}
+
+export interface PullUpToDateAssessment extends PullAssessmentBase {
+  outcome: "up-to-date";
+}
+
+export interface PullWillPullAssessment extends PullAssessmentBase {
+  outcome: "will-pull";
+}
+
+export interface PullSafeResetInfo {
+  reason?: string;
+  blockedBy?: string;
+  target?: string;
+  oldRemoteTip?: string;
+}
+
+export interface PullVerboseInfo {
+  commits?: CommitDisplayEntry[];
+  totalCommits?: number;
+  diffStats?: DiffStats;
+  conflictCommits?: ConflictCommitEntry[];
+}
+
+export type PullAssessment = PullSkipAssessment | PullUpToDateAssessment | PullWillPullAssessment;
+
+interface PushAssessmentBase {
+  repo: string;
+  repoDir: string;
+  skipReason?: string;
+  skipFlag?: SkipFlag;
+  ahead: number;
+  behind: number;
+  rebased: number;
+  replaced: number;
+  squashed: number;
+  baseAhead: number;
+  baseRef: string;
+  branch: string;
+  shareRemote: string;
+  newBranch: boolean;
+  headSha: string;
+  recreate: boolean;
+  behindBase: number;
+  drifted?: boolean;
+  verbose?: {
+    commits?: CommitDisplayEntry[];
+    totalCommits?: number;
+  };
+}
+
+export interface PushSkipAssessment extends PushAssessmentBase {
+  outcome: "skip";
+  skipReason: string;
+  skipFlag: SkipFlag;
+}
+
+export interface PushUpToDateAssessment extends PushAssessmentBase {
+  outcome: "up-to-date";
+}
+
+export interface PushWillPushAssessment extends PushAssessmentBase {
+  outcome: "will-push";
+}
+
+export interface PushWillForcePushAssessment extends PushAssessmentBase {
+  outcome: "will-force-push";
+}
+
+export interface PushWillForcePushOutdatedAssessment extends PushAssessmentBase {
+  outcome: "will-force-push-outdated";
+}
+
+export type PushAssessment =
+  | PushSkipAssessment
+  | PushUpToDateAssessment
+  | PushWillPushAssessment
+  | PushWillForcePushAssessment
+  | PushWillForcePushOutdatedAssessment;

@@ -2,7 +2,52 @@ import { describe, expect, test } from "bun:test";
 import type { RepoAssessment } from "../sync/types";
 import { formatBranchGraph } from "./integrate-graph";
 
-function makeAssessment(overrides: Partial<RepoAssessment> = {}): RepoAssessment {
+function normalizeIntegrateAssessment(overrides: Record<string, unknown>): Record<string, unknown> {
+  const {
+    retargetFrom,
+    retargetTo,
+    mergeBaseSha,
+    commits,
+    totalCommits,
+    outgoingCommits,
+    totalOutgoingCommits,
+    ...next
+  } = overrides;
+  const retarget = {
+    from: retargetFrom as string | undefined,
+    to: retargetTo as string | undefined,
+  };
+  const verbose = {
+    mergeBaseSha: mergeBaseSha as string | undefined,
+    commits: commits as RepoAssessment["verbose"] extends infer TVerbose
+      ? TVerbose extends { commits?: infer TCommits }
+        ? TCommits
+        : never
+      : never,
+    totalCommits: totalCommits as number | undefined,
+    outgoingCommits: outgoingCommits as RepoAssessment["verbose"] extends infer TVerbose
+      ? TVerbose extends { outgoingCommits?: infer TCommits }
+        ? TCommits
+        : never
+      : never,
+    totalOutgoingCommits: totalOutgoingCommits as number | undefined,
+  };
+
+  if (retarget.from || retarget.to) next.retarget = retarget;
+  if (
+    verbose.mergeBaseSha ||
+    verbose.commits ||
+    verbose.totalCommits ||
+    verbose.outgoingCommits ||
+    verbose.totalOutgoingCommits
+  ) {
+    next.verbose = verbose;
+  }
+
+  return next;
+}
+
+function makeAssessment(overrides: Record<string, unknown> = {}): RepoAssessment {
   return {
     repo: "repo-a",
     repoDir: "/tmp/repo-a",
@@ -14,9 +59,9 @@ function makeAssessment(overrides: Partial<RepoAssessment> = {}): RepoAssessment
     baseBranch: "main",
     headSha: "abc1234",
     shallow: false,
-    mergeBaseSha: "ghi9012",
-    ...overrides,
-  };
+    verbose: { mergeBaseSha: "ghi9012" },
+    ...normalizeIntegrateAssessment(overrides),
+  } as RepoAssessment;
 }
 
 describe("formatBranchGraph", () => {

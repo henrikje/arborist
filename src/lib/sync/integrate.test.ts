@@ -16,6 +16,92 @@ import {
 const DIR = "/tmp/test-repo";
 const SHA = "abc1234";
 
+function normalizeIntegrateAssessment(overrides: Record<string, unknown>): Record<string, unknown> {
+  const {
+    retargetFrom,
+    retargetTo,
+    retargetBlocked,
+    retargetWarning,
+    retargetReplayCount,
+    retargetAlreadyOnTarget,
+    retargetReason,
+    commits,
+    totalCommits,
+    matchedCount,
+    mergeBaseSha,
+    outgoingCommits,
+    totalOutgoingCommits,
+    diffStats,
+    conflictCommits,
+    ...next
+  } = overrides;
+  const retarget = {
+    from: retargetFrom as string | undefined,
+    to: retargetTo as string | undefined,
+    blocked: retargetBlocked as boolean | undefined,
+    warning: retargetWarning as string | undefined,
+    replayCount: retargetReplayCount as number | undefined,
+    alreadyOnTarget: retargetAlreadyOnTarget as number | undefined,
+    reason: retargetReason as RepoAssessment["retarget"] extends infer TRetarget
+      ? TRetarget extends { reason?: infer TReason }
+        ? TReason
+        : never
+      : never,
+  };
+  const verbose = {
+    commits: commits as RepoAssessment["verbose"] extends infer TVerbose
+      ? TVerbose extends { commits?: infer TCommits }
+        ? TCommits
+        : never
+      : never,
+    totalCommits: totalCommits as number | undefined,
+    matchedCount: matchedCount as number | undefined,
+    mergeBaseSha: mergeBaseSha as string | undefined,
+    outgoingCommits: outgoingCommits as RepoAssessment["verbose"] extends infer TVerbose
+      ? TVerbose extends { outgoingCommits?: infer TCommits }
+        ? TCommits
+        : never
+      : never,
+    totalOutgoingCommits: totalOutgoingCommits as number | undefined,
+    diffStats: diffStats as RepoAssessment["verbose"] extends infer TVerbose
+      ? TVerbose extends { diffStats?: infer TDiff }
+        ? TDiff
+        : never
+      : never,
+    conflictCommits: conflictCommits as RepoAssessment["verbose"] extends infer TVerbose
+      ? TVerbose extends { conflictCommits?: infer TConflicts }
+        ? TConflicts
+        : never
+      : never,
+  };
+
+  if (
+    retarget.from ||
+    retarget.to ||
+    retarget.blocked ||
+    retarget.warning ||
+    retarget.replayCount ||
+    retarget.alreadyOnTarget ||
+    retarget.reason
+  ) {
+    next.retarget = retarget;
+  }
+  if (
+    verbose.commits ||
+    verbose.totalCommits ||
+    verbose.matchedCount ||
+    verbose.mergeBaseSha ||
+    verbose.outgoingCommits ||
+    verbose.totalOutgoingCommits ||
+    verbose.diffStats ||
+    verbose.conflictCommits
+  ) {
+    next.verbose = verbose;
+  }
+
+  return next;
+}
+
 describe("classifyRepo", () => {
   test("up-to-date when behind base is 0", () => {
     const a = classifyRepo(makeRepo(), DIR, "feature", [], false, SHA);
@@ -480,7 +566,7 @@ describe("classifyRepo", () => {
 });
 
 describe("formatIntegratePlan", () => {
-  function makeAssessment(overrides: Partial<RepoAssessment> = {}): RepoAssessment {
+  function makeAssessment(overrides: Record<string, unknown> = {}): RepoAssessment {
     return {
       repo: "repo-a",
       repoDir: "/tmp/repo-a",
@@ -492,8 +578,8 @@ describe("formatIntegratePlan", () => {
       baseBranch: "main",
       headSha: "abc1234",
       shallow: false,
-      ...overrides,
-    };
+      ...normalizeIntegrateAssessment(overrides),
+    } as RepoAssessment;
   }
 
   test("shows rebase action", () => {
@@ -1079,7 +1165,7 @@ describe("formatIntegratePlan", () => {
 });
 
 describe("resolveRetargetConfigTarget", () => {
-  function makeAssessment(overrides: Partial<RepoAssessment> = {}): RepoAssessment {
+  function makeAssessment(overrides: Record<string, unknown> = {}): RepoAssessment {
     return {
       repo: "repo-a",
       repoDir: "/tmp/repo-a",
@@ -1091,8 +1177,8 @@ describe("resolveRetargetConfigTarget", () => {
       baseBranch: "main",
       headSha: "abc1234",
       shallow: false,
-      ...overrides,
-    };
+      ...normalizeIntegrateAssessment(overrides),
+    } as RepoAssessment;
   }
 
   test("returns null when no config retarget assessments exist", () => {
@@ -1145,7 +1231,7 @@ describe("resolveRetargetConfigTarget", () => {
 });
 
 describe("maybeWriteRetargetConfig", () => {
-  function makeAssessment(overrides: Partial<RepoAssessment> = {}): RepoAssessment {
+  function makeAssessment(overrides: Record<string, unknown> = {}): RepoAssessment {
     return {
       repo: "repo-a",
       repoDir: "/tmp/repo-a",
@@ -1157,11 +1243,9 @@ describe("maybeWriteRetargetConfig", () => {
       baseBranch: "main",
       headSha: "abc1234",
       shallow: false,
-      retargetFrom: "feat/old",
-      retargetTo: "main",
-      retargetReason: "base-merged",
-      ...overrides,
-    };
+      retarget: { from: "feat/old", to: "main", reason: "base-merged" },
+      ...normalizeIntegrateAssessment(overrides),
+    } as RepoAssessment;
   }
 
   test("does not write config on dry-run (no-op retarget path)", async () => {
@@ -1377,7 +1461,7 @@ describe("formatVerboseCommits", () => {
 // ── Semantic intermediate tests ───────────────────────────────
 
 describe("describeIntegrateAction", () => {
-  function makeAssessment(overrides: Partial<RepoAssessment> = {}): RepoAssessment {
+  function makeAssessment(overrides: Record<string, unknown> = {}): RepoAssessment {
     return {
       repo: "repo-a",
       repoDir: "/tmp/repo-a",
@@ -1389,8 +1473,8 @@ describe("describeIntegrateAction", () => {
       baseBranch: "main",
       headSha: "abc1234",
       shallow: false,
-      ...overrides,
-    };
+      ...normalizeIntegrateAssessment(overrides),
+    } as RepoAssessment;
   }
 
   test("normal rebase", () => {

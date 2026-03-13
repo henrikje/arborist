@@ -155,7 +155,7 @@ export async function integrate(
   // All-or-nothing check: when retarget is active, skipped repos block the entire retarget
   // (except repos with no base branch or where the retarget target simply doesn't exist on their remote)
   if (retarget) {
-    const hasRetargetWork = assessments.some((a) => a.retargetTo || a.retargetBlocked);
+    const hasRetargetWork = assessments.some((a) => a.retarget?.to || a.retarget?.blocked);
     if (hasRetargetWork) {
       const blockedRepos = assessments.filter(
         (a) => a.outcome === "skip" && (a.skipFlag == null || !RETARGET_EXEMPT_SKIPS.has(a.skipFlag)),
@@ -168,7 +168,7 @@ export async function integrate(
         throw new ArbError("Cannot retarget: some repos are blocked.");
       }
       // Ensure at least one repo can actually retarget
-      const hasActualRetargetWork = assessments.some((a) => a.retargetTo);
+      const hasActualRetargetWork = assessments.some((a) => a.retarget?.to);
       if (!hasActualRetargetWork) {
         const notFoundRepos = assessments.filter((a) => a.skipFlag === "retarget-target-not-found");
         error("Cannot retarget: target branch not found on any repo.");
@@ -219,14 +219,14 @@ export async function integrate(
     const ref = `${a.baseRemote}/${a.baseBranch}`;
 
     let result: { exitCode: number; stdout: string; stderr: string };
-    if (a.retargetFrom) {
-      const remoteRefExists = await remoteBranchExists(a.repoDir, a.retargetFrom, a.baseRemote);
-      const oldBaseRef = remoteRefExists ? `${a.baseRemote}/${a.retargetFrom}` : a.retargetFrom;
-      const n = a.retargetReplayCount ?? a.ahead;
+    if (a.retarget?.from) {
+      const remoteRefExists = await remoteBranchExists(a.repoDir, a.retarget.from, a.baseRemote);
+      const oldBaseRef = remoteRefExists ? `${a.baseRemote}/${a.retarget.from}` : a.retarget.from;
+      const n = a.retarget.replayCount ?? a.ahead;
       const progressMsg =
-        a.retargetReason === "branch-merged"
+        a.retarget.reason === "branch-merged"
           ? `rebasing ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`
-          : `rebasing ${a.branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
+          : `rebasing ${a.branch} onto ${ref} from ${a.retarget.from} (retarget)`;
       inlineStart(a.repo, progressMsg);
       const retargetArgs = ["rebase"];
       if (a.needsStash) retargetArgs.push("--autostash");
@@ -260,11 +260,11 @@ export async function integrate(
         }
       }
       let doneMsg: string;
-      if (a.retargetFrom && a.retargetReason === "branch-merged") {
-        const n = a.retargetReplayCount ?? a.ahead;
+      if (a.retarget?.from && a.retarget.reason === "branch-merged") {
+        const n = a.retarget.replayCount ?? a.ahead;
         doneMsg = `rebased ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`;
-      } else if (a.retargetFrom) {
-        doneMsg = `rebased ${a.branch} onto ${ref} from ${a.retargetFrom} (retarget)`;
+      } else if (a.retarget?.from) {
+        doneMsg = `rebased ${a.branch} onto ${ref} from ${a.retarget.from} (retarget)`;
       } else {
         doneMsg = mode === "rebase" ? `rebased ${a.branch} onto ${ref}` : `merged ${ref} into ${a.branch}`;
       }
@@ -313,7 +313,7 @@ export async function integrate(
   // Phase 6: summary
   process.stderr.write("\n");
   const retargetedCount = willOperate.filter(
-    (a) => a.retargetFrom && !conflicted.some((c) => c.assessment === a),
+    (a) => a.retarget?.from && !conflicted.some((c) => c.assessment === a),
   ).length;
   const normalCount = succeeded - retargetedCount;
   const parts: string[] = [];
@@ -330,8 +330,8 @@ export function resolveRetargetConfigTarget(assessments: RepoAssessment[]): stri
   const retargetTargets = [
     ...new Set(
       assessments
-        .filter((a) => a.retargetTo && a.retargetReason !== "branch-merged")
-        .map((a) => a.retargetTo as string),
+        .filter((a) => a.retarget?.to && a.retarget.reason !== "branch-merged")
+        .map((a) => a.retarget?.to as string),
     ),
   ];
   if (retargetTargets.length === 0) return null;
@@ -356,7 +356,7 @@ export async function maybeWriteRetargetConfig(options: {
   if (!options.retargetConfigTarget) return false;
   const { wsDir, branch, assessments, retargetConfigTarget, cache } = options;
   const firstRetarget = assessments.find(
-    (a) => a.retargetTo === retargetConfigTarget && a.retargetReason !== "branch-merged",
+    (a) => a.retarget?.to === retargetConfigTarget && a.retarget.reason !== "branch-merged",
   );
   if (!firstRetarget) return false;
   const configFile = `${wsDir}/.arbws/config.json`;
@@ -397,17 +397,17 @@ export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode):
   const baseRef = `${a.baseRemote}/${a.baseBranch}`;
   const stash = classifyStash(a);
 
-  if (a.retargetFrom) {
-    if (a.retargetReason === "branch-merged") {
+  if (a.retarget?.from) {
+    if (a.retarget.reason === "branch-merged") {
       return {
         kind: "retarget-merged",
         baseRef,
         branch: a.branch,
-        replayCount: a.retargetReplayCount ?? a.ahead,
-        skipCount: a.retargetAlreadyOnTarget,
+        replayCount: a.retarget.replayCount ?? a.ahead,
+        skipCount: a.retarget.alreadyOnTarget,
         conflictRisk: null,
         stash,
-        warning: a.retargetWarning,
+        warning: a.retarget.warning,
         headSha: a.headSha,
       };
     }
@@ -415,12 +415,12 @@ export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode):
       kind: "retarget-config",
       baseRef,
       branch: a.branch,
-      retargetFrom: a.retargetFrom,
-      replayCount: a.retargetReplayCount,
-      skipCount: a.retargetAlreadyOnTarget,
+      retargetFrom: a.retarget.from,
+      replayCount: a.retarget.replayCount,
+      skipCount: a.retarget.alreadyOnTarget,
       conflictRisk: null,
       stash,
-      warning: a.retargetWarning,
+      warning: a.retarget.warning,
       headSha: a.headSha,
     };
   }
@@ -429,7 +429,7 @@ export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode):
     kind: mode,
     baseRef,
     branch: a.branch,
-    diff: { behind: a.behind, ahead: a.ahead, matchedCount: a.matchedCount },
+    diff: { behind: a.behind, ahead: a.ahead, matchedCount: a.verbose?.matchedCount },
     mergeType: mode === "merge" ? (a.ahead === 0 ? "fast-forward" : "three-way") : undefined,
     conflictRisk: classifyConflictRisk(a.conflictPrediction, mode),
     stash,
@@ -465,11 +465,11 @@ export function buildIntegratePlanNodes(
       if (graph) {
         const graphText = formatBranchGraph(a, a.branch, !!verbose);
         if (graphText) afterRow = [{ kind: "rawText", text: graphText }];
-      } else if (verbose && a.commits && a.commits.length > 0) {
+      } else if (verbose && a.verbose?.commits && a.verbose.commits.length > 0) {
         const label = `Incoming from ${a.baseRemote}/${a.baseBranch}:`;
-        afterRow = verboseCommitsToNodes(a.commits, a.totalCommits ?? a.commits.length, label, {
-          diffStats: a.diffStats,
-          conflictCommits: a.conflictCommits,
+        afterRow = verboseCommitsToNodes(a.verbose.commits, a.verbose.totalCommits ?? a.verbose.commits.length, label, {
+          diffStats: a.verbose.diffStats,
+          conflictCommits: a.verbose.conflictCommits,
         });
       }
     }
@@ -531,15 +531,15 @@ async function predictIntegrateConflicts(assessments: RepoAssessment[], mode: In
       .filter((a) => a.outcome === "will-operate")
       .map(async (a) => {
         const ref = `${a.baseRemote}/${a.baseBranch}`;
-        if (!a.retargetFrom && a.ahead > 0 && a.behind > 0) {
+        if (!a.retarget?.from && a.ahead > 0 && a.behind > 0) {
           const prediction = await predictMergeConflict(a.repoDir, ref);
           a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
           // Per-commit conflict detail for rebase mode
           if (prediction?.hasConflict && mode === "rebase") {
             const conflictCommits = await predictRebaseConflictCommits(a.repoDir, ref);
-            if (conflictCommits.length > 0) a.conflictCommits = conflictCommits;
+            if (conflictCommits.length > 0) a.verbose = { ...a.verbose, conflictCommits };
           }
-        } else if (!a.retargetFrom) {
+        } else if (!a.retarget?.from) {
           a.conflictPrediction = "no-conflict";
         }
         if (a.needsStash) {
@@ -576,8 +576,8 @@ async function gatherIntegrateVerboseCommits(assessments: RepoAssessment[]): Pro
         }
 
         let matchedCount = 0;
-        a.commits = incomingCommits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => {
-          const entry: NonNullable<RepoAssessment["commits"]>[number] = {
+        const commits = incomingCommits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => {
+          const entry: NonNullable<NonNullable<RepoAssessment["verbose"]>["commits"]>[number] = {
             shortHash: c.shortHash,
             subject: c.subject,
           };
@@ -596,11 +596,13 @@ async function gatherIntegrateVerboseCommits(assessments: RepoAssessment[]): Pro
           if (rebaseMap?.has(c.fullHash)) matchedCount++;
           else if (squashMatch && c.fullHash === squashMatch.incomingHash) matchedCount++;
         }
-        a.totalCommits = total;
-        if (matchedCount > 0) a.matchedCount = matchedCount;
-
-        // Diff stats
-        a.diffStats = (await getDiffShortstat(a.repoDir, "HEAD", ref)) ?? undefined;
+        a.verbose = {
+          ...a.verbose,
+          commits,
+          totalCommits: total,
+          matchedCount: matchedCount > 0 ? matchedCount : undefined,
+          diffStats: (await getDiffShortstat(a.repoDir, "HEAD", ref)) ?? undefined,
+        };
       }),
   );
 }
@@ -612,24 +614,27 @@ async function gatherIntegrateGraphData(assessments: RepoAssessment[], verbose: 
       .map(async (a) => {
         // Resolve the ref used for merge-base and outgoing commits
         let mergeBaseRef: string;
-        if (a.retargetFrom) {
-          const oldBaseRemoteExists = await remoteBranchExists(a.repoDir, a.retargetFrom, a.baseRemote);
-          mergeBaseRef = oldBaseRemoteExists ? `${a.baseRemote}/${a.retargetFrom}` : a.retargetFrom;
+        if (a.retarget?.from) {
+          const oldBaseRemoteExists = await remoteBranchExists(a.repoDir, a.retarget.from, a.baseRemote);
+          mergeBaseRef = oldBaseRemoteExists ? `${a.baseRemote}/${a.retarget.from}` : a.retarget.from;
         } else {
           mergeBaseRef = `${a.baseRemote}/${a.baseBranch}`;
         }
 
-        a.mergeBaseSha = (await getMergeBase(a.repoDir, "HEAD", mergeBaseRef)) ?? undefined;
+        a.verbose = { ...a.verbose, mergeBaseSha: (await getMergeBase(a.repoDir, "HEAD", mergeBaseRef)) ?? undefined };
 
         // Gather outgoing commits (feature branch side) when verbose + graph
         if (verbose && a.ahead > 0) {
           const commits = await getCommitsBetweenFull(a.repoDir, mergeBaseRef, "HEAD");
           const total = commits.length;
-          a.outgoingCommits = commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
-            shortHash: c.shortHash,
-            subject: c.subject,
-          }));
-          a.totalOutgoingCommits = total;
+          a.verbose = {
+            ...a.verbose,
+            outgoingCommits: commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
+              shortHash: c.shortHash,
+              subject: c.subject,
+            })),
+            totalOutgoingCommits: total,
+          };
         }
       }),
   );
@@ -644,36 +649,43 @@ export function classifyRepo(
   headSha: string,
   includeDrifted?: boolean,
 ): RepoAssessment {
-  const base: RepoAssessment = {
+  const base = {
     repo: status.name,
     repoDir,
-    outcome: "skip",
     branch,
     behind: 0,
     ahead: 0,
     baseRemote: "",
     headSha,
     shallow: status.identity.shallow,
+    drifted: undefined as boolean | undefined,
+    needsStash: undefined as boolean | undefined,
   };
 
   // Fetch failed for this repo
   if (fetchFailed.includes(status.name)) {
-    return { ...base, skipReason: "fetch failed", skipFlag: "fetch-failed" };
+    return { ...base, outcome: "skip", skipReason: "fetch failed", skipFlag: "fetch-failed" };
   }
 
   // Operation in progress
   if (status.operation !== null) {
-    return { ...base, skipReason: `${status.operation} in progress`, skipFlag: "operation-in-progress" };
+    return {
+      ...base,
+      outcome: "skip",
+      skipReason: `${status.operation} in progress`,
+      skipFlag: "operation-in-progress",
+    };
   }
 
   // Branch check — detached or drifted
   if (status.identity.headMode.kind === "detached") {
-    return { ...base, skipReason: "HEAD is detached", skipFlag: "detached-head" };
+    return { ...base, outcome: "skip", skipReason: "HEAD is detached", skipFlag: "detached-head" };
   }
   if (status.identity.headMode.branch !== branch) {
     if (!includeDrifted) {
       return {
         ...base,
+        outcome: "skip",
         skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch} (use --include-drifted)`,
         skipFlag: "drifted",
       };
@@ -688,6 +700,7 @@ export function classifyRepo(
     if (!autostash) {
       return {
         ...base,
+        outcome: "skip",
         skipReason: "uncommitted changes (use --autostash)",
         skipFlag: "dirty",
         // Carry base info so the plan display can show "up to date" when behind === 0
@@ -706,13 +719,13 @@ export function classifyRepo(
 
   // No base branch resolved
   if (status.base === null) {
-    return { ...base, skipReason: "no base branch", skipFlag: "no-base-branch" };
+    return { ...base, outcome: "skip", skipReason: "no base branch", skipFlag: "no-base-branch" };
   }
 
   // After this point, status.base is guaranteed non-null.
   // Remote repos must have a resolved base remote to proceed.
   if (!status.base.remote) {
-    return { ...base, skipReason: "no base remote", skipFlag: "no-base-remote" };
+    return { ...base, outcome: "skip", skipReason: "no base remote", skipFlag: "no-base-remote" };
   }
   base.baseRemote = status.base.remote;
 
@@ -721,6 +734,7 @@ export function classifyRepo(
     const strategy = status.base.merge.kind === "squash" ? "squash-merged" : "merged";
     return {
       ...base,
+      outcome: "skip",
       skipReason: `already ${strategy} into ${status.base.ref}`,
       skipFlag: "already-merged",
       baseBranch: status.base.ref,
@@ -733,6 +747,7 @@ export function classifyRepo(
   if (status.base.baseMergedIntoDefault != null) {
     return {
       ...base,
+      outcome: "skip",
       skipReason: `base branch ${status.base.configuredRef ?? status.base.ref} was merged into default (use --retarget)`,
       skipFlag: "base-merged-into-default",
     };
@@ -804,11 +819,13 @@ async function assessRepo(
         baseBranch: base.ref,
         behind: base.behind,
         ahead: n,
-        retargetFrom: boundarySha,
-        retargetTo: base.ref,
-        retargetReplayCount: n,
-        retargetAlreadyOnTarget: Math.max(0, base.ahead - n),
-        retargetReason: "branch-merged",
+        retarget: {
+          from: boundarySha,
+          to: base.ref,
+          replayCount: n,
+          alreadyOnTarget: Math.max(0, base.ahead - n),
+          reason: "branch-merged",
+        },
       };
     }
   }
@@ -828,7 +845,7 @@ async function assessRepo(
         outcome: "skip",
         skipReason: `target branch ${retargetExplicit} not found on ${baseRemote}`,
         skipFlag: "retarget-target-not-found",
-        retargetBlocked: true,
+        retarget: { blocked: true },
       };
     }
 
@@ -842,7 +859,7 @@ async function assessRepo(
         outcome: "skip",
         skipReason: `base branch ${oldBaseName} not found — cannot determine rebase boundary`,
         skipFlag: "retarget-base-not-found",
-        retargetBlocked: true,
+        retarget: { blocked: true },
       };
     }
 
@@ -861,10 +878,12 @@ async function assessRepo(
         ...classified,
         outcome: "up-to-date",
         baseBranch: retargetExplicit,
-        retargetFrom: oldBaseName,
-        retargetTo: retargetExplicit,
-        retargetWarning,
-        retargetReason: "base-merged",
+        retarget: {
+          from: oldBaseName,
+          to: retargetExplicit,
+          warning: retargetWarning,
+          reason: "base-merged",
+        },
         behind: base.behind,
         ahead: base.ahead,
       };
@@ -877,16 +896,18 @@ async function assessRepo(
       ...classified,
       outcome: "will-operate",
       baseBranch: retargetExplicit,
-      retargetFrom: oldBaseName,
-      retargetTo: retargetExplicit,
-      retargetWarning,
-      retargetReason: "base-merged",
+      retarget: {
+        from: oldBaseName,
+        to: retargetExplicit,
+        warning: retargetWarning,
+        reason: "base-merged",
+        ...(replayAnalysis && {
+          replayCount: replayAnalysis.toReplay,
+          alreadyOnTarget: replayAnalysis.alreadyOnTarget,
+        }),
+      },
       behind: base?.behind ?? 0,
       ahead: base?.ahead ?? 0,
-      ...(replayAnalysis && {
-        retargetReplayCount: replayAnalysis.toReplay,
-        retargetAlreadyOnTarget: replayAnalysis.alreadyOnTarget,
-      }),
     };
   }
 
@@ -914,11 +935,13 @@ async function assessRepo(
         baseBranch: base.ref,
         behind: base.behind,
         ahead: replayPlan.toReplay,
-        retargetFrom: `HEAD~${replayPlan.toReplay}`,
-        retargetTo: base.ref,
-        retargetReplayCount: replayPlan.toReplay,
-        retargetAlreadyOnTarget: replayPlan.alreadyOnTarget,
-        retargetReason: "branch-merged",
+        retarget: {
+          from: `HEAD~${replayPlan.toReplay}`,
+          to: base.ref,
+          replayCount: replayPlan.toReplay,
+          alreadyOnTarget: replayPlan.alreadyOnTarget,
+          reason: "branch-merged",
+        },
       };
     }
   }
@@ -951,9 +974,11 @@ async function assessRepo(
           ...classified,
           outcome: "up-to-date",
           baseBranch: trueDefault,
-          retargetFrom: oldBaseNameForReplay,
-          retargetTo: trueDefault,
-          retargetReason: "base-merged",
+          retarget: {
+            from: oldBaseNameForReplay,
+            to: trueDefault,
+            reason: "base-merged",
+          },
           behind: base.behind,
           ahead: base.ahead,
         };
@@ -970,15 +995,17 @@ async function assessRepo(
       ...classified,
       outcome: "will-operate",
       baseBranch: trueDefault,
-      retargetFrom: base.configuredRef ?? base.ref,
-      retargetTo: trueDefault,
-      retargetReason: "base-merged",
+      retarget: {
+        from: base.configuredRef ?? base.ref,
+        to: trueDefault,
+        reason: "base-merged",
+        ...(replayAnalysis && {
+          replayCount: replayAnalysis.toReplay,
+          alreadyOnTarget: replayAnalysis.alreadyOnTarget,
+        }),
+      },
       behind: base.behind,
       ahead: base.ahead,
-      ...(replayAnalysis && {
-        retargetReplayCount: replayAnalysis.toReplay,
-        retargetAlreadyOnTarget: replayAnalysis.alreadyOnTarget,
-      }),
     };
   }
 
