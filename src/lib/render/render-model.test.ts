@@ -83,7 +83,7 @@ describe("analyzeBranch", () => {
     expect(c.spans[0]?.attention).toBe("default");
   });
 
-  test("returns attention when drifted", () => {
+  test("returns attention when wrong branch", () => {
     const repo = makeRepo();
     const c = analyzeBranch(repo, "main");
     expect(c.plain).toBe("feature");
@@ -111,7 +111,7 @@ describe("analyzeBaseName", () => {
     expect(c.spans[0]?.attention).toBe("default");
   });
 
-  test("returns attention when baseFellBack", () => {
+  test("returns attention when isBaseMissing", () => {
     const repo = makeRepo({
       base: {
         remote: "origin",
@@ -217,9 +217,9 @@ describe("analyzeRemoteName", () => {
     expect(c.spans[0]?.attention).toBe("default");
   });
 
-  test("returns attention when drifted", () => {
+  test("returns attention when wrong branch", () => {
     const repo = makeRepo();
-    const flags = computeFlags(repo, "main"); // drifted: expected main, on feature
+    const flags = computeFlags(repo, "main"); // wrong branch: expected main, on feature
     const c = analyzeRemoteName(repo, flags);
     expect(c.spans[0]?.attention).toBe("attention");
   });

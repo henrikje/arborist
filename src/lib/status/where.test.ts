@@ -27,7 +27,7 @@ describe("validateWhere", () => {
   test("returns null for all valid terms", () => {
     expect(
       validateWhere(
-        "dirty,unpushed,behind-share,behind-base,diverged,drifted,detached,operation,gone,shallow,merged,base-merged,base-missing,at-risk,stale,clean,pushed,synced-base,synced-share,synced,safe",
+        "dirty,unpushed,behind-share,behind-base,diverged,wrong-branch,detached,operation,gone,shallow,merged,base-merged,base-missing,at-risk,stale,clean,pushed,synced-base,synced-share,synced,safe",
       ),
     ).toBeNull();
   });
@@ -256,7 +256,7 @@ describe("repoMatchesWhere", () => {
         },
       ],
       [
-        "drifted",
+        "wrong-branch",
         { identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false } },
       ],
       ["detached", { identity: { worktreeKind: "linked", headMode: { kind: "detached" }, shallow: false } }],

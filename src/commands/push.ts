@@ -26,7 +26,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
     .command("push [repos...]")
     .option("-f, --force", "Force push with lease")
     .option("--include-merged", "Include branches already merged into base")
-    .option("--include-drifted", "Include repos on a different branch than the workspace")
+    .option("--include-wrong-branch", "Include repos on a different branch than the workspace")
     .option("--fetch", "Fetch from all remotes before push (default)")
     .option("-N, --no-fetch", "Skip fetching before push")
     .option("-y, --yes", "Skip confirmation prompt")
@@ -35,7 +35,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
     .option("-w, --where <filter>", "Only push repos matching status filter (comma = OR, + = AND, ^ = negate)")
     .summary("Push the feature branch to the share remote")
     .description(
-      "Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos with no commits to push, or whose branches have been merged into the base branch unless --include-merged is used. Repos on a different branch than the workspace are skipped unless --include-drifted is used; when included, they are pushed to their actual branch. If a remote branch was deleted after merge, use --include-merged to recreate it. After rebase, amend, or squash, Arborist detects that all remote commits are outdated and pushes automatically with --force-with-lease. Use --force when the remote has genuinely new commits that you want to overwrite. Use --verbose to show the outgoing commits for each repo in the plan. Fetches before push by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
+      "Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing. Skips repos with no commits to push, or whose branches have been merged into the base branch unless --include-merged is used. Repos on a different branch than the workspace are skipped unless --include-wrong-branch is used; when included, they are pushed to their actual branch. If a remote branch was deleted after merge, use --include-merged to recreate it. After rebase, amend, or squash, Arborist detects that all remote commits are outdated and pushes automatically with --force-with-lease. Use --force when the remote has genuinely new commits that you want to overwrite. Use --verbose to show the outgoing commits for each repo in the plan. Fetches before push by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
     )
     .action(
       async (
@@ -43,7 +43,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
         options: {
           force?: boolean;
           includeMerged?: boolean;
-          includeDrifted?: boolean;
+          includeWrongBranch?: boolean;
           fetch?: boolean;
           yes?: boolean;
           dryRun?: boolean;
@@ -81,7 +81,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
             return assessPushRepo(status, repoDir, branch, headSha, {
               force: options.force,
               includeMerged: options.includeMerged,
-              includeDrifted: options.includeDrifted,
+              includeWrongBranch: options.includeWrongBranch,
             });
           },
         });
@@ -256,15 +256,15 @@ export function buildPushPlanNodes(
     });
   }
 
-  const driftedCount = assessments.filter(
+  const wrongBranchCount = assessments.filter(
     (a) =>
-      a.drifted &&
+      a.wrongBranch &&
       (a.outcome === "will-push" || a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated"),
   ).length;
-  if (driftedCount > 0) {
+  if (wrongBranchCount > 0) {
     nodes.push({
       kind: "hint",
-      cell: cell(`  hint: ${plural(driftedCount, "repo")} on a different branch than the workspace`, "muted"),
+      cell: cell(`  hint: ${plural(wrongBranchCount, "repo")} on a different branch than the workspace`, "muted"),
     });
   }
 
@@ -349,7 +349,7 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
     if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
   }
 
-  if (a.drifted) {
+  if (a.wrongBranch) {
     result = suffix(result, ` (branch: ${a.branch})`, "attention");
   }
 
@@ -405,7 +405,7 @@ export function assessPushRepo(
   repoDir: string,
   branch: string,
   headSha: string,
-  options?: { force?: boolean; includeMerged?: boolean; includeDrifted?: boolean },
+  options?: { force?: boolean; includeMerged?: boolean; includeWrongBranch?: boolean },
 ): PushAssessment {
   const behindBase = status.base?.behind ?? 0;
 
@@ -425,24 +425,24 @@ export function assessPushRepo(
     headSha,
     recreate: false,
     behindBase,
-    drifted: undefined as boolean | undefined,
+    wrongBranch: undefined as boolean | undefined,
   };
 
-  // Branch check — detached or drifted
+  // Branch check — detached or wrong branch
   if (status.identity.headMode.kind === "detached") {
     return { ...base, outcome: "skip", skipReason: "HEAD is detached", skipFlag: "detached-head" };
   }
   if (status.identity.headMode.branch !== branch) {
-    if (!options?.includeDrifted) {
+    if (!options?.includeWrongBranch) {
       return {
         ...base,
         outcome: "skip",
-        skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch} (use --include-drifted)`,
-        skipFlag: "drifted",
+        skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch} (use --include-wrong-branch)`,
+        skipFlag: "wrong-branch",
       };
     }
     base.branch = status.identity.headMode.branch;
-    base.drifted = true;
+    base.wrongBranch = true;
   }
 
   // Base branch merged into default — retarget before pushing

@@ -42,7 +42,7 @@ export function classifyRepo(
   fetchFailed: string[],
   autostash: boolean,
   headSha: string,
-  includeDrifted?: boolean,
+  includeWrongBranch?: boolean,
 ): RepoAssessment {
   const base = {
     repo: status.name,
@@ -53,7 +53,7 @@ export function classifyRepo(
     baseRemote: "",
     headSha,
     shallow: status.identity.shallow,
-    drifted: undefined as boolean | undefined,
+    wrongBranch: undefined as boolean | undefined,
     needsStash: undefined as boolean | undefined,
   };
 
@@ -74,16 +74,16 @@ export function classifyRepo(
     return { ...base, outcome: "skip", skipReason: "HEAD is detached", skipFlag: "detached-head" };
   }
   if (status.identity.headMode.branch !== branch) {
-    if (!includeDrifted) {
+    if (!includeWrongBranch) {
       return {
         ...base,
         outcome: "skip",
-        skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch} (use --include-drifted)`,
-        skipFlag: "drifted",
+        skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch} (use --include-wrong-branch)`,
+        skipFlag: "wrong-branch",
       };
     }
     base.branch = status.identity.headMode.branch;
-    base.drifted = true;
+    base.wrongBranch = true;
   }
 
   const flags = computeFlags(status, branch);
@@ -159,7 +159,7 @@ export async function assessIntegrateRepo(
     retarget: boolean;
     retargetExplicit: string | null;
     autostash: boolean;
-    includeDrifted: boolean;
+    includeWrongBranch: boolean;
     cache: DefaultBranchResolver;
     mode: IntegrateMode;
   },
@@ -174,7 +174,7 @@ export async function assessIntegrateRepo(
     fetchFailed,
     options.autostash,
     headSha,
-    options.includeDrifted,
+    options.includeWrongBranch,
   );
   const base = status.base;
   const isMergedNewWork =

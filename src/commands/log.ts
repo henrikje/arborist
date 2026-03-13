@@ -27,7 +27,7 @@ interface LogCommit {
   files?: string[];
 }
 
-type RepoLogStatus = "ok" | "detached" | "drifted" | "no-base" | "fallback-base";
+type RepoLogStatus = "ok" | "detached" | "wrong-branch" | "no-base" | "fallback-base";
 
 interface RepoLogResult {
   name: string;
@@ -166,13 +166,13 @@ async function outputTTY(
       gitArgs.push("-n", `${maxCount ?? NO_BASE_FALLBACK_LIMIT}`, "HEAD");
       note = "no base branch, showing recent";
     } else {
-      const baseFellBack = repo.base.configuredRef != null && repo.base.baseMergedIntoDefault == null;
+      const baseMissing = repo.base.configuredRef != null && repo.base.baseMergedIntoDefault == null;
       const ref = baseRef(repo.base);
       gitArgs.push(`${ref}..HEAD`);
       if (maxCount !== undefined) {
         gitArgs.push("-n", `${maxCount}`);
       }
-      if (baseFellBack) {
+      if (baseMissing) {
         note = `base ${repo.base.configuredRef} not found, showing against ${repo.base.ref}`;
       }
     }
@@ -228,11 +228,11 @@ async function gatherRepoLog(
     };
   }
 
-  if (flags.isDrifted && repo.identity.headMode.kind === "attached") {
+  if (flags.isWrongBranch && repo.identity.headMode.kind === "attached") {
     const actual = repo.identity.headMode.branch;
     return {
       name: repo.name,
-      status: "drifted",
+      status: "wrong-branch",
       reason: `on ${actual}, expected ${branch}`,
       annotation: `on ${actual}, expected ${branch} \u2014 skipping`,
       commits: [],
@@ -254,7 +254,7 @@ async function gatherRepoLog(
     };
   }
 
-  const baseFellBack = repo.base.configuredRef != null && repo.base.baseMergedIntoDefault == null;
+  const baseMissing = repo.base.configuredRef != null && repo.base.baseMergedIntoDefault == null;
   const ref = baseRef(repo.base);
   let commits = await getCommitsBetweenFull(repoDir, ref, "HEAD");
 
@@ -267,7 +267,7 @@ async function gatherRepoLog(
   }
 
   let annotation: string;
-  if (baseFellBack) {
+  if (baseMissing) {
     annotation = `base ${repo.base.configuredRef ?? ""} not found, showing against ${repo.base.ref}`;
   } else if (commits.length === 0) {
     annotation = "no commits ahead of base";
@@ -281,8 +281,8 @@ async function gatherRepoLog(
 
   return {
     name: repo.name,
-    status: baseFellBack ? "fallback-base" : "ok",
-    reason: baseFellBack ? `base ${repo.base.configuredRef} not found, using ${repo.base.ref}` : undefined,
+    status: baseMissing ? "fallback-base" : "ok",
+    reason: baseMissing ? `base ${repo.base.configuredRef} not found, using ${repo.base.ref}` : undefined,
     annotation,
     commits,
   };
@@ -330,13 +330,13 @@ async function enrichWithVerboseDetail(repoDir: string, commits: LogCommit[]): P
 
 function outputPipe(results: RepoLogResult[]): void {
   for (const r of results) {
-    if (r.status === "detached" || r.status === "drifted") {
+    if (r.status === "detached" || r.status === "wrong-branch") {
       process.stderr.write(`${r.name}: skipped \u2014 ${r.reason}\n`);
     }
   }
 
   for (const r of results) {
-    if (r.status === "detached" || r.status === "drifted") continue;
+    if (r.status === "detached" || r.status === "wrong-branch") continue;
     for (const c of r.commits) {
       stdout(`${r.name}\t${c.shortHash}\t${c.subject}\n`);
     }

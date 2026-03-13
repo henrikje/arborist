@@ -29,7 +29,7 @@ export const whereFilterTopic: HelpTopic = {
     out("    behind-share   Share remote has commits not yet pulled");
     out("    behind-base    Base branch has commits not yet rebased/merged");
     out("    diverged       Both ahead of and behind the base branch");
-    out("    drifted        Repo is on a different branch than the workspace");
+    out("    wrong-branch   Repo is on a different branch than the workspace");
     out("    detached       HEAD is detached (not on any branch)");
     out("    operation      A git operation is in progress (rebase, merge, etc.)");
     out("    gone           Tracking branch has been deleted on the remote");
@@ -37,9 +37,9 @@ export const whereFilterTopic: HelpTopic = {
     out("    merged         Feature branch has been merged into the base branch");
     out("    base-merged    Configured base branch was merged into the default branch");
     out("    base-missing   Configured base branch not found, fell back to default");
-    out("    at-risk        Would lose work if deleted (dirty, unpushed, or drifted)");
-    out("    stale          Any of: behind-share, behind-base, diverged, drifted,");
-    out("                   detached, operation, gone");
+    out("    at-risk        Would lose work or need attention if deleted (dirty, unpushed,");
+    out("                   wrong-branch, detached, operation, shallow, base-merged, base-missing)");
+    out("    stale          Any of: behind-share, behind-base, diverged");
     out("");
     out(dim("  Healthy / positive flags:"));
     out("    clean          No uncommitted changes (opposite of dirty)");

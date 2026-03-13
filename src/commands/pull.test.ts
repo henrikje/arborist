@@ -87,7 +87,7 @@ describe("assessPullRepo", () => {
     expect(a.skipFlag).toBe("detached-head");
   });
 
-  test("skips drifted branch", () => {
+  test("skips wrong branch", () => {
     const a = assessPullRepo(
       makeRepo({
         identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
@@ -101,11 +101,11 @@ describe("assessPullRepo", () => {
     );
     expect(a.outcome).toBe("skip");
     expect(a.skipReason).toContain("on branch other, expected feature");
-    expect(a.skipReason).toContain("--include-drifted");
-    expect(a.skipFlag).toBe("drifted");
+    expect(a.skipReason).toContain("--include-wrong-branch");
+    expect(a.skipFlag).toBe("wrong-branch");
   });
 
-  test("includes drifted branch with includeDrifted", () => {
+  test("includes wrong branch with includeWrongBranch", () => {
     const a = assessPullRepo(
       makeRepo({
         identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
@@ -119,11 +119,11 @@ describe("assessPullRepo", () => {
       true,
     );
     expect(a.outcome).not.toBe("skip");
-    expect(a.drifted).toBe(true);
+    expect(a.wrongBranch).toBe(true);
     expect(a.branch).toBe("other");
   });
 
-  test("non-drifted branch has workspace branch", () => {
+  test("non-wrong-branch repo has workspace branch", () => {
     const a = assessPullRepo(makeRepo(), DIR, "feature", [], "merge", false, SHA);
     expect(a.branch).toBe("feature");
   });
@@ -742,30 +742,30 @@ describe("formatPullPlan", () => {
     expect(nonNeg[0]).toBe(nonNeg[1]);
   });
 
-  // ── Drifted annotation tests ────────────────────────────────
+  // ── Wrong branch annotation tests ────────────────────────────────
 
-  test("shows drifted branch annotation in action cell", () => {
+  test("shows wrong branch annotation in action cell", () => {
     const plan = formatPullPlan(
-      [makeAssessment({ drifted: true, branch: "other-branch" })],
+      [makeAssessment({ wrongBranch: true, branch: "other-branch" })],
       makeRemotesMap(["repo-a", {}]),
     );
     expect(plan).toContain("(branch: other-branch)");
   });
 
-  test("shows drifted hint when drifted repos are included", () => {
+  test("shows wrong branch hint when wrong branch repos are included", () => {
     const plan = formatPullPlan(
-      [makeAssessment({ drifted: true, branch: "other-branch" })],
+      [makeAssessment({ wrongBranch: true, branch: "other-branch" })],
       makeRemotesMap(["repo-a", {}]),
     );
     expect(plan).toContain("1 repo on a different branch than the workspace");
   });
 
-  test("no drifted hint when no drifted repos", () => {
+  test("no wrong branch hint when no wrong branch repos", () => {
     const plan = formatPullPlan([makeAssessment()], makeRemotesMap(["repo-a", {}]));
     expect(plan).not.toContain("different branch than the workspace");
   });
 
-  test("no drifted annotation when not drifted", () => {
+  test("no wrong branch annotation when not wrong branch", () => {
     const plan = formatPullPlan([makeAssessment()], makeRemotesMap(["repo-a", {}]));
     expect(plan).not.toContain("(branch:");
   });
@@ -863,8 +863,8 @@ describe("resetRebasedSkips", () => {
     expect(nextAssessments[0]?.safeReset?.target).toBe("fork/feature");
   });
 
-  test("uses assessment branch for drifted repos", () => {
-    const assessments = [makeAssessment({ branch: "other-branch", drifted: true })];
+  test("uses assessment branch for wrong branch repos", () => {
+    const assessments = [makeAssessment({ branch: "other-branch", wrongBranch: true })];
     const nextAssessments = resetRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
     expect(nextAssessments[0]?.safeReset?.target).toBe("origin/other-branch");
   });

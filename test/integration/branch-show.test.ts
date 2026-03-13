@@ -83,7 +83,7 @@ describe("json mode", () => {
 // ── deviations ────────────────────────────────────────────────────
 
 describe("deviations", () => {
-  test("arb branch detects drifted repo", () =>
+  test("arb branch detects wrong branch repo", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       await git(join(env.projectDir, "my-feature/repo-a"), ["checkout", "-b", "experiment"]);
@@ -128,7 +128,7 @@ describe("verbose mode", () => {
       expect(result.output).toContain("repo-b");
     }));
 
-  test("arb branch -v detects drifted repo", () =>
+  test("arb branch -v detects wrong branch repo", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       await git(join(env.projectDir, "my-feature/repo-a"), ["checkout", "-b", "experiment"]);

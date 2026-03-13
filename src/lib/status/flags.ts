@@ -55,17 +55,17 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
   // isDiverged: both ahead of and behind base branch (non-trivial rebase/merge needed)
   const isDiverged = repo.base !== null && repo.base.ahead > 0 && repo.base.behind > 0;
 
-  // isDrifted: on the wrong branch (not detached, but branch doesn't match expected)
-  let isDrifted = false;
+  // isWrongBranch: on the wrong branch (not detached, but branch doesn't match expected)
+  let isWrongBranch = false;
   if (repo.identity.headMode.kind === "attached") {
-    isDrifted = repo.identity.headMode.branch !== expectedBranch;
+    isWrongBranch = repo.identity.headMode.branch !== expectedBranch;
   }
 
   const isMerged = repo.base?.merge != null;
 
   const isBaseMerged = repo.base?.baseMergedIntoDefault != null;
 
-  const baseFellBack = repo.base?.configuredRef != null && repo.base?.baseMergedIntoDefault == null;
+  const isBaseMissing = repo.base?.configuredRef != null && repo.base?.baseMergedIntoDefault == null;
 
   return {
     isDirty: localDirty,
@@ -73,14 +73,14 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
     needsPull,
     needsRebase,
     isDiverged,
-    isDrifted,
+    isWrongBranch,
     isDetached,
     hasOperation: repo.operation !== null,
     isGone,
     isShallow: repo.identity.shallow,
     isMerged,
     isBaseMerged,
-    baseFellBack,
+    isBaseMissing,
   };
 }
 

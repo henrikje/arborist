@@ -14,7 +14,7 @@ export function repoHeaderNode(name: string, note?: string): RepoHeaderNode {
 }
 
 /**
- * Check for detached/drifted skip conditions and return skip header nodes.
+ * Check for detached/wrong-branch skip conditions and return skip header nodes.
  * Returns null if the repo was not skipped (caller should continue to render the repo).
  * Includes a trailing GapNode when `isLast` is false.
  */
@@ -28,7 +28,7 @@ export function buildRepoSkipHeader(
 
   if (flags.isDetached) {
     skipNote = "detached \u2014 skipping";
-  } else if (flags.isDrifted && repo.identity.headMode.kind === "attached") {
+  } else if (flags.isWrongBranch && repo.identity.headMode.kind === "attached") {
     const actual = repo.identity.headMode.branch;
     skipNote = `on ${actual}, expected ${branch} \u2014 skipping`;
   }

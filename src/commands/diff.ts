@@ -25,7 +25,7 @@ interface RepoDiffStat {
   deletions: number;
 }
 
-type RepoDiffStatus = "ok" | "detached" | "drifted" | "no-base" | "fallback-base" | "clean";
+type RepoDiffStatus = "ok" | "detached" | "wrong-branch" | "no-base" | "fallback-base" | "clean";
 
 interface RepoDiffResult {
   name: string;
@@ -76,12 +76,12 @@ async function resolveDiffTarget(repoDir: string, repo: RepoStatus): Promise<Dif
     };
   }
 
-  const baseFellBack = repo.base.configuredRef != null && repo.base.baseMergedIntoDefault == null;
+  const baseMissing = repo.base.configuredRef != null && repo.base.baseMergedIntoDefault == null;
   const baseRefStr = baseRef(repo.base);
   const mb = await git(repoDir, "merge-base", baseRefStr, "HEAD");
   const ref = mb.exitCode === 0 && mb.stdout.trim() ? mb.stdout.trim() : baseRefStr;
 
-  if (baseFellBack) {
+  if (baseMissing) {
     return {
       ref,
       status: "fallback-base",
@@ -264,11 +264,11 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
     };
   }
 
-  if (flags.isDrifted && repo.identity.headMode.kind === "attached") {
+  if (flags.isWrongBranch && repo.identity.headMode.kind === "attached") {
     const actual = repo.identity.headMode.branch;
     return {
       name: repo.name,
-      status: "drifted",
+      status: "wrong-branch",
       reason: `on ${actual}, expected ${branch}`,
       annotation: `on ${actual}, expected ${branch} \u2014 skipping`,
       stat: emptyStat,
@@ -359,7 +359,7 @@ async function outputPipe(
 ): Promise<void> {
   // Emit skip warnings to stderr
   for (const r of results) {
-    if (r.status === "detached" || r.status === "drifted") {
+    if (r.status === "detached" || r.status === "wrong-branch") {
       process.stderr.write(`${r.name}: skipped \u2014 ${r.reason}\n`);
     }
   }
@@ -376,7 +376,7 @@ async function outputPipe(
     const repo = repos[i];
     const result = results[i];
     if (!repo || !result) continue;
-    if (result.status === "detached" || result.status === "drifted" || result.status === "clean") continue;
+    if (result.status === "detached" || result.status === "wrong-branch" || result.status === "clean") continue;
     if (!result.diffRef) continue;
 
     const repoDir = `${wsDir}/${repo.name}`;

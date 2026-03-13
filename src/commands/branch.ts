@@ -308,7 +308,7 @@ function buildVerboseRows(repos: RepoStatus[], branch: string): VerboseRow[] {
     const { headMode } = repo.identity;
     const detached = headMode.kind === "detached";
     const actualBranch = headMode.kind === "attached" ? headMode.branch : "(detached)";
-    const isDrifted = headMode.kind === "attached" && headMode.branch !== branch;
+    const isWrongBranch = headMode.kind === "attached" && headMode.branch !== branch;
 
     // Base column: show the resolved base ref (e.g. "origin/main")
     let base = "";
@@ -333,7 +333,7 @@ function buildVerboseRows(repos: RepoStatus[], branch: string): VerboseRow[] {
       }
     }
 
-    const branchNoteworthy = detached || isDrifted;
+    const branchNoteworthy = detached || isWrongBranch;
 
     return { name: repo.name, branch: actualBranch, base, share, branchNoteworthy };
   });

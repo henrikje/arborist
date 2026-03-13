@@ -13,14 +13,14 @@ describe("computeFlags", () => {
       needsPull: false,
       needsRebase: false,
       isDiverged: false,
-      isDrifted: false,
+      isWrongBranch: false,
       isDetached: false,
       hasOperation: false,
       isGone: false,
       isShallow: false,
       isMerged: false,
       isBaseMerged: false,
-      baseFellBack: false,
+      isBaseMissing: false,
     });
   });
 
@@ -304,14 +304,14 @@ describe("computeFlags", () => {
     expect(flags.isDiverged).toBe(false);
   });
 
-  test("isDrifted when on wrong branch", () => {
+  test("isWrongBranch when on a different branch", () => {
     const flags = computeFlags(
       makeRepo({
         identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
       }),
       "feature",
     );
-    expect(flags.isDrifted).toBe(true);
+    expect(flags.isWrongBranch).toBe(true);
   });
 
   test("isDetached when HEAD is detached", () => {
@@ -810,7 +810,7 @@ describe("wouldLoseWork", () => {
     expect(wouldLoseWork(flags)).toBe(true);
   });
 
-  test("returns true when isDrifted", () => {
+  test("returns true when on wrong branch", () => {
     const flags = computeFlags(
       makeRepo({
         identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
@@ -1031,10 +1031,10 @@ describe("isWorkspaceSafe", () => {
     expect(isWorkspaceSafe(repos, "feature")).toBe(false);
   });
 
-  test("returns false when a repo is drifted", () => {
+  test("returns false when a repo is on wrong branch", () => {
     const repos = [
       makeRepo({
-        name: "drifted",
+        name: "wrong-branch",
         identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
       }),
     ];

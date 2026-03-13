@@ -61,7 +61,7 @@ export function assessResetRepo(
     return { ...defaults, skipReason: `${status.operation} in progress`, skipFlag: "operation-in-progress" };
   }
 
-  // Branch check — detached or drifted
+  // Branch check — detached or wrong branch
   if (status.identity.headMode.kind === "detached") {
     return { ...defaults, skipReason: "HEAD is detached", skipFlag: "detached-head" };
   }
@@ -69,7 +69,7 @@ export function assessResetRepo(
     return {
       ...defaults,
       skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}`,
-      skipFlag: "drifted",
+      skipFlag: "wrong-branch",
     };
   }
 

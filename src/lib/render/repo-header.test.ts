@@ -41,7 +41,7 @@ describe("buildRepoSkipHeader", () => {
     expect(header.note?.spans[0]?.attention).toBe("attention");
   });
 
-  test("returns header with branch info for drifted repo", () => {
+  test("returns header with branch info for wrong branch repo", () => {
     const repo = makeRepo({
       name: "web",
       identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other-branch" }, shallow: false },

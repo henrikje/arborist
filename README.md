@@ -269,7 +269,7 @@ arb delete --older-than 10d --where gone  # delete old merged workspaces
 arb delete --newer-than 7d --dry-run      # preview recently active workspaces
 ```
 
-Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, drifted, and more. The `--where` flag (`-w` for short) lets you filter by any combination, and works across most commands. Use `--dirty` as a shorthand for `--where dirty`. For age-based filtering, `--older-than` and `--newer-than` filter by workspace activity.
+Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, wrong-branch, and more. The `--where` flag (`-w` for short) lets you filter by any combination, and works across most commands. Use `--dirty` as a shorthand for `--where dirty`. For age-based filtering, `--older-than` and `--newer-than` filter by workspace activity.
 
 ### Run commands across repos
 

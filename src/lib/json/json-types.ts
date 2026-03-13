@@ -134,7 +134,7 @@ export const StatusJsonOutputSchema = z.object({
 
 // ── Log JSON schemas ──
 
-const LogJsonRepoStatusSchema = z.enum(["ok", "detached", "drifted", "no-base", "fallback-base"]);
+const LogJsonRepoStatusSchema = z.enum(["ok", "detached", "wrong-branch", "no-base", "fallback-base"]);
 
 const LogJsonCommitSchema = z.object({
   hash: z.string(),
@@ -161,7 +161,7 @@ export const LogJsonOutputSchema = z.object({
 
 // ── Diff JSON schemas ──
 
-const DiffJsonRepoStatusSchema = z.enum(["ok", "detached", "drifted", "no-base", "fallback-base", "clean"]);
+const DiffJsonRepoStatusSchema = z.enum(["ok", "detached", "wrong-branch", "no-base", "fallback-base", "clean"]);
 
 const DiffJsonFileStatSchema = z.object({
   file: z.string(),
