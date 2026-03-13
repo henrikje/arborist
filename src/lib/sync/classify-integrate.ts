@@ -115,8 +115,8 @@ export function classifyRepo(
   }
   base.baseRemote = status.base.remote;
 
-  if (status.base.mergedIntoBase != null) {
-    const strategy = status.base.mergedIntoBase === "squash" ? "squash-merged" : "merged";
+  if (status.base.merge != null) {
+    const strategy = status.base.merge.kind === "squash" ? "squash-merged" : "merged";
     return {
       ...base,
       outcome: "skip",
@@ -178,7 +178,7 @@ export async function assessIntegrateRepo(
   );
   const base = status.base;
   const isMergedNewWork =
-    classified.skipFlag === "already-merged" && base?.newCommitsAfterMerge != null && base.newCommitsAfterMerge > 0;
+    classified.skipFlag === "already-merged" && base?.merge?.newCommitsAfter != null && base.merge.newCommitsAfter > 0;
 
   if (classified.outcome === "skip" && classified.skipFlag !== "base-merged-into-default" && !isMergedNewWork) {
     return classified;
@@ -248,7 +248,7 @@ async function assessMergedNewWork(input: {
     };
   }
 
-  const replayCount = base.newCommitsAfterMerge ?? 0;
+  const replayCount = base.merge?.newCommitsAfter ?? 0;
   const boundaryResult = await deps.git(repoDir, "rev-parse", `HEAD~${replayCount}`);
   if (boundaryResult.exitCode !== 0) return null;
   const boundarySha = boundaryResult.stdout.trim();
@@ -368,7 +368,7 @@ async function assessAutoRetarget(input: {
     retargetExplicit === null &&
     classified.outcome === "will-operate" &&
     base?.replayPlan?.contiguous &&
-    !(base.replayPlan.mergedPrefix && base.mergedIntoBase == null)
+    !(base.replayPlan.mergedPrefix && base.merge == null)
   ) {
     const replayPlan = base.replayPlan;
     if (replayPlan.alreadyOnTarget > 0 && replayPlan.toReplay === 0) {

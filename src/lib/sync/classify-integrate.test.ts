@@ -21,10 +21,8 @@ describe("assessIntegrateRepo", () => {
         configuredRef: null,
         ahead: 4,
         behind: 3,
-        mergedIntoBase: "merge",
+        merge: { kind: "merge", newCommitsAfter: 2 },
         baseMergedIntoDefault: null,
-        detectedPr: null,
-        newCommitsAfterMerge: 2,
       },
     });
 
@@ -58,9 +56,7 @@ describe("assessIntegrateRepo", () => {
         configuredRef: null,
         ahead: 1,
         behind: 2,
-        mergedIntoBase: null,
         baseMergedIntoDefault: "merge",
-        detectedPr: null,
       },
     });
 
@@ -96,9 +92,7 @@ describe("assessIntegrateRepo", () => {
         configuredRef: null,
         ahead: 1,
         behind: 2,
-        mergedIntoBase: null,
         baseMergedIntoDefault: "merge",
-        detectedPr: null,
       },
     });
 
