@@ -149,15 +149,16 @@ arb delete fix-login
 
 This shows the status of each repo and walks you through deletion. If there are uncommitted changes or unpushed commits, arb refuses to proceed unless you pass `--force`. When workspace templates are in use, arb also lists any template-sourced files that were modified — giving you a chance to update the templates before deleting the workspace. Use `--yes` (`-y`) to skip the confirmation prompt, `--delete-remote` to also clean up the remote branches, and `--all-safe` to batch-delete every workspace with safe status. Combine `--all-safe --where gone` to target merged-and-safe workspaces specifically.
 
-To clean up old or abandoned workspaces regardless of status, use `--older-than`:
+To clean up workspaces by age regardless of status, use `--older-than` or `--newer-than`:
 
 ```bash
 arb delete --older-than 90d --dry-run    # preview workspaces with no activity for 90+ days
 arb delete --older-than 90d --yes        # delete them
 arb delete --older-than 30d --where gone --yes   # only if also merged/gone
+arb delete --newer-than 7d --dry-run     # preview recently active workspaces
 ```
 
-Activity is measured the same way as `arb list --older-than`: most recent file mtime across commits, uncommitted edits, and workspace-level items. See `arb delete --help` for all options.
+Activity is measured the same way as `arb list --older-than` / `--newer-than`: most recent file mtime across commits, uncommitted edits, and workspace-level items. See `arb delete --help` for all options.
 
 ## Default repos
 

@@ -80,6 +80,13 @@ describe("--older-than / --newer-than: invalid duration", () => {
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("Invalid duration");
     }));
+
+  test("arb delete --newer-than with invalid value errors", () =>
+    withEnv(async (env) => {
+      const result = await arb(env, ["delete", "--newer-than", "xyz", "--no-fetch", "--dry-run"]);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Invalid duration");
+    }));
 });
 
 // ── arb list --older-than / --newer-than ─────────────────────────
@@ -185,6 +192,70 @@ describe("arb delete --older-than", () => {
     withEnv(async (env) => {
       await arb(env, ["create", "ws-new", "repo-a"]);
       const result = await arb(env, ["delete", "--older-than", "30d", "--no-fetch"]);
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("No workspaces match");
+    }));
+});
+
+describe("arb delete --newer-than", () => {
+  test("--dry-run shows new workspace without deleting", () =>
+    withEnv(async (env) => {
+      await setupOldAndNew(env);
+      const result = await arb(env, ["delete", "--newer-than", "1d", "--dry-run", "--no-fetch"]);
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("ws-new");
+      expect(result.output).not.toContain("ws-old");
+      const listResult = await arb(env, ["list", "--no-fetch"]);
+      expect(listResult.output).toContain("ws-new");
+    }));
+
+  test("--yes deletes new workspace and leaves old intact", () =>
+    withEnv(async (env) => {
+      await setupOldAndNew(env);
+      const result = await arb(env, ["delete", "--newer-than", "1d", "--yes", "--no-fetch"]);
+      expect(result.exitCode).toBe(0);
+      const listResult = await arb(env, ["list", "--no-fetch"]);
+      expect(listResult.output).toContain("ws-old");
+      expect(listResult.output).not.toContain("ws-new");
+    }));
+
+  test("composes with --where as AND", () =>
+    withEnv(async (env) => {
+      await setupOldAndNew(env);
+      const wsNewRepoDir = join(env.projectDir, "ws-new", "repo-a");
+      await write(join(wsNewRepoDir, "extra.txt"), "unpushed work");
+      await git(wsNewRepoDir, ["add", "extra.txt"]);
+      await git(wsNewRepoDir, ["commit", "-m", "unpushed work"]);
+
+      const result = await arb(env, [
+        "delete",
+        "--newer-than",
+        "1d",
+        "--where",
+        "unpushed",
+        "--dry-run",
+        "--force",
+        "--no-fetch",
+      ]);
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("ws-new");
+      expect(result.output).not.toContain("ws-old");
+    }));
+
+  test("no matches exits cleanly with message", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "ws-old", "repo-a"]);
+      const wsDir = join(env.projectDir, "ws-old");
+      const wsRepoDir = join(wsDir, "repo-a");
+      const oldDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      const oldDateStr = oldDate.toISOString();
+
+      await write(join(wsRepoDir, "work.txt"), "old work");
+      await git(wsRepoDir, ["add", "work.txt"]);
+      await git(wsRepoDir, ["commit", `--date=${oldDateStr}`, "-m", "old work"]);
+      backdateMtime(wsDir, oldDate);
+
+      const result = await arb(env, ["delete", "--newer-than", "1d", "--no-fetch"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("No workspaces match");
     }));
