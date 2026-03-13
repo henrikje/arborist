@@ -22,7 +22,7 @@ describe("toJsonVerbose", () => {
     expect(result?.aheadOfBase?.[0]?.mergedAs).toBe("base999");
   });
 
-  test("aheadOfBase with newCommitsAfterMerge: commits beyond n get mergedAs mergeCommitHash", () => {
+  test("aheadOfBase with merge.newCommitsAfter: commits beyond n get mergedAs merge.commitHash", () => {
     const detail = {
       aheadOfBase: [
         { hash: "new1", shortHash: "new1234", subject: "new commit" },
@@ -30,7 +30,7 @@ describe("toJsonVerbose", () => {
         { hash: "old2", shortHash: "old2345", subject: "old commit 2" },
       ],
     };
-    const base = { newCommitsAfterMerge: 1, mergeCommitHash: "merge123456" };
+    const base = { merge: { newCommitsAfter: 1, commitHash: "merge123456" } };
     const result = toJsonVerbose(detail, base);
     expect(result?.aheadOfBase?.[0]?.mergedAs).toBeUndefined();
     expect(result?.aheadOfBase?.[1]?.mergedAs).toBe("merge123456");

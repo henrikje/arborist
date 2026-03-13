@@ -846,7 +846,7 @@ describe("merged branch detection", () => {
       expect(result.output).toContain("Pushed");
     }));
 
-  test("arb status --json includes mergedIntoBase field", () =>
+  test("arb status --json includes merge field", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "merged-json", "repo-a"]);
       const wt = join(env.projectDir, "merged-json/repo-a");
@@ -874,7 +874,7 @@ describe("merged branch detection", () => {
       });
       const data = JSON.parse(result.stdout);
       const repo = data.repos[0];
-      expect(repo.base.mergedIntoBase).toBe("squash");
+      expect(repo.base.merge.kind).toBe("squash");
     }));
 
   test("arb status detects regular merge when remote branch is deleted", () =>

@@ -16,9 +16,13 @@ export interface RepoStatus {
     configuredRef: string | null;
     ahead: number;
     behind: number;
-    mergedIntoBase: "merge" | "squash" | null;
-    newCommitsAfterMerge?: number;
-    mergeCommitHash?: string;
+    merge?: {
+      kind: "merge" | "squash";
+      newCommitsAfter?: number;
+      commitHash?: string;
+      detectedPr?: { number: number; url: string | null; mergeCommit?: string };
+    };
+    baseMergedIntoDefault: "merge" | "squash" | null;
     replayPlan?: {
       totalLocal: number;
       alreadyOnTarget: number;
@@ -26,8 +30,6 @@ export interface RepoStatus {
       contiguous: boolean;
       mergedPrefix?: boolean;
     };
-    baseMergedIntoDefault: "merge" | "squash" | null;
-    detectedPr: { number: number; url: string | null; mergeCommit?: string } | null;
   } | null;
   share: {
     remote: string;
@@ -35,9 +37,12 @@ export interface RepoStatus {
     refMode: "noRef" | "implicit" | "configured" | "gone";
     toPush: number | null; // null = unknown
     toPull: number | null; // null = unknown
-    rebased: number | null; // count of patch-id-matched commits between push/pull sets
-    replaced: number | null; // count of remote-only commits found in local branch reflog
-    squashed: number | null; // count of remote commits matched by cumulative patch-id (squash detection)
+    outdated?: {
+      total: number; // rebased + replaced + squashed
+      rebased: number; // patch-id matched
+      replaced: number; // reflog matched
+      squashed: number; // cumulative patch-id matched
+    };
   };
   operation: GitOperation;
   lastCommit: string | null;
@@ -119,8 +124,7 @@ export interface WorkspaceSummary {
   repos: RepoStatus[];
   total: number;
   atRiskCount: number;
-  rebasedOnlyCount: number;
-  statusLabels: string[];
+  outdatedOnlyCount: number;
   statusCounts: { label: string; count: number; key: keyof RepoFlags }[];
   lastCommit: string | null;
   lastActivity: string | null;

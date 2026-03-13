@@ -34,9 +34,21 @@ export const StatusJsonRepoSchema = z.object({
       configuredRef: z.string().nullable(),
       ahead: z.number(),
       behind: z.number(),
-      mergedIntoBase: z.enum(["merge", "squash"]).nullable(),
-      newCommitsAfterMerge: z.number().optional(),
-      mergeCommitHash: z.string().optional(),
+      merge: z
+        .object({
+          kind: z.enum(["merge", "squash"]),
+          newCommitsAfter: z.number().optional(),
+          commitHash: z.string().optional(),
+          detectedPr: z
+            .object({
+              number: z.number(),
+              url: z.string().nullable(),
+              mergeCommit: z.string().optional(),
+            })
+            .optional(),
+        })
+        .optional(),
+      baseMergedIntoDefault: z.enum(["merge", "squash"]).nullable(),
       replayPlan: z
         .object({
           totalLocal: z.number(),
@@ -46,14 +58,6 @@ export const StatusJsonRepoSchema = z.object({
           mergedPrefix: z.boolean().optional(),
         })
         .optional(),
-      baseMergedIntoDefault: z.enum(["merge", "squash"]).nullable(),
-      detectedPr: z
-        .object({
-          number: z.number(),
-          url: z.string().nullable(),
-          mergeCommit: z.string().optional(),
-        })
-        .nullable(),
     })
     .nullable(),
   share: z.object({
@@ -62,9 +66,14 @@ export const StatusJsonRepoSchema = z.object({
     refMode: z.enum(["noRef", "implicit", "configured", "gone"]),
     toPush: z.number().nullable(),
     toPull: z.number().nullable(),
-    rebased: z.number().nullable(),
-    replaced: z.number().nullable(),
-    squashed: z.number().nullable(),
+    outdated: z
+      .object({
+        total: z.number(),
+        rebased: z.number(),
+        replaced: z.number(),
+        squashed: z.number(),
+      })
+      .optional(),
   }),
   predictions: z
     .object({
@@ -116,8 +125,7 @@ export const StatusJsonOutputSchema = z.object({
   atRiskCount: z.number(),
   baseConflictCount: z.number(),
   pullConflictCount: z.number(),
-  rebasedOnlyCount: z.number(),
-  statusLabels: z.array(z.string()),
+  outdatedOnlyCount: z.number(),
   statusCounts: z.array(z.object({ label: z.string(), count: z.number() })),
   lastCommit: z.string().nullable(),
   lastActivity: z.string().nullable().optional(),
@@ -200,7 +208,6 @@ export const ListJsonEntrySchema = z.object({
   repoCount: z.number().nullable(),
   status: z.enum(["config-missing", "empty", "error"]).nullable(),
   atRiskCount: z.number().optional(),
-  statusLabels: z.array(z.string()).optional(),
   statusCounts: z.array(z.object({ label: z.string(), count: z.number() })).optional(),
   lastCommit: z.string().nullable().optional(),
   lastActivity: z.string().nullable().optional(),

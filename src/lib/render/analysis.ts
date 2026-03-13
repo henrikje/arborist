@@ -96,17 +96,15 @@ export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags, hasPullCon
   // Behind-only: already handled above (pushText empty)
 
   // Determine push-side attention
-  const rebased = repo.share.rebased ?? 0;
-  const replaced = repo.share.replaced ?? 0;
   const toPush = repo.share.toPush ?? 0;
   const baseAhead = repo.base?.ahead ?? toPush;
-  const totalMatched = rebased + replaced + (repo.share.squashed ?? 0);
+  const totalMatched = repo.share.outdated?.total ?? 0;
   const newCount = Math.max(0, Math.min(baseAhead, toPush) - totalMatched);
   const pushNeedsAttention = flags.isUnpushed && (totalMatched === 0 || newCount > 0);
   const pushSpans = pushSideSpans(pushText, pushNewText, pushNeedsAttention);
 
   // Merged with new work — color only the push suffix portion
-  if (repo.base?.newCommitsAfterMerge && repo.base.newCommitsAfterMerge > 0 && !pullText) {
+  if (repo.base?.merge?.newCommitsAfter && repo.base.merge.newCommitsAfter > 0 && !pullText) {
     const text = pushText;
     const pushIdx = text.lastIndexOf(", ");
     if (pushIdx >= 0 && text.includes("to push")) {
@@ -182,16 +180,16 @@ export function flagLabels(flags: RepoFlags): string[] {
 
 export function formatStatusCounts(
   statusCounts: WorkspaceSummary["statusCounts"],
-  rebasedOnlyCount = 0,
+  outdatedOnlyCount = 0,
   yellowKeys: Set<keyof RepoFlags> = AT_RISK_FLAGS,
 ): string {
   return statusCounts
     .flatMap(({ label, key, count }) => {
-      if (key === "isUnpushed" && rebasedOnlyCount > 0) {
-        const genuine = count - rebasedOnlyCount;
+      if (key === "isUnpushed" && outdatedOnlyCount > 0) {
+        const genuine = count - outdatedOnlyCount;
         const parts: string[] = [];
         if (genuine > 0) parts.push(yellow(label));
-        parts.push("rebased");
+        parts.push("outdated");
         return parts;
       }
       return [yellowKeys.has(key) ? yellow(label) : label];
@@ -201,15 +199,15 @@ export function formatStatusCounts(
 
 export function buildStatusCountsCell(
   statusCounts: WorkspaceSummary["statusCounts"],
-  rebasedOnlyCount = 0,
+  outdatedOnlyCount = 0,
   atRiskKeys: Set<keyof RepoFlags> = AT_RISK_FLAGS,
 ): Cell {
   const parts: Cell[] = statusCounts.flatMap(({ label, key, count }) => {
-    if (key === "isUnpushed" && rebasedOnlyCount > 0) {
-      const genuine = count - rebasedOnlyCount;
+    if (key === "isUnpushed" && outdatedOnlyCount > 0) {
+      const genuine = count - outdatedOnlyCount;
       const cells: Cell[] = [];
       if (genuine > 0) cells.push(cell(label, "attention"));
-      cells.push(cell("rebased"));
+      cells.push(cell("outdated"));
       return cells;
     }
     return [cell(label, atRiskKeys.has(key) ? "attention" : "default")];

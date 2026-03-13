@@ -271,7 +271,7 @@ describe("list", () => {
       const data = JSON.parse(result.stdout);
       const ws = data[0];
       expect(ws.workspace).toBe("ws-one");
-      expect(ws).toHaveProperty("statusLabels");
+      expect(ws).toHaveProperty("statusCounts");
     }));
 
   test("arb list --fetch --quiet outputs workspace names", () =>
@@ -302,7 +302,7 @@ describe("list", () => {
       expect(ws.repoCount).toBe(2);
       expect(ws.status).toBeNull();
       expect(ws).toHaveProperty("atRiskCount");
-      expect(ws).toHaveProperty("statusLabels");
+      expect(ws).toHaveProperty("statusCounts");
       expect(ws).toHaveProperty("lastCommit");
       expect(typeof ws.lastCommit).toBe("string");
     }));
@@ -359,7 +359,7 @@ describe("list", () => {
       expect(ws.branch).toBe("my-feature");
       expect(ws.repoCount).toBe(1);
       expect(ws).not.toHaveProperty("atRiskCount");
-      expect(ws).not.toHaveProperty("statusLabels");
+      expect(ws).not.toHaveProperty("statusCounts");
     }));
 
   test("arb list --json --no-status includes basic metadata", () =>

@@ -210,7 +210,6 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
             const entry = jsonEntries[index];
             if (entry && entry.status === null) {
               entry.atRiskCount = summary.atRiskCount;
-              entry.statusLabels = summary.statusLabels;
               entry.statusCounts = summary.statusCounts.map(({ label, count }) => ({ label, count }));
               entry.lastCommit = summary.lastCommit;
               if (summary.lastActivity) entry.lastActivity = summary.lastActivity;
@@ -582,7 +581,7 @@ function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {
   if (summary.statusCounts.length === 0) {
     row.statusCell = cell("no issues");
   } else {
-    row.statusCell = buildStatusCountsCell(summary.statusCounts, summary.rebasedOnlyCount);
+    row.statusCell = buildStatusCountsCell(summary.statusCounts, summary.outdatedOnlyCount);
   }
   row.lastCommit = summary.lastCommit;
   row.lastActivity = summary.lastActivity;

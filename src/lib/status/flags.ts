@@ -46,8 +46,8 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
   }
 
   // needsPull: share remote has genuinely new commits (not just outdated/replaced)
-  const totalOutdatedPull = (repo.share.rebased ?? 0) + (repo.share.replaced ?? 0) + (repo.share.squashed ?? 0);
-  const needsPull = repo.share.toPull !== null && repo.share.toPull > 0 && repo.share.toPull > totalOutdatedPull;
+  const needsPull =
+    repo.share.toPull !== null && repo.share.toPull > 0 && repo.share.toPull > (repo.share.outdated?.total ?? 0);
 
   // needsRebase: behind base branch
   const needsRebase = repo.base !== null && repo.base.behind > 0;
@@ -61,7 +61,7 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
     isDrifted = repo.identity.headMode.branch !== expectedBranch;
   }
 
-  const isMerged = repo.base?.mergedIntoBase != null;
+  const isMerged = repo.base?.merge != null;
 
   const isBaseMerged = repo.base?.baseMergedIntoDefault != null;
 
@@ -101,22 +101,19 @@ export function computeSummaryAggregates(
   branch: string,
 ): {
   atRiskCount: number;
-  rebasedOnlyCount: number;
-  statusLabels: string[];
+  outdatedOnlyCount: number;
   statusCounts: WorkspaceSummary["statusCounts"];
 } {
   let atRiskCount = 0;
-  const allLabels = new Set<string>();
   const flagCounts = new Map<keyof RepoFlags, number>();
   for (const repo of repos) {
     const flags = computeFlags(repo, branch);
     if (isAtRisk(flags)) {
       atRiskCount++;
     }
-    for (const { key, label } of FLAG_LABELS) {
+    for (const { key } of FLAG_LABELS) {
       if (flags[key]) {
         if (flags.isMerged && MERGED_IMPLIED_FLAGS.has(key)) continue;
-        allLabels.add(label);
         flagCounts.set(key, (flagCounts.get(key) ?? 0) + 1);
       }
     }
@@ -127,14 +124,14 @@ export function computeSummaryAggregates(
     key,
   }));
 
-  let rebasedOnlyCount = 0;
+  let outdatedOnlyCount = 0;
   for (const repo of repos) {
-    const totalMatched = (repo.share.rebased ?? 0) + (repo.share.replaced ?? 0) + (repo.share.squashed ?? 0);
+    const totalMatched = repo.share.outdated?.total ?? 0;
     if (totalMatched > 0) {
       const netNew = (repo.share.toPush ?? 0) - totalMatched;
-      if (netNew <= 0) rebasedOnlyCount++;
+      if (netNew <= 0) outdatedOnlyCount++;
     }
   }
 
-  return { atRiskCount, rebasedOnlyCount, statusLabels: [...allLabels], statusCounts };
+  return { atRiskCount, outdatedOnlyCount, statusCounts };
 }
