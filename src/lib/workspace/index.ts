@@ -21,6 +21,7 @@ export {
   resolveRepoSelection,
   resolveReposFromArgsOrStdin,
 } from "./repos";
+export { validateWorkspaceName } from "./validation";
 export {
   type AddWorktreesResult,
   addWorktrees,

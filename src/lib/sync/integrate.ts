@@ -27,8 +27,9 @@ import type { Cell, OutputNode } from "../render/model";
 import { cell } from "../render/model";
 import { skipCell, upToDateCell } from "../render/plan-format";
 import { type RenderContext, finishSummary, render } from "../render/render";
-import { VERBOSE_COMMIT_LIMIT, verboseCommitsToNodes } from "../render/status-verbose";
+import { verboseCommitsToNodes } from "../render/status-verbose";
 import { computeFlags } from "../status/flags";
+import { RETARGET_EXEMPT_SKIPS } from "../status/skip-flags";
 import { gatherRepoStatus } from "../status/status";
 import type { RepoStatus } from "../status/types";
 import { repoMatchesWhere, resolveWhereFilter } from "../status/where";
@@ -37,6 +38,7 @@ import { isTTY } from "../terminal/tty";
 import { workspaceBranch } from "../workspace/branch";
 import { requireBranch, requireWorkspace } from "../workspace/context";
 import { resolveRepoSelection, workspaceRepoDirs } from "../workspace/repos";
+import { VERBOSE_COMMIT_LIMIT } from "./constants";
 import { confirmOrExit, runPlanFlow } from "./mutation-flow";
 export type { RepoAssessment } from "./types";
 import type { RepoAssessment } from "./types";
@@ -156,7 +158,7 @@ export async function integrate(
     const hasRetargetWork = assessments.some((a) => a.retargetTo || a.retargetBlocked);
     if (hasRetargetWork) {
       const blockedRepos = assessments.filter(
-        (a) => a.outcome === "skip" && a.skipFlag !== "no-base-branch" && a.skipFlag !== "retarget-target-not-found",
+        (a) => a.outcome === "skip" && (a.skipFlag == null || !RETARGET_EXEMPT_SKIPS.has(a.skipFlag)),
       );
       if (blockedRepos.length > 0) {
         error("Cannot retarget: some repos are blocked. Fix these issues and retry:");

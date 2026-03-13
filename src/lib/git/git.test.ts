@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { predictMergeConflict } from "../analysis/conflict-prediction";
+import { validateWorkspaceName } from "../workspace/validation";
 import {
   branchExistsLocally,
   checkBranchMatch,
@@ -11,7 +12,6 @@ import {
   isRepoDirty,
   parseGitStatus,
   validateBranchName,
-  validateWorkspaceName,
 } from "./git";
 
 describe("validateWorkspaceName", () => {

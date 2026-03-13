@@ -4,14 +4,7 @@ import select, { Separator } from "@inquirer/select";
 import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import {
-  GitCache,
-  type RepoRemotes,
-  git,
-  listRemoteBranches,
-  validateBranchName,
-  validateWorkspaceName,
-} from "../lib/git";
+import { GitCache, type RepoRemotes, git, listRemoteBranches, validateBranchName } from "../lib/git";
 import { render } from "../lib/render";
 import { parallelFetch, reportFetchFailures } from "../lib/sync";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
@@ -23,6 +16,7 @@ import {
   listWorkspaces,
   rollbackWorktrees,
   selectReposInteractive,
+  validateWorkspaceName,
 } from "../lib/workspace";
 
 const CREATE_DEFAULT = "\0create-default";

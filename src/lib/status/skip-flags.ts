@@ -29,3 +29,5 @@ export const BENIGN_SKIPS: ReadonlySet<SkipFlag> = new Set([
   "not-pushed",
   "no-base-branch",
 ]);
+
+export const RETARGET_EXEMPT_SKIPS: ReadonlySet<SkipFlag> = new Set(["no-base-branch", "retarget-target-not-found"]);

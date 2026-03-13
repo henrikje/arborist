@@ -10,7 +10,6 @@ import {
   git,
   remoteBranchExists,
   validateBranchName,
-  validateWorkspaceName,
 } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -29,8 +28,7 @@ import {
   warn,
   yellow,
 } from "../lib/terminal";
-import { workspaceRepoDirs } from "../lib/workspace";
-import { requireWorkspace } from "../lib/workspace";
+import { requireWorkspace, validateWorkspaceName, workspaceRepoDirs } from "../lib/workspace";
 
 export type RenameOutcome = "will-rename" | "already-on-new" | "skip-missing" | "skip-drifted" | "skip-in-progress";
 

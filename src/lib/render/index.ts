@@ -48,12 +48,8 @@ export { type StatusViewContext, buildStatusView } from "./status-view";
 export {
   ITEM_INDENT,
   SECTION_INDENT,
-  type VerboseDetail,
-  VERBOSE_COMMIT_LIMIT,
   formatVerboseCommits,
   formatVerboseDetail,
-  gatherVerboseDetail,
-  toJsonVerbose,
   verboseCommitsToNodes,
   verboseDetailToNodes,
 } from "./status-verbose";
