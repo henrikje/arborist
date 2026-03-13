@@ -7,16 +7,19 @@ import { GitCache } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
 import { createRenderContext, render, runPhasedRender } from "../lib/render";
-import { type VerboseDetail, buildStatusView, gatherVerboseDetail, toJsonVerbose } from "../lib/render";
+import { buildStatusView } from "../lib/render";
 import {
   type RepoStatus,
+  type VerboseDetail,
   type WorkspaceSummary,
   baseRef,
   computeFlags,
   computeSummaryAggregates,
+  gatherVerboseDetail,
   gatherWorkspaceSummary,
   repoMatchesWhere,
   resolveWhereFilter,
+  toJsonVerbose,
 } from "../lib/status";
 import { type FetchResult, fetchSuffix, getUnchangedRepos, parallelFetch, reportFetchFailures } from "../lib/sync";
 import { clearScanProgress, error, isTTY, listenForAbortKeypress, scanProgress, stderr } from "../lib/terminal";

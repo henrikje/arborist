@@ -1,6 +1,7 @@
 import { type RelativeTimeParts, formatRelativeTimeParts } from "../core/time";
 import { computeFlags } from "../status/flags";
 import type { WorkspaceSummary } from "../status/types";
+import type { VerboseDetail } from "../status/verbose-detail";
 import {
   analyzeBaseDiff,
   analyzeBaseName,
@@ -10,7 +11,7 @@ import {
   analyzeRemoteName,
 } from "./analysis";
 import { EMPTY_CELL, type OutputNode, type TableColumnDef, type TableNode, type TableRow, cell } from "./model";
-import { type VerboseDetail, verboseDetailToNodes } from "./status-verbose";
+import { verboseDetailToNodes } from "./status-verbose";
 
 export interface StatusViewContext {
   /** The expected branch name for this workspace */

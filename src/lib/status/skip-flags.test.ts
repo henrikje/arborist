@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BENIGN_SKIPS } from "./skip-flags";
+import { BENIGN_SKIPS, RETARGET_EXEMPT_SKIPS } from "./skip-flags";
 
 describe("BENIGN_SKIPS", () => {
   test("contains expected benign flags", () => {
@@ -15,5 +15,18 @@ describe("BENIGN_SKIPS", () => {
     expect(BENIGN_SKIPS.has("drifted")).toBe(false);
     expect(BENIGN_SKIPS.has("fetch-failed")).toBe(false);
     expect(BENIGN_SKIPS.has("diverged")).toBe(false);
+  });
+});
+
+describe("RETARGET_EXEMPT_SKIPS", () => {
+  test("contains retarget exemptions", () => {
+    expect(RETARGET_EXEMPT_SKIPS.has("no-base-branch")).toBe(true);
+    expect(RETARGET_EXEMPT_SKIPS.has("retarget-target-not-found")).toBe(true);
+  });
+
+  test("does not contain blocking flags", () => {
+    expect(RETARGET_EXEMPT_SKIPS.has("dirty")).toBe(false);
+    expect(RETARGET_EXEMPT_SKIPS.has("drifted")).toBe(false);
+    expect(RETARGET_EXEMPT_SKIPS.has("retarget-base-not-found")).toBe(false);
   });
 });

@@ -8,10 +8,6 @@ import { cell, spans, suffix } from "./model";
 
 export const SECTION_INDENT = "      ";
 export const ITEM_INDENT = "          ";
-export const VERBOSE_COMMIT_LIMIT = 25;
-
-// Re-export gathering types/functions from their new home for barrel consumers
-export { type VerboseDetail, gatherVerboseDetail, toJsonVerbose } from "../status/verbose-detail";
 
 export function formatVerboseDetail(repo: RepoStatus, verbose: VerboseDetail | undefined): string {
   const sections: string[] = [];

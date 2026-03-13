@@ -16,11 +16,11 @@ import type { RepoRemotes } from "../lib/git";
 import { createRenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
 import { buildConflictReport, buildStashPopFailureReport, skipCell, upToDateCell } from "../lib/render";
-import { VERBOSE_COMMIT_LIMIT, verboseCommitsToNodes } from "../lib/render";
 import { cell, spans, suffix } from "../lib/render";
+import { verboseCommitsToNodes } from "../lib/render";
 import type { SkipFlag } from "../lib/status";
 import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
-import { confirmOrExit, runPlanFlow } from "../lib/sync";
+import { VERBOSE_COMMIT_LIMIT, confirmOrExit, runPlanFlow } from "../lib/sync";
 import { dryRunNotice, error, info, inlineResult, inlineStart, isTTY, plural, yellow } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 

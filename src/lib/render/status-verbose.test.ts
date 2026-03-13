@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { makeRepo } from "../status/test-helpers";
+import { toJsonVerbose } from "../status/verbose-detail";
 import { dim } from "../terminal/output";
 import type { SectionNode } from "./model";
-import { formatVerboseCommits, formatVerboseDetail, toJsonVerbose, verboseDetailToNodes } from "./status-verbose";
+import { formatVerboseCommits, formatVerboseDetail, verboseDetailToNodes } from "./status-verbose";
 
 describe("formatVerboseDetail", () => {
   test("annotates already-merged commits with merge commit hash", () => {

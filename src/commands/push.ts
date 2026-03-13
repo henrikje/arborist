@@ -6,11 +6,11 @@ import { GitCache, getCommitsBetweenFull, getShortHead, gitWithTimeout, networkT
 import type { RepoRemotes } from "../lib/git";
 import { createRenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
-import { VERBOSE_COMMIT_LIMIT, skipCell, upToDateCell, verboseCommitsToNodes } from "../lib/render";
+import { skipCell, upToDateCell, verboseCommitsToNodes } from "../lib/render";
 import { cell, suffix } from "../lib/render";
 import type { SkipFlag } from "../lib/status";
 import { type RepoStatus, computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
-import { classifyNetworkError, confirmOrExit, runPlanFlow } from "../lib/sync";
+import { VERBOSE_COMMIT_LIMIT, classifyNetworkError, confirmOrExit, runPlanFlow } from "../lib/sync";
 import { dryRunNotice, info, inlineResult, inlineStart, plural, red } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 

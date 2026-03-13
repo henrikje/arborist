@@ -24,7 +24,6 @@ export {
   parseGitStatusFiles,
   remoteBranchExists,
   validateBranchName,
-  validateWorkspaceName,
 } from "./git";
 export { GitCache } from "./git-cache";
 export {

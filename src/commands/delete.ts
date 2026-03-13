@@ -10,7 +10,7 @@ import {
   formatRelativeTimeParts,
 } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, branchExistsLocally, git, remoteBranchExists, validateWorkspaceName } from "../lib/git";
+import { GitCache, branchExistsLocally, git, remoteBranchExists } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { EMPTY_CELL, cell } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -51,7 +51,7 @@ import {
   success,
   warn,
 } from "../lib/terminal";
-import { listWorkspaces, workspaceBranch, workspaceRepoDirs } from "../lib/workspace";
+import { listWorkspaces, validateWorkspaceName, workspaceBranch, workspaceRepoDirs } from "../lib/workspace";
 
 interface WorkspaceAssessment {
   name: string;

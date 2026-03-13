@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, git, validateBranchName, validateWorkspaceName } from "../lib/git";
+import { GitCache, git, validateBranchName } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { cell } from "../lib/render";
@@ -20,8 +20,7 @@ import {
   warn,
   yellow,
 } from "../lib/terminal";
-import { workspaceRepoDirs } from "../lib/workspace";
-import { requireWorkspace } from "../lib/workspace";
+import { requireWorkspace, validateWorkspaceName, workspaceRepoDirs } from "../lib/workspace";
 import { type RepoAssessment, assessRepo, buildRenamePlanNodes, runAbort } from "./branch-rename";
 import { deriveWorkspaceNameFromBranch } from "./create";
 
