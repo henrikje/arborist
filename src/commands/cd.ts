@@ -1,11 +1,18 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
-import select from "@inquirer/select";
 import type { Command } from "commander";
 import { ArbError } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { error, info } from "../lib/terminal";
+import { error, info, selectWithStatus } from "../lib/terminal";
 import { listWorkspaces, workspaceRepoDirs } from "../lib/workspace";
+
+export function buildCdSelectConfig(items: string[], message: string) {
+  return {
+    message,
+    choices: items.map((name) => ({ name, value: name })),
+    loop: false,
+  };
+}
 
 export function registerCdCommand(program: Command, getCtx: () => ArbContext): void {
   program
@@ -31,13 +38,8 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
             throw new ArbError(`No repos in workspace '${ctx.currentWorkspace}'.`);
           }
 
-          const selected = await select(
-            {
-              message: `Select a repo in '${ctx.currentWorkspace}'`,
-              choices: worktreeNames.map((name) => ({ name, value: name })),
-              pageSize: 20,
-              loop: false,
-            },
+          const selected = await selectWithStatus(
+            buildCdSelectConfig(worktreeNames, `Select a repo in '${ctx.currentWorkspace}'`),
             { output: process.stderr },
           );
 
@@ -52,15 +54,9 @@ export function registerCdCommand(program: Command, getCtx: () => ArbContext): v
           throw new ArbError("No workspaces found.");
         }
 
-        const selected = await select(
-          {
-            message: "Select a workspace",
-            choices: workspaces.map((name) => ({ name, value: name })),
-            pageSize: 20,
-            loop: false,
-          },
-          { output: process.stderr },
-        );
+        const selected = await selectWithStatus(buildCdSelectConfig(workspaces, "Select a workspace"), {
+          output: process.stderr,
+        });
 
         process.stdout.write(`${ctx.arbRootDir}/${selected}\n`);
         printHintIfNeeded();

@@ -1,10 +1,24 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
-import checkbox from "@inquirer/checkbox";
 import { readProjectConfig } from "../core/config";
 import { ArbError } from "../core/errors";
+import { checkboxWithStatus } from "../terminal";
 import { error } from "../terminal/output";
 import { readNamesFromStdin } from "../terminal/stdin";
+
+export function buildRepoCheckboxConfig(
+  items: string[],
+  message: string,
+  defaults?: Set<string>,
+  validate?: (selected: readonly unknown[]) => true | string,
+) {
+  return {
+    message,
+    choices: items.map((name) => ({ name, value: name, checked: defaults?.has(name) ?? false })),
+    ...(validate ? { validate } : {}),
+    loop: false,
+  };
+}
 
 export function listWorkspaces(arbRootDir: string): string[] {
   return readdirSync(arbRootDir)
@@ -42,15 +56,7 @@ export async function selectInteractive(items: string[], message: string, defaul
     throw new Error("No items to select");
   }
 
-  return checkbox(
-    {
-      message,
-      choices: items.map((name) => ({ name, value: name, checked: defaults?.has(name) ?? false })),
-      pageSize: 20,
-      loop: false,
-    },
-    { output: process.stderr },
-  );
+  return checkboxWithStatus(buildRepoCheckboxConfig(items, message, defaults), { output: process.stderr });
 }
 
 export async function selectReposInteractive(reposDir: string, defaults?: Set<string>): Promise<string[]> {
@@ -58,14 +64,10 @@ export async function selectReposInteractive(reposDir: string, defaults?: Set<st
   if (repos.length === 0) {
     throw new Error("No repos found. Clone a repo first: arb repo clone <url>");
   }
-  return checkbox(
-    {
-      message: "Repos:",
-      choices: repos.map((name) => ({ name, value: name, checked: defaults?.has(name) ?? false })),
-      validate: (selected) => (selected.length > 0 ? true : "At least one repo must be selected."),
-      pageSize: 20,
-      loop: false,
-    },
+  return checkboxWithStatus(
+    buildRepoCheckboxConfig(repos, "Repos:", defaults, (selected) =>
+      selected.length > 0 ? true : "At least one repo must be selected.",
+    ),
     { output: process.stderr },
   );
 }
