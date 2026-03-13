@@ -574,10 +574,10 @@ describe("push [repos...] and --force", () => {
       const result = await arb(env, ["pull", "--yes"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.output).toContain("rebased locally");
       expect(result.output).toContain("push --force");
-      expect(result.output).toContain("pull --force");
+      expect(result.output).toContain("pull --reset");
     }));
 
-  test("arb pull --force resets rebased repo to remote tip", () =>
+  test("arb pull --reset resets rebased repo to remote tip", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const repoA = join(env.projectDir, "my-feature/repo-a");
@@ -602,8 +602,8 @@ describe("push [repos...] and --force", () => {
       const localHeadAfterRebase = (await git(repoA, ["rev-parse", "HEAD"])).trim();
       expect(localHeadAfterRebase).not.toBe(remoteHead);
 
-      // Pull --force should reset to remote tip
-      const result = await arb(env, ["pull", "--force", "--yes"], {
+      // Pull --reset should reset to remote tip
+      const result = await arb(env, ["pull", "--reset", "--yes"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
@@ -616,7 +616,7 @@ describe("push [repos...] and --force", () => {
       expect(localHeadAfterPull).toBe(remoteHead);
     }));
 
-  test("arb pull --force shows forced-reset warning when net-new local commits exist", () =>
+  test("arb pull --reset shows forced-reset warning when net-new local commits exist", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const repoA = join(env.projectDir, "my-feature/repo-a");
@@ -639,8 +639,8 @@ describe("push [repos...] and --force", () => {
       await git(repoA, ["add", "new-local.txt"]);
       await git(repoA, ["commit", "-m", "new local work"]);
 
-      // Pull --force should show forced-reset with warning
-      const dryRun = await arb(env, ["pull", "--force", "--dry-run"], {
+      // Pull --reset should show forced-reset with warning
+      const dryRun = await arb(env, ["pull", "--reset", "--dry-run"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(dryRun.exitCode).toBe(0);
@@ -649,7 +649,7 @@ describe("push [repos...] and --force", () => {
       expect(dryRun.output).not.toContain("safe reset");
     }));
 
-  test("arb pull --force does not override dirty skip", () =>
+  test("arb pull --reset does not override dirty skip", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const repoA = join(env.projectDir, "my-feature/repo-a");
@@ -670,8 +670,8 @@ describe("push [repos...] and --force", () => {
       // Make the repo dirty with uncommitted changes
       await write(join(repoA, "dirty.txt"), "uncommitted");
 
-      // Pull --force should still skip due to dirty state
-      const result = await arb(env, ["pull", "--force", "--yes"], {
+      // Pull --reset should still skip due to dirty state
+      const result = await arb(env, ["pull", "--reset", "--yes"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.output).toContain("uncommitted changes");

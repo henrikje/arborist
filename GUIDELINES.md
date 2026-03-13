@@ -187,7 +187,7 @@ All commits follow [Conventional Commits](https://www.conventionalcommits.org/),
 
 Use imperative mood ("add", "fix", "remove"), lowercase, no trailing period. The subject describes *what changed*, not implementation details:
 
-- `feat(pull): add --force flag to arb pull`
+- `feat(pull): add --reset flag to arb pull`
 - `fix(install): always add install dir to path`
 - `feat(clean): remove arb clean command`
 - `chore(ci): add post-release install validation workflow`
