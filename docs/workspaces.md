@@ -1,5 +1,7 @@
 # Managing workspaces
 
+Workspaces are the main unit of work in Arborist — each one represents a feature or task across one or more repos. This page covers how to list, navigate, modify, and clean up workspaces. For creating workspaces, see [Day-to-day usage](daily-use.md#create-a-workspace).
+
 ## List workspaces
 
 ```bash

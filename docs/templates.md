@@ -1,6 +1,6 @@
 # Workspace templates
 
-Arborist can automatically seed files into new workspaces — `.env` files, AI agent settings, IDE config, anything you want pre-provisioned. Templates live in `.arb/templates/` and are copied into every new workspace.
+Arborist can automatically seed files into new workspaces — `.env` files, AI agent settings, IDE config, anything you want pre-provisioned. Templates live in `.arb/templates/` and are copied into every new workspace. See [Examples](#examples) below for ready-to-use starting points.
 
 ## Managing templates
 
@@ -145,21 +145,11 @@ Template files are only copied when the target doesn't already exist. Once seede
 
 ### How regeneration protects edits
 
-When a membership change triggers regeneration of `.arbtemplate` files, arborist uses a three-way comparison to decide whether overwriting is safe:
+When a membership change triggers regeneration, arborist follows one rule: **your edits are always preserved**. If you've never touched a template-generated file, it stays in sync automatically as repos come and go. If you've customized a file, arborist detects the edit and skips it — it never silently overwrites your changes.
 
-1. **Render with new context** — render the template with the updated repo list
-2. **Compare to existing file** — if the file already matches the new render, it's already correct → **skip**
-3. **Render with previous context** — reconstruct the repo list from *before* the membership change and render the template with it
-4. **Compare existing to previous render:**
-   - Matches previous render → user hasn't touched it → safe to overwrite → **regenerated**
-   - Differs from previous render → user has edited → **skipped** (not overwritten)
+Under the hood, arborist renders the template with both the current and previous repo lists and compares the results against the file on disk. If the file matches what the old template would have produced, it's safe to overwrite. If it doesn't, you've edited it.
 
-The previous state is reconstructed by reversing the membership change: on attach, the newly added repos are removed from the current list; on detach, the removed repos are added back.
-
-This means:
-- If you've never edited a template-generated file, it stays in sync automatically as repos come and go
-- If you've customized a file, your edits are always preserved — arborist never silently overwrites them
-- If you want to reset a file to the template version, use `arb template apply --force`
+To reset a file to the current template version, use `arb template apply --force`.
 
 ### Detecting drift
 

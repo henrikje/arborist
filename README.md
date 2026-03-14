@@ -360,13 +360,15 @@ Arborist is for teams that want to keep repositories independent while adding a 
 
 To learn more about Arborist, check out the following resources:
 
-- [Day-to-day usage](docs/daily-use.md), a deeper dive into the commands you use when working in a workspace.
-- [Managing workspaces](docs/workspaces.md), how to create, navigate, and remove workspaces.
+- [Day-to-day usage](docs/daily-use.md), a deeper dive into creating workspaces, checking status, and running commands.
+- [Staying in sync](docs/sync.md), how rebase, merge, push, pull, and reset work across repos.
+- [Managing workspaces](docs/workspaces.md), how to list, navigate, rename, and remove workspaces.
 - [Workspace templates](docs/templates.md), a way to seed files into new workspaces.
 - [Fork workflows](docs/fork-workflows.md), how to use Arborist with fork-based development.
+- [Stacked branches](docs/stacked-branches.md), branching from feature branches and retargeting when they merge.
 - [Scripting and automation](docs/scripting-automation.md), using Arborist from scripts and pipelines.
 - [Tips and tricks](docs/tips.md), small conveniences for day-to-day usage.
-- [Under the hood](docs/under-the-hood.md), how Arborist works internally.
+- [Under the hood](docs/under-the-hood.md), how commit matching, conflict prediction, and phased rendering work.
 
 ## License
 
