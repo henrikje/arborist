@@ -31,6 +31,7 @@ interface RepoDiffResult {
   name: string;
   status: RepoDiffStatus;
   reason?: string;
+  shallow?: boolean;
   annotation: string;
   stat: RepoDiffStat;
   fileStat: DiffJsonFileStat[];
@@ -201,6 +202,11 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
       note = note ? `${note}, ${repo.operation} in progress` : `${repo.operation} in progress`;
     }
 
+    if (repo.identity.shallow) {
+      const shallowNote = "shallow clone, diff may be incomplete";
+      note = note ? `${note}, ${shallowNote}` : shallowNote;
+    }
+
     // Track untracked files for hint
     if (repo.local.untracked > 0) {
       totalUntracked += repo.local.untracked;
@@ -284,6 +290,7 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
       name: repo.name,
       status: "no-base",
       reason: "no base branch resolved",
+      shallow: repo.identity.shallow || undefined,
       annotation: "no base branch, no commits",
       stat: emptyStat,
       fileStat: [],
@@ -298,6 +305,7 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
       name: repo.name,
       status: target.status,
       reason: target.reason,
+      shallow: repo.identity.shallow || undefined,
       annotation: target.note || "diff failed",
       stat: emptyStat,
       fileStat: [],
@@ -320,6 +328,7 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
     return {
       name: repo.name,
       status: "clean",
+      shallow: repo.identity.shallow || undefined,
       annotation: "no changes",
       stat: emptyStat,
       fileStat: [],
@@ -337,10 +346,15 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
     annotation += `, ${repo.operation} in progress`;
   }
 
+  if (repo.identity.shallow) {
+    annotation += ", shallow clone";
+  }
+
   return {
     name: repo.name,
     status: target.status,
     reason: target.reason,
+    shallow: repo.identity.shallow || undefined,
     annotation,
     stat,
     fileStat,
@@ -361,6 +375,13 @@ async function outputPipe(
   for (const r of results) {
     if (r.status === "detached" || r.status === "wrong-branch") {
       process.stderr.write(`${r.name}: skipped \u2014 ${r.reason}\n`);
+    }
+  }
+
+  // Emit shallow warnings to stderr
+  for (const r of results) {
+    if (r.shallow) {
+      process.stderr.write(`${r.name}: shallow clone, diff may be incomplete\n`);
     }
   }
 
@@ -415,6 +436,9 @@ function outputJson(
     };
     if (r.reason) {
       entry.reason = r.reason;
+    }
+    if (r.shallow) {
+      entry.shallow = true;
     }
     if (stat && r.fileStat.length > 0) {
       entry.fileStat = r.fileStat;

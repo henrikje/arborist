@@ -344,6 +344,7 @@ export function assessPullRepo(
     pullStrategy: defaultPullStrategy,
     branch,
     headSha,
+    shallow: status.identity.shallow,
     wrongBranch: undefined as boolean | undefined,
     needsStash: undefined as boolean | undefined,
   };
@@ -525,6 +526,15 @@ export function buildPullPlanNodes(
     nodes.push({
       kind: "hint",
       cell: cell(`  hint: ${plural(wrongBranchCount, "repo")} on a different branch than the workspace`, "muted"),
+    });
+  }
+
+  const shallowRepos = assessments.filter((a) => a.shallow);
+  for (const a of shallowRepos) {
+    nodes.push({
+      kind: "message",
+      level: "attention",
+      text: `${a.repo} is a shallow clone; ahead/behind counts may be inaccurate`,
     });
   }
 

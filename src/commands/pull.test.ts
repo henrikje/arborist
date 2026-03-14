@@ -535,6 +535,21 @@ describe("assessPullRepo", () => {
     const a = assessPullRepo(makeRepo(), DIR, "feature", [], "merge", false, "deadbeef");
     expect(a.headSha).toBe("deadbeef");
   });
+
+  test("shallow passes through from status", () => {
+    const a = assessPullRepo(
+      makeRepo({
+        identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "feature" }, shallow: true },
+      }),
+      DIR,
+      "feature",
+      [],
+      "merge",
+      false,
+      SHA,
+    );
+    expect(a.shallow).toBe(true);
+  });
 });
 
 describe("formatPullPlan", () => {
@@ -554,6 +569,7 @@ describe("formatPullPlan", () => {
       pullStrategy: "merge-pull",
       branch: "feature",
       headSha: "abc1234",
+      shallow: false,
       ...normalizePullAssessment(overrides),
     } as PullAssessment;
   }
@@ -851,6 +867,17 @@ describe("formatPullPlan", () => {
     const plan = formatPullPlan([makeAssessment()], makeRemotesMap(["repo-a", {}]));
     expect(plan).not.toContain("(branch:");
   });
+
+  test("shows shallow clone warning when repo is shallow", () => {
+    const plan = formatPullPlan([makeAssessment({ shallow: true })], makeRemotesMap(["repo-a", {}]));
+    expect(plan).toContain("repo-a is a shallow clone");
+    expect(plan).toContain("ahead/behind counts may be inaccurate");
+  });
+
+  test("no shallow clone warning when repo is not shallow", () => {
+    const plan = formatPullPlan([makeAssessment({ shallow: false })], makeRemotesMap(["repo-a", {}]));
+    expect(plan).not.toContain("shallow clone");
+  });
 });
 
 describe("resetRebasedSkips", () => {
@@ -870,6 +897,7 @@ describe("resetRebasedSkips", () => {
       pullStrategy: "merge-pull",
       branch: "feature",
       headSha: "abc1234",
+      shallow: false,
       skipReason: "rebased locally (push --force, or pull --reset)",
       skipFlag: "rebased-locally",
       ...normalizePullAssessment(overrides),

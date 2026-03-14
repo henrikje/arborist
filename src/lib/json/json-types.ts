@@ -148,6 +148,7 @@ export const LogJsonRepoSchema = z.object({
   name: z.string(),
   status: LogJsonRepoStatusSchema,
   reason: z.string().optional(),
+  shallow: z.boolean().optional(),
   commits: z.array(LogJsonCommitSchema),
 });
 
@@ -173,6 +174,7 @@ export const DiffJsonRepoSchema = z.object({
   name: z.string(),
   status: DiffJsonRepoStatusSchema,
   reason: z.string().optional(),
+  shallow: z.boolean().optional(),
   stat: z.object({ files: z.number(), insertions: z.number(), deletions: z.number() }),
   fileStat: z.array(DiffJsonFileStatSchema).optional(),
   untrackedCount: z.number().optional(),

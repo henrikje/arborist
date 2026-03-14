@@ -678,6 +678,18 @@ describe("assessPushRepo", () => {
     expect(a.headSha).toBe("deadbeef");
   });
 
+  test("shallow passes through from status", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "feature" }, shallow: true },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.shallow).toBe(true);
+  });
+
   test("gone falls back to ahead=1 when base is null", () => {
     const a = assessPushRepo(
       makeRepo({
@@ -768,6 +780,7 @@ describe("formatPushPlan", () => {
       headSha: "abc1234",
       recreate: false,
       behindBase: 0,
+      shallow: false,
       ...normalizePushAssessment(overrides),
     } as PushAssessment;
   }
@@ -1168,6 +1181,17 @@ describe("formatPushPlan", () => {
     expect(plan).not.toContain("different branch");
   });
 
+  test("shows shallow clone warning when repo is shallow", () => {
+    const plan = formatPushPlan([makeAssessment({ shallow: true })], makeRemotesMap(["repo-a", {}]));
+    expect(plan).toContain("repo-a is a shallow clone");
+    expect(plan).toContain("ahead/behind counts may be inaccurate");
+  });
+
+  test("no shallow clone warning when repo is not shallow", () => {
+    const plan = formatPushPlan([makeAssessment({ shallow: false })], makeRemotesMap(["repo-a", {}]));
+    expect(plan).not.toContain("shallow clone");
+  });
+
   // ── Header & alignment tests ────────────────────────────────
 
   test("includes REPO and ACTION column headers", () => {
@@ -1217,6 +1241,7 @@ describe("applyForcePushPolicy", () => {
       headSha: "abc1234",
       recreate: false,
       behindBase: 0,
+      shallow: false,
       ...normalizePushAssessment(overrides),
     } as PushAssessment;
   }

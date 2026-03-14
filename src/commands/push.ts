@@ -268,6 +268,15 @@ export function buildPushPlanNodes(
     });
   }
 
+  const shallowRepos = assessments.filter((a) => a.shallow);
+  for (const a of shallowRepos) {
+    nodes.push({
+      kind: "message",
+      level: "attention",
+      text: `${a.repo} is a shallow clone; ahead/behind counts may be inaccurate`,
+    });
+  }
+
   nodes.push({ kind: "gap" });
   return nodes;
 }
@@ -425,6 +434,7 @@ export function assessPushRepo(
     headSha,
     recreate: false,
     behindBase,
+    shallow: status.identity.shallow,
     wrongBranch: undefined as boolean | undefined,
   };
 

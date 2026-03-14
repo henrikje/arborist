@@ -96,6 +96,7 @@ interface PullAssessmentBase {
   pullStrategy?: "rebase-pull" | "merge-pull" | "safe-reset" | "forced-reset";
   branch: string;
   headSha: string;
+  shallow: boolean;
   safeReset?: PullSafeResetInfo;
   conflictPrediction?: ConflictPrediction;
   needsStash?: boolean;
@@ -154,6 +155,7 @@ interface PushAssessmentBase {
   headSha: string;
   recreate: boolean;
   behindBase: number;
+  shallow: boolean;
   wrongBranch?: boolean;
   verbose?: {
     commits?: CommitDisplayEntry[];

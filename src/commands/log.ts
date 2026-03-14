@@ -33,6 +33,7 @@ interface RepoLogResult {
   name: string;
   status: RepoLogStatus;
   reason?: string;
+  shallow?: boolean;
   annotation: string;
   commits: LogCommit[];
 }
@@ -181,6 +182,11 @@ async function outputTTY(
       note = note ? `${note}, ${repo.operation} in progress` : `${repo.operation} in progress`;
     }
 
+    if (repo.identity.shallow) {
+      const shallowNote = "shallow clone, history may be incomplete";
+      note = note ? `${note}, ${shallowNote}` : shallowNote;
+    }
+
     // Header
     process.stderr.write(render([repoHeaderNode(repo.name, note || undefined)], ctx));
 
@@ -245,11 +251,16 @@ async function gatherRepoLog(
     if (verbose) {
       commits = await enrichWithVerboseDetail(repoDir, commits);
     }
+    let annotation = `no base branch, showing ${commits.length} recent`;
+    if (repo.identity.shallow) {
+      annotation += ", shallow clone";
+    }
     return {
       name: repo.name,
       status: "no-base",
       reason: "no base branch resolved",
-      annotation: `no base branch, showing ${commits.length} recent`,
+      shallow: repo.identity.shallow || undefined,
+      annotation,
       commits,
     };
   }
@@ -279,10 +290,15 @@ async function gatherRepoLog(
     annotation += `, ${repo.operation} in progress`;
   }
 
+  if (repo.identity.shallow) {
+    annotation += ", shallow clone";
+  }
+
   return {
     name: repo.name,
     status: baseMissing ? "fallback-base" : "ok",
     reason: baseMissing ? `base ${repo.base.configuredRef} not found, using ${repo.base.ref}` : undefined,
+    shallow: repo.identity.shallow || undefined,
     annotation,
     commits,
   };
@@ -336,6 +352,12 @@ function outputPipe(results: RepoLogResult[]): void {
   }
 
   for (const r of results) {
+    if (r.shallow) {
+      process.stderr.write(`${r.name}: shallow clone, history may be incomplete\n`);
+    }
+  }
+
+  for (const r of results) {
     if (r.status === "detached" || r.status === "wrong-branch") continue;
     for (const c of r.commits) {
       stdout(`${r.name}\t${c.shortHash}\t${c.subject}\n`);
@@ -362,6 +384,9 @@ function outputJson(workspace: string, branch: string, base: string | null, resu
     };
     if (r.reason) {
       entry.reason = r.reason;
+    }
+    if (r.shallow) {
+      entry.shallow = true;
     }
     return entry;
   });
