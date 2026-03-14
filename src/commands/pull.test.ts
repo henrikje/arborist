@@ -72,6 +72,13 @@ describe("assessPullRepo", () => {
     expect(a.skipFlag).toBe("fetch-failed");
   });
 
+  test("skips when operation in progress", () => {
+    const a = assessPullRepo(makeRepo({ operation: "rebase" }), DIR, "feature", [], "merge", false, SHA);
+    expect(a.outcome).toBe("skip");
+    expect(a.skipReason).toBe("rebase in progress");
+    expect(a.skipFlag).toBe("operation-in-progress");
+  });
+
   test("skips detached HEAD", () => {
     const a = assessPullRepo(
       makeRepo({ identity: { worktreeKind: "linked", headMode: { kind: "detached" }, shallow: false } }),

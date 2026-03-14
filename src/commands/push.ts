@@ -428,6 +428,16 @@ export function assessPushRepo(
     wrongBranch: undefined as boolean | undefined,
   };
 
+  // Operation in progress
+  if (status.operation !== null) {
+    return {
+      ...base,
+      outcome: "skip",
+      skipReason: `${status.operation} in progress`,
+      skipFlag: "operation-in-progress",
+    };
+  }
+
   // Branch check — detached or wrong branch
   if (status.identity.headMode.kind === "detached") {
     return { ...base, outcome: "skip", skipReason: "HEAD is detached", skipFlag: "detached-head" };

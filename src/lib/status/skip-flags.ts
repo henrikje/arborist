@@ -7,6 +7,7 @@ export type SkipFlag =
   | "merged-new-work"
   | "fetch-failed"
   | "dirty"
+  | "operation-in-progress"
   // Push-specific
   | "no-commits"
   | "behind-remote"
@@ -16,7 +17,6 @@ export type SkipFlag =
   | "remote-gone"
   | "rebased-locally"
   // Integrate-specific
-  | "operation-in-progress"
   | "no-base-branch"
   | "no-base-remote"
   | "retarget-target-not-found"

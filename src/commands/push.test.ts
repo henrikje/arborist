@@ -30,6 +30,13 @@ describe("assessPushRepo", () => {
     expect(a.outcome).toBe("up-to-date");
   });
 
+  test("skips when operation in progress", () => {
+    const a = assessPushRepo(makeRepo({ operation: "merge" }), DIR, "feature", SHA);
+    expect(a.outcome).toBe("skip");
+    expect(a.skipReason).toBe("merge in progress");
+    expect(a.skipFlag).toBe("operation-in-progress");
+  });
+
   test("skips detached HEAD", () => {
     const a = assessPushRepo(
       makeRepo({ identity: { worktreeKind: "linked", headMode: { kind: "detached" }, shallow: false } }),

@@ -3,7 +3,7 @@ import { basename, join } from "node:path";
 import type { Command } from "commander";
 import { ArbError } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, branchExistsLocally, git, isRepoDirty, parseGitStatus } from "../lib/git";
+import { GitCache, branchExistsLocally, detectOperation, git, isRepoDirty, parseGitStatus } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
@@ -146,6 +146,12 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 
           if (!existsSync(wtPath) || !existsSync(`${wtPath}/.git`)) {
             assessments.push({ repo, outcome: "skip", skipReason: "not in this workspace" });
+            continue;
+          }
+
+          const operation = await detectOperation(wtPath);
+          if (operation !== null) {
+            assessments.push({ repo, outcome: "skip", skipReason: `${operation} in progress` });
             continue;
           }
 
