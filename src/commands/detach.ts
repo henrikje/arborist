@@ -1,13 +1,13 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Command } from "commander";
-import { ArbError } from "../lib/core";
+import { ArbError, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, branchExistsLocally, detectOperation, git, isRepoDirty, parseGitStatus } from "../lib/git";
+import { GitCache, branchExistsLocally, detectOperation, git, isRepoDirty } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
-import { isLocalDirty } from "../lib/status";
+import { LOSE_WORK_FLAGS, type RepoFlags, computeFlags, gatherRepoStatus, wouldLoseWork } from "../lib/status";
 import { confirmOrExit, parallelFetch, reportFetchFailures } from "../lib/sync";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
 import {
@@ -58,10 +58,18 @@ function buildDetachPlanNodes(assessments: DetachAssessment[]): OutputNode[] {
   ];
 }
 
+const DETACH_SKIP_LABELS: Partial<Record<keyof RepoFlags, string>> = {
+  isDirty: "uncommitted changes",
+  isUnpushed: "unpushed commits",
+  hasOperation: "operation in progress",
+  isDetached: "detached HEAD",
+  isWrongBranch: "wrong branch",
+};
+
 export function registerDetachCommand(program: Command, getCtx: () => ArbContext): void {
   program
     .command("detach [repos...]")
-    .option("-f, --force", "Force detach even with uncommitted changes")
+    .option("-f, --force", "Force detach even with at-risk repos (uncommitted changes, unpushed commits, etc.)")
     .option("-a, --all-repos", "Detach all repos from the workspace")
     .option("--delete-branch", "Delete the local branch from the canonical repo")
     .option("-y, --yes", "Skip confirmation prompt")
@@ -70,7 +78,7 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
     .option("-N, --no-fetch", "Skip pre-fetch")
     .summary("Detach repos from the workspace")
     .description(
-      "Detach one or more repos from the current workspace without deleting the workspace itself. Shows a plan and asks for confirmation before proceeding. Regenerates templates that reference the repo list (those using {% for repo in workspace.repos %}) to reflect the updated repo list. Skips repos with uncommitted changes unless --force is used. Use --all-repos to detach all repos. Use --delete-branch to also delete the local branch from the canonical repo. Fetches the selected repos before detaching for fresh state (skip with -N/--no-fetch). Use --yes to skip the confirmation prompt. Use --dry-run to see what would happen without executing.",
+      "Detach one or more repos from the current workspace without deleting the workspace itself. Shows a plan and asks for confirmation before proceeding. Regenerates templates that reference the repo list (those using {% for repo in workspace.repos %}) to reflect the updated repo list. Skips repos with at-risk state (uncommitted changes, unpushed commits, operation in progress, detached HEAD, wrong branch) unless --force is used. Use --all-repos to detach all repos. Use --delete-branch to also delete the local branch from the canonical repo. Fetches the selected repos before detaching for fresh state (skip with -N/--no-fetch). Use --yes to skip the confirmation prompt. Use --dry-run to see what would happen without executing.",
     )
     .action(
       async (
@@ -126,19 +134,22 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
           }
         }
 
+        const cache = await GitCache.create();
+
         // Phase 1: fetch
         if (options.fetch !== false) {
           const presentRepos = repos.filter((repo) => existsSync(`${wsDir}/${repo}`));
           if (presentRepos.length > 0) {
-            const cache = await GitCache.create();
             const fetchDirs = presentRepos.map((repo) => `${wsDir}/${repo}`);
             const remotesMap = await cache.resolveRemotesMap(presentRepos, ctx.reposDir);
             const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
             reportFetchFailures(presentRepos, fetchResults);
+            cache.invalidateAfterFetch();
           }
         }
 
         // Phase 2: assess
+        const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
         const assessments: DetachAssessment[] = [];
 
         for (const repo of repos) {
@@ -156,11 +167,26 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
           }
 
           if (!options.force) {
-            if (isLocalDirty(await parseGitStatus(wtPath))) {
+            try {
+              const status = await gatherRepoStatus(wtPath, ctx.reposDir, configBase, undefined, cache);
+              const flags = computeFlags(status, branch);
+              if (wouldLoseWork(flags)) {
+                const reasons = [...LOSE_WORK_FLAGS]
+                  .filter((f) => flags[f])
+                  .map((f) => DETACH_SKIP_LABELS[f] ?? f)
+                  .join(", ");
+                assessments.push({
+                  repo,
+                  outcome: "skip",
+                  skipReason: `${reasons} (use --force to override)`,
+                });
+                continue;
+              }
+            } catch {
               assessments.push({
                 repo,
                 outcome: "skip",
-                skipReason: "uncommitted changes (use --force to override)",
+                skipReason: "could not determine status (use --force to override)",
               });
               continue;
             }

@@ -311,7 +311,7 @@ _arb() {
                     ;;
                 detach)
                     _arguments \
-                        '(-f --force)'{-f,--force}'[Force removal even with uncommitted changes]' \
+                        '(-f --force)'{-f,--force}'[Force detach even with at-risk repos]' \
                         '(-a --all-repos)'{-a,--all-repos}'[Drop all repos from the workspace]' \
                         '--delete-branch[Delete the local branch from the canonical repo]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
