@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { predictMergeConflict } from "../analysis/conflict-prediction";
@@ -7,10 +7,14 @@ import { validateWorkspaceName } from "../workspace/validation";
 import {
   branchExistsLocally,
   checkBranchMatch,
+  detectOperation,
   getCommitsBetweenFull,
   getDefaultBranch,
+  isLinkedWorktree,
   isRepoDirty,
+  isShallowRepo,
   parseGitStatus,
+  parseGitStatusFiles,
   validateBranchName,
 } from "./git";
 
@@ -264,6 +268,112 @@ describe("git repo functions", () => {
       withRepo(async ({ repoDir }) => {
         const commits = await getCommitsBetweenFull(repoDir, "HEAD", "HEAD");
         expect(commits).toEqual([]);
+      }));
+  });
+
+  describe("detectOperation", () => {
+    test("returns null for clean repo", () =>
+      withRepo(async ({ repoDir }) => {
+        const op = await detectOperation(repoDir);
+        expect(op).toBeNull();
+      }));
+
+    test("detects rebase-merge in progress", () =>
+      withRepo(async ({ repoDir }) => {
+        // Simulate rebase-in-progress by creating the directory
+        const gitDirResult = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "--git-dir"]);
+        const gitDir = new TextDecoder().decode(gitDirResult.stdout).trim();
+        const absGitDir = gitDir.startsWith("/") ? gitDir : join(repoDir, gitDir);
+        mkdirSync(join(absGitDir, "rebase-merge"), { recursive: true });
+        const op = await detectOperation(repoDir);
+        expect(op).toBe("rebase");
+        rmSync(join(absGitDir, "rebase-merge"), { recursive: true });
+      }));
+
+    test("detects merge in progress", () =>
+      withRepo(async ({ repoDir }) => {
+        const gitDirResult = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "--git-dir"]);
+        const gitDir = new TextDecoder().decode(gitDirResult.stdout).trim();
+        const absGitDir = gitDir.startsWith("/") ? gitDir : join(repoDir, gitDir);
+        writeFileSync(join(absGitDir, "MERGE_HEAD"), "abc123\n");
+        const op = await detectOperation(repoDir);
+        expect(op).toBe("merge");
+        rmSync(join(absGitDir, "MERGE_HEAD"));
+      }));
+
+    test("detects cherry-pick in progress", () =>
+      withRepo(async ({ repoDir }) => {
+        const gitDirResult = Bun.spawnSync(["git", "-C", repoDir, "rev-parse", "--git-dir"]);
+        const gitDir = new TextDecoder().decode(gitDirResult.stdout).trim();
+        const absGitDir = gitDir.startsWith("/") ? gitDir : join(repoDir, gitDir);
+        writeFileSync(join(absGitDir, "CHERRY_PICK_HEAD"), "abc123\n");
+        const op = await detectOperation(repoDir);
+        expect(op).toBe("cherry-pick");
+        rmSync(join(absGitDir, "CHERRY_PICK_HEAD"));
+      }));
+  });
+
+  describe("isLinkedWorktree", () => {
+    test("returns false for normal repo (.git is directory)", () =>
+      withRepo(async ({ repoDir }) => {
+        expect(isLinkedWorktree(repoDir)).toBe(false);
+      }));
+
+    test("returns false for non-git directory", () => {
+      const dir = mkdtempSync(join(tmpdir(), "arb-nolink-"));
+      expect(isLinkedWorktree(dir)).toBe(false);
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    test("returns true when .git is a file (worktree link)", () => {
+      const dir = mkdtempSync(join(tmpdir(), "arb-linked-"));
+      writeFileSync(join(dir, ".git"), "gitdir: /some/path/to/worktrees/ws");
+      expect(isLinkedWorktree(dir)).toBe(true);
+      rmSync(dir, { recursive: true, force: true });
+    });
+  });
+
+  describe("isShallowRepo", () => {
+    test("returns false for non-shallow repo", () =>
+      withRepo(async ({ repoDir }) => {
+        const shallow = await isShallowRepo(repoDir);
+        expect(shallow).toBe(false);
+      }));
+  });
+
+  describe("parseGitStatusFiles", () => {
+    test("returns empty arrays for clean repo", () =>
+      withRepo(async ({ repoDir }) => {
+        const result = await parseGitStatusFiles(repoDir);
+        expect(result.staged).toEqual([]);
+        expect(result.unstaged).toEqual([]);
+        expect(result.untracked).toEqual([]);
+      }));
+
+    test("classifies untracked files", () =>
+      withRepo(async ({ repoDir }) => {
+        writeFileSync(join(repoDir, "new.txt"), "new");
+        const result = await parseGitStatusFiles(repoDir);
+        expect(result.untracked).toContain("new.txt");
+        expect(result.staged).toEqual([]);
+        expect(result.unstaged).toEqual([]);
+      }));
+
+    test("classifies staged and unstaged files", () =>
+      withRepo(async ({ repoDir }) => {
+        writeFileSync(join(repoDir, "file.txt"), "initial");
+        Bun.spawnSync(["git", "-C", repoDir, "add", "file.txt"]);
+        Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "add"]);
+        // Modify and stage
+        writeFileSync(join(repoDir, "file.txt"), "modified");
+        Bun.spawnSync(["git", "-C", repoDir, "add", "file.txt"]);
+        // Modify again (unstaged)
+        writeFileSync(join(repoDir, "file.txt"), "modified again");
+        const result = await parseGitStatusFiles(repoDir);
+        expect(result.staged.length).toBe(1);
+        expect(result.staged[0]?.file).toBe("file.txt");
+        expect(result.unstaged.length).toBe(1);
+        expect(result.unstaged[0]?.file).toBe("file.txt");
       }));
   });
 });
