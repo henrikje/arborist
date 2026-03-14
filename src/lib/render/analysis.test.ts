@@ -9,6 +9,7 @@ import {
   analyzeRemoteDiff,
   analyzeRemoteName,
   buildStatusCountsCell,
+  enrichMergedLabel,
   flagLabels,
   formatStatusCounts,
   plainBaseDiff,
@@ -1451,5 +1452,160 @@ describe("analyzeRemoteDiff — merged with new commits edge cases", () => {
     const result = analyzeRemoteDiff(repo, flags);
     expect(result.plain).toBe("3 to push");
     expect(result.spans[0]?.attention).toBe("attention");
+  });
+});
+
+// ── enrichMergedLabel ──
+
+describe("enrichMergedLabel", () => {
+  const mergedCounts = [{ label: "merged", count: 1, key: "isMerged" as const }];
+  const mixedCounts = [
+    { label: "dirty", count: 1, key: "isDirty" as const },
+    { label: "merged", count: 1, key: "isMerged" as const },
+    { label: "gone", count: 1, key: "isGone" as const },
+  ];
+
+  test("no merged repos returns statusCounts unchanged", () => {
+    const repos = [makeRepo()];
+    const result = enrichMergedLabel(mergedCounts, repos);
+    expect(result).toBe(mergedCounts); // same reference
+  });
+
+  test("merged repo with no detectedPr returns statusCounts unchanged", () => {
+    const repos = [
+      makeRepo({
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: null,
+          ahead: 1,
+          behind: 1,
+          merge: { kind: "merge" },
+          baseMergedIntoDefault: null,
+        },
+      }),
+    ];
+    const result = enrichMergedLabel(mergedCounts, repos);
+    expect(result).toBe(mergedCounts);
+  });
+
+  test("one merged repo with PR enriches label", () => {
+    const repos = [
+      makeRepo({
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: null,
+          ahead: 1,
+          behind: 1,
+          merge: { kind: "merge", detectedPr: { number: 42, url: null } },
+          baseMergedIntoDefault: null,
+        },
+      }),
+    ];
+    const result = enrichMergedLabel(mergedCounts, repos);
+    expect(result).not.toBe(mergedCounts);
+    expect(result[0]?.label).toBe("merged (#42)");
+    expect(result[0]?.key).toBe("isMerged");
+  });
+
+  test("two repos with different PRs shows both", () => {
+    const repos = [
+      makeRepo({
+        name: "repo-a",
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: null,
+          ahead: 1,
+          behind: 1,
+          merge: { kind: "merge", detectedPr: { number: 42, url: null } },
+          baseMergedIntoDefault: null,
+        },
+      }),
+      makeRepo({
+        name: "repo-b",
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: null,
+          ahead: 1,
+          behind: 1,
+          merge: { kind: "squash", detectedPr: { number: 55, url: null } },
+          baseMergedIntoDefault: null,
+        },
+      }),
+    ];
+    const result = enrichMergedLabel(mergedCounts, repos);
+    expect(result[0]?.label).toBe("merged (#42, #55)");
+  });
+
+  test("two repos with same PR deduplicates", () => {
+    const repos = [
+      makeRepo({
+        name: "repo-a",
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: null,
+          ahead: 1,
+          behind: 1,
+          merge: { kind: "merge", detectedPr: { number: 42, url: null } },
+          baseMergedIntoDefault: null,
+        },
+      }),
+      makeRepo({
+        name: "repo-b",
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: null,
+          ahead: 1,
+          behind: 1,
+          merge: { kind: "merge", detectedPr: { number: 42, url: null } },
+          baseMergedIntoDefault: null,
+        },
+      }),
+    ];
+    const result = enrichMergedLabel(mergedCounts, repos);
+    expect(result[0]?.label).toBe("merged (#42)");
+  });
+
+  test("only isMerged entry is enriched, other flags unchanged", () => {
+    const repos = [
+      makeRepo({
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: null,
+          ahead: 1,
+          behind: 1,
+          merge: { kind: "merge", detectedPr: { number: 42, url: null } },
+          baseMergedIntoDefault: null,
+        },
+      }),
+    ];
+    const result = enrichMergedLabel(mixedCounts, repos);
+    expect(result[0]?.label).toBe("dirty");
+    expect(result[1]?.label).toBe("merged (#42)");
+    expect(result[2]?.label).toBe("gone");
+  });
+
+  test("empty statusCounts returns empty array", () => {
+    const repos = [
+      makeRepo({
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: null,
+          ahead: 1,
+          behind: 1,
+          merge: { kind: "merge", detectedPr: { number: 42, url: null } },
+          baseMergedIntoDefault: null,
+        },
+      }),
+    ];
+    const result = enrichMergedLabel([], repos);
+    expect(result).toEqual([]);
   });
 });

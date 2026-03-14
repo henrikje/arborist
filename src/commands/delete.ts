@@ -14,7 +14,7 @@ import { GitCache, branchExistsLocally, git, remoteBranchExists } from "../lib/g
 import { type RenderContext, render } from "../lib/render";
 import { EMPTY_CELL, cell } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
-import { formatStatusCounts } from "../lib/render";
+import { enrichMergedLabel, formatStatusCounts } from "../lib/render";
 import {
   LOSE_WORK_FLAGS,
   type WorkspaceSummary,
@@ -94,7 +94,8 @@ function buildCheckboxName(
   } else if (a.summary.statusCounts.length === 0) {
     status = "no issues";
   } else {
-    status = formatStatusCounts(a.summary.statusCounts, a.summary.outdatedOnlyCount, LOSE_WORK_FLAGS);
+    const enrichedCounts = enrichMergedLabel(a.summary.statusCounts, a.summary.repos);
+    status = formatStatusCounts(enrichedCounts, a.summary.outdatedOnlyCount, LOSE_WORK_FLAGS);
   }
 
   return `${name}  ${lastCommit}  ${repoCount}  ${status}`;
@@ -355,7 +356,8 @@ function buildDeleteTableNodes(assessments: WorkspaceAssessment[]): OutputNode[]
     } else if (a.summary.statusCounts.length === 0) {
       statusCell = cell("no issues");
     } else {
-      statusCell = cell(formatStatusCounts(a.summary.statusCounts, a.summary.outdatedOnlyCount, LOSE_WORK_FLAGS));
+      const enrichedCounts = enrichMergedLabel(a.summary.statusCounts, a.summary.repos);
+      statusCell = cell(formatStatusCounts(enrichedCounts, a.summary.outdatedOnlyCount, LOSE_WORK_FLAGS));
     }
 
     return {

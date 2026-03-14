@@ -168,6 +168,25 @@ export function analyzeLocal(repo: RepoStatus): Cell {
   return base;
 }
 
+// ── Merge label enrichment ──
+
+/** Enrich the "merged" label in statusCounts with detected PR numbers from individual repos. */
+export function enrichMergedLabel(
+  statusCounts: WorkspaceSummary["statusCounts"],
+  repos: RepoStatus[],
+): WorkspaceSummary["statusCounts"] {
+  const prNumbers: number[] = [];
+  for (const repo of repos) {
+    const pr = repo.base?.merge?.detectedPr?.number;
+    if (pr != null && !prNumbers.includes(pr)) prNumbers.push(pr);
+  }
+  if (prNumbers.length === 0) return statusCounts;
+  const prSuffix = prNumbers.map((n) => `#${n}`).join(", ");
+  return statusCounts.map((entry) =>
+    entry.key === "isMerged" ? { ...entry, label: `${entry.label} (${prSuffix})` } : entry,
+  );
+}
+
 // ── Flag labels + status count formatting ──
 
 export function flagLabels(flags: RepoFlags): string[] {
