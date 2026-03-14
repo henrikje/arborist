@@ -412,6 +412,106 @@ describe("fetch", () => {
     }));
 });
 
+// ── replayPlan annotation ────────────────────────────────────────
+
+describe("replayPlan annotation", () => {
+  /**
+   * Helper: create a diverged branch with a cherry-picked commit.
+   * Makes 2 feature commits, advances main independently, then cherry-picks
+   * the older feature commit onto main. This produces a true divergence
+   * (ahead=2, behind=2) with one commit already on base via patch-id match.
+   */
+  async function setupDivergedWithCherryPick(env: {
+    testDir: string;
+    projectDir: string;
+    originDir: string;
+  }): Promise<void> {
+    const wt = join(env.projectDir, "my-feature/repo-a");
+    const canonical = join(env.projectDir, ".arb/repos/repo-a");
+
+    // Make 2 commits on feature branch
+    await write(join(wt, "feature1.txt"), "feature1");
+    await git(wt, ["add", "feature1.txt"]);
+    await git(wt, ["commit", "-m", "Add feature1"]);
+
+    await write(join(wt, "feature2.txt"), "feature2");
+    await git(wt, ["add", "feature2.txt"]);
+    await git(wt, ["commit", "-m", "Add feature2"]);
+
+    // Get the hash of the older feature commit
+    const logOutput = await git(wt, ["log", "--format=%H", "-n", "2"]);
+    const hashes = logOutput.trim().split("\n");
+    const olderHash = hashes[1] as string;
+
+    // Push feature branch so origin has the commits
+    await git(wt, ["push", "origin", "my-feature"]);
+
+    // Via a temp clone: advance main with an independent commit, then cherry-pick feature1 on top.
+    const tmpClone = join(env.testDir, "tmp-cherry-diff");
+    await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpClone]);
+    await write(join(tmpClone, "main-only.txt"), "main-only");
+    await git(tmpClone, ["add", "main-only.txt"]);
+    await git(tmpClone, ["commit", "-m", "Advance main independently"]);
+    await git(tmpClone, ["fetch", "origin", "my-feature"]);
+    await git(tmpClone, ["cherry-pick", olderHash]);
+    await git(tmpClone, ["push", "origin", "main"]);
+
+    // Fetch so the worktree sees the updated origin/main
+    await git(canonical, ["fetch", "--prune"]);
+  }
+
+  test("arb diff --json includes replayPlan when branch is diverged with cherry-picked commits", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      await setupDivergedWithCherryPick(env);
+
+      const result = await arb(env, ["diff", "--json"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      const repoA = json.repos.find((r: { name: string }) => r.name === "repo-a");
+      expect(repoA.replayPlan).toBeDefined();
+      expect(repoA.replayPlan.alreadyOnTarget).toBe(1);
+      expect(repoA.replayPlan.toReplay).toBe(1);
+      expect(repoA.replayPlan.totalLocal).toBe(2);
+    }));
+
+  test("arb diff does not include replayPlan when branch is not diverged", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      await write(join(env.projectDir, "my-feature/repo-a/file.txt"), "change");
+      await git(join(env.projectDir, "my-feature/repo-a"), ["add", "file.txt"]);
+      await git(join(env.projectDir, "my-feature/repo-a"), ["commit", "-m", "Feature commit"]);
+      const result = await arb(env, ["diff", "--json"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      const repoA = json.repos.find((r: { name: string }) => r.name === "repo-a");
+      expect(repoA.replayPlan).toBeUndefined();
+    }));
+
+  test("arb diff --json omits replayPlan for non-diverged repos in same workspace", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      await setupDivergedWithCherryPick(env);
+
+      const result = await arb(env, ["diff", "--json"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      // repo-a is diverged with cherry-pick — should have replayPlan
+      const repoA = json.repos.find((r: { name: string }) => r.name === "repo-a");
+      expect(repoA.replayPlan).toBeDefined();
+      // repo-b is not diverged — should have no replayPlan
+      const repoB = json.repos.find((r: { name: string }) => r.name === "repo-b");
+      expect(repoB).toBeDefined();
+      expect(repoB.replayPlan).toBeUndefined();
+    }));
+});
+
 // ── untracked file hints ──────────────────────────────────────────
 
 describe("untracked file hints", () => {

@@ -27,6 +27,13 @@ interface RepoDiffStat {
 
 type RepoDiffStatus = "ok" | "detached" | "wrong-branch" | "no-base" | "fallback-base" | "clean";
 
+interface ReplayPlanSummary {
+  totalLocal: number;
+  alreadyOnTarget: number;
+  toReplay: number;
+  contiguous: boolean;
+}
+
 interface RepoDiffResult {
   name: string;
   status: RepoDiffStatus;
@@ -37,6 +44,7 @@ interface RepoDiffResult {
   fileStat: DiffJsonFileStat[];
   diffRef?: string;
   untrackedCount: number;
+  replayPlan?: ReplayPlanSummary;
 }
 
 const NO_BASE_FALLBACK_LIMIT = 10;
@@ -198,6 +206,12 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
     const gitArgs = target ? [target.ref] : [];
     let note = target?.note ?? "";
 
+    if (repo.base?.replayPlan && repo.base.replayPlan.alreadyOnTarget > 0) {
+      const rp = repo.base.replayPlan;
+      const replayNote = `${rp.alreadyOnTarget} of ${rp.totalLocal} commits already on base`;
+      note = note ? `${note}, ${replayNote}` : replayNote;
+    }
+
     if (repo.operation) {
       note = note ? `${note}, ${repo.operation} in progress` : `${repo.operation} in progress`;
     }
@@ -342,6 +356,11 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
     annotation = `${target.note}, ${annotation}`;
   }
 
+  if (repo.base?.replayPlan && repo.base.replayPlan.alreadyOnTarget > 0) {
+    const rp = repo.base.replayPlan;
+    annotation += `, ${rp.alreadyOnTarget} of ${rp.totalLocal} commits already on base`;
+  }
+
   if (repo.operation) {
     annotation += `, ${repo.operation} in progress`;
   }
@@ -349,6 +368,16 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
   if (repo.identity.shallow) {
     annotation += ", shallow clone";
   }
+
+  const replayPlan =
+    repo.base?.replayPlan && repo.base.replayPlan.alreadyOnTarget > 0
+      ? {
+          totalLocal: repo.base.replayPlan.totalLocal,
+          alreadyOnTarget: repo.base.replayPlan.alreadyOnTarget,
+          toReplay: repo.base.replayPlan.toReplay,
+          contiguous: repo.base.replayPlan.contiguous,
+        }
+      : undefined;
 
   return {
     name: repo.name,
@@ -360,6 +389,7 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
     fileStat,
     diffRef: target.ref,
     untrackedCount: repo.local.untracked,
+    replayPlan,
   };
 }
 
@@ -445,6 +475,9 @@ function outputJson(
     }
     if (r.untrackedCount > 0) {
       entry.untrackedCount = r.untrackedCount;
+    }
+    if (r.replayPlan) {
+      entry.replayPlan = r.replayPlan;
     }
     return entry;
   });
