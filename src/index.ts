@@ -25,7 +25,7 @@ import { registerRepoCommand } from "./commands/repo";
 import { registerResetCommand } from "./commands/reset";
 import { registerStatusCommand } from "./commands/status";
 import { registerTemplateCommand } from "./commands/template";
-import { ArbAbort, ArbError } from "./lib/core";
+import { ArbAbort, ArbError, checkForUpdate } from "./lib/core";
 import type { ArbContext } from "./lib/core";
 import { allTopics } from "./lib/help";
 import { bold, dim, error, info } from "./lib/terminal";
@@ -242,6 +242,10 @@ process.on("SIGINT", () => {
 
 const commandStart = performance.now();
 
+// Kick off update check early so it runs concurrently with the command
+const arbRootForUpdate = detectArbRoot();
+const updateCheckPromise = arbRootForUpdate ? checkForUpdate(ARB_VERSION, arbRootForUpdate) : null;
+
 function printDebugSummary(): void {
   if (!isDebug()) return;
   const elapsed = ((performance.now() - commandStart) / 1000).toFixed(1);
@@ -252,6 +256,12 @@ function printDebugSummary(): void {
 try {
   await program.parseAsync();
   printDebugSummary();
+  if (updateCheckPromise) {
+    const result = await updateCheckPromise;
+    if (result) {
+      process.stderr.write(`\n${result.notice}`);
+    }
+  }
 } catch (err) {
   printDebugSummary();
   if (err instanceof ArbAbort) {
