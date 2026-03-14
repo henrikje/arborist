@@ -45,8 +45,9 @@ export const scriptingTopic: HelpTopic = {
     out("");
     out(bold("DRY RUN"));
     out("");
-    out("  Mutation commands (push, pull, rebase, merge, delete, branch rename)");
-    out("  support -n/--dry-run to preview what would happen without executing.");
+    out("  Mutation commands (push, pull, rebase, merge, reset, rename, delete,");
+    out("  branch rename, detach) support -n/--dry-run to preview what would");
+    out("  happen without executing.");
     out("");
     out(bold("EXAMPLES"));
     out("");
