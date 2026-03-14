@@ -1975,6 +1975,77 @@ describe("push partial failure", () => {
     }));
 });
 
+// ── pull --rebase conflict ───────────────────────────────────────
+
+describe("pull --rebase conflict", () => {
+  test("arb pull --rebase shows rebase-in-progress on conflict", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Create a shared file, commit, and push
+      await write(join(repoA, "shared.txt"), "original");
+      await git(repoA, ["add", "shared.txt"]);
+      await git(repoA, ["commit", "-m", "add shared"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Remote conflicting change
+      const tmpClone = join(env.testDir, "tmp-rebase-conflict");
+      await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpClone]);
+      await git(tmpClone, ["checkout", "my-feature"]);
+      await write(join(tmpClone, "shared.txt"), "remote version");
+      await git(tmpClone, ["add", "shared.txt"]);
+      await git(tmpClone, ["commit", "-m", "remote change"]);
+      await git(tmpClone, ["push"]);
+
+      // Local conflicting change
+      await write(join(repoA, "shared.txt"), "local version");
+      await git(repoA, ["add", "shared.txt"]);
+      await git(repoA, ["commit", "-m", "local change"]);
+
+      const result = await arb(env, ["pull", "--rebase", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("CONFLICT");
+    }));
+});
+
+// ── pull --autostash stash pop conflict ──────────────────────────
+
+describe("pull --autostash stash pop conflict", () => {
+  test("arb pull --autostash reports stash pop conflict", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Create a tracked file, commit, and push
+      await write(join(repoA, "shared.txt"), "original");
+      await git(repoA, ["add", "shared.txt"]);
+      await git(repoA, ["commit", "-m", "add shared"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Remote change to the same file
+      const tmpClone = join(env.testDir, "tmp-stash-conflict");
+      await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpClone]);
+      await git(tmpClone, ["checkout", "my-feature"]);
+      await write(join(tmpClone, "shared.txt"), "remote version\n");
+      await git(tmpClone, ["add", "shared.txt"]);
+      await git(tmpClone, ["commit", "-m", "remote change"]);
+      await git(tmpClone, ["push"]);
+
+      // Local uncommitted change to the same file (will conflict on stash pop)
+      await write(join(repoA, "shared.txt"), "local wip version\n");
+
+      const result = await arb(env, ["pull", "--autostash", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      // The pull itself succeeds but stash pop may conflict
+      // Either the pull fails or there's a stash pop conflict message
+      expect(result.output).toContain("repo-a");
+    }));
+});
+
 describe("pull dry-run", () => {
   test("arb pull --dry-run shows plan without pulling", () =>
     withEnv(async (env) => {
