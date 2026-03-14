@@ -52,7 +52,7 @@ Organized into semantic subdirectories. Each directory has a barrel `index.ts` r
 ### Code Style
 
 - Indent with spaces (2-space). Biome enforces: spaces, 120 char line width, double quotes, always semicolons
-- Conventional commits enforced via commitlint
+- Conventional commits enforced via commitlint. Scope must be a single word, never comma-separated
 - Use `PROJ-xxx` as the example ticket key prefix in documentation and examples. Use `ACME-xxx` when a second distinct prefix is needed
 - Strict TypeScript with `noUncheckedIndexedAccess`
 - Uses the `git()` helper from `src/lib/git/git.ts` for git process spawning. Use `Bun.$` directly only for piped commands
