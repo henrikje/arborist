@@ -6,6 +6,7 @@ import {
   assessPullRepo,
   evaluateSafeResetEligibility,
   formatPullPlan,
+  pullActionCell,
   resetRebasedSkips,
 } from "./pull";
 
@@ -1076,5 +1077,226 @@ describe("evaluateSafeResetEligibility", () => {
     expect(result.eligible).toBe(true);
     expect(result.reason).toBe("remote rewritten, no local commits to preserve");
     expect(result.oldTipShort).toBe("aaaaaaa");
+  });
+
+  test("returns blocked when old tip stdout is empty", async () => {
+    const result = await evaluateSafeResetEligibility(
+      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, replaced: 0, squashed: 0, rebasedKnown: true },
+      gitStub({
+        "rev-parse origin/feature@{1}": { exitCode: 0, stdout: "" },
+      }),
+    );
+    expect(result.eligible).toBe(false);
+    expect(result.blockedBy).toBe("previous remote tip unavailable");
+  });
+
+  test("returns blocked when current tip is unavailable", async () => {
+    const result = await evaluateSafeResetEligibility(
+      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, replaced: 0, squashed: 0, rebasedKnown: true },
+      gitStub({
+        "rev-parse origin/feature@{1}": { exitCode: 0, stdout: `${hashA}\n` },
+        "rev-parse origin/feature": { exitCode: 1 },
+      }),
+    );
+    expect(result.eligible).toBe(false);
+    expect(result.blockedBy).toBe("current remote tip unavailable");
+  });
+
+  test("returns blocked when current tip stdout is empty", async () => {
+    const result = await evaluateSafeResetEligibility(
+      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, replaced: 0, squashed: 0, rebasedKnown: true },
+      gitStub({
+        "rev-parse origin/feature@{1}": { exitCode: 0, stdout: `${hashA}\n` },
+        "rev-parse origin/feature": { exitCode: 0, stdout: "" },
+      }),
+    );
+    expect(result.eligible).toBe(false);
+    expect(result.blockedBy).toBe("current remote tip unavailable");
+  });
+
+  test("returns blocked when HEAD not based on previous remote tip", async () => {
+    const result = await evaluateSafeResetEligibility(
+      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, replaced: 0, squashed: 0, rebasedKnown: true },
+      gitStub({
+        "rev-parse origin/feature@{1}": { exitCode: 0, stdout: `${hashA}\n` },
+        "rev-parse origin/feature": { exitCode: 0, stdout: `${hashB}\n` },
+        "merge-base --is-ancestor aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa HEAD": { exitCode: 1 },
+      }),
+    );
+    expect(result.eligible).toBe(false);
+    expect(result.blockedBy).toBe("HEAD not based on previous remote tip");
+  });
+
+  test("returns blocked when rev-list count fails", async () => {
+    const result = await evaluateSafeResetEligibility(
+      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, replaced: 0, squashed: 0, rebasedKnown: true },
+      gitStub({
+        "rev-parse origin/feature@{1}": { exitCode: 0, stdout: `${hashA}\n` },
+        "rev-parse origin/feature": { exitCode: 0, stdout: `${hashB}\n` },
+        "merge-base --is-ancestor aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa HEAD": { exitCode: 0 },
+        "rev-list --count aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..HEAD": { exitCode: 1 },
+      }),
+    );
+    expect(result.eligible).toBe(false);
+    expect(result.blockedBy).toBe("unable to verify local commit ancestry");
+  });
+
+  test("returns blocked when rev-list count is non-numeric", async () => {
+    const result = await evaluateSafeResetEligibility(
+      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, replaced: 0, squashed: 0, rebasedKnown: true },
+      gitStub({
+        "rev-parse origin/feature@{1}": { exitCode: 0, stdout: `${hashA}\n` },
+        "rev-parse origin/feature": { exitCode: 0, stdout: `${hashB}\n` },
+        "merge-base --is-ancestor aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa HEAD": { exitCode: 0 },
+        "rev-list --count aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..HEAD": { exitCode: 0, stdout: "abc\n" },
+      }),
+    );
+    expect(result.eligible).toBe(false);
+    expect(result.blockedBy).toBe("unable to verify local commit ancestry");
+  });
+
+  test("returns blocked when local net-new commits detected via toPush > accounted", async () => {
+    const result = await evaluateSafeResetEligibility(
+      { repoDir, shareRemote, branch, toPush: 5, rebased: 2, replaced: 1, squashed: 0, rebasedKnown: true },
+      gitStub({
+        "rev-parse origin/feature@{1}": { exitCode: 0, stdout: `${hashA}\n` },
+        "rev-parse origin/feature": { exitCode: 0, stdout: `${hashB}\n` },
+        "merge-base --is-ancestor aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa HEAD": { exitCode: 0 },
+        "rev-list --count aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..HEAD": { exitCode: 0, stdout: "0\n" },
+      }),
+    );
+    expect(result.eligible).toBe(false);
+    expect(result.blockedBy).toBe("local net-new commits detected");
+  });
+
+  test("uses squashed for accounting when squashed > 0", async () => {
+    // When squashed > 0, accountedFor = toPush (all accounted for)
+    const result = await evaluateSafeResetEligibility(
+      { repoDir, shareRemote, branch, toPush: 3, rebased: 0, replaced: 0, squashed: 1, rebasedKnown: true },
+      gitStub({
+        "rev-parse origin/feature@{1}": { exitCode: 0, stdout: `${hashA}\n` },
+        "rev-parse origin/feature": { exitCode: 0, stdout: `${hashB}\n` },
+        "merge-base --is-ancestor aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa HEAD": { exitCode: 0 },
+        "rev-list --count aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa..HEAD": { exitCode: 0, stdout: "0\n" },
+      }),
+    );
+    expect(result.eligible).toBe(true);
+  });
+});
+
+describe("pullActionCell", () => {
+  function makeAssessment(overrides: Record<string, unknown> = {}): PullAssessment {
+    return {
+      repo: "repo-a",
+      repoDir: "/tmp/repo-a",
+      outcome: "will-pull",
+      behind: 3,
+      toPush: 0,
+      rebased: 0,
+      replaced: 0,
+      squashed: 0,
+      rebasedKnown: true,
+      fromBaseCount: 0,
+      pullMode: "merge",
+      pullStrategy: "merge-pull",
+      branch: "feature",
+      headSha: "abc1234",
+      shallow: false,
+      ...normalizePullAssessment(overrides),
+    } as PullAssessment;
+  }
+
+  function makeRemotesMap(...entries: [string, Partial<RepoRemotes>][]): Map<string, RepoRemotes> {
+    const map = new Map<string, RepoRemotes>();
+    for (const [repo, remotes] of entries) {
+      map.set(repo, { base: "origin", share: "origin", ...remotes });
+    }
+    return map;
+  }
+
+  test("safe-reset with needsStash shows autostash", () => {
+    const result = pullActionCell(
+      makeAssessment({
+        pullStrategy: "safe-reset",
+        needsStash: true,
+        safeResetTarget: "origin/feature",
+        safeResetReason: "remote rewritten",
+      }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("safe reset to origin/feature");
+    expect(result.plain).toContain("(autostash)");
+  });
+
+  test("safe-reset with stashPopConflictFiles shows stash pop conflict likely", () => {
+    const result = pullActionCell(
+      makeAssessment({
+        pullStrategy: "safe-reset",
+        needsStash: true,
+        stashPopConflictFiles: ["file.ts"],
+        safeResetTarget: "origin/feature",
+        safeResetReason: "remote rewritten",
+      }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("stash pop conflict likely");
+  });
+
+  test("safe-reset with empty stashPopConflictFiles shows stash pop conflict unlikely", () => {
+    const result = pullActionCell(
+      makeAssessment({
+        pullStrategy: "safe-reset",
+        needsStash: true,
+        stashPopConflictFiles: [],
+        safeResetTarget: "origin/feature",
+        safeResetReason: "remote rewritten",
+      }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("stash pop conflict unlikely");
+  });
+
+  test("safe-reset with fork text shows remote suffix", () => {
+    const result = pullActionCell(
+      makeAssessment({
+        pullStrategy: "safe-reset",
+        safeResetTarget: "fork/feature",
+        safeResetReason: "remote rewritten",
+      }),
+      makeRemotesMap(["repo-a", { base: "upstream", share: "fork" }]),
+    );
+    expect(result.plain).toContain("← fork");
+  });
+
+  test("forced-reset with safeReset.reason shows reason", () => {
+    const result = pullActionCell(
+      makeAssessment({
+        pullStrategy: "forced-reset",
+        toPush: 3,
+        rebased: 2,
+        safeResetTarget: "origin/feature",
+        safeResetReason: "discards local rebase",
+      }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("forced reset to origin/feature");
+    expect(result.plain).toContain("1 unpushed commit will be lost");
+  });
+
+  test("shows diffStats in verbose mode via formatPullPlan", () => {
+    const plan = formatPullPlan(
+      [
+        makeAssessment({
+          commits: [{ shortHash: "aaa1111", subject: "feat: change" }],
+          totalCommits: 1,
+          diffStats: { files: 3, insertions: 10, deletions: 5 },
+        }),
+      ],
+      makeRemotesMap(["repo-a", {}]),
+      true,
+    );
+    expect(plan).toContain("3 files changed");
+    expect(plan).toContain("+10");
+    expect(plan).toContain("-5");
   });
 });
