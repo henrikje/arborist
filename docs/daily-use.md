@@ -1,6 +1,6 @@
-## Day-to-day usage
+# Day-to-day usage
 
-The sections below go deeper on the commands you use when working in a workspace. See `arb help <command>` for all options.
+Once you have a workspace, most of your time is spent creating branches, checking status, running commands, and committing — the same things you do in any Git project, just coordinated across repos. This page covers the commands you'll use most. For synchronization (rebase, push, pull), see [Staying in sync](sync.md).
 
 ## Create a workspace
 
@@ -24,35 +24,19 @@ arb create dark-mode --branch "feat/dark-mode" --base develop --all-repos
 - `arb create <name>` prompts for repos only and uses `<name>` as the branch by default.
 - `arb create --branch <branch>` derives the workspace name from the branch tail (text after the last `/`).
 
-If you've configured default repos with `arb repo default`, they are pre-selected in the interactive picker and used as the fallback when no repos are specified in non-interactive mode. See [Managing workspaces § Default repos](workspaces.md#default-repos) for details.
+If you've configured default repos with `arb repo default`, they are pre-selected in the interactive picker and used as the fallback when no repos are specified in non-interactive mode. See [Managing workspaces - Default repos](workspaces.md#default-repos) for details.
 
 See `arb create --help` for all options.
 
-## Work in your repos as usual
+## Work in your repos
 
-Each directory in a workspace is a working copy of a repository. You edit files, run builds, and use Git exactly as you normally would:
-
-```bash
-cd ~/my-project/fix-login/frontend
-# hack hack hack
-git add -p
-git commit -m "Fix the bug on the login page"
-```
-
-There is no `arb commit` — you commit in each repo individually.
-
-The commands below run from inside a workspace or repo. You can also target a workspace from anywhere using `-C`:
+Each directory in a workspace is a standard Git working copy. You edit files, run builds, and use Git exactly as you normally would — there is no `arb commit`. Use `-C` to target a workspace from anywhere, just like `git -C`:
 
 ```bash
-arb -C ~/my-project status                    # run from the project root
-arb -C ~/my-project/fix-login status          # target a specific workspace
+arb -C ~/my-project/fix-login status
 ```
-
-`-C` works like `git -C` — it changes the working directory before any command runs.
 
 ## Check status
-
-Once you've made some changes, you can check the status of your workspace:
 
 ```bash
 arb status
@@ -91,79 +75,6 @@ Use `,` for OR (match any term) and `+` for AND (match all terms). `+` binds tig
 See `arb status --help` for all options.
 
 When a branch has been merged, the detected PR number from the merge commit, squash commit, or branch tip commit subject appears in `arb status` (e.g. `merged (#123), gone`). Detected values are heuristic — they come from local git data, not API calls.
-
-## Stay in sync
-
-Arborist's synchronization commands — `push`, `rebase`, and `merge` — keep your workspace current. They automatically fetch all repos before operating, so you always work against the latest remote state. Use `--no-fetch` (`-N`) to skip when refs are known to be fresh. `pull` always fetches. Dashboard commands (`status`, `list`) also fetch by default. Content commands (`log`, `diff`) do not fetch by default — use `--fetch` to opt in.
-
-**Integration axis** — when the base branch has moved forward (e.g. teammates merged PRs to `main`), rebase your feature branches onto it:
-
-```bash
-arb rebase
-```
-
-If a rebase hits conflicts, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions. This way you see the complete state of all repos in one pass instead of re-running for each conflict. If you re-run while a repo is still mid-rebase, it is automatically skipped. Prefer merge commits? Use `arb merge` instead — same workflow, uses `git merge`.
-
-Arb auto-detects each repo's default branch, so repos using `main`, `master`, or `develop` coexist without extra configuration.
-
-**Sharing axis** — pull teammate changes to your feature branch, or push your local commits:
-
-```bash
-arb pull
-arb pull --rebase     # pull with rebase instead of the default merge
-arb pull --merge      # pull with merge commit
-arb push
-arb push --force      # when genuinely diverged from remote (prompts for confirmation)
-```
-
-After a rebase, amend, or squash, `arb push` detects that all remote commits are outdated (already reflected in your local history) and pushes automatically with `--force-with-lease` — no `--force` flag needed. Use `--force` only when the remote has genuinely new commits from someone else.
-
-When a collaborator force-pushes a rebased branch and you have no unique local commits to preserve, `arb pull --merge` shows a **safe reset** action in the plan and resets to the rewritten remote tip instead of attempting a three-way merge.
-
-If you add commits to a branch that was already merged (squash or regular), Arborist detects it and blocks `arb push` with a warning. Run `arb rebase` to replay only the new commits onto the updated base, then `arb push` and create a new PR.
-
-If you intentionally want to push an already merged branch anyway (for example to restore a deleted remote branch), use `arb push --include-merged`.
-
-If a repo is on a different branch than the workspace expects (shown as "wrong branch" in status), sync commands skip it by default. Use `--include-wrong-branch` on `arb push`, `arb pull`, `arb rebase`, or `arb merge` to include it. The repo is pushed to / pulled from its actual branch, and the plan output annotates it for visibility.
-
-Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
-
-**Starting fresh** — discard all local changes and reset every repo to the remote share branch (or the base branch if never pushed):
-
-```bash
-arb reset
-```
-
-This resolves the correct remote and branch per repo automatically. When a remote share branch exists (the feature branch has been pushed), it resets to that. When no remote branch exists, it falls back to the base branch. Untracked files are preserved. The plan shows what will be lost (dirty files, unpushed commits) and warns prominently when unpushed commits are at risk.
-
-To always reset to the base branch (e.g. `origin/main`), even when a remote share branch exists:
-
-```bash
-arb reset --base
-```
-
-**Changing the base branch** — switch the workspace to track a different base branch:
-
-```bash
-arb branch base develop        # set base to develop
-arb branch base --unset        # remove base (track repo default)
-arb branch base                # show current base
-```
-
-This only changes the config — it does not rebase or reset. To start fresh from the new base, follow up with `arb reset`. To replay your commits onto the new base, use `arb rebase --retarget` instead.
-
-All sync commands support `--where` (`-w`) to filter which repos are included in the plan:
-
-```bash
-arb push --where ^behind-base         # only push repos that are already rebased
-arb push --where ^behind-base+^diverged  # only push repos that are fully ready
-arb rebase --where ^diverged          # skip diverged repos, rebase the easy ones
-arb merge --where ^diverged           # same for merge — avoid likely conflicts
-```
-
-Positional repo names and `--where` compose with AND logic — `arb push repo-a --where ^behind-base` only pushes repo-a if it is also up to date with the base branch.
-
-All commands show a plan before proceeding. Add `--verbose` (`-v`) to see the actual commits involved — useful when you want to know *what* you're rebasing onto, not just how many commits.
 
 ## Run commands across repos
 

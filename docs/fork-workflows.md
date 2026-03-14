@@ -46,27 +46,13 @@ In fork setups, `arb status` shows the upstream remote prefix in the BASE column
 
 Here `api` is a fork (base is `upstream/main`) while `web` uses a single origin (base is `origin/main`).
 
-## Two axes of synchronization
+## Daily workflow with forks
 
-Arborist tracks two independent relationships per repo, each mapped to a remote role:
-
-| Axis | Remote | Column | Commands | Flag | Auto-fetch |
-|------|--------|--------|----------|------|------------|
-| Integration | base | BASE | rebase, merge | behind base | yes |
-| Sharing | share | SHARE | push, pull | behind share | yes |
-
-For single-remote repos both roles point to `origin` and the distinction is invisible — it only matters for fork setups where each role maps to a different remote.
-
-## Stacked workspaces
-
-Arborist supports stacking feature branches using `arb create --base`:
+A typical session with a forked repo looks the same as any other — Arborist routes commands to the right remote automatically:
 
 ```bash
-arb create auth-ui --base feat/auth -b feat/auth-ui -a
+arb rebase          # rebases onto upstream/main (the base remote)
+arb push            # pushes to origin (your fork, the share remote)
 ```
 
-This creates a workspace where all repos branch from `feat/auth` instead of the default branch. `arb rebase` and `arb merge` target `feat/auth` as the base.
-
-When the base branch is merged into the default branch (e.g. via a PR), `arb status` shows **base merged** and `arb rebase` skips the affected repos with a hint. Use `arb rebase --retarget` to rebase onto the default branch and update the workspace config. For squash merges, `--retarget` uses `git rebase --onto` to avoid replaying the base branch's commits.
-
-For deeper stacks (e.g. A → B → C), when B is merged into A but A is not the default branch, use `arb rebase --retarget feat/A` to retarget C from B to A. The workspace config is updated to set `feat/A` as the new base. Retarget is all-or-nothing across stacked repos — if any stacked repo is blocked, the entire operation is refused so the workspace config stays consistent.
+No extra flags needed. The remote role resolution handles the routing, so `arb rebase` always targets the canonical repo and `arb push` always goes to your fork.
