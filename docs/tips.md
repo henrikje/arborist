@@ -65,10 +65,10 @@ arb exec git checkout -- .            # discard all unstaged changes across repo
 
 ## Quick workspace triage
 
-Use `arb list` with `--fetch` and `--where` to triage across all workspaces:
+Use `arb list` with `--where` to triage across all workspaces:
 
 ```bash
-arb list --fetch --where at-risk      # which workspaces might lose work?
+arb list --where at-risk              # which workspaces might lose work?
 arb list --where stale                # which workspaces haven't been touched lately?
 ```
 

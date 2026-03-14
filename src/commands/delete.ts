@@ -10,7 +10,7 @@ import {
   formatRelativeTimeParts,
 } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, branchExistsLocally, git, remoteBranchExists } from "../lib/git";
+import { GitCache, branchExistsLocally, git, gitWithTimeout, networkTimeout, remoteBranchExists } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { EMPTY_CELL, cell } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -420,7 +420,13 @@ async function executeDelete(
       }
       if (shareRemote) {
         if (await remoteBranchExists(`${ctx.reposDir}/${repo}`, branch, shareRemote)) {
-          const pushResult = await git(`${ctx.reposDir}/${repo}`, "push", shareRemote, "--delete", branch);
+          const pushTimeout = networkTimeout("ARB_PUSH_TIMEOUT", 120);
+          const pushResult = await gitWithTimeout(`${ctx.reposDir}/${repo}`, pushTimeout, [
+            "push",
+            shareRemote,
+            "--delete",
+            branch,
+          ]);
           if (pushResult.exitCode !== 0) {
             failedRemoteDeletes.push(repo);
           }

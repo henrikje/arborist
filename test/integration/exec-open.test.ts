@@ -170,7 +170,7 @@ describe("exec", () => {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("Failed:");
+      expect(result.output).toContain("2 failed");
     }));
 
   test("arb exec --parallel --repo targets specific repo", () =>

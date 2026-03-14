@@ -94,7 +94,7 @@ When multiple operations manage the same `.arb/` subsystem (repos, templates), g
 
 ### Fetch behavior
 
-**Sync commands** (`push`, `rebase`, `merge`), **dashboard commands** (`status`, `list`), **membership commands** (`attach`, `create`, `detach`), and **plan commands** (`delete`, `clean`) fetch by default. `-N, --no-fetch` skips the pre-fetch when refs are fresh. Dashboard commands use phased rendering for instant feedback. Short-option assignments: `-N` → `--no-fetch` (common action), `-f` → `--force` (conventional), `--fetch` has no short option (infrequent — fetch is the default).
+**Sync commands** (`push`, `rebase`, `merge`), **dashboard commands** (`status`, `list`), **membership commands** (`attach`, `create`, `detach`), and **plan commands** (`delete`) fetch by default. **`branch show`** fetches by default in verbose mode only. `-N, --no-fetch` skips the pre-fetch when refs are fresh. Dashboard commands use phased rendering for instant feedback. Short-option assignments: `-N` → `--no-fetch` (common action), `-f` → `--force` (conventional), `--fetch` has no short option (infrequent — fetch is the default).
 
 **`pull`** always fetches — it inherently needs fresh remote state to assess what to pull. It does not offer `--no-fetch`.
 
@@ -146,7 +146,7 @@ Recovery depends on whether failures are independent or systemic.
 
 ### Table spacing convention
 
-**Plan commands** (state-changing: `rebase`, `merge`, `push`, `pull`, `delete`, `branch rename`, `clean`): blank line before and after the table. The blank lines separate the plan from fetch output above and the confirmation prompt below.
+**Plan commands** (state-changing: `rebase`, `merge`, `push`, `pull`, `delete`, `branch rename`): blank line before and after the table. The blank lines separate the plan from fetch output above and the confirmation prompt below.
 
 **Overview commands** (read-only: `status`, `list`, `branch`, `repo list`, `template list`): no surrounding blank lines. The table is the entire output; extra padding wastes screen real estate.
 

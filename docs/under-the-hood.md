@@ -7,19 +7,19 @@ Arb uses marker directories and Git worktrees — no database, no daemon, no con
 ```
 ~/my-project/
 ├── .arb/
-│   ├── config                   # project-level settings (e.g. default repos)
+│   ├── config.json              # project-level settings (e.g. default repos)
 │   └── repos/
 │       ├── frontend/            # canonical clone
 │       ├── backend/
 │       └── shared/
 ├── fix-login/
 │   ├── .arbws/
-│   │   └── config               # branch = fix-login
+│   │   └── config.json          # {"branch": "fix-login"}
 │   ├── frontend/                # git worktree → .arb/repos/frontend
 │   └── backend/
 └── dark-mode/
     ├── .arbws/
-    │   └── config               # branch = feat/dark-mode
+    │   └── config.json          # {"branch": "feat/dark-mode"}
     ├── frontend/
     └── shared/
 ```
