@@ -9,8 +9,8 @@ import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { runPhasedRender } from "../lib/render";
-import { type RepoStatus, computeFlags, gatherWorkspaceSummary } from "../lib/status";
-import { type FetchResult, fetchSuffix, getUnchangedRepos, parallelFetch, reportFetchFailures } from "../lib/sync";
+import { type RepoRefs, computeFlags, gatherRepoRefs, gatherWorkspaceSummary } from "../lib/status";
+import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/sync";
 import { error, info, isTTY, listenForAbortKeypress, stderr } from "../lib/terminal";
 import {
   rejectExplicitBaseRemotePrefix,
@@ -73,7 +73,7 @@ function buildBranchSummaryNodes(branch: string, base: string | null, repos: Rep
   return nodes;
 }
 
-function buildVerboseNodes(repos: RepoStatus[], branch: string, base: string | null): OutputNode[] {
+function buildVerboseNodes(repos: RepoRefs[], branch: string, base: string | null): OutputNode[] {
   const baseDisplay = base ?? "(default branch)";
   const nodes: OutputNode[] = [
     {
@@ -224,6 +224,9 @@ async function runVerboseBranch(
   const cache = await GitCache.create();
   const repoDirs = workspaceRepoDirs(wsDir);
 
+  const gatherRefs = () =>
+    Promise.all(repoDirs.map((dir) => gatherRepoRefs(dir, ctx.reposDir, base, undefined, cache)));
+
   if (options.fetch !== false && !options.json && isTTY()) {
     // Phased rendering: stale → fetch → fresh
     const repoNames = repoDirs.map((d) => basename(d));
@@ -237,16 +240,14 @@ async function runVerboseBranch(
       fetchResults?: Map<string, FetchResult>;
       aborted?: boolean;
       staleOutput?: string;
-      staleRepos?: RepoStatus[];
     } = {};
 
     try {
       await runPhasedRender([
         {
           render: async () => {
-            const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
-            state.staleRepos = summary.repos;
-            state.staleOutput = formatVerboseOutput(summary.repos, branch, base);
+            const repos = await gatherRefs();
+            state.staleOutput = formatVerboseOutput(repos, branch, base);
             return state.staleOutput + fetchSuffix(repoNames.length, { abortable: true });
           },
           write: stderr,
@@ -263,14 +264,8 @@ async function runVerboseBranch(
               return state.staleOutput as string;
             }
             cache.invalidateAfterFetch();
-            // Reuse phase-1 results for repos whose fetch was a no-op
-            const unchanged = getUnchangedRepos(state.fetchResults);
-            const previousResults = new Map<string, RepoStatus>();
-            for (const repo of state.staleRepos ?? []) {
-              if (unchanged.has(repo.name)) previousResults.set(repo.name, repo);
-            }
-            const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache, { previousResults });
-            return formatVerboseOutput(summary.repos, branch, base);
+            const repos = await gatherRefs();
+            return formatVerboseOutput(repos, branch, base);
           },
           write: (output) => process.stdout.write(output),
         },
@@ -293,17 +288,17 @@ async function runVerboseBranch(
     reportFetchFailures(repoNames, results);
   }
 
-  const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
+  const repos = await gatherRefs();
 
   if (options.json) {
-    process.stdout.write(formatVerboseJson(summary.repos, branch, base));
+    process.stdout.write(formatVerboseJson(repos, branch, base));
     return;
   }
 
-  process.stdout.write(formatVerboseOutput(summary.repos, branch, base));
+  process.stdout.write(formatVerboseOutput(repos, branch, base));
 }
 
-function buildVerboseRows(repos: RepoStatus[], branch: string): VerboseRow[] {
+function buildVerboseRows(repos: RepoRefs[], branch: string): VerboseRow[] {
   return repos.map((repo) => {
     const { headMode } = repo.identity;
     const detached = headMode.kind === "detached";
@@ -339,13 +334,13 @@ function buildVerboseRows(repos: RepoStatus[], branch: string): VerboseRow[] {
   });
 }
 
-function formatVerboseOutput(repos: RepoStatus[], branch: string, base: string | null): string {
+function formatVerboseOutput(repos: RepoRefs[], branch: string, base: string | null): string {
   const nodes = buildVerboseNodes(repos, branch, base);
   const rCtx: RenderContext = { tty: isTTY() };
   return render(nodes, rCtx);
 }
 
-function formatVerboseJson(repos: RepoStatus[], branch: string, base: string | null): string {
+function formatVerboseJson(repos: RepoRefs[], branch: string, base: string | null): string {
   const jsonRepos: BranchJsonRepo[] = repos.map((repo) => {
     const { headMode } = repo.identity;
     const repoBranch = headMode.kind === "attached" ? headMode.branch : null;

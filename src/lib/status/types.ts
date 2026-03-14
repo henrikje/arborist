@@ -2,8 +2,27 @@ import type { GitOperation } from "../git/git";
 
 // ── 5-Section Model Types ──
 
-export interface RepoStatus {
+/** Lightweight ref topology — which branch a repo is on and where its base/share refs point.
+ * Strict subset of RepoStatus: every field exists in RepoStatus with the same type,
+ * but expensive-to-gather analysis fields (counts, merge, divergence) are absent. */
+export interface RepoRefs {
   name: string;
+  identity: {
+    headMode: { kind: "attached"; branch: string } | { kind: "detached" };
+  };
+  base: {
+    remote: string | null;
+    ref: string;
+    configuredRef: string | null;
+  } | null;
+  share: {
+    remote: string;
+    ref: string | null;
+    refMode: "noRef" | "implicit" | "configured" | "gone";
+  };
+}
+
+export interface RepoStatus extends RepoRefs {
   identity: {
     worktreeKind: "full" | "linked";
     headMode: { kind: "attached"; branch: string } | { kind: "detached" };

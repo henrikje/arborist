@@ -24,7 +24,7 @@ import { workspaceRepoDirs } from "../workspace/repos";
 import { computeSummaryAggregates } from "./flags";
 import { extractPrNumber } from "./pr-detection";
 import { detectTicketFromName } from "./ticket-detection";
-import type { RepoStatus, WorkspaceSummary } from "./types";
+import type { RepoRefs, RepoStatus, WorkspaceSummary } from "./types";
 
 /** Build the full git ref for a base section (e.g. "origin/main"). */
 export function baseRef(base: NonNullable<RepoStatus["base"]>): string {
@@ -424,6 +424,72 @@ export async function gatherRepoStatus(
     lastActivity: null,
     lastActivityFile: null,
   };
+}
+
+/** Lightweight ref-topology gather — resolves identity, base ref, and share ref
+ * without running expensive rev-list, merge detection, or divergence analysis. */
+export async function gatherRepoRefs(
+  repoDir: string,
+  reposDir: string,
+  configBase: string | null,
+  remotes: RepoRemotes | undefined,
+  cache: GitCache,
+): Promise<RepoRefs> {
+  const repo = basename(repoDir);
+  const repoPath = `${reposDir}/${repo}`;
+
+  // Identity: resolve HEAD branch
+  const branchResult = await git(repoDir, "symbolic-ref", "--short", "HEAD");
+  const actualBranch = branchResult.exitCode === 0 ? branchResult.stdout.trim() : "";
+  const detached = actualBranch === "";
+  const headMode: RepoRefs["identity"]["headMode"] = detached
+    ? { kind: "detached" }
+    : { kind: "attached", branch: actualBranch };
+
+  const resolvedRemotes = remotes ?? (await cache.resolveRemotes(repoPath));
+  const baseRemote = resolvedRemotes.base;
+  const shareRemote = resolvedRemotes.share;
+
+  // Base: resolve ref identity only (no ahead/behind counts)
+  let baseRefs: RepoRefs["base"] = null;
+  if (!detached) {
+    let defaultBranch: string | null = null;
+    let fellBack = false;
+    if (configBase) {
+      const baseExists = await remoteBranchExists(repoPath, configBase, baseRemote);
+      if (baseExists) defaultBranch = configBase;
+    }
+    if (!defaultBranch && baseRemote) {
+      defaultBranch = await cache.getDefaultBranch(repoPath, baseRemote);
+      if (configBase && defaultBranch) fellBack = true;
+    }
+    if (defaultBranch) {
+      baseRefs = {
+        remote: baseRemote ?? null,
+        ref: defaultBranch,
+        configuredRef: fellBack ? configBase : null,
+      };
+    }
+  }
+
+  // Share: resolve ref and refMode only (no push/pull counts, no divergence)
+  let shareRefs: RepoRefs["share"];
+  if (!detached) {
+    const upstreamResult = await git(repoDir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}");
+    if (upstreamResult.exitCode === 0) {
+      shareRefs = { remote: shareRemote, ref: upstreamResult.stdout.trim(), refMode: "configured" };
+    } else if (await remoteBranchExists(repoDir, actualBranch, shareRemote)) {
+      shareRefs = { remote: shareRemote, ref: `${shareRemote}/${actualBranch}`, refMode: "implicit" };
+    } else {
+      const configRemote = await git(repoDir, "config", `branch.${actualBranch}.remote`);
+      const isGone = configRemote.exitCode === 0 && configRemote.stdout.trim().length > 0;
+      shareRefs = { remote: shareRemote, ref: null, refMode: isGone ? "gone" : "noRef" };
+    }
+  } else {
+    shareRefs = { remote: shareRemote, ref: null, refMode: "noRef" };
+  }
+
+  return { name: repo, identity: { headMode }, base: baseRefs, share: shareRefs };
 }
 
 export async function gatherWorkspaceSummary(
