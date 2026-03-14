@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { RepoRemotes } from "../lib/git";
 import { makeRepo } from "../lib/status";
-import { type PushAssessment, applyForcePushPolicy, assessPushRepo, formatPushPlan } from "./push";
+import { type PushAssessment, applyForcePushPolicy, assessPushRepo, formatPushPlan, pushActionCell } from "./push";
 
 const DIR = "/tmp/test-repo";
 const SHA = "abc1234";
@@ -1271,5 +1271,306 @@ describe("applyForcePushPolicy", () => {
     expect(nextAssessments[0]?.outcome).toBe("will-push");
     expect(nextAssessments[1]?.outcome).toBe("will-force-push-outdated");
     expect(nextAssessments[2]?.outcome).toBe("skip");
+  });
+
+  test("includes rebased hint in skip reason", () => {
+    const assessments = [makeAssessment({ rebased: 3 })];
+    const nextAssessments = applyForcePushPolicy(assessments, false);
+    expect(nextAssessments[0]?.skipReason).toContain("3 rebased");
+  });
+});
+
+describe("pushActionCell", () => {
+  function makeAssessment(overrides: Record<string, unknown> = {}): PushAssessment {
+    return {
+      repo: "repo-a",
+      repoDir: "/tmp/repo-a",
+      outcome: "will-push",
+      ahead: 2,
+      behind: 0,
+      rebased: 0,
+      replaced: 0,
+      squashed: 0,
+      baseAhead: 0,
+      baseRef: "main",
+      branch: "feature",
+      shareRemote: "origin",
+      newBranch: false,
+      headSha: "abc1234",
+      recreate: false,
+      behindBase: 0,
+      shallow: false,
+      ...normalizePushAssessment(overrides),
+    } as PushAssessment;
+  }
+
+  function makeRemotesMap(...entries: [string, Partial<RepoRemotes>][]): Map<string, RepoRemotes> {
+    const map = new Map<string, RepoRemotes>();
+    for (const [repo, remotes] of entries) {
+      map.set(repo, { base: "origin", share: "origin", ...remotes });
+    }
+    return map;
+  }
+
+  test("will-force-push-outdated with baseAhead shows from-base breakdown", () => {
+    const result = pushActionCell(
+      makeAssessment({ outcome: "will-force-push-outdated", ahead: 5, behind: 2, baseAhead: 3, rebased: 1 }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("from main");
+    expect(result.plain).toContain("1 rebased");
+    expect(result.plain).toContain("replaces 2 outdated");
+  });
+
+  test("will-force-push-outdated without baseAhead shows simple commit count", () => {
+    const result = pushActionCell(
+      makeAssessment({ outcome: "will-force-push-outdated", ahead: 3, behind: 2, baseAhead: 0 }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("3 commits to push");
+    expect(result.plain).toContain("replaces 2 outdated");
+  });
+
+  test("will-force-push-outdated with behindBase shows behind base suffix", () => {
+    const result = pushActionCell(
+      makeAssessment({ outcome: "will-force-push-outdated", ahead: 3, behind: 2, behindBase: 5 }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("5 behind base");
+  });
+
+  test("will-force-push with baseAhead shows from-base breakdown", () => {
+    const result = pushActionCell(
+      makeAssessment({ outcome: "will-force-push", ahead: 4, behind: 1, baseAhead: 2, rebased: 1 }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("from main");
+    expect(result.plain).toContain("1 rebased");
+    expect(result.plain).toContain("(force)");
+  });
+
+  test("will-force-push with behindBase shows behind base suffix", () => {
+    const result = pushActionCell(
+      makeAssessment({ outcome: "will-force-push", ahead: 3, behind: 1, behindBase: 4, baseAhead: 1 }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("4 behind base");
+  });
+
+  test("will-force-push without baseAhead shows generic force text", () => {
+    const result = pushActionCell(
+      makeAssessment({ outcome: "will-force-push", ahead: 2, behind: 3 }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("to push (force");
+    expect(result.plain).toContain("3 behind origin");
+  });
+
+  test("will-push with behindBase shows behind base suffix", () => {
+    const result = pushActionCell(
+      makeAssessment({ outcome: "will-push", ahead: 2, behindBase: 3 }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("3 behind base");
+  });
+
+  test("wrong branch shows branch annotation", () => {
+    const result = pushActionCell(
+      makeAssessment({ outcome: "will-push", ahead: 2, wrongBranch: true, branch: "other" }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("(branch: other)");
+  });
+
+  test("fork workflow shows remote suffix", () => {
+    const result = pushActionCell(
+      makeAssessment({ outcome: "will-push", ahead: 2 }),
+      makeRemotesMap(["repo-a", { base: "upstream", share: "origin" }]),
+    );
+    expect(result.plain).toContain("→ origin");
+  });
+
+  test("recreate shows recreate suffix", () => {
+    const result = pushActionCell(
+      makeAssessment({ outcome: "will-push", ahead: 1, recreate: true }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("recreate: origin/feature");
+  });
+
+  test("new branch shows new branch suffix", () => {
+    const result = pushActionCell(
+      makeAssessment({ outcome: "will-push", ahead: 1, newBranch: true }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("new branch: origin/feature");
+  });
+});
+
+describe("assessPushRepo — additional branches", () => {
+  test("skips when remote branch gone and already merged", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: null,
+          ahead: 0,
+          behind: 0,
+          merge: { kind: "merge" },
+          baseMergedIntoDefault: null,
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("skip");
+    expect(a.skipFlag).toBe("already-merged");
+  });
+
+  test("recreates remote branch when gone and not merged", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
+        base: { remote: "origin", ref: "main", configuredRef: null, ahead: 3, behind: 0, baseMergedIntoDefault: null },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("will-push");
+    expect(a.recreate).toBe(true);
+    expect(a.ahead).toBe(3);
+  });
+
+  test("skips gone branch with merged-new-work", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: null,
+          ahead: 2,
+          behind: 0,
+          merge: { kind: "merge", newCommitsAfter: 2 },
+          baseMergedIntoDefault: null,
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("skip");
+    expect(a.skipFlag).toBe("merged-new-work");
+  });
+
+  test("skips when behind remote (toPush=0, toPull>0)", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 5 },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("skip");
+    expect(a.skipFlag).toBe("behind-remote");
+    expect(a.skipReason).toContain("pull first");
+  });
+
+  test("will-force-push-outdated when all remote commits are outdated", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 3,
+          toPull: 2,
+          outdated: { total: 2, rebased: 2, replaced: 0, squashed: 0 },
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("will-force-push-outdated");
+    expect(a.ahead).toBe(3);
+    expect(a.behind).toBe(2);
+  });
+
+  test("will-force-push when diverged but not all outdated", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 3,
+          toPull: 2,
+          outdated: { total: 1, rebased: 1, replaced: 0, squashed: 0 },
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("will-force-push");
+    expect(a.ahead).toBe(3);
+    expect(a.behind).toBe(2);
+  });
+
+  test("includes wrong branch when includeWrongBranch set", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
+        share: { remote: "origin", ref: "origin/other", refMode: "configured", toPush: 2, toPull: 0 },
+      }),
+      DIR,
+      "feature",
+      SHA,
+      { includeWrongBranch: true },
+    );
+    expect(a.outcome).toBe("will-push");
+    expect(a.wrongBranch).toBe(true);
+    expect(a.branch).toBe("other");
+  });
+
+  test("skips when merged (not gone) without include-merged", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: null,
+          ahead: 0,
+          behind: 0,
+          merge: { kind: "squash" },
+          baseMergedIntoDefault: null,
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("skip");
+    expect(a.skipFlag).toBe("already-merged");
+  });
+
+  test("skips when no commits to push (noRef with ahead=0)", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: { remote: "origin", ref: null, refMode: "noRef", toPush: null, toPull: null },
+        base: { remote: "origin", ref: "main", configuredRef: null, ahead: 0, behind: 0, baseMergedIntoDefault: null },
+      }),
+      DIR,
+      "feature",
+      SHA,
+    );
+    expect(a.outcome).toBe("skip");
+    expect(a.skipFlag).toBe("no-commits");
   });
 });
