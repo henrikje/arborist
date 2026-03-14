@@ -88,6 +88,8 @@ interface PullAssessmentBase {
   behind: number;
   toPush: number;
   rebased: number;
+  replaced: number;
+  squashed: number;
   rebasedKnown: boolean;
   fromBaseCount: number;
   pullMode: "rebase" | "merge";
