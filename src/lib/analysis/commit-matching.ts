@@ -91,10 +91,35 @@ export async function detectReplacedCommits(
 
   if (reflogResult.exitCode !== 0 || remoteResult.exitCode !== 0) return null;
 
-  const reflogHashes = new Set<string>();
+  const reflogTips: string[] = [];
   for (const line of reflogResult.stdout.split("\n")) {
     const hash = line.trim();
-    if (hash) reflogHashes.add(hash);
+    if (hash) reflogTips.push(hash);
+  }
+
+  const reflogHashes = new Set(reflogTips);
+
+  // Extend with ancestors of older reflog tips to capture fast-forward intermediates.
+  // After a fast-forward pull (A → A-B-C-D), only the new tip D enters the reflog.
+  // Walking ancestry from D backward (--not HEAD) captures intermediates B, C.
+  const olderTips = [...new Set(reflogTips.slice(1))];
+  if (olderTips.length > 0) {
+    const extStart = isDebug() ? performance.now() : 0;
+    const extendedResult = await git(repoDir, "log", "--format=%H", "--max-count=1000", ...olderTips, "--not", "HEAD");
+    if (isDebug()) {
+      const extElapsed = performance.now() - extStart;
+      debugGit(
+        `git -C ${repoDir} log --format=%H --max-count=1000 <${olderTips.length} older tips> --not HEAD`,
+        extElapsed,
+        extendedResult.exitCode,
+      );
+    }
+    if (extendedResult.exitCode === 0) {
+      for (const line of extendedResult.stdout.split("\n")) {
+        const hash = line.trim();
+        if (hash) reflogHashes.add(hash);
+      }
+    }
   }
 
   const replacedHashes = new Set<string>();
