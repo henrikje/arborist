@@ -17,3 +17,4 @@ export {
   latestCommitDate,
 } from "./time";
 export type { ArbContext } from "./types";
+export { type UpdateCheckResult, checkForUpdate } from "./update";
