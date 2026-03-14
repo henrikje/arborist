@@ -430,4 +430,66 @@ describe("reset", () => {
       expect(result.output).toContain("upstream/");
       expect(result.output).toContain("Reset 1 repo");
     }));
+
+  // ── Merged branch skip tests ──
+
+  test("skips repo when branch is already merged into base", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+      const originA = join(env.originDir, "repo-a.git");
+
+      // Add a commit and push the feature branch
+      await write(join(repoA, "feature.txt"), "feature work");
+      await git(repoA, ["add", "feature.txt"]);
+      await git(repoA, ["commit", "-m", "feature work"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Simulate merge: merge the feature branch into main on the origin bare repo.
+      // Use a detached HEAD worktree to avoid conflicting with the bare repo's HEAD.
+      const tmpMerge = join(env.testDir, "_tmp-merge-a");
+      const mainSha = (await git(originA, ["rev-parse", "main"])).trim();
+      await git(originA, ["worktree", "add", "--detach", tmpMerge, mainSha]);
+      await git(tmpMerge, ["merge", "my-feature", "--no-ff", "-m", "Merge my-feature"]);
+      const mergeSha = (await git(tmpMerge, ["rev-parse", "HEAD"])).trim();
+      await git(originA, ["update-ref", "refs/heads/main", mergeSha]);
+      await git(originA, ["worktree", "remove", tmpMerge]);
+
+      // With --base, resetting a merged branch should skip
+      const result = await arb(env, ["reset", "--base", "--dry-run"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("already merged into main");
+    }));
+
+  test("allows reset to share even when branch is merged into base", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+      const originA = join(env.originDir, "repo-a.git");
+
+      // Add a commit, push, then add another unpushed commit
+      await write(join(repoA, "feature.txt"), "feature work");
+      await git(repoA, ["add", "feature.txt"]);
+      await git(repoA, ["commit", "-m", "feature work"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      await write(join(repoA, "extra.txt"), "extra work");
+      await git(repoA, ["add", "extra.txt"]);
+      await git(repoA, ["commit", "-m", "extra work"]);
+
+      // Simulate merge into main on the origin
+      const tmpMerge = join(env.testDir, "_tmp-merge-a2");
+      const mainSha = (await git(originA, ["rev-parse", "main"])).trim();
+      await git(originA, ["worktree", "add", "--detach", tmpMerge, mainSha]);
+      await git(tmpMerge, ["merge", "my-feature", "--no-ff", "-m", "Merge my-feature"]);
+      const mergeSha = (await git(tmpMerge, ["rev-parse", "HEAD"])).trim();
+      await git(originA, ["update-ref", "refs/heads/main", mergeSha]);
+      await git(originA, ["worktree", "remove", tmpMerge]);
+
+      // Without --base, reset targets share branch — should NOT skip despite being merged
+      const result = await arb(env, ["reset", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("reset to origin/my-feature");
+      expect(result.output).toContain("Reset 1 repo");
+    }));
 });
