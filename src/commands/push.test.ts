@@ -1331,12 +1331,29 @@ describe("pushActionCell", () => {
     expect(result.plain).toContain("replaces 2 outdated");
   });
 
-  test("will-force-push-outdated with behindBase shows behind base suffix", () => {
+  test("will-force-push-outdated without baseAhead with behindBase shows behind base suffix", () => {
     const result = pushActionCell(
       makeAssessment({ outcome: "will-force-push-outdated", ahead: 3, behind: 2, behindBase: 5 }),
       makeRemotesMap(["repo-a", {}]),
     );
     expect(result.plain).toContain("5 behind base");
+  });
+
+  test("will-force-push-outdated with baseAhead AND behindBase shows both", () => {
+    const result = pushActionCell(
+      makeAssessment({
+        outcome: "will-force-push-outdated",
+        ahead: 5,
+        behind: 2,
+        baseAhead: 3,
+        rebased: 1,
+        behindBase: 4,
+      }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("from main");
+    expect(result.plain).toContain("4 behind base");
+    expect(result.plain).toContain("replaces 2 outdated");
   });
 
   test("will-force-push with baseAhead shows from-base breakdown", () => {
@@ -1364,6 +1381,15 @@ describe("pushActionCell", () => {
     );
     expect(result.plain).toContain("to push (force");
     expect(result.plain).toContain("3 behind origin");
+  });
+
+  test("will-force-push without baseAhead with behindBase shows behind base suffix", () => {
+    const result = pushActionCell(
+      makeAssessment({ outcome: "will-force-push", ahead: 2, behind: 3, behindBase: 7 }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("to push (force");
+    expect(result.plain).toContain("7 behind base");
   });
 
   test("will-push with behindBase shows behind base suffix", () => {
