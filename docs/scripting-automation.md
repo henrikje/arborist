@@ -178,6 +178,21 @@ JSON output includes detected PR numbers when available:
 arb status --json | jq '[.repos[] | select(.base.detectedPr) | {name, pr: .base.detectedPr}]'
 ```
 
+## Environment variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `ARB_NETWORK_TIMEOUT` | Global timeout for all network operations (seconds). Overridden by operation-specific variables when set. | per-operation default |
+| `ARB_FETCH_TIMEOUT` | Timeout for fetch operations (seconds) | `120` |
+| `ARB_PUSH_TIMEOUT` | Timeout for push operations (seconds) | `120` |
+| `ARB_PULL_TIMEOUT` | Timeout for pull operations (seconds) | `120` |
+| `ARB_CLONE_TIMEOUT` | Timeout for clone operations (seconds) | `300` |
+| `ARB_DEBUG` | Enable debug output when set to `1` | off |
+| `ARB_NO_UPDATE_CHECK` | Disable the automatic update check when set to `1` | off |
+| `COLUMNS` | Override terminal width for table and graph rendering | auto-detected |
+
+Timeout resolution order: operation-specific variable → `ARB_NETWORK_TIMEOUT` → built-in default. Exit code `124` indicates a timeout (matching the Unix `timeout` convention).
+
 ## Exit codes
 
 `0` means success, `1` means failure, `130` means the user aborted a confirmation prompt.
