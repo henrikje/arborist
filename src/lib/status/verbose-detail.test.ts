@@ -104,4 +104,57 @@ describe("toJsonVerbose", () => {
     expect(result?.unstaged).toEqual([{ file: "src/app.ts", type: "deleted" }]);
     expect(result?.untracked).toEqual(["tmp.log"]);
   });
+
+  test("aheadOfBase without matchedOnBase and without merge data has no mergedAs", () => {
+    const detail = {
+      aheadOfBase: [
+        { hash: "aaa111", shortHash: "aaa1111", subject: "feat: new thing" },
+        { hash: "bbb222", shortHash: "bbb2222", subject: "fix: bug" },
+      ],
+    };
+    const result = toJsonVerbose(detail);
+    expect(result?.aheadOfBase?.[0]?.mergedAs).toBeUndefined();
+    expect(result?.aheadOfBase?.[1]?.mergedAs).toBeUndefined();
+  });
+
+  test("matchedOnBase takes priority over merge position for mergedAs", () => {
+    const detail = {
+      aheadOfBase: [
+        { hash: "new1", shortHash: "new1234", subject: "new commit" },
+        {
+          hash: "old1",
+          shortHash: "old1234",
+          subject: "old commit",
+          matchedOnBase: { hash: "matched123", shortHash: "mat1234" },
+        },
+      ],
+    };
+    // Even with merge data that would set mergedAs for index >= 1, matchedOnBase wins
+    const base = { merge: { newCommitsAfter: 1, commitHash: "merge456" } };
+    const result = toJsonVerbose(detail, base);
+    // First commit (index 0) has no match and is within newCommitsAfter → no mergedAs
+    expect(result?.aheadOfBase?.[0]?.mergedAs).toBeUndefined();
+    // Second commit (index 1) has matchedOnBase → uses that, not the merge commitHash
+    expect(result?.aheadOfBase?.[1]?.mergedAs).toBe("matched123");
+  });
+
+  test("base with null merge does not add mergedAs", () => {
+    const detail = {
+      aheadOfBase: [{ hash: "aaa111", shortHash: "aaa1111", subject: "commit" }],
+    };
+    const result = toJsonVerbose(detail, null);
+    expect(result?.aheadOfBase?.[0]?.mergedAs).toBeUndefined();
+  });
+
+  test("base with merge but no commitHash does not add mergedAs", () => {
+    const detail = {
+      aheadOfBase: [
+        { hash: "new1", shortHash: "new1234", subject: "new" },
+        { hash: "old1", shortHash: "old1234", subject: "old" },
+      ],
+    };
+    const base = { merge: { newCommitsAfter: 1 } }; // no commitHash
+    const result = toJsonVerbose(detail, base);
+    expect(result?.aheadOfBase?.[1]?.mergedAs).toBeUndefined();
+  });
 });
