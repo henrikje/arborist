@@ -386,4 +386,26 @@ describe("worktree integrity", () => {
       // User's file should be preserved
       expect(readFileSync(join(wsOneRepo, "local-change.txt"), "utf-8")).toBe("my changes");
     }));
+
+  test("arb status works after worktree back-reference is corrupted", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wsRepo = join(env.projectDir, "my-feature/repo-a");
+
+      // Read the .git file to find the worktree entry
+      const gitContent = readFileSync(join(wsRepo, ".git"), "utf-8").trim();
+      const gitdirPath = gitContent.slice("gitdir: ".length);
+
+      // Corrupt the back-reference (gitdir file in the worktree entry)
+      writeFileSync(join(gitdirPath, "gitdir"), "/nonexistent/path/.git\n");
+
+      // Status should detect and repair the broken back-reference
+      const result = await arb(env, ["status"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("repo-a");
+
+      // Verify the back-reference was repaired
+      const repairedBackRef = readFileSync(join(gitdirPath, "gitdir"), "utf-8").trim();
+      expect(repairedBackRef).toBe(join(wsRepo, ".git"));
+    }));
 });
