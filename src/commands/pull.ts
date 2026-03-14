@@ -336,6 +336,8 @@ export function assessPullRepo(
     behind: 0,
     toPush: 0,
     rebased: 0,
+    replaced: 0,
+    squashed: 0,
     rebasedKnown: false,
     fromBaseCount: 0,
     pullMode,
@@ -418,9 +420,12 @@ export function assessPullRepo(
     return { ...base, outcome: "up-to-date" };
   }
 
-  // Skip if all to-pull commits are rebased locally
+  // Skip if all to-pull commits are outdated locally (rebased, replaced via reflog, or squashed)
   const rebased = status.share.outdated?.rebased ?? 0;
-  if (rebased > 0 && rebased >= toPull) {
+  const replaced = status.share.outdated?.replaced ?? 0;
+  const squashed = status.share.outdated?.squashed ?? 0;
+  const totalOutdated = rebased + replaced + squashed;
+  if (totalOutdated > 0 && totalOutdated >= toPull) {
     const toPush = status.share.toPush ?? 0;
     const baseAhead = status.base?.ahead ?? toPush;
     const fromBaseCount = Math.max(0, toPush - baseAhead);
@@ -430,6 +435,8 @@ export function assessPullRepo(
       behind: toPull,
       toPush,
       rebased,
+      replaced,
+      squashed,
       rebasedKnown: status.share.outdated != null,
       fromBaseCount,
       skipReason: "rebased locally (push --force, or pull --reset)",
@@ -444,6 +451,8 @@ export function assessPullRepo(
     behind: toPull,
     toPush,
     rebased,
+    replaced,
+    squashed,
     rebasedKnown: status.share.outdated != null,
   };
 }
@@ -527,7 +536,7 @@ export function pullActionCell(a: PullAssessment, remotesMap: Map<string, RepoRe
     }
     safeText += ")";
     let result = cell(safeText);
-    const netNew = a.toPush - a.rebased - a.fromBaseCount;
+    const netNew = a.toPush - a.rebased - a.replaced - a.fromBaseCount;
     if (netNew > 0) {
       result = suffix(result, ` (${plural(netNew, "unpushed commit")} will be lost)`, "attention");
     }
@@ -545,7 +554,8 @@ export function pullActionCell(a: PullAssessment, remotesMap: Map<string, RepoRe
     return result;
   }
 
-  const rebasedHint = a.rebased > 0 ? `, ${a.rebased} rebased` : "";
+  const outdatedCount = a.rebased + a.replaced + a.squashed;
+  const outdatedHint = outdatedCount > 0 ? `, ${outdatedCount} outdated` : "";
   const mergeType = a.pullMode === "merge" ? (a.toPush === 0 ? "fast-forward merge" : "three-way merge") : "";
 
   let conflictText = "";
@@ -562,12 +572,15 @@ export function pullActionCell(a: PullAssessment, remotesMap: Map<string, RepoRe
   let result: Cell;
   if (conflictIsAttention) {
     result = spans(
-      { text: `${plural(a.behind, "commit")} to pull (${mergeType || a.pullMode}${rebasedHint}`, attention: "default" },
+      {
+        text: `${plural(a.behind, "commit")} to pull (${mergeType || a.pullMode}${outdatedHint}`,
+        attention: "default",
+      },
       { text: conflictText, attention: "attention" },
       { text: ")", attention: "default" },
     );
   } else {
-    result = cell(`${plural(a.behind, "commit")} to pull (${mergeType || a.pullMode}${rebasedHint}${conflictText})`);
+    result = cell(`${plural(a.behind, "commit")} to pull (${mergeType || a.pullMode}${outdatedHint}${conflictText})`);
   }
 
   // Stash hint
@@ -603,7 +616,7 @@ export function resetRebasedSkips(
     if (a.outcome !== "skip" || a.skipFlag !== "rebased-locally") return a;
     const shareRemote = remotesMap.get(a.repo)?.share;
     if (!shareRemote) return a;
-    const netNew = a.toPush - a.rebased - a.fromBaseCount;
+    const netNew = a.toPush - a.rebased - a.replaced - a.fromBaseCount;
     return {
       ...withoutSkipFields(a),
       outcome: "will-pull",
@@ -632,6 +645,8 @@ async function reviveRebasedSkipsForSafeReset(
         branch: a.branch,
         toPush: a.toPush,
         rebased: a.rebased,
+        replaced: a.replaced,
+        squashed: a.squashed,
         rebasedKnown: a.rebasedKnown,
       });
       if (!result.eligible) return a;
@@ -666,6 +681,8 @@ async function resolvePullStrategies(
         branch: a.branch,
         toPush: a.toPush,
         rebased: a.rebased,
+        replaced: a.replaced,
+        squashed: a.squashed,
         rebasedKnown: a.rebasedKnown,
       });
       if (result.eligible) {
@@ -736,6 +753,8 @@ interface SafeResetEligibilityInput {
   branch: string;
   toPush: number;
   rebased: number;
+  replaced: number;
+  squashed: number;
   rebasedKnown: boolean;
 }
 
@@ -792,7 +811,9 @@ export async function evaluateSafeResetEligibility(
   if (!input.rebasedKnown) {
     return { eligible: false, blockedBy: "rebased-commit evidence unavailable" };
   }
-  if (input.toPush - input.rebased > 0) {
+  // When squashed > 0, cumulative patch-ids match — all local content is accounted for.
+  const accountedFor = input.squashed > 0 ? input.toPush : input.rebased + input.replaced;
+  if (input.toPush - accountedFor > 0) {
     return { eligible: false, blockedBy: "local net-new commits detected" };
   }
 

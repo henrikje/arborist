@@ -577,6 +577,70 @@ describe("push [repos...] and --force", () => {
       expect(result.output).toContain("pull --reset");
     }));
 
+  test("arb pull skips replaced repo (rebase with conflict resolution)", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Create a feature commit that modifies a shared file
+      await write(join(repoA, "shared.txt"), "line1\nfeature-change\nline3\n");
+      await git(repoA, ["add", "shared.txt"]);
+      await git(repoA, ["commit", "-m", "feature: modify shared"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Create a conflicting commit on main (same file, same line)
+      const mainRepo = join(env.projectDir, ".arb/repos/repo-a");
+      await write(join(mainRepo, "shared.txt"), "line1\nmain-change\nline3\n");
+      await git(mainRepo, ["add", "shared.txt"]);
+      await git(mainRepo, ["commit", "-m", "main: modify shared"]);
+      await git(mainRepo, ["push"]);
+
+      // Rebase manually (arb rebase would stop at conflict)
+      await git(repoA, ["fetch", "origin"]);
+      try {
+        await git(repoA, ["rebase", "origin/main"]);
+      } catch {
+        // Expected conflict — resolve by keeping both changes
+        await write(join(repoA, "shared.txt"), "line1\nmain-change\nfeature-change\nline3\n");
+        await git(repoA, ["add", "shared.txt"]);
+        await git(repoA, ["-c", "core.editor=true", "rebase", "--continue"]);
+      }
+
+      // Patch-IDs differ (conflict resolution changed the diff),
+      // but the old commit is in the reflog → replaced detection
+      const result = await arb(env, ["pull", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.output).toContain("rebased locally");
+      expect(result.output).toContain("push --force");
+      expect(result.output).toContain("pull --reset");
+    }));
+
+  test("arb pull skips squashed repo (cumulative patch-id match)", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Create two separate commits
+      await write(join(repoA, "file-a.txt"), "content-a\n");
+      await git(repoA, ["add", "file-a.txt"]);
+      await git(repoA, ["commit", "-m", "add file-a"]);
+
+      await write(join(repoA, "file-b.txt"), "content-b\n");
+      await git(repoA, ["add", "file-b.txt"]);
+      await git(repoA, ["commit", "-m", "add file-b"]);
+
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Squash the two commits locally into one
+      await git(repoA, ["reset", "--soft", "HEAD~2"]);
+      await git(repoA, ["commit", "-m", "squashed: add file-a and file-b"]);
+
+      // Cumulative patch-ids match (same net changes) → squashed detection
+      const result = await arb(env, ["pull", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.output).toContain("rebased locally");
+      expect(result.output).toContain("push --force");
+      expect(result.output).toContain("pull --reset");
+    }));
+
   test("arb pull --reset resets rebased repo to remote tip", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);

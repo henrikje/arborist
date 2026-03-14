@@ -396,6 +396,79 @@ describe("assessPullRepo", () => {
     expect(a.skipFlag).toBe("rebased-locally");
   });
 
+  test("skips when replaced >= toPull (conflict resolution scenario)", () => {
+    const a = assessPullRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 3,
+          toPull: 1,
+          outdated: { total: 1, rebased: 0, replaced: 1, squashed: 0 },
+        },
+      }),
+      DIR,
+      "feature",
+      [],
+      "merge",
+      false,
+      SHA,
+    );
+    expect(a.outcome).toBe("skip");
+    expect(a.skipFlag).toBe("rebased-locally");
+    expect(a.replaced).toBe(1);
+  });
+
+  test("skips when squashed >= toPull", () => {
+    const a = assessPullRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 1,
+          toPull: 2,
+          outdated: { total: 2, rebased: 0, replaced: 0, squashed: 2 },
+        },
+      }),
+      DIR,
+      "feature",
+      [],
+      "merge",
+      false,
+      SHA,
+    );
+    expect(a.outcome).toBe("skip");
+    expect(a.skipFlag).toBe("rebased-locally");
+    expect(a.squashed).toBe(2);
+  });
+
+  test("skips when rebased + replaced >= toPull (mixed)", () => {
+    const a = assessPullRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 3,
+          toPull: 2,
+          outdated: { total: 2, rebased: 1, replaced: 1, squashed: 0 },
+        },
+      }),
+      DIR,
+      "feature",
+      [],
+      "merge",
+      false,
+      SHA,
+    );
+    expect(a.outcome).toBe("skip");
+    expect(a.skipFlag).toBe("rebased-locally");
+    expect(a.rebased).toBe(1);
+    expect(a.replaced).toBe(1);
+  });
+
   test("will-pull when commits behind", () => {
     const a = assessPullRepo(
       makeRepo({
@@ -466,6 +539,8 @@ describe("formatPullPlan", () => {
       behind: 3,
       toPush: 0,
       rebased: 0,
+      replaced: 0,
+      squashed: 0,
       rebasedKnown: true,
       fromBaseCount: 0,
       pullMode: "merge",
@@ -494,9 +569,9 @@ describe("formatPullPlan", () => {
     expect(plan).toContain("(rebase");
   });
 
-  test("shows rebased hint when rebased > 0", () => {
+  test("shows outdated hint when rebased > 0", () => {
     const plan = formatPullPlan([makeAssessment({ rebased: 2 })], makeRemotesMap(["repo-a", {}]));
-    expect(plan).toContain("2 rebased");
+    expect(plan).toContain("2 outdated");
   });
 
   test("shows conflict likely hint", () => {
@@ -780,6 +855,8 @@ describe("resetRebasedSkips", () => {
       behind: 2,
       toPush: 3,
       rebased: 2,
+      replaced: 0,
+      squashed: 0,
       rebasedKnown: true,
       fromBaseCount: 0,
       pullMode: "merge",
@@ -868,6 +945,22 @@ describe("resetRebasedSkips", () => {
     const nextAssessments = resetRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
     expect(nextAssessments[0]?.safeReset?.target).toBe("origin/other-branch");
   });
+
+  test("accounts for replaced commits in net-new calculation", () => {
+    // toPush=3, rebased=0, replaced=2, fromBaseCount=0 → netNew = 3-0-2-0 = 1 → forced
+    const assessments = [makeAssessment({ toPush: 3, rebased: 0, replaced: 2 })];
+    const nextAssessments = resetRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
+    expect(nextAssessments[0]?.outcome).toBe("will-pull");
+    expect(nextAssessments[0]?.pullStrategy).toBe("forced-reset");
+  });
+
+  test("safe-reset when replaced accounts for all non-base commits", () => {
+    // toPush=2, rebased=0, replaced=2, fromBaseCount=0 → netNew = 2-0-2-0 = 0 → safe
+    const assessments = [makeAssessment({ toPush: 2, rebased: 0, replaced: 2 })];
+    const nextAssessments = resetRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
+    expect(nextAssessments[0]?.outcome).toBe("will-pull");
+    expect(nextAssessments[0]?.pullStrategy).toBe("safe-reset");
+  });
 });
 
 describe("evaluateSafeResetEligibility", () => {
@@ -888,7 +981,7 @@ describe("evaluateSafeResetEligibility", () => {
 
   test("returns blocked when previous remote tip is unavailable", async () => {
     const result = await evaluateSafeResetEligibility(
-      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, rebasedKnown: true },
+      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, replaced: 0, squashed: 0, rebasedKnown: true },
       gitStub({}),
     );
     expect(result.eligible).toBe(false);
@@ -897,7 +990,7 @@ describe("evaluateSafeResetEligibility", () => {
 
   test("returns blocked when no remote rewrite is detected", async () => {
     const result = await evaluateSafeResetEligibility(
-      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, rebasedKnown: true },
+      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, replaced: 0, squashed: 0, rebasedKnown: true },
       gitStub({
         "rev-parse origin/feature@{1}": { exitCode: 0, stdout: `${hashA}\n` },
         "rev-parse origin/feature": { exitCode: 0, stdout: `${hashA}\n` },
@@ -909,7 +1002,7 @@ describe("evaluateSafeResetEligibility", () => {
 
   test("returns blocked when local commits exist beyond previous remote tip", async () => {
     const result = await evaluateSafeResetEligibility(
-      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, rebasedKnown: true },
+      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, replaced: 0, squashed: 0, rebasedKnown: true },
       gitStub({
         "rev-parse origin/feature@{1}": { exitCode: 0, stdout: `${hashA}\n` },
         "rev-parse origin/feature": { exitCode: 0, stdout: `${hashB}\n` },
@@ -923,7 +1016,7 @@ describe("evaluateSafeResetEligibility", () => {
 
   test("returns blocked when rebased evidence is unavailable", async () => {
     const result = await evaluateSafeResetEligibility(
-      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, rebasedKnown: false },
+      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, replaced: 0, squashed: 0, rebasedKnown: false },
       gitStub({
         "rev-parse origin/feature@{1}": { exitCode: 0, stdout: `${hashA}\n` },
         "rev-parse origin/feature": { exitCode: 0, stdout: `${hashB}\n` },
@@ -937,7 +1030,7 @@ describe("evaluateSafeResetEligibility", () => {
 
   test("returns eligible when all safety guards pass", async () => {
     const result = await evaluateSafeResetEligibility(
-      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, rebasedKnown: true },
+      { repoDir, shareRemote, branch, toPush: 2, rebased: 2, replaced: 0, squashed: 0, rebasedKnown: true },
       gitStub({
         "rev-parse origin/feature@{1}": { exitCode: 0, stdout: `${hashA}\n` },
         "rev-parse origin/feature": { exitCode: 0, stdout: `${hashB}\n` },
