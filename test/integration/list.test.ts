@@ -158,6 +158,36 @@ describe("list", () => {
       expect(result.output).toContain("feat/auth");
     }));
 
+  test("arb list does not show base-missing when base is merged into default", () =>
+    withEnv(async (env) => {
+      const repoA = join(env.projectDir, ".arb/repos/repo-a");
+      await git(repoA, ["checkout", "-b", "feat/auth"]);
+      await write(join(repoA, "auth.txt"), "auth");
+      await git(repoA, ["add", "auth.txt"]);
+      await git(repoA, ["commit", "-m", "auth feature"]);
+      await git(repoA, ["push", "-u", "origin", "feat/auth"]);
+      await git(repoA, ["checkout", "--detach"]);
+
+      await arb(env, ["create", "stacked", "--base", "feat/auth", "-b", "feat/auth-ui", "repo-a"]);
+
+      // Merge feat/auth into main via merge commit (do NOT delete feat/auth)
+      const tmpMerge = join(env.testDir, "tmp-merge");
+      await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpMerge]);
+      await git(tmpMerge, ["merge", "origin/feat/auth", "--no-ff", "-m", "merge feat/auth"]);
+      await git(tmpMerge, ["push"]);
+
+      await fetchAllRepos(env);
+
+      const result = await arb(env, ["list", "--fetch", "--json"]);
+      const data = JSON.parse(result.stdout);
+      const ws = data.find((w: Record<string, unknown>) => w.workspace === "stacked");
+      // Should show "base merged" but NOT "base missing"
+      const counts = ws.statusCounts as { label: string }[];
+      const labels = counts.map((c: { label: string }) => c.label);
+      expect(labels).toContain("base merged");
+      expect(labels).not.toContain("base missing");
+    }));
+
   test("arb list hides BASE column when no stacked workspaces", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "ws-one", "repo-a"]);

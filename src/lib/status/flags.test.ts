@@ -444,6 +444,70 @@ describe("computeFlags", () => {
     const flags = computeFlags(makeRepo({ base: null }), "feature");
     expect(flags.isBaseMerged).toBe(false);
   });
+
+  test("isBaseMissing when configuredRef set and baseMergedIntoDefault is null", () => {
+    const flags = computeFlags(
+      makeRepo({
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: "feat/auth",
+          ahead: 0,
+          behind: 0,
+          baseMergedIntoDefault: null,
+        },
+      }),
+      "feature",
+    );
+    expect(flags.isBaseMissing).toBe(true);
+    expect(flags.isBaseMerged).toBe(false);
+  });
+
+  test("not isBaseMissing when configuredRef set but baseMergedIntoDefault is merge", () => {
+    const flags = computeFlags(
+      makeRepo({
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: "feat/auth",
+          ahead: 0,
+          behind: 0,
+          baseMergedIntoDefault: "merge",
+        },
+      }),
+      "feature",
+    );
+    expect(flags.isBaseMissing).toBe(false);
+    expect(flags.isBaseMerged).toBe(true);
+  });
+
+  test("not isBaseMissing when configuredRef set but baseMergedIntoDefault is squash", () => {
+    const flags = computeFlags(
+      makeRepo({
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: "feat/auth",
+          ahead: 0,
+          behind: 0,
+          baseMergedIntoDefault: "squash",
+        },
+      }),
+      "feature",
+    );
+    expect(flags.isBaseMissing).toBe(false);
+    expect(flags.isBaseMerged).toBe(true);
+  });
+
+  test("not isBaseMissing when configuredRef is null", () => {
+    const flags = computeFlags(makeRepo(), "feature");
+    expect(flags.isBaseMissing).toBe(false);
+  });
+
+  test("not isBaseMissing when base is null", () => {
+    const flags = computeFlags(makeRepo({ base: null }), "feature");
+    expect(flags.isBaseMissing).toBe(false);
+  });
 });
 
 describe("isAtRisk", () => {
