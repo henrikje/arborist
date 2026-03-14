@@ -1847,6 +1847,134 @@ describe("push dry-run", () => {
 
 // ── pull dry-run ─────────────────────────────────────────────────
 
+// ── pull --autostash ─────────────────────────────────────────────
+
+describe("pull --autostash", () => {
+  test("arb pull --autostash stashes dirty repo, pulls, then re-applies stash", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+      await write(join(repoA, "file.txt"), "initial");
+      await git(repoA, ["add", "file.txt"]);
+      await git(repoA, ["commit", "-m", "initial"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Push a remote commit from another clone
+      const tmpClone = join(env.testDir, "tmp-autostash");
+      await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpClone]);
+      await git(tmpClone, ["checkout", "my-feature"]);
+      await write(join(tmpClone, "remote.txt"), "from remote");
+      await git(tmpClone, ["add", "remote.txt"]);
+      await git(tmpClone, ["commit", "-m", "remote commit"]);
+      await git(tmpClone, ["push"]);
+
+      // Make local uncommitted changes to a TRACKED file (triggers stash)
+      await write(join(repoA, "file.txt"), "work in progress");
+
+      // Pull without --autostash should skip
+      const skipResult = await arb(env, ["pull", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(skipResult.output).toContain("uncommitted changes");
+
+      // Pull with --autostash should succeed
+      const result = await arb(env, ["pull", "--autostash", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("autostash");
+      expect(result.output).toContain("Pulled");
+
+      // Remote file should be present after pull
+      expect(existsSync(join(repoA, "remote.txt"))).toBe(true);
+      // Local modification should be restored after stash pop
+      const fileContent = await Bun.file(join(repoA, "file.txt")).text();
+      expect(fileContent).toContain("work in progress");
+    }));
+
+  test("arb pull --autostash skips stash when only untracked files", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+      await write(join(repoA, "file.txt"), "initial");
+      await git(repoA, ["add", "file.txt"]);
+      await git(repoA, ["commit", "-m", "initial"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Push remote commit
+      const tmpClone = join(env.testDir, "tmp-untracked");
+      await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpClone]);
+      await git(tmpClone, ["checkout", "my-feature"]);
+      await write(join(tmpClone, "remote.txt"), "from remote");
+      await git(tmpClone, ["add", "remote.txt"]);
+      await git(tmpClone, ["commit", "-m", "remote"]);
+      await git(tmpClone, ["push"]);
+
+      // Only untracked files (not staged/modified)
+      await write(join(repoA, "untracked.txt"), "untracked");
+
+      const result = await arb(env, ["pull", "--autostash", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      // Should not mention autostash since only untracked files
+      expect(result.output).not.toContain("autostash");
+      expect(result.output).toContain("Pulled");
+    }));
+});
+
+// ── push partial failure ─────────────────────────────────────────
+
+describe("push partial failure", () => {
+  test("arb push succeeds for clean repo and skips diverged repo", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+      const repoB = join(env.projectDir, "my-feature/repo-b");
+
+      // Push initial commits for both repos
+      await write(join(repoA, "a.txt"), "a");
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "a initial"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      await write(join(repoB, "b.txt"), "b");
+      await git(repoB, ["add", "b.txt"]);
+      await git(repoB, ["commit", "-m", "b initial"]);
+      await git(repoB, ["push", "-u", "origin", "my-feature"]);
+
+      // Diverge repo-b: push a remote-only commit
+      const tmpClone = join(env.testDir, "tmp-diverge-b");
+      await git(env.testDir, ["clone", join(env.originDir, "repo-b.git"), tmpClone]);
+      await git(tmpClone, ["checkout", "my-feature"]);
+      await write(join(tmpClone, "remote.txt"), "remote");
+      await git(tmpClone, ["add", "remote.txt"]);
+      await git(tmpClone, ["commit", "-m", "remote commit"]);
+      await git(tmpClone, ["push"]);
+
+      // Add a local commit to repo-b (creates genuine divergence)
+      await write(join(repoB, "local.txt"), "local");
+      await git(repoB, ["add", "local.txt"]);
+      await git(repoB, ["commit", "-m", "local commit"]);
+
+      // Add a clean commit to repo-a (will push fine)
+      await write(join(repoA, "new.txt"), "new");
+      await git(repoA, ["add", "new.txt"]);
+      await git(repoA, ["commit", "-m", "new commit"]);
+
+      // Push without --force
+      const result = await arb(env, ["push", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+
+      // repo-a should push successfully
+      expect(result.output).toContain("Pushed 1 repo");
+      // repo-b should be skipped due to divergence
+      expect(result.output).toContain("diverged");
+      expect(result.output).toContain("use --force");
+    }));
+});
+
 describe("pull dry-run", () => {
   test("arb pull --dry-run shows plan without pulling", () =>
     withEnv(async (env) => {
