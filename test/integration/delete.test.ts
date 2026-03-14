@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { arb, git, pushThenDeleteRemote, withEnv, write } from "./helpers/env";
+import { arb, fetchAllRepos, git, pushThenDeleteRemote, withEnv, write } from "./helpers/env";
 
 // ── delete ───────────────────────────────────────────────────────
 
@@ -427,5 +427,38 @@ describe("delete dry-run", () => {
       // Verify both workspaces still exist
       expect(existsSync(join(env.projectDir, "ws-one"))).toBe(true);
       expect(existsSync(join(env.projectDir, "ws-two"))).toBe(true);
+    }));
+});
+
+// ── delete merged PR display ────────────────────────────────────
+
+describe("delete merged PR display", () => {
+  test("arb delete --dry-run shows PR number for merged workspace", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Make a commit and push the feature branch
+      await write(join(wtRepoA, "feature.txt"), "feature content");
+      await git(wtRepoA, ["add", "feature.txt"]);
+      await git(wtRepoA, ["commit", "-m", "feat: add feature"]);
+      await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Simulate a PR merge on the canonical repo
+      const repoA = join(env.projectDir, ".arb/repos/repo-a");
+      await git(repoA, ["merge", "origin/my-feature", "--no-ff", "-m", "Merge pull request #42 from user/my-feature"]);
+      await git(repoA, ["push"]);
+      await git(repoA, ["push", "origin", "--delete", "my-feature"]);
+
+      await fetchAllRepos(env);
+
+      const result = await arb(env, ["delete", "my-feature", "--dry-run"], {
+        cwd: env.projectDir,
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("(#42)");
+      expect(result.output).toContain("Dry run");
+      // Workspace should still exist
+      expect(existsSync(join(env.projectDir, "my-feature"))).toBe(true);
     }));
 });

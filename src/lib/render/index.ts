@@ -6,6 +6,7 @@ export {
   analyzeRemoteDiff,
   analyzeRemoteName,
   buildStatusCountsCell,
+  enrichMergedLabel,
   flagLabels,
   formatStatusCounts,
   plainBaseDiff,
