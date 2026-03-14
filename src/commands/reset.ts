@@ -125,6 +125,30 @@ export function assessResetRepo(
     // Reset to base branch (no share ref, --base flag, or gone/noRef)
     target = `${baseRemote}/${baseRef}`;
     mode = "base";
+
+    // Already merged into base — resetting to base would silently discard merge evidence
+    if (status.base.merge != null) {
+      const strategy = status.base.merge.kind === "squash" ? "squash-merged" : "merged";
+      return {
+        ...defaults,
+        skipReason: `already ${strategy} into ${baseRef}`,
+        skipFlag: "already-merged",
+        baseRemote,
+        baseRef,
+      };
+    }
+
+    // Stacked base branch merged into default — needs retarget, not reset
+    if (status.base.baseMergedIntoDefault != null) {
+      return {
+        ...defaults,
+        skipReason: `base branch ${status.base.configuredRef ?? status.base.ref} was merged into default (use arb rebase --retarget)`,
+        skipFlag: "base-merged-into-default",
+        baseRemote,
+        baseRef,
+      };
+    }
+
     const flags = computeFlags(status, branch);
     totalAhead = status.base.ahead ?? 0;
     unpushedCommits = flags.isUnpushed ? (status.share.toPush ?? totalAhead) : 0;
@@ -249,7 +273,7 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
     .option("-w, --where <filter>", "Only reset repos matching status filter (comma = OR, + = AND, ^ = negate)")
     .summary("Reset all repos to the share branch (or base if not pushed)")
     .description(
-      "Reset all repos (or only the named repos) to the remote share branch HEAD, discarding local commits and staged/unstaged changes. When no remote share branch exists (never pushed), falls back to the base branch. Resolves the correct remote and branch per repo automatically. Untracked files are preserved (no git clean). Shows a plan with what will be lost (dirty files, unpushed commits) and asks for confirmation before proceeding.\n\nUse --base to always reset to the base branch, even when a remote share branch exists.\n\nTo change the base branch, use 'arb branch base <branch>'.\n\nUse --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
+      "Reset all repos (or only the named repos) to the remote share branch HEAD, discarding local commits and staged/unstaged changes. When no remote share branch exists (never pushed), falls back to the base branch. Resolves the correct remote and branch per repo automatically. Untracked files are preserved (no git clean). Shows a plan with what will be lost (dirty files, unpushed commits) and asks for confirmation before proceeding.\n\nRepos whose branch has already been merged (or squash-merged) into base are skipped when the reset target is the base branch. Repos whose configured base branch was merged into the default branch are also skipped (use 'arb rebase --retarget' to update the base first).\n\nUse --base to always reset to the base branch, even when a remote share branch exists.\n\nTo change the base branch, use 'arb branch base <branch>'.\n\nUse --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
     )
     .action(
       async (
