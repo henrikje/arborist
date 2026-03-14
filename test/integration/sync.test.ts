@@ -553,6 +553,105 @@ describe("push [repos...] and --force", () => {
       expect(result.output).toContain("Pushed");
     }));
 
+  test("arb push auto-pushes after fast-forward pull + content-changing rewrite", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Make commit A, push
+      await write(join(repoA, "a.txt"), "a");
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "commit a"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Collaborator pushes B, C on top of A
+      const bare = join(env.originDir, "repo-a.git");
+      const tmp = join(env.testDir, "tmp-ff-collab");
+      await git(env.testDir, ["clone", bare, tmp]);
+      await git(tmp, ["checkout", "my-feature"]);
+      await write(join(tmp, "b.txt"), "b");
+      await git(tmp, ["add", "b.txt"]);
+      await git(tmp, ["commit", "-m", "commit b"]);
+      await write(join(tmp, "c.txt"), "c");
+      await git(tmp, ["add", "c.txt"]);
+      await git(tmp, ["commit", "-m", "commit c"]);
+      await git(tmp, ["push", "origin", "my-feature"]);
+      await rm(tmp, { recursive: true });
+
+      // Pull with fast-forward (B and C are intermediates, only tip enters reflog)
+      await git(repoA, ["pull", "--ff-only"]);
+
+      // Content-changing rewrite: squash B+C and modify content
+      await git(repoA, ["reset", "--soft", "HEAD~2"]);
+      await write(join(repoA, "b.txt"), "modified-b");
+      await write(join(repoA, "c.txt"), "modified-c");
+      await git(repoA, ["add", "b.txt", "c.txt"]);
+      await git(repoA, ["commit", "-m", "squash b+c (modified)"]);
+
+      await fetchAllRepos(env);
+
+      // Push without --force — the ancestry walk should detect B, C as replaced
+      const result = await arb(env, ["push", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("replaces");
+      expect(result.output).not.toContain("diverged");
+      expect(result.output).toContain("Pushed");
+    }));
+
+  test("arb push blocks when collaborator adds new work on top of fast-forward-pulled commits", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Make commit A, push
+      await write(join(repoA, "a.txt"), "a");
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "commit a"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Collaborator pushes B, C on top of A
+      const bare = join(env.originDir, "repo-a.git");
+      const tmp = join(env.testDir, "tmp-ff-collab2");
+      await git(env.testDir, ["clone", bare, tmp]);
+      await git(tmp, ["checkout", "my-feature"]);
+      await write(join(tmp, "b.txt"), "b");
+      await git(tmp, ["add", "b.txt"]);
+      await git(tmp, ["commit", "-m", "commit b"]);
+      await write(join(tmp, "c.txt"), "c");
+      await git(tmp, ["add", "c.txt"]);
+      await git(tmp, ["commit", "-m", "commit c"]);
+      await git(tmp, ["push", "origin", "my-feature"]);
+
+      // Pull with fast-forward
+      await git(repoA, ["pull", "--ff-only"]);
+
+      // Content-changing rewrite: squash B+C
+      await git(repoA, ["reset", "--soft", "HEAD~2"]);
+      await write(join(repoA, "b.txt"), "modified-b");
+      await write(join(repoA, "c.txt"), "modified-c");
+      await git(repoA, ["add", "b.txt", "c.txt"]);
+      await git(repoA, ["commit", "-m", "squash b+c (modified)"]);
+
+      // Collaborator pushes ANOTHER genuinely new commit D
+      await git(tmp, ["pull"]);
+      await write(join(tmp, "d.txt"), "d");
+      await git(tmp, ["add", "d.txt"]);
+      await git(tmp, ["commit", "-m", "commit d"]);
+      await git(tmp, ["push", "origin", "my-feature"]);
+      await rm(tmp, { recursive: true });
+
+      await fetchAllRepos(env);
+
+      // Should require --force because D is genuinely new
+      const result = await arb(env, ["push", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.output).toContain("diverged");
+      expect(result.output).toContain("--force");
+    }));
+
   test("arb pull skips rebased repo", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);

@@ -714,6 +714,96 @@ describe("status rebased detection", () => {
     }));
 });
 
+// ── status fast-forward intermediate detection ─────────────────────
+
+describe("status fast-forward intermediate detection", () => {
+  test("arb status shows all outdated after fast-forward pull + content-changing rewrite", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Make commit A, push
+      await write(join(repoA, "a.txt"), "a");
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "commit a"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Collaborator pushes B, C
+      const bare = join(env.originDir, "repo-a.git");
+      const tmp = join(env.testDir, "tmp-ff-status");
+      await git(env.testDir, ["clone", bare, tmp]);
+      await git(tmp, ["checkout", "my-feature"]);
+      await write(join(tmp, "b.txt"), "b");
+      await git(tmp, ["add", "b.txt"]);
+      await git(tmp, ["commit", "-m", "commit b"]);
+      await write(join(tmp, "c.txt"), "c");
+      await git(tmp, ["add", "c.txt"]);
+      await git(tmp, ["commit", "-m", "commit c"]);
+      await git(tmp, ["push", "origin", "my-feature"]);
+      await rm(tmp, { recursive: true });
+
+      // Pull with fast-forward
+      await git(repoA, ["pull", "--ff-only"]);
+
+      // Rewrite with different content
+      await git(repoA, ["reset", "--soft", "HEAD~2"]);
+      await write(join(repoA, "b.txt"), "modified-b");
+      await write(join(repoA, "c.txt"), "modified-c");
+      await git(repoA, ["add", "b.txt", "c.txt"]);
+      await git(repoA, ["commit", "-m", "squash b+c (modified)"]);
+
+      await fetchAllRepos(env);
+      const result = await arb(env, ["status"], { cwd: join(env.projectDir, "my-feature") });
+      // All remote commits (B, C) should be detected as outdated via ancestry walk
+      expect(result.output).toContain("outdated");
+      expect(result.output).not.toContain("to pull");
+    }));
+
+  test("arb status --json shows replaced count including fast-forward intermediates", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Make commit A, push
+      await write(join(repoA, "a.txt"), "a");
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "commit a"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Collaborator pushes B, C
+      const bare = join(env.originDir, "repo-a.git");
+      const tmp = join(env.testDir, "tmp-ff-json");
+      await git(env.testDir, ["clone", bare, tmp]);
+      await git(tmp, ["checkout", "my-feature"]);
+      await write(join(tmp, "b.txt"), "b");
+      await git(tmp, ["add", "b.txt"]);
+      await git(tmp, ["commit", "-m", "commit b"]);
+      await write(join(tmp, "c.txt"), "c");
+      await git(tmp, ["add", "c.txt"]);
+      await git(tmp, ["commit", "-m", "commit c"]);
+      await git(tmp, ["push", "origin", "my-feature"]);
+      await rm(tmp, { recursive: true });
+
+      // Pull with fast-forward, then content-changing rewrite
+      await git(repoA, ["pull", "--ff-only"]);
+      await git(repoA, ["reset", "--soft", "HEAD~2"]);
+      await write(join(repoA, "b.txt"), "modified-b");
+      await write(join(repoA, "c.txt"), "modified-c");
+      await git(repoA, ["add", "b.txt", "c.txt"]);
+      await git(repoA, ["commit", "-m", "squash b+c (modified)"]);
+
+      await fetchAllRepos(env);
+      const result = await arb(env, ["status", "--json"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      const json = JSON.parse(result.stdout);
+      const repo = json.repos[0];
+      // Should detect all remote-only commits as replaced (2 = B + C, but not the tip which
+      // may be matched by other phases — the important thing is total outdated covers them all)
+      expect(repo.share.outdated).toBeTruthy();
+      expect(repo.share.outdated.total).toBe(repo.share.toPull);
+    }));
+});
+
 // ── status arrow separator and verbose to-pull ────────────────────
 
 describe("status arrow separator and verbose to-pull", () => {
