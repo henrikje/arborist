@@ -21,4 +21,13 @@ describe("workspace base helpers", () => {
       "origin/main",
     );
   });
+
+  test("rejectExplicitBaseRemotePrefix returns null for null input", () => {
+    expect(rejectExplicitBaseRemotePrefix(null, { baseRemotes: new Set(["origin"]) })).toBeNull();
+  });
+
+  test("rejectExplicitBaseRemotePrefix allows remote-prefix-only value (no branch name after /)", () => {
+    // "origin/" has nothing after the prefix — should not reject
+    expect(rejectExplicitBaseRemotePrefix("origin/", { baseRemotes: new Set(["origin"]) })).toBe("origin/");
+  });
 });
