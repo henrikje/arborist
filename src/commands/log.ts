@@ -29,6 +29,13 @@ interface LogCommit {
 
 type RepoLogStatus = "ok" | "detached" | "wrong-branch" | "no-base" | "fallback-base";
 
+interface ReplayPlanSummary {
+  totalLocal: number;
+  alreadyOnTarget: number;
+  toReplay: number;
+  contiguous: boolean;
+}
+
 interface RepoLogResult {
   name: string;
   status: RepoLogStatus;
@@ -36,6 +43,7 @@ interface RepoLogResult {
   shallow?: boolean;
   annotation: string;
   commits: LogCommit[];
+  replayPlan?: ReplayPlanSummary;
 }
 
 const NO_BASE_FALLBACK_LIMIT = 10;
@@ -178,6 +186,12 @@ async function outputTTY(
       }
     }
 
+    if (repo.base?.replayPlan && repo.base.replayPlan.alreadyOnTarget > 0) {
+      const rp = repo.base.replayPlan;
+      const replayNote = `${rp.alreadyOnTarget} already on base, ${rp.toReplay} to replay`;
+      note = note ? `${note}, ${replayNote}` : replayNote;
+    }
+
     if (repo.operation) {
       note = note ? `${note}, ${repo.operation} in progress` : `${repo.operation} in progress`;
     }
@@ -286,6 +300,11 @@ async function gatherRepoLog(
     annotation = plural(commits.length, "commit");
   }
 
+  if (repo.base.replayPlan && repo.base.replayPlan.alreadyOnTarget > 0) {
+    const rp = repo.base.replayPlan;
+    annotation += ` (${rp.alreadyOnTarget} already on base, ${rp.toReplay} to replay)`;
+  }
+
   if (repo.operation) {
     annotation += `, ${repo.operation} in progress`;
   }
@@ -294,6 +313,16 @@ async function gatherRepoLog(
     annotation += ", shallow clone";
   }
 
+  const replayPlan =
+    repo.base.replayPlan && repo.base.replayPlan.alreadyOnTarget > 0
+      ? {
+          totalLocal: repo.base.replayPlan.totalLocal,
+          alreadyOnTarget: repo.base.replayPlan.alreadyOnTarget,
+          toReplay: repo.base.replayPlan.toReplay,
+          contiguous: repo.base.replayPlan.contiguous,
+        }
+      : undefined;
+
   return {
     name: repo.name,
     status: baseMissing ? "fallback-base" : "ok",
@@ -301,6 +330,7 @@ async function gatherRepoLog(
     shallow: repo.identity.shallow || undefined,
     annotation,
     commits,
+    replayPlan,
   };
 }
 
@@ -387,6 +417,9 @@ function outputJson(workspace: string, branch: string, base: string | null, resu
     }
     if (r.shallow) {
       entry.shallow = true;
+    }
+    if (r.replayPlan) {
+      entry.replayPlan = r.replayPlan;
     }
     return entry;
   });

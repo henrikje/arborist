@@ -144,12 +144,22 @@ const LogJsonCommitSchema = z.object({
   files: z.array(z.string()).optional(),
 });
 
+const ReplayPlanSummarySchema = z
+  .object({
+    totalLocal: z.number(),
+    alreadyOnTarget: z.number(),
+    toReplay: z.number(),
+    contiguous: z.boolean(),
+  })
+  .optional();
+
 export const LogJsonRepoSchema = z.object({
   name: z.string(),
   status: LogJsonRepoStatusSchema,
   reason: z.string().optional(),
   shallow: z.boolean().optional(),
   commits: z.array(LogJsonCommitSchema),
+  replayPlan: ReplayPlanSummarySchema,
 });
 
 export const LogJsonOutputSchema = z.object({
@@ -178,6 +188,7 @@ export const DiffJsonRepoSchema = z.object({
   stat: z.object({ files: z.number(), insertions: z.number(), deletions: z.number() }),
   fileStat: z.array(DiffJsonFileStatSchema).optional(),
   untrackedCount: z.number().optional(),
+  replayPlan: ReplayPlanSummarySchema,
 });
 
 export const DiffJsonOutputSchema = z.object({
