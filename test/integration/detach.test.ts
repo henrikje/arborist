@@ -119,6 +119,62 @@ describe("detach", () => {
       expect(result.output).toContain("Not inside a workspace");
     }));
 
+  test("arb detach skips repo with unpushed commits without --force", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+      await write(join(wtRepoA, "feature.txt"), "feature work");
+      await git(wtRepoA, ["add", "feature.txt"]);
+      await git(wtRepoA, ["commit", "-m", "feature: add feature"]);
+      const result = await arb(env, ["detach", "--yes", "-N", "repo-a"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.output).toContain("unpushed commits");
+      expect(existsSync(join(env.projectDir, "my-feature/repo-a"))).toBe(true);
+    }));
+
+  test("arb detach --force overrides unpushed commits check", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+      await write(join(wtRepoA, "feature.txt"), "feature work");
+      await git(wtRepoA, ["add", "feature.txt"]);
+      await git(wtRepoA, ["commit", "-m", "feature: add feature"]);
+      await arb(env, ["detach", "--force", "--yes", "-N", "repo-a"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(existsSync(join(env.projectDir, "my-feature/repo-a"))).toBe(false);
+    }));
+
+  test("arb detach skips repo with operation in progress", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+      // Create a feature commit that will conflict
+      await write(join(wtRepoA, "conflict.txt"), "feature-version");
+      await git(wtRepoA, ["add", "conflict.txt"]);
+      await git(wtRepoA, ["commit", "-m", "feature: add conflict file"]);
+      // Push a conflicting commit to main via a temp clone
+      const tmpClone = join(env.testDir, "tmp-conflict");
+      await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpClone]);
+      await write(join(tmpClone, "conflict.txt"), "main-version");
+      await git(tmpClone, ["add", "conflict.txt"]);
+      await git(tmpClone, ["commit", "-m", "main: conflicting change"]);
+      await git(tmpClone, ["push"]);
+      // Fetch and start a rebase that will conflict
+      await git(wtRepoA, ["fetch", "origin"]);
+      try {
+        await git(wtRepoA, ["rebase", "origin/main"]);
+      } catch {
+        // Expected to fail due to conflict
+      }
+      const result = await arb(env, ["detach", "--yes", "-N", "repo-a"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.output).toContain("rebase in progress");
+      expect(existsSync(join(env.projectDir, "my-feature/repo-a"))).toBe(true);
+    }));
+
   test("arb detach --dry-run shows plan without executing", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);

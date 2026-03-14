@@ -113,7 +113,7 @@ arb detach shared
 arb detach shared --delete-branch    # also delete the local branch from the canonical repo
 ```
 
-Arb refuses to detach repos with uncommitted changes unless you pass `--force`. Use `--delete-branch` when you want a clean teardown — without it, the branch lingers in the canonical repo's ref list. See `arb detach --help` for all options.
+Arb refuses to detach repos with at-risk state (uncommitted changes, unpushed commits, operation in progress, detached HEAD, wrong branch) unless you pass `--force`. Use `--delete-branch` when you want a clean teardown — without it, the branch lingers in the canonical repo's ref list. See `arb detach --help` for all options.
 
 ## Rename workspaces
 
