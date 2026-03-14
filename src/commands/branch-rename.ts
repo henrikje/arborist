@@ -8,6 +8,8 @@ import {
   branchExistsLocally,
   detectOperation,
   git,
+  gitWithTimeout,
+  networkTimeout,
   remoteBranchExists,
   validateBranchName,
 } from "../lib/git";
@@ -24,7 +26,6 @@ import {
   isTTY,
   plural,
   red,
-  success,
   warn,
   yellow,
 } from "../lib/terminal";
@@ -459,8 +460,9 @@ async function runRename(
         inlineStart(a.repo, `deleting ${a.shareRemote}/${oldBranch}`);
         // Use canonical repo dir for remote operations
         const canonicalDir = `${ctx.reposDir}/${a.repo}`;
+        const pushTimeout = networkTimeout("ARB_PUSH_TIMEOUT", 120);
         // biome-ignore lint/style/noNonNullAssertion: filtered above
-        const result = await git(canonicalDir, "push", a.shareRemote!, "--delete", oldBranch);
+        const result = await gitWithTimeout(canonicalDir, pushTimeout, ["push", a.shareRemote!, "--delete", oldBranch]);
         if (result.exitCode === 0) {
           inlineResult(a.repo, `deleted remote branch ${a.shareRemote}/${oldBranch}`);
         } else {
@@ -530,7 +532,7 @@ export async function runAbort(
   if (toRollBack.length === 0) {
     // Already fully reverted — just clean up config
     writeWorkspaceConfig(configFile, { branch: oldBranch, ...(configBase && { base: configBase }) });
-    success("Rename aborted — all repos already reverted");
+    info("Rename aborted — all repos already reverted");
     if (skipUnknown.length > 0) {
       warn(`${plural(skipUnknown.length, "repo")} on unexpected branch left unchanged`);
     }
@@ -576,7 +578,7 @@ export async function runAbort(
   // All rollbacks succeeded — restore config
   writeWorkspaceConfig(configFile, { branch: oldBranch, ...(configBase && { base: configBase }) });
 
-  success(`Rename aborted — reverted ${plural(rollbackOk, "repo")}`);
+  info(`Rename aborted — reverted ${plural(rollbackOk, "repo")}`);
   info("Remote branches were not modified — no remote cleanup needed");
 
   if (skipUnknown.length > 0) {

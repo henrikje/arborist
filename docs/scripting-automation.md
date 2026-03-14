@@ -2,7 +2,7 @@
 
 ## Non-interactive mode
 
-Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, `merge`, `branch rename`, `delete`, `detach`, and `clean`. Without this flag, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
+Pass `--yes` (`-y`) to skip confirmation prompts on `push`, `pull`, `rebase`, `merge`, `reset`, `rename`, `branch rename`, `delete`, and `detach`. Without this flag, non-TTY environments (pipes, CI) exit with an error instead of hanging on a prompt:
 
 ```bash
 arb rebase --yes && arb push --yes
@@ -17,7 +17,7 @@ arb push --dry-run        # see what would be pushed
 arb push --yes            # looks good — go ahead
 ```
 
-This is especially useful in scripted or AI-driven workflows where you want to inspect the plan before committing to it. The flag works on `push`, `pull`, `rebase`, `merge`, `branch rename`, `delete`, `detach`, and `clean`.
+This is especially useful in scripted or AI-driven workflows where you want to inspect the plan before committing to it. The flag works on `push`, `pull`, `rebase`, `merge`, `reset`, `rename`, `branch rename`, `delete`, and `detach`.
 
 ## Filtering
 
@@ -46,7 +46,7 @@ arb delete --all-safe --where gone          # batch-remove workspaces whose bran
 
 For workspace-level commands (`list`, `delete`), AND applies per-repo: a workspace matches `dirty+unpushed` only if a _single_ repo is both dirty and unpushed, not if one repo is dirty and a different repo is unpushed.
 
-`--where` is supported on `status`, `exec`, `open`, `diff`, `log`, `list`, `delete`, `push`, `pull`, `rebase`, and `merge`. On `status`, `exec`, `open`, `diff`, `log`, and `list`, the shorthand `--dirty` (`-d`) is equivalent to `--where dirty`.
+`--where` is supported on `status`, `exec`, `open`, `diff`, `log`, `list`, `delete`, `push`, `pull`, `rebase`, `merge`, and `reset`. On `status`, `exec`, `open`, `diff`, `log`, and `list`, the shorthand `--dirty` (`-d`) is equivalent to `--where dirty`.
 
 The full list of filter terms:
 
@@ -128,7 +128,7 @@ arb push --where ^behind-base -y      # only push repos that are already rebased
 arb rebase --where ^diverged -y       # skip diverged repos, rebase the easy ones
 ```
 
-Stdin-accepting commands: `create`, `attach`, `detach`, `status`, `diff`, `log`, `push`, `pull`, `rebase`, `merge`, `delete`.
+Stdin-accepting commands: `create`, `attach`, `detach`, `status`, `diff`, `log`, `push`, `pull`, `rebase`, `merge`, `reset`, `delete`.
 
 `exec` and `open` are excluded because they inherit stdin for child processes. Use xargs instead:
 

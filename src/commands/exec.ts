@@ -109,8 +109,14 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
         const parts: string[] = [];
         if (execOk.length > 0) parts.push(`Ran in ${plural(execOk.length, "repo")}`);
         if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
-        if (parts.length > 0) success(parts.join(", "));
-        if (execFailed.length > 0) error(`Failed: ${execFailed.join(" ")}`);
+        if (execFailed.length > 0) parts.push(`${execFailed.length} failed`);
+        if (parts.length > 0) {
+          if (execFailed.length > 0) {
+            error(parts.join(", "));
+          } else {
+            success(parts.join(", "));
+          }
+        }
 
         if (execFailed.length > 0) throw new ArbError("Command failed in some repos");
       },

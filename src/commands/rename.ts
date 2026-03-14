@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, git, validateBranchName } from "../lib/git";
+import { GitCache, git, gitWithTimeout, networkTimeout, validateBranchName } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { cell } from "../lib/render";
@@ -291,8 +291,9 @@ async function runWorkspaceRename(
       for (const a of withOldRemote) {
         inlineStart(a.repo, `deleting ${a.shareRemote}/${oldBranch}`);
         const canonicalDir = `${ctx.reposDir}/${a.repo}`;
+        const pushTimeout = networkTimeout("ARB_PUSH_TIMEOUT", 120);
         // biome-ignore lint/style/noNonNullAssertion: filtered above
-        const result = await git(canonicalDir, "push", a.shareRemote!, "--delete", oldBranch);
+        const result = await gitWithTimeout(canonicalDir, pushTimeout, ["push", a.shareRemote!, "--delete", oldBranch]);
         if (result.exitCode === 0) {
           inlineResult(a.repo, `deleted remote branch ${a.shareRemote}/${oldBranch}`);
         } else {

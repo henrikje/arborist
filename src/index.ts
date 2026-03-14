@@ -42,7 +42,7 @@ const COMMAND_GROUPS = [
   {
     title: "Workspace Commands:",
     description: "  Create and manage workspaces.",
-    commands: ["create", "delete", "rename", "clean", "list", "path", "cd", "attach", "detach"],
+    commands: ["create", "delete", "rename", "list", "path", "cd", "attach", "detach"],
   },
   {
     title: "Inspection Commands:",
