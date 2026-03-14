@@ -1775,3 +1775,82 @@ test("arb status -v shows (same as ...) when feature commit is cherry-picked ont
     expect(result.output).toContain("(same as");
     expect(result.output).toContain("feature work");
   }));
+
+// ── status JSON: diverged share with outdated detection ──────────
+
+describe("status JSON: diverged share with outdated detection", () => {
+  test("arb status --json detects rebased commits in diverged share", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+      await write(join(wtRepoA, "feature.txt"), "feature");
+      await git(wtRepoA, ["add", "feature.txt"]);
+      await git(wtRepoA, ["commit", "-m", "feat: add feature"]);
+      await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Advance main and rebase locally
+      const repoA = join(env.projectDir, ".arb/repos/repo-a");
+      await write(join(repoA, "upstream.txt"), "upstream");
+      await git(repoA, ["add", "upstream.txt"]);
+      await git(repoA, ["commit", "-m", "upstream"]);
+      await git(repoA, ["push"]);
+
+      await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+
+      // Now local is rebased but remote still has old commits → diverged share
+      const jsonResult = await arb(env, ["status", "--no-fetch", "--json"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      const json = JSON.parse(jsonResult.stdout);
+      const repo = json.repos[0];
+      // Share should show toPush > 0 and toPull > 0 (diverged)
+      expect(repo.share.toPush).toBeGreaterThan(0);
+      expect(repo.share.toPull).toBeGreaterThan(0);
+      // Outdated should detect the rebased commits
+      expect(repo.share.outdated).toBeDefined();
+      expect(repo.share.outdated.rebased).toBeGreaterThan(0);
+    }));
+
+  test("arb status --json shows base ahead/behind after upstream change", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+      await write(join(wtRepoA, "feature.txt"), "feature");
+      await git(wtRepoA, ["add", "feature.txt"]);
+      await git(wtRepoA, ["commit", "-m", "feat: add feature"]);
+
+      // Advance main
+      const repoA = join(env.projectDir, ".arb/repos/repo-a");
+      await write(join(repoA, "upstream.txt"), "upstream");
+      await git(repoA, ["add", "upstream.txt"]);
+      await git(repoA, ["commit", "-m", "upstream"]);
+      await git(repoA, ["push"]);
+
+      await fetchAllRepos(env);
+      const jsonResult = await arb(env, ["status", "--no-fetch", "--json"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      const json = JSON.parse(jsonResult.stdout);
+      const repo = json.repos[0];
+      expect(repo.base.ahead).toBe(1); // 1 local commit ahead of base
+      expect(repo.base.behind).toBe(1); // 1 upstream commit behind
+    }));
+
+  test("arb status --json shows detached HEAD identity", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+      await write(join(wtRepoA, "file.txt"), "content");
+      await git(wtRepoA, ["add", "file.txt"]);
+      await git(wtRepoA, ["commit", "-m", "commit"]);
+      // Detach HEAD
+      await git(wtRepoA, ["checkout", "--detach"]);
+
+      const jsonResult = await arb(env, ["status", "--no-fetch", "--json"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      const json = JSON.parse(jsonResult.stdout);
+      const repo = json.repos[0];
+      expect(repo.identity.headMode.kind).toBe("detached");
+    }));
+});
