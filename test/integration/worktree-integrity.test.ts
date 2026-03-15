@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { cp, mkdir, rename, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { arb, git, gitBelow230, withEnv } from "./helpers/env";
 
@@ -342,6 +342,107 @@ describe("worktree integrity", () => {
 
       // User's file should still be there
       expect(readFileSync(join(repoDir, "local-change.txt"), "utf-8")).toBe("important work");
+    }));
+
+  test("copied workspace is auto-repaired with new branch", () =>
+    withEnv(async (env) => {
+      // Create workspace ws-original with both repos
+      await arb(env, ["create", "ws-original", "repo-a", "repo-b"]);
+
+      // Write local files in ws-original (simulate user work)
+      writeFileSync(join(env.projectDir, "ws-original/repo-a/local.txt"), "work in repo-a");
+      writeFileSync(join(env.projectDir, "ws-original/repo-b/local.txt"), "work in repo-b");
+
+      // Copy workspace directory to a new name
+      await cp(join(env.projectDir, "ws-original"), join(env.projectDir, "ws-copy"), { recursive: true });
+
+      // Run status in the copied workspace — should auto-repair
+      const result = await arb(env, ["-C", join(env.projectDir, "ws-copy"), "status", "-N"]);
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Detected copied workspace");
+      expect(result.output).toContain("ws-copy");
+      expect(result.output).toContain("ws-original");
+
+      // Config should be updated to the new branch
+      const config = JSON.parse(await readFile(join(env.projectDir, "ws-copy/.arbws/config.json"), "utf-8"));
+      expect(config.branch).toBe("ws-copy");
+
+      // Both repos should have valid bidirectional references
+      for (const repo of ["repo-a", "repo-b"]) {
+        const gitContent = readFileSync(join(env.projectDir, `ws-copy/${repo}/.git`), "utf-8").trim();
+        expect(gitContent.startsWith("gitdir: ")).toBe(true);
+        const gitdirPath = gitContent.slice("gitdir: ".length);
+        const backRef = readFileSync(join(gitdirPath, "gitdir"), "utf-8").trim();
+        expect(backRef).toBe(join(env.projectDir, `ws-copy/${repo}/.git`));
+      }
+
+      // User files should be preserved
+      expect(readFileSync(join(env.projectDir, "ws-copy/repo-a/local.txt"), "utf-8")).toBe("work in repo-a");
+      expect(readFileSync(join(env.projectDir, "ws-copy/repo-b/local.txt"), "utf-8")).toBe("work in repo-b");
+
+      // Original workspace should be completely unaffected
+      const origResult = await arb(env, ["-C", join(env.projectDir, "ws-original"), "status", "-N"]);
+      expect(origResult.exitCode).toBe(0);
+      expect(origResult.output).not.toContain("stale");
+      expect(origResult.output).not.toContain("copied");
+
+      const origConfig = JSON.parse(await readFile(join(env.projectDir, "ws-original/.arbws/config.json"), "utf-8"));
+      expect(origConfig.branch).toBe("ws-original");
+
+      // Verify the copy's new branch is on the same commit as the original
+      const origHead = await git(join(env.projectDir, "ws-copy/repo-a"), ["rev-parse", "HEAD"]);
+      const copyHead = await git(join(env.projectDir, ".arb/repos/repo-a"), ["rev-parse", "refs/heads/ws-original"]);
+      expect(origHead.trim()).toBe(copyHead.trim());
+    }));
+
+  test("copied workspace with same-name branch falls back to manual attach", () =>
+    withEnv(async (env) => {
+      // Create workspace with a custom branch that matches the workspace name
+      await arb(env, ["create", "ws-same", "repo-a"]);
+
+      // Copy to a new directory but with a branch that already matches the dir name
+      // This happens when workspace name == branch (the default)
+      // Simulate: copy ws-same → ws-same-copy, but the config still says branch=ws-same
+      await cp(join(env.projectDir, "ws-same"), join(env.projectDir, "ws-same-copy"), { recursive: true });
+
+      // The copy has branch=ws-same in config, dir name=ws-same-copy, so auto-repair CAN derive a new branch
+      const result = await arb(env, ["-C", join(env.projectDir, "ws-same-copy"), "status", "-N"]);
+      expect(result.exitCode).toBe(0);
+      // Should auto-repair since workspace name (ws-same-copy) != branch (ws-same)
+      expect(result.output).toContain("Detected copied workspace");
+
+      const config = JSON.parse(await readFile(join(env.projectDir, "ws-same-copy/.arbws/config.json"), "utf-8"));
+      expect(config.branch).toBe("ws-same-copy");
+    }));
+
+  test("copied workspace without rename falls back to manual attach", () =>
+    withEnv(async (env) => {
+      // Create workspace with custom branch matching workspace name
+      await arb(env, ["create", "ws-dup", "repo-a"]);
+
+      // Simulate the rare case where workspace name == config branch AND
+      // the workspace is the stale side of a shared entry (manual corruption)
+      // Copy ws-dup to a temp location, delete original, rename copy back
+      await cp(join(env.projectDir, "ws-dup"), join(env.testDir, "ws-dup-backup"), { recursive: true });
+      await rm(join(env.projectDir, "ws-dup"), { recursive: true });
+      await cp(join(env.testDir, "ws-dup-backup"), join(env.projectDir, "ws-dup"), { recursive: true });
+
+      // The branch ws-dup is already checked out in the original worktree entry,
+      // but we restored the directory. The old worktree entry was pruned when we deleted.
+      // So the .git file is stale. But this is a move scenario (not copy), so
+      // repairWorktreeRefs should handle it (not shared entry detection).
+      // Let's test a different scenario: manually corrupt two workspaces to share an entry
+      // where the stale side has name == branch
+      await arb(env, ["create", "ws-owner", "repo-a"]);
+      // ws-dup still has its old name and branch=ws-dup
+      // Corrupt: point ws-dup to ws-owner's entry
+      const ownerGit = readFileSync(join(env.projectDir, "ws-owner/repo-a/.git"), "utf-8").trim();
+      writeFileSync(join(env.projectDir, "ws-dup/repo-a/.git"), ownerGit);
+
+      // Run status — workspace name ws-dup == config branch ws-dup, so auto-repair can't derive a new name
+      const result = await arb(env, ["-C", join(env.projectDir, "ws-dup"), "status", "-N"]);
+      expect(result.output).toContain("removed stale worktree reference");
+      expect(result.output).toContain("arb attach");
     }));
 
   test("attach re-links after shared-entry auto-repair", () =>

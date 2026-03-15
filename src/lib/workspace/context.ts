@@ -17,7 +17,7 @@ export function requireWorkspace(ctx: ArbContext): { wsDir: string; workspace: s
   }
   detectAndRepairProjectMove(wsDir, ctx.arbRootDir, ctx.reposDir);
   repairWorktreeRefs(wsDir, ctx.reposDir);
-  detectSharedWorktreeEntries(wsDir, ctx.arbRootDir);
+  detectSharedWorktreeEntries(wsDir, ctx.arbRootDir, ctx.reposDir);
   return { wsDir, workspace: ctx.currentWorkspace };
 }
 
