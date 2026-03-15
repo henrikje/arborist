@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, git, validateBranchName } from "../lib/git";
+import { GitCache, branchNameError, git } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type BranchJsonOutput, BranchJsonOutputSchema, type BranchJsonRepo } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
@@ -424,8 +424,9 @@ function registerBranchBaseSubcommand(parent: Command, getCtx: () => ArbContext)
       const normalizedBranchArg = rejectExplicitBaseRemotePrefix(branchArg, resolution) ?? branchArg;
 
       // Set mode
-      if (!validateBranchName(normalizedBranchArg)) {
-        error(`Invalid branch name: ${normalizedBranchArg}`);
+      const branchErr = branchNameError(normalizedBranchArg);
+      if (branchErr) {
+        error(`Invalid branch name: ${branchErr}`);
         throw new ArbError(`Invalid branch name: ${normalizedBranchArg}`);
       }
 

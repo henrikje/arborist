@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, git, gitWithTimeout, networkTimeout, validateBranchName } from "../lib/git";
+import { GitCache, branchNameError, git, gitWithTimeout, networkTimeout } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { cell } from "../lib/render";
@@ -449,8 +449,9 @@ export function registerRenameCommand(program: Command, getCtx: () => ArbContext
       }
 
       // Validate branch name
-      if (!validateBranchName(newBranch)) {
-        error(`Invalid branch name: '${newBranch}'`);
+      const branchErr = branchNameError(newBranch);
+      if (branchErr) {
+        error(`Invalid branch name: ${branchErr}`);
         throw new ArbError(`Invalid branch name: '${newBranch}'`);
       }
 

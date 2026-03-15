@@ -409,7 +409,9 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
           await rollbackWorktrees(result, branch, ctx.reposDir, wsDir);
           process.stderr.write("\n");
           const msg = `Failed to create workspace: could not attach ${plural(result.failed.length, "repo")} (${result.failed.join(", ")})`;
-          error(msg);
+          error(
+            `${msg}. The workspace was rolled back. This usually means the branch is already checked out elsewhere or the repo has conflicting state — check the errors above.`,
+          );
           throw new ArbError(msg);
         }
 

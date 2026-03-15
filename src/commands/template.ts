@@ -402,7 +402,9 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
         if (tmpFile) unlinkSync(tmpFile);
       }
 
-      warn("Template drift detected.");
+      warn(
+        "Template drift detected. Workspace files differ from their template versions. Run 'arb template diff' to review, or 'arb template apply --force' to reset.",
+      );
       throw new ArbError("Template drift detected.");
     });
 

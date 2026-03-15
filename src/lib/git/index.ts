@@ -23,6 +23,7 @@ export {
   parseGitStatus,
   parseGitStatusFiles,
   remoteBranchExists,
+  branchNameError,
   validateBranchName,
 } from "./git";
 export { GitCache } from "./git-cache";

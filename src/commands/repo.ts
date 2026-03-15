@@ -10,7 +10,7 @@ import { type RepoListJsonEntry, RepoListJsonEntrySchema } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
-import { confirmOrExit } from "../lib/sync";
+import { classifyNetworkError, confirmOrExit, networkErrorHint } from "../lib/sync";
 import { dim, dryRunNotice, error, info, inlineResult, inlineStart, isTTY, plural, success } from "../lib/terminal";
 import { findRepoUsage, listRepos, selectInteractive } from "../lib/workspace";
 
@@ -104,7 +104,8 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
           if (existsSync(target)) rmSync(target, { recursive: true, force: true });
         }
         const errMsg = result.exitCode === 124 ? result.stderr : result.stderr.trim();
-        error(`Clone failed: ${errMsg}`);
+        const hint = networkErrorHint(classifyNetworkError(errMsg));
+        error(`Clone failed: ${errMsg}${hint ? ` (${hint})` : ""}`);
         throw new ArbError(`Clone failed: ${errMsg}`);
       }
 
@@ -115,6 +116,7 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
         const addResult = await git(target, "remote", "add", "upstream", options.upstream);
         if (addResult.exitCode !== 0) {
           error(`Failed to add upstream remote: ${addResult.stderr.trim()}`);
+          info(`  Add it manually: git -C ${target} remote add upstream ${options.upstream}`);
           throw new ArbError(`Failed to add upstream remote: ${addResult.stderr.trim()}`);
         }
 
@@ -125,8 +127,11 @@ export function registerRepoCommand(program: Command, getCtx: () => ArbContext):
         const fetchTimeout = networkTimeout("ARB_FETCH_TIMEOUT", 120);
         const fetchResult = await gitWithTimeout(target, fetchTimeout, ["fetch", "upstream"]);
         if (fetchResult.exitCode !== 0) {
-          error(`Failed to fetch upstream: ${fetchResult.stderr.trim()}`);
-          throw new ArbError(`Failed to fetch upstream: ${fetchResult.stderr.trim()}`);
+          const fetchErr = fetchResult.stderr.trim();
+          const fetchHint = networkErrorHint(classifyNetworkError(fetchErr));
+          error(`Failed to fetch upstream: ${fetchErr}${fetchHint ? ` (${fetchHint})` : ""}`);
+          info(`  Retry manually: git -C ${target} fetch upstream`);
+          throw new ArbError(`Failed to fetch upstream: ${fetchErr}`);
         }
         await git(target, "remote", "set-head", "upstream", "--auto");
 
