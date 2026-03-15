@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { cp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { arb, git, withEnv } from "./helpers/env";
 
@@ -581,5 +581,97 @@ describe("tracking cleanup", () => {
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("leave");
       expect(result.output).toContain("in place");
+    }));
+});
+
+// ── zero attached repos (config-only rename) ─────────────────────
+
+describe("zero attached repos", () => {
+  test("arb branch rename updates config when no repos are attached", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wsDir = join(env.projectDir, "my-feature");
+      const repoDir = join(wsDir, "repo-a");
+
+      // Remove .git file and prune (simulate post-auto-repair state)
+      await rm(join(repoDir, ".git"));
+      await git(join(env.projectDir, ".arb/repos/repo-a"), ["worktree", "prune"]);
+
+      const result = await arb(env, ["branch", "rename", "new-branch", "--yes", "--no-fetch"], { cwd: wsDir });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Workspace branch set to 'new-branch'");
+      expect(result.output).toContain("arb attach");
+
+      // Config updated
+      const config = JSON.parse(await readFile(join(wsDir, ".arbws/config.json"), "utf8"));
+      expect(config.branch).toBe("new-branch");
+      // No migration state needed
+      expect(config.branch_rename_from).toBeUndefined();
+    }));
+
+  test("arb branch rename --dry-run with zero repos does not write config", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wsDir = join(env.projectDir, "my-feature");
+      const repoDir = join(wsDir, "repo-a");
+
+      await rm(join(repoDir, ".git"));
+      await git(join(env.projectDir, ".arb/repos/repo-a"), ["worktree", "prune"]);
+
+      const result = await arb(env, ["branch", "rename", "new-branch", "--dry-run", "--no-fetch"], { cwd: wsDir });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Dry run");
+
+      // Config not changed
+      const config = JSON.parse(await readFile(join(wsDir, ".arbws/config.json"), "utf8"));
+      expect(config.branch).toBe("my-feature");
+    }));
+
+  test("full workspace copy recovery: rename branch then attach", () =>
+    withEnv(async (env) => {
+      // Create original workspace
+      await arb(env, ["create", "ws-original", "repo-a"]);
+      const origDir = join(env.projectDir, "ws-original");
+      const copyDir = join(env.projectDir, "ws-copy");
+
+      // Add a file so we can verify it survives the recovery
+      writeFileSync(join(origDir, "repo-a/local-work.txt"), "important work");
+
+      // Copy the workspace directory
+      await cp(origDir, copyDir, { recursive: true });
+      writeFileSync(join(copyDir, ".arbws/config.json"), JSON.stringify({ branch: "ws-original" }));
+
+      // Run status in the copy — triggers shared-entry detection
+      const statusResult = await arb(env, ["status", "-N"], { cwd: copyDir });
+      expect(statusResult.output).toContain("removed stale worktree reference");
+      expect(statusResult.output).toContain("arb branch rename");
+
+      // Rename branch in the copy
+      const renameResult = await arb(env, ["branch", "rename", "ws-copy", "--yes", "--no-fetch"], { cwd: copyDir });
+      expect(renameResult.exitCode).toBe(0);
+
+      // Attach repos in the copy
+      const attachResult = await arb(env, ["attach", "repo-a"], { cwd: copyDir });
+      expect(attachResult.exitCode).toBe(0);
+
+      // Verify the copy has a valid worktree on the new branch
+      const copyRepoBranch = (await git(join(copyDir, "repo-a"), ["symbolic-ref", "--short", "HEAD"])).trim();
+      expect(copyRepoBranch).toBe("ws-copy");
+
+      // Verify the copy's worktree has valid bidirectional refs
+      const copyGit = readFileSync(join(copyDir, "repo-a/.git"), "utf-8").trim();
+      expect(copyGit.startsWith("gitdir: ")).toBe(true);
+      const copyGitdir = copyGit.slice("gitdir: ".length);
+      const copyBackRef = readFileSync(join(copyGitdir, "gitdir"), "utf-8").trim();
+      expect(copyBackRef).toBe(join(copyDir, "repo-a/.git"));
+
+      // Verify original workspace is unaffected
+      const origResult = await arb(env, ["status", "-N"], { cwd: origDir });
+      expect(origResult.exitCode).toBe(0);
+      const origBranch = (await git(join(origDir, "repo-a"), ["symbolic-ref", "--short", "HEAD"])).trim();
+      expect(origBranch).toBe("ws-original");
+
+      // Verify user's file survived in the copy
+      expect(readFileSync(join(copyDir, "repo-a/local-work.txt"), "utf-8")).toBe("important work");
     }));
 });

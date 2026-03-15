@@ -81,6 +81,9 @@ describe("worktree integrity", () => {
       // Run status in ws-alpha — should auto-repair by removing the stale .git file
       const result = await arb(env, ["-C", join(env.projectDir, "ws-alpha"), "status", "-N"]);
       expect(result.output).toContain("removed stale worktree reference");
+      // Should guide the user toward branch rename + attach
+      expect(result.output).toContain("arb branch rename");
+      expect(result.output).toContain("arb attach");
 
       // ws-alpha/repo-a directory should still exist (may contain uncommitted work)
       // but the .git file should be gone
