@@ -9,6 +9,7 @@
     "test:integration": "bun run build && bun test test/integration/ --concurrent --timeout 30000",
     "test:integration:git217": "docker build -f test/docker/git217.Dockerfile -t arb-git217 test/docker/ && docker run --rm -v \"$PWD\":/app -w /app arb-git217",
     "test:pbt": "bun run build && bun test test/pbt/ --timeout 300000",
+    "test:perf": "bun run build && bun run test/perf/run.ts",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "typecheck": "tsc --noEmit",
