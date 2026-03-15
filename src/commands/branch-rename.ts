@@ -26,6 +26,7 @@ import {
   isTTY,
   plural,
   red,
+  success,
   warn,
   yellow,
 } from "../lib/terminal";
@@ -340,7 +341,18 @@ async function runRename(
   const repos = repoDirs.map((d) => basename(d));
 
   if (repoDirs.length === 0) {
-    info("No repos in this workspace");
+    // No attached repos — just update config (e.g. after workspace copy removed .git files)
+    if (options.dryRun) {
+      info(`No repos attached — would update workspace branch to '${newBranch}'`);
+      dryRunNotice();
+      return;
+    }
+    writeWorkspaceConfig(configFile, {
+      branch: newBranch,
+      ...(configBase && { base: configBase }),
+    });
+    success(`Workspace branch set to '${newBranch}' (no repos to rename)`);
+    info("Run 'arb attach' to attach repos on the new branch");
     return;
   }
 

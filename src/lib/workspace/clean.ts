@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { basename, join } from "node:path";
-import { warn } from "../terminal/output";
+import { dim, warn } from "../terminal/output";
 import { listRepos, listWorkspaces, workspaceRepoDirs } from "./repos";
 
 /**
@@ -185,6 +185,8 @@ export function detectSharedWorktreeEntries(wsDir: string, arbRootDir: string): 
   const thisWsName = basename(wsDir);
   const workspaces = listWorkspaces(arbRootDir);
 
+  const removedStaleRepos: string[] = [];
+
   for (const repoDir of thisWsRepos) {
     const gitdirPath = readGitdirFromWorktree(repoDir);
     if (!gitdirPath) continue;
@@ -214,10 +216,14 @@ export function detectSharedWorktreeEntries(wsDir: string, arbRootDir: string): 
       // break the shared link. Keep the directory intact in case it contains
       // uncommitted work. The repo can be re-attached with `arb attach`.
       unlinkSync(join(repoDir, ".git"));
-      warn(
-        `  [${repoName}] removed stale worktree reference (entry belongs to another workspace) — run 'arb attach ${repoName}' to re-attach`,
-      );
+      warn(`  [${repoName}] removed stale worktree reference (entry belongs to another workspace)`);
+      removedStaleRepos.push(repoName);
     }
+  }
+
+  if (removedStaleRepos.length > 0) {
+    const repoList = removedStaleRepos.join(" ");
+    warn(`  ${dim("hint:")} to re-attach on a new branch: arb branch rename <new-name> && arb attach ${repoList}`);
   }
 }
 
