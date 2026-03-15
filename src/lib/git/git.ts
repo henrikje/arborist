@@ -174,6 +174,21 @@ export function validateBranchName(name: string): boolean {
   return result.exitCode === 0;
 }
 
+/** Returns a human-readable error string if the name is invalid, or null if valid. */
+export function branchNameError(name: string): string | null {
+  const start = isDebug() ? performance.now() : 0;
+  const result = Bun.spawnSync(["git", "check-ref-format", "--branch", name]);
+  if (isDebug()) {
+    debugGit(`git check-ref-format --branch ${name}`, performance.now() - start, result.exitCode);
+  }
+  if (result.exitCode === 0) return null;
+  const stderr = result.stderr
+    .toString()
+    .trim()
+    .replace(/^fatal:\s*/, "");
+  return stderr || `'${name}' is not a valid branch name`;
+}
+
 export async function checkBranchMatch(
   repoDir: string,
   expected: string,

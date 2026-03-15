@@ -104,7 +104,9 @@ export function resolveAgeFilter(options: { olderThan?: string; newerThan?: stri
       error(
         `Invalid duration "${olderThan}". Use a positive integer followed by d (days), w (weeks), m (months), or y (years). Examples: 30d, 2w, 3m, 1y`,
       );
-      throw new ArbError(`Invalid duration: ${olderThan}`);
+      throw new ArbError(
+        `Invalid duration: ${olderThan}. Use a positive integer followed by d (days), w (weeks), m (months), or y (years). Examples: 30d, 2w, 3m, 1y`,
+      );
     }
     filter.olderThan = ms;
   }
@@ -114,7 +116,9 @@ export function resolveAgeFilter(options: { olderThan?: string; newerThan?: stri
       error(
         `Invalid duration "${newerThan}". Use a positive integer followed by d (days), w (weeks), m (months), or y (years). Examples: 30d, 2w, 3m, 1y`,
       );
-      throw new ArbError(`Invalid duration: ${newerThan}`);
+      throw new ArbError(
+        `Invalid duration: ${newerThan}. Use a positive integer followed by d (days), w (weeks), m (months), or y (years). Examples: 30d, 2w, 3m, 1y`,
+      );
     }
     filter.newerThan = ms;
   }

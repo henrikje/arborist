@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import { git } from "./git";
 
 export interface RepoRemotes {
@@ -19,7 +20,10 @@ export async function resolveRemotes(repoDir: string, knownRemoteNames?: string[
   const remotes = knownRemoteNames ?? (await getRemoteNames(repoDir));
 
   if (remotes.length === 0) {
-    throw new Error(`No remotes configured for ${repoDir}`);
+    const repoName = basename(repoDir);
+    throw new Error(
+      `No remotes configured for ${repoName}. The canonical clone may be corrupted — try 'arb repo remove ${repoName}' and 'arb repo clone' to re-clone.`,
+    );
   }
 
   // Single remote — use it for both roles regardless of name

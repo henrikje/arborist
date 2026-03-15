@@ -144,6 +144,20 @@ Recovery depends on whether failures are independent or systemic.
 
 **Unexpected failures** (push): often systemic (auth, server errors). Arb stops at first failure, prints git's error output, and tells the user to investigate and re-run.
 
+### Error message guidelines
+
+Error messages should tell the user what went wrong. Add recovery guidance only when the next step is **non-obvious** — when the root cause is ambiguous, the recovery involves unfamiliar commands or flags, or the system is in a state the user wouldn't expect.
+
+Do not add hints for routine situations a competent CLI user can figure out (e.g. "workspace not found" does not need "run `arb list`"). Reserve hints for:
+- **Ambiguous failures** — when the message alone doesn't explain *why* (e.g. git network errors that could be auth, connectivity, or a bad URL).
+- **Non-obvious recovery** — when the fix involves flags or commands the user may not know exist (e.g. `--continue`, `--abort`, `--force`).
+- **Unexpected state** — when the system is in a state that shouldn't normally occur (e.g. missing remotes, corrupted worktree refs).
+- **Domain-specific jargon** — when the error uses terms the user may not understand (e.g. "template drift").
+
+The `error()` call (stderr) carries the full message. The `ArbError` message should be self-contained — in non-TTY or piped contexts it may be the only thing the user sees.
+
+For network/git failures, use `classifyNetworkError()` from `src/lib/sync/network-errors.ts` to distinguish auth, connectivity, and URL problems. The push command is the reference implementation.
+
 ### Table spacing convention
 
 **Plan commands** (state-changing: `rebase`, `merge`, `push`, `pull`, `delete`, `branch rename`): blank line before and after the table. The blank lines separate the plan from fetch output above and the confirmation prompt below.
