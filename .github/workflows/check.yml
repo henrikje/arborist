@@ -71,9 +71,12 @@ jobs:
         run: bun run test
 
   integration:
-    name: Integration tests
+    name: Integration tests (${{ matrix.os }})
     needs: changes
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - name: Skip (no code changes)
         if: needs.changes.outputs.code != 'true'
