@@ -387,7 +387,8 @@ describe("worktree integrity", () => {
       expect(readFileSync(join(wsOneRepo, "local-change.txt"), "utf-8")).toBe("my changes");
     }));
 
-  test("arb status works after worktree back-reference is corrupted", () =>
+  // git worktree repair requires git 2.30+
+  test.skipIf(gitBelow230)("arb status works after worktree back-reference is corrupted", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const wsRepo = join(env.projectDir, "my-feature/repo-a");
@@ -407,5 +408,6 @@ describe("worktree integrity", () => {
       // Verify the back-reference was repaired
       const repairedBackRef = readFileSync(join(gitdirPath, "gitdir"), "utf-8").trim();
       expect(repairedBackRef).toBe(join(wsRepo, ".git"));
-    }));
+    }),
+  );
 });
