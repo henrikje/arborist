@@ -99,6 +99,45 @@ Commands that can fail partway through sequential multi-repo execution carry exp
 
 ---
 
+## Commit Conventions
+
+All commits follow [Conventional Commits](https://www.conventionalcommits.org/), enforced by commitlint.
+
+### Release-note types
+
+Use `feat`, `fix`, or `perf` for changes included in release notes. These require a scope. Scope must be a single word, never comma-separated.
+
+**Scope** is the primary command affected by the change: `create`, `rebase`, `push`, etc. For second-level commands, use the command group: `branch`, `repo`, `template`.
+
+When the change cannot be attributed to a particular command, use a cross-cutting scope:
+
+- `analysis` — intelligence derived from git
+- `config` — configuration system
+- `filter` — general improvements to filtering
+- `render` — cross-command changes to rendering
+- `shell` — shell integration
+
+### Internal types
+
+| Type | Scope | Examples |
+|------|-------|---------|
+| `test` | Test category: `unit`, `integration`, `fuzz`, `perf`, `pbt` | `test(integration): add case-sensitivity tests` |
+| `chore` | Maintenance domain: `ci`, `main`, `deps` | `chore(ci): add post-release validation workflow` |
+| `refactor` | No scope | `refactor: extract shared rename utility` |
+| `docs` | No scope | `docs: update workspace description for clarity` |
+
+### Subject line
+
+Use imperative mood ("add", "fix", "remove"), lowercase, no trailing period. The subject describes *what changed*, not implementation details:
+
+- `feat(pull): add --reset flag to arb pull`
+- `fix(branch): handle case-only branch renames on macOS`
+- `perf(status): parallelize repo status gathering`
+- `test(integration): add case-sensitivity filesystem tests`
+- `refactor: implement auto-hide for table columns`
+
+---
+
 ## Decision Records
 
 The `decisions/` directory captures significant design and product decisions — context, options, chosen approach, and reasoning. Read relevant records before proposing changes to features they cover.
