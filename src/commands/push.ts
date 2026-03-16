@@ -97,6 +97,8 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
 
         const assessments = await runPlanFlow({
           shouldFetch,
+          forceFetch: options.fetch === true,
+          arbRootDir: ctx.arbRootDir,
           fetchDirs,
           reposForFetchReport: allRepos,
           remotesMap,

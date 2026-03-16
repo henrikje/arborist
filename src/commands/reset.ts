@@ -323,6 +323,8 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
 
         const assessments = await runPlanFlow({
           shouldFetch,
+          forceFetch: options.fetch === true,
+          arbRootDir: ctx.arbRootDir,
           fetchDirs,
           reposForFetchReport: repos,
           remotesMap,

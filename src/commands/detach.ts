@@ -8,7 +8,14 @@ import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { LOSE_WORK_FLAGS, type RepoFlags, computeFlags, gatherRepoStatus, wouldLoseWork } from "../lib/status";
-import { confirmOrExit, parallelFetch, reportFetchFailures } from "../lib/sync";
+import {
+  confirmOrExit,
+  loadFetchTimestamps,
+  parallelFetch,
+  recordFetchResults,
+  reportFetchFailures,
+  saveFetchTimestamps,
+} from "../lib/sync";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
 import {
   dryRunNotice,
@@ -135,6 +142,7 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
         }
 
         const cache = await GitCache.create();
+        const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
 
         // Phase 1: fetch
         if (options.fetch !== false) {
@@ -143,6 +151,8 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
             const fetchDirs = presentRepos.map((repo) => `${wsDir}/${repo}`);
             const remotesMap = await cache.resolveRemotesMap(presentRepos, ctx.reposDir);
             const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
+            recordFetchResults(fetchTimestamps, fetchResults);
+            saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
             reportFetchFailures(presentRepos, fetchResults);
             cache.invalidateAfterFetch();
           }

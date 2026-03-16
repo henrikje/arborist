@@ -24,6 +24,7 @@ const TEST_ENV: Record<string, string> = {
   GIT_CONFIG_COUNT: "1",
   GIT_CONFIG_KEY_0: "commit.gpgsign",
   GIT_CONFIG_VALUE_0: "false",
+  ARB_FETCH_TTL: "0", // Disable fetch TTL so tests always get fresh data
 };
 
 // ── Git version detection ────────────────────────────────────────
