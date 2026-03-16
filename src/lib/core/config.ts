@@ -1,7 +1,8 @@
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { z } from "zod";
 import { error } from "../terminal/output";
 import { ArbError } from "./errors";
+import { atomicWriteFileSync } from "./fs";
 
 // ── Schemas ──
 
@@ -83,7 +84,7 @@ function readConfig<T>(
 
   if (migrated) {
     try {
-      writeFileSync(configFile, `${JSON.stringify(result.data, null, 2)}\n`);
+      atomicWriteFileSync(configFile, `${JSON.stringify(result.data, null, 2)}\n`);
     } catch {
       // Read-only filesystem — continue with parsed data
     }
@@ -100,7 +101,7 @@ function writeConfig<T>(configFile: string, config: T, schema: z.ZodType<T>): vo
     error(msg);
     throw new ArbError(msg);
   }
-  writeFileSync(configFile, `${JSON.stringify(result.data, null, 2)}\n`);
+  atomicWriteFileSync(configFile, `${JSON.stringify(result.data, null, 2)}\n`);
 }
 
 // ── Legacy filename migration ──
@@ -135,7 +136,7 @@ function migrateLegacyFile<T>(
   }
 
   try {
-    writeFileSync(newFile, `${JSON.stringify(result.data, null, 2)}\n`);
+    atomicWriteFileSync(newFile, `${JSON.stringify(result.data, null, 2)}\n`);
     unlinkSync(legacyFile);
   } catch {
     // Read-only filesystem — continue with parsed data

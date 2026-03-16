@@ -11,9 +11,10 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { atomicWriteFileSync } from "../core/fs";
 
 // ── Schema version ───────────────────────────────────────────────
 
@@ -182,9 +183,7 @@ export class AnalysisCache {
     try {
       const dir = dirname(this.filePath);
       mkdirSync(dir, { recursive: true });
-      const tmpPath = `${this.filePath}.tmp`;
-      writeFileSync(tmpPath, `${JSON.stringify(data, null, 2)}\n`);
-      renameSync(tmpPath, this.filePath);
+      atomicWriteFileSync(this.filePath, `${JSON.stringify(data, null, 2)}\n`);
     } catch {
       // Write failure (e.g. read-only filesystem) — silently continue
     }

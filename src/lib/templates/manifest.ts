@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { atomicWriteFileSync } from "../core/fs";
 
 export function hashContent(content: Buffer | string): string {
   return createHash("sha256").update(content).digest("hex");
@@ -25,7 +26,7 @@ export function readManifest(wsDir: string): Record<string, string> {
 export function writeManifest(wsDir: string, manifest: Record<string, string>): void {
   const dir = join(wsDir, ".arbws");
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}\n`);
+  atomicWriteFileSync(join(dir, MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
 export function mergeManifest(wsDir: string, newEntries: Record<string, string>): void {

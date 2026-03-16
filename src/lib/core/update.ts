@@ -1,9 +1,10 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { dim, yellow } from "../terminal/output";
 import { isTTY } from "../terminal/tty";
+import { atomicWriteFileSync } from "./fs";
 
 // ── Constants ──
 
@@ -101,7 +102,7 @@ function writeUpdateCache(cacheFile: string, latestVersion: string): void {
     checkedAt: new Date().toISOString(),
     latestVersion,
   };
-  writeFileSync(cacheFile, `${JSON.stringify(cache, null, 2)}\n`);
+  atomicWriteFileSync(cacheFile, `${JSON.stringify(cache, null, 2)}\n`);
 }
 
 // ── Network ──
