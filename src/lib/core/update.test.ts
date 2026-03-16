@@ -103,7 +103,7 @@ describe("readUpdateCache", () => {
 
   test("reads valid cache", () => {
     const file = join(tmpDir, "valid.json");
-    const cache = { checkedAt: "2026-03-14T12:00:00.000Z", latestVersion: "0.110.0" };
+    const cache = { timestamp: "2026-03-14T12:00:00.000Z", latestVersion: "0.110.0" };
     writeFileSync(file, JSON.stringify(cache));
     expect(readUpdateCache(file)).toEqual(cache);
   });
@@ -113,16 +113,16 @@ describe("readUpdateCache", () => {
 
 describe("isCacheStale", () => {
   test("fresh cache is not stale", () => {
-    expect(isCacheStale({ checkedAt: new Date().toISOString(), latestVersion: "1.0.0" })).toBe(false);
+    expect(isCacheStale({ timestamp: new Date().toISOString(), latestVersion: "1.0.0" })).toBe(false);
   });
 
   test("25-hour-old cache is stale", () => {
     const old = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
-    expect(isCacheStale({ checkedAt: old, latestVersion: "1.0.0" })).toBe(true);
+    expect(isCacheStale({ timestamp: old, latestVersion: "1.0.0" })).toBe(true);
   });
 
   test("invalid date is stale", () => {
-    expect(isCacheStale({ checkedAt: "not-a-date", latestVersion: "1.0.0" })).toBe(true);
+    expect(isCacheStale({ timestamp: "not-a-date", latestVersion: "1.0.0" })).toBe(true);
   });
 });
 

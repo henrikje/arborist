@@ -56,7 +56,7 @@ const AnalysisCacheEntrySchema = z.object({
   merge: MergeCacheSchema.optional(),
   replayPlan: ReplayPlanCacheSchema.optional(),
   outdated: OutdatedCacheSchema.optional(),
-  timestamp: z.number(),
+  timestamp: z.string(),
 });
 
 export type AnalysisCacheEntry = z.infer<typeof AnalysisCacheEntrySchema>;
@@ -141,9 +141,9 @@ export class AnalysisCache {
     return this.filePath;
   }
 
-  /** Oldest entry timestamp (epoch seconds), or null if empty. */
-  get oldestTimestamp(): number | null {
-    let oldest: number | null = null;
+  /** Oldest entry timestamp (ISO 8601), or null if empty. */
+  get oldestTimestamp(): string | null {
+    let oldest: string | null = null;
     for (const entry of this.entries.values()) {
       if (oldest === null || entry.timestamp < oldest) {
         oldest = entry.timestamp;
@@ -152,9 +152,9 @@ export class AnalysisCache {
     return oldest;
   }
 
-  /** Newest entry timestamp (epoch seconds), or null if empty. */
-  get newestTimestamp(): number | null {
-    let newest: number | null = null;
+  /** Newest entry timestamp (ISO 8601), or null if empty. */
+  get newestTimestamp(): string | null {
+    let newest: string | null = null;
     for (const entry of this.entries.values()) {
       if (newest === null || entry.timestamp > newest) {
         newest = entry.timestamp;
@@ -169,7 +169,7 @@ export class AnalysisCache {
 
     // Evict oldest entries if over size cap
     if (this.entries.size > MAX_ENTRIES) {
-      const sorted = [...this.entries.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
+      const sorted = [...this.entries.entries()].sort((a, b) => a[1].timestamp.localeCompare(b[1].timestamp));
       const toRemove = sorted.slice(0, sorted.length - EVICT_TO);
       for (const [key] of toRemove) {
         this.entries.delete(key);

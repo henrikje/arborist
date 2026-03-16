@@ -20,7 +20,7 @@ export interface UpdateCheckResult {
 }
 
 const UpdateCacheSchema = z.object({
-  checkedAt: z.string(),
+  timestamp: z.string(),
   latestVersion: z.string(),
 });
 
@@ -92,14 +92,14 @@ export function readUpdateCache(cacheFile: string): UpdateCache | null {
 }
 
 export function isCacheStale(cache: UpdateCache): boolean {
-  const checkedAt = new Date(cache.checkedAt).getTime();
-  if (Number.isNaN(checkedAt)) return true;
-  return Date.now() - checkedAt > CACHE_TTL_MS;
+  const ts = new Date(cache.timestamp).getTime();
+  if (Number.isNaN(ts)) return true;
+  return Date.now() - ts > CACHE_TTL_MS;
 }
 
 function writeUpdateCache(cacheFile: string, latestVersion: string): void {
   const cache: UpdateCache = {
-    checkedAt: new Date().toISOString(),
+    timestamp: new Date().toISOString(),
     latestVersion,
   };
   atomicWriteFileSync(cacheFile, `${JSON.stringify(cache, null, 2)}\n`);

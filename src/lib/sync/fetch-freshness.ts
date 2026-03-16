@@ -14,7 +14,7 @@ import type { FetchResult } from "./parallel-fetch";
 // ── Types ────────────────────────────────────────────────────────
 
 export interface FetchTimestamps {
-  [repoName: string]: number; // epoch milliseconds
+  [repoName: string]: string; // ISO 8601
 }
 
 // ── TTL resolution ───────────────────────────────────────────────
@@ -42,7 +42,11 @@ export function loadFetchTimestamps(arbRootDir: string): FetchTimestamps {
   try {
     const parsed = JSON.parse(readFileSync(cachePath(arbRootDir), "utf-8"));
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
-    return parsed;
+    const result: FetchTimestamps = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === "string") result[key] = value;
+    }
+    return result;
   } catch {
     return {};
   }
@@ -64,7 +68,7 @@ export function saveFetchTimestamps(arbRootDir: string, timestamps: FetchTimesta
 /** True when every repo in `repoNames` has a timestamp within the TTL window. */
 export function allReposFresh(repoNames: string[], timestamps: FetchTimestamps, ttlSeconds: number): boolean {
   if (ttlSeconds <= 0) return false;
-  const cutoff = Date.now() - ttlSeconds * 1000;
+  const cutoff = new Date(Date.now() - ttlSeconds * 1000).toISOString();
   return repoNames.every((name) => {
     const ts = timestamps[name];
     return ts !== undefined && ts >= cutoff;
@@ -75,7 +79,7 @@ export function allReposFresh(repoNames: string[], timestamps: FetchTimestamps, 
 
 /** Record current time for each repo that fetched successfully (exitCode 0). */
 export function recordFetchResults(timestamps: FetchTimestamps, results: Map<string, FetchResult>): void {
-  const now = Date.now();
+  const now = new Date().toISOString();
   for (const [repo, result] of results) {
     if (result.exitCode === 0) {
       timestamps[repo] = now;

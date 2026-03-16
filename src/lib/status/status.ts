@@ -347,7 +347,7 @@ export async function gatherRepoStatus(
           merge: baseStatus?.merge,
           replayPlan: baseStatus?.replayPlan,
           outdated: shareStatus.outdated,
-          timestamp: Math.floor(Date.now() / 1000),
+          timestamp: new Date().toISOString(),
         };
         analysisCache.store(cacheKey, entry);
       }
