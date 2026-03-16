@@ -15,6 +15,7 @@ export {
   getShortHead,
   git,
   gitWithTimeout,
+  isCaseInsensitiveFS,
   isLinkedWorktree,
   isRepoDirty,
   isShallowRepo,
