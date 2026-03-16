@@ -46,8 +46,7 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
   }
 
   // needsPull: share remote has genuinely new commits (not just outdated/replaced)
-  const needsPull =
-    repo.share.toPull !== null && repo.share.toPull > 0 && repo.share.toPull > (repo.share.outdated?.total ?? 0);
+  const needsPull = repo.share.toPull !== null && repo.share.toPull > (repo.share.outdated?.total ?? 0);
 
   // needsRebase: behind base branch
   const needsRebase = repo.base !== null && repo.base.behind > 0;
@@ -65,7 +64,7 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 
   const isBaseMerged = repo.base?.baseMergedIntoDefault != null;
 
-  const isBaseMissing = repo.base?.configuredRef != null && repo.base?.baseMergedIntoDefault == null;
+  const isBaseMissing = repo.base?.configuredRef != null && repo.base.baseMergedIntoDefault == null;
 
   return {
     isDirty: localDirty,
