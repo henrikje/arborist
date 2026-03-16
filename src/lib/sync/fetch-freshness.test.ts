@@ -109,7 +109,7 @@ describe("saveFetchTimestamps", () => {
 
   test("does not leave tmp file on success", () => {
     saveFetchTimestamps(tmpDir, { repo: 1000 });
-    expect(existsSync(`${tmpDir}/.arb/cache/fetch.json.tmp`)).toBe(false);
+    expect(existsSync(`${tmpDir}/.arb/cache/fetch.json.tmp.${process.pid}`)).toBe(false);
   });
 });
 

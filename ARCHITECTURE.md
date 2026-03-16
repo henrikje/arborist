@@ -112,6 +112,7 @@ Use `feat`, `fix`, or `perf` for changes included in release notes. These requir
 When the change cannot be attributed to a particular command, use a cross-cutting scope:
 
 - `analysis` — intelligence derived from git
+- `cache` — persistent caching infrastructure
 - `config` — configuration system
 - `filter` — general improvements to filtering
 - `render` — cross-command changes to rendering

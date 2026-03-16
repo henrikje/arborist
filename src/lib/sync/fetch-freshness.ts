@@ -6,8 +6,9 @@
  * Explicit `--fetch` always fetches regardless of TTL. `ARB_FETCH_TTL=0` disables.
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { atomicWriteFileSync } from "../core/fs";
 import type { FetchResult } from "./parallel-fetch";
 
 // ── Types ────────────────────────────────────────────────────────
@@ -52,9 +53,7 @@ export function saveFetchTimestamps(arbRootDir: string, timestamps: FetchTimesta
   const filePath = cachePath(arbRootDir);
   try {
     mkdirSync(dirname(filePath), { recursive: true });
-    const tmpPath = `${filePath}.tmp`;
-    writeFileSync(tmpPath, `${JSON.stringify(timestamps)}\n`);
-    renameSync(tmpPath, filePath);
+    atomicWriteFileSync(filePath, `${JSON.stringify(timestamps)}\n`);
   } catch {
     // Write failure (e.g. read-only filesystem) — silently continue
   }

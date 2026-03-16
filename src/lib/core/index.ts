@@ -19,3 +19,4 @@ export {
 } from "./time";
 export type { ArbContext } from "./types";
 export { type UpdateCheckResult, checkForUpdate } from "./update";
+export { atomicWriteFileSync } from "./fs";
