@@ -2,6 +2,7 @@
 
 ## [0.110.0](https://github.com/henrikje/arborist/compare/v0.109.0...v0.110.0) (2026-03-16)
 
+This release improves safety, clarity, and day-to-day workflow efficiency across branch and workspace management. It adds stronger guardrails around risky operations, clearer status and error feedback, and quality-of-life improvements like parallel execution and better visibility into repository state.
 
 ### Features
 
