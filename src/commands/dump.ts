@@ -4,7 +4,7 @@ import type { Command } from "commander";
 import type { ArbContext } from "../lib/core";
 import { readWorkspaceConfig } from "../lib/core";
 import { GitCache, getRemoteNames, getRemoteUrl } from "../lib/git";
-import { computeFlags, gatherWorkspaceSummary } from "../lib/status";
+import { AnalysisCache, computeFlags, gatherWorkspaceSummary } from "../lib/status";
 import { fetchTtl, loadFetchTimestamps } from "../lib/sync";
 import { listRepos, listWorkspaces, readGitdirFromWorktree, workspaceRepoDirs } from "../lib/workspace";
 import { ARB_VERSION } from "../version";
@@ -125,6 +125,7 @@ async function gitTimed(repoDir: string, ...args: string[]): Promise<GitTimedRes
 
 async function runDump(ctx: ArbContext): Promise<void> {
   const cache = await GitCache.create();
+  const aCache = AnalysisCache.load(ctx.arbRootDir);
 
   // Errors encountered while producing the dump — always included in output.
   const dumpErrors: string[] = [];
@@ -332,7 +333,10 @@ async function runDump(ctx: ArbContext): Promise<void> {
   if (ctx.currentWorkspace) {
     const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
     try {
-      const gatherPromise = gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache, { gatherActivity: true });
+      const gatherPromise = gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache, {
+        gatherActivity: true,
+        analysisCache: aCache,
+      });
       let gatherTimeoutId: ReturnType<typeof setTimeout> | undefined;
       const gatherTimeout = new Promise<"timed-out">((resolve) => {
         gatherTimeoutId = setTimeout(() => resolve("timed-out"), GATHER_TIMEOUT_MS);
@@ -388,6 +392,15 @@ async function runDump(ctx: ArbContext): Promise<void> {
     entries: Object.fromEntries(fetchEntries.map(([repo, ts]) => [repo, new Date(ts).toISOString()])),
   };
 
+  // Analysis cache summary
+  const analysisCacheSummary = {
+    path: aCache.path,
+    schemaVersion: AnalysisCache.schemaVersion,
+    entryCount: aCache.size,
+    oldestTimestamp: aCache.oldestTimestamp ? new Date(aCache.oldestTimestamp * 1000).toISOString() : null,
+    newestTimestamp: aCache.newestTimestamp ? new Date(aCache.newestTimestamp * 1000).toISOString() : null,
+  };
+
   const output = {
     timestamp: new Date().toISOString(),
     arb: {
@@ -410,6 +423,7 @@ async function runDump(ctx: ArbContext): Promise<void> {
     },
     errors: dumpErrors,
     fetchCache: fetchCacheSummary,
+    analysisCache: analysisCacheSummary,
     workspaces,
     canonicalRepos,
     currentWorkspaceStatus,

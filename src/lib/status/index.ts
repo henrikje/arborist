@@ -1,3 +1,4 @@
+export { AnalysisCache } from "./analysis-cache";
 export { plainBaseDiff, plainLocal, plainRemoteDiff } from "./analysis";
 export {
   computeFlags,

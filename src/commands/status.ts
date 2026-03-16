@@ -9,6 +9,7 @@ import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
 import { createRenderContext, render, runPhasedRender } from "../lib/render";
 import { buildStatusView } from "../lib/render";
 import {
+  AnalysisCache,
   type RepoStatus,
   type VerboseDetail,
   type WorkspaceSummary,
@@ -21,18 +22,7 @@ import {
   resolveWhereFilter,
   toJsonVerbose,
 } from "../lib/status";
-import {
-  type FetchResult,
-  allReposFresh,
-  fetchSuffix,
-  fetchTtl,
-  getUnchangedRepos,
-  loadFetchTimestamps,
-  parallelFetch,
-  recordFetchResults,
-  reportFetchFailures,
-  saveFetchTimestamps,
-} from "../lib/sync";
+import { type FetchResult, fetchSuffix, getUnchangedRepos, parallelFetch, reportFetchFailures } from "../lib/sync";
 import { clearScanProgress, error, isTTY, listenForAbortKeypress, scanProgress, stderr } from "../lib/terminal";
 import { requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
@@ -93,171 +83,168 @@ async function runStatus(
 ): Promise<void> {
   const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
   const cache = await GitCache.create();
+  const aCache = AnalysisCache.load(ctx.arbRootDir);
+  try {
+    const where = resolveWhereFilter(options);
 
-  const where = resolveWhereFilter(options);
-
-  // Conflict checks
-  if (options.quiet && options.json) {
-    error("Cannot combine --quiet with --json.");
-    throw new ArbError("Cannot combine --quiet with --json.");
-  }
-  if (options.quiet && options.verbose) {
-    error("Cannot combine --quiet with --verbose.");
-    throw new ArbError("Cannot combine --quiet with --verbose.");
-  }
-
-  // Resolve repo selection: positional args > stdin > all
-  const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
-  const selectedSet = new Set(selectedRepos);
-
-  // Shared gather helper: scan + filter.
-  // When previousResults is provided, repos in that map are reused instead of re-scanned.
-  const gatherFiltered = async (previousResults?: Map<string, RepoStatus>): Promise<WorkspaceSummary> => {
-    const summary = await gatherWorkspaceSummary(
-      wsDir,
-      ctx.reposDir,
-      (scanned, total) => {
-        scanProgress(scanned, total);
-      },
-      cache,
-      { previousResults },
-    );
-    clearScanProgress();
-
-    let repos = summary.repos.filter((r) => selectedSet.has(r.name));
-    if (where) {
-      repos = repos.filter((r) => {
-        const flags = computeFlags(r, summary.branch);
-        return repoMatchesWhere(flags, where);
-      });
+    // Conflict checks
+    if (options.quiet && options.json) {
+      error("Cannot combine --quiet with --json.");
+      throw new ArbError("Cannot combine --quiet with --json.");
     }
-    const aggregates = computeSummaryAggregates(repos, summary.branch);
-    return { ...summary, repos, total: repos.length, ...aggregates };
-  };
+    if (options.quiet && options.verbose) {
+      error("Cannot combine --quiet with --verbose.");
+      throw new ArbError("Cannot combine --quiet with --verbose.");
+    }
 
-  // Phased rendering: show stale table immediately, refresh after fetch
-  const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
-  const wantsFetch = options.fetch !== false && !options.quiet;
-  const allFetchDirs = wantsFetch ? workspaceRepoDirs(wsDir) : [];
-  const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
-  const repoNamesForFetch = fetchDirs.map((d) => basename(d));
-  const shouldFetch =
-    wantsFetch && (options.fetch === true || !allReposFresh(repoNamesForFetch, fetchTimestamps, fetchTtl()));
-  const canPhase = shouldFetch && fetchDirs.length > 0 && !options.json && isTTY();
+    // Resolve repo selection: positional args > stdin > all
+    const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
+    const selectedSet = new Set(selectedRepos);
 
-  if (canPhase) {
-    const { signal: abortSignal, cleanup: abortCleanup } = listenForAbortKeypress();
-    const fetchPromise = cache
-      .resolveRemotesMap(repoNamesForFetch, ctx.reposDir)
-      .then((remotesMap) => parallelFetch(fetchDirs, undefined, remotesMap, { silent: true, signal: abortSignal }));
-    fetchPromise.catch(() => {}); // Prevent unhandled rejection on abort
-    const state: {
-      fetchResults?: Map<string, FetchResult>;
-      aborted?: boolean;
-      staleTable?: string;
-      staleRepos?: RepoStatus[];
-    } = {};
-
-    try {
-      await runPhasedRender([
-        {
-          render: async () => {
-            const data = await gatherFiltered();
-            state.staleRepos = data.repos;
-            state.staleTable = await renderStatusTable(data, wsDir, { verbose: options.verbose });
-            return state.staleTable + fetchSuffix(fetchDirs.length, { abortable: true });
-          },
-          write: stderr,
+    // Shared gather helper: scan + filter.
+    // When previousResults is provided, repos in that map are reused instead of re-scanned.
+    const gatherFiltered = async (previousResults?: Map<string, RepoStatus>): Promise<WorkspaceSummary> => {
+      const summary = await gatherWorkspaceSummary(
+        wsDir,
+        ctx.reposDir,
+        (scanned, total) => {
+          scanProgress(scanned, total);
         },
-        {
-          render: async () => {
-            if (abortSignal.aborted) {
-              state.aborted = true;
-              return state.staleTable as string;
-            }
-            state.fetchResults = await fetchPromise;
-            if (abortSignal.aborted) {
-              state.aborted = true;
-              return state.staleTable as string;
-            }
-            cache.invalidateAfterFetch();
-            // Reuse phase-1 results for repos whose fetch was a no-op
-            const unchanged = getUnchangedRepos(state.fetchResults);
-            const previousResults = new Map<string, RepoStatus>();
-            for (const repo of state.staleRepos ?? []) {
-              if (unchanged.has(repo.name)) previousResults.set(repo.name, repo);
-            }
-            const data = await gatherFiltered(previousResults);
-            return await renderStatusTable(data, wsDir, { verbose: options.verbose });
-          },
-          write: (output) => process.stdout.write(output),
-        },
-      ]);
-    } finally {
-      abortCleanup();
-    }
-    if (!state.aborted) {
-      reportFetchFailures(repoNamesForFetch, state.fetchResults as Map<string, FetchResult>);
-      recordFetchResults(fetchTimestamps, state.fetchResults as Map<string, FetchResult>);
-      saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
-    }
-    return;
-  }
-
-  // Non-two-phase fetch (non-TTY / CI): warn and continue on failure
-  if (shouldFetch && fetchDirs.length > 0) {
-    const repos = fetchDirs.map((d) => basename(d));
-    const remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
-    const results = await parallelFetch(fetchDirs, undefined, remotesMap);
-    reportFetchFailures(repos, results);
-    cache.invalidateAfterFetch();
-    recordFetchResults(fetchTimestamps, results);
-    saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
-  }
-
-  const filteredSummary = await gatherFiltered();
-
-  // Quiet output — one repo name per line
-  if (options.quiet) {
-    for (const repo of filteredSummary.repos) {
-      process.stdout.write(`${repo.name}\n`);
-    }
-    return;
-  }
-
-  // JSON output
-  if (options.json) {
-    const { baseConflictRepos, pullConflictRepos } = await predictConflicts(filteredSummary.repos, wsDir);
-    const reposWithPredictions = filteredSummary.repos.map((repo) => {
-      const baseConflict = baseConflictRepos.has(repo.name);
-      const pullConflict = pullConflictRepos.has(repo.name);
-      if (!baseConflict && !pullConflict) return repo;
-      return { ...repo, predictions: { baseConflict, pullConflict } };
-    });
-    let output: StatusJsonOutput = {
-      ...filteredSummary,
-      repos: reposWithPredictions,
-      baseConflictCount: baseConflictRepos.size,
-      pullConflictCount: pullConflictRepos.size,
-      statusCounts: filteredSummary.statusCounts.map(({ label, count }) => ({ label, count })),
-    };
-    if (options.verbose) {
-      const reposWithVerbose = await Promise.all(
-        reposWithPredictions.map(async (repo) => {
-          const detail = await gatherVerboseDetail(repo, wsDir);
-          if (!detail) return repo;
-          return { ...repo, verbose: toJsonVerbose(detail, repo.base) };
-        }),
+        cache,
+        { previousResults, analysisCache: aCache },
       );
-      output = { ...output, repos: reposWithVerbose };
-    }
-    process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
-    return;
-  }
+      clearScanProgress();
 
-  // Table output
-  const tableOutput = await renderStatusTable(filteredSummary, wsDir, { verbose: options.verbose });
-  process.stdout.write(tableOutput);
+      let repos = summary.repos.filter((r) => selectedSet.has(r.name));
+      if (where) {
+        repos = repos.filter((r) => {
+          const flags = computeFlags(r, summary.branch);
+          return repoMatchesWhere(flags, where);
+        });
+      }
+      const aggregates = computeSummaryAggregates(repos, summary.branch);
+      return { ...summary, repos, total: repos.length, ...aggregates };
+    };
+
+    // Phased rendering: show stale table immediately, refresh after fetch
+    const shouldFetch = options.fetch !== false && !options.quiet;
+    const allFetchDirs = shouldFetch ? workspaceRepoDirs(wsDir) : [];
+    const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
+    const canPhase = shouldFetch && fetchDirs.length > 0 && !options.json && isTTY();
+
+    if (canPhase) {
+      const repoNamesForFetch = fetchDirs.map((d) => basename(d));
+      const { signal: abortSignal, cleanup: abortCleanup } = listenForAbortKeypress();
+      const fetchPromise = cache
+        .resolveRemotesMap(repoNamesForFetch, ctx.reposDir)
+        .then((remotesMap) => parallelFetch(fetchDirs, undefined, remotesMap, { silent: true, signal: abortSignal }));
+      fetchPromise.catch(() => {}); // Prevent unhandled rejection on abort
+      const state: {
+        fetchResults?: Map<string, FetchResult>;
+        aborted?: boolean;
+        staleTable?: string;
+        staleRepos?: RepoStatus[];
+      } = {};
+
+      try {
+        await runPhasedRender([
+          {
+            render: async () => {
+              const data = await gatherFiltered();
+              state.staleRepos = data.repos;
+              state.staleTable = await renderStatusTable(data, wsDir, { verbose: options.verbose });
+              return state.staleTable + fetchSuffix(fetchDirs.length, { abortable: true });
+            },
+            write: stderr,
+          },
+          {
+            render: async () => {
+              if (abortSignal.aborted) {
+                state.aborted = true;
+                return state.staleTable as string;
+              }
+              state.fetchResults = await fetchPromise;
+              if (abortSignal.aborted) {
+                state.aborted = true;
+                return state.staleTable as string;
+              }
+              cache.invalidateAfterFetch();
+              // Reuse phase-1 results for repos whose fetch was a no-op
+              const unchanged = getUnchangedRepos(state.fetchResults);
+              const previousResults = new Map<string, RepoStatus>();
+              for (const repo of state.staleRepos ?? []) {
+                if (unchanged.has(repo.name)) previousResults.set(repo.name, repo);
+              }
+              const data = await gatherFiltered(previousResults);
+              return await renderStatusTable(data, wsDir, { verbose: options.verbose });
+            },
+            write: (output) => process.stdout.write(output),
+          },
+        ]);
+      } finally {
+        abortCleanup();
+      }
+      if (!state.aborted) {
+        reportFetchFailures(repoNamesForFetch, state.fetchResults as Map<string, FetchResult>);
+      }
+      return;
+    }
+
+    // Non-two-phase fetch (non-TTY / CI): warn and continue on failure
+    if (shouldFetch && fetchDirs.length > 0) {
+      const repos = fetchDirs.map((d) => basename(d));
+      const remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
+      const results = await parallelFetch(fetchDirs, undefined, remotesMap);
+      reportFetchFailures(repos, results);
+      cache.invalidateAfterFetch();
+    }
+
+    const filteredSummary = await gatherFiltered();
+
+    // Quiet output — one repo name per line
+    if (options.quiet) {
+      for (const repo of filteredSummary.repos) {
+        process.stdout.write(`${repo.name}\n`);
+      }
+      return;
+    }
+
+    // JSON output
+    if (options.json) {
+      const { baseConflictRepos, pullConflictRepos } = await predictConflicts(filteredSummary.repos, wsDir);
+      const reposWithPredictions = filteredSummary.repos.map((repo) => {
+        const baseConflict = baseConflictRepos.has(repo.name);
+        const pullConflict = pullConflictRepos.has(repo.name);
+        if (!baseConflict && !pullConflict) return repo;
+        return { ...repo, predictions: { baseConflict, pullConflict } };
+      });
+      let output: StatusJsonOutput = {
+        ...filteredSummary,
+        repos: reposWithPredictions,
+        baseConflictCount: baseConflictRepos.size,
+        pullConflictCount: pullConflictRepos.size,
+        statusCounts: filteredSummary.statusCounts.map(({ label, count }) => ({ label, count })),
+      };
+      if (options.verbose) {
+        const reposWithVerbose = await Promise.all(
+          reposWithPredictions.map(async (repo) => {
+            const detail = await gatherVerboseDetail(repo, wsDir);
+            if (!detail) return repo;
+            return { ...repo, verbose: toJsonVerbose(detail, repo.base) };
+          }),
+        );
+        output = { ...output, repos: reposWithVerbose };
+      }
+      process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+      return;
+    }
+
+    // Table output
+    const tableOutput = await renderStatusTable(filteredSummary, wsDir, { verbose: options.verbose });
+    process.stdout.write(tableOutput);
+  } finally {
+    aCache.save();
+  }
 }
 
 async function predictConflicts(

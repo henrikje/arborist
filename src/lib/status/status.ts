@@ -21,6 +21,7 @@ import type { RepoRemotes } from "../git/remotes";
 import { getRepoActivityDate, getWorkspaceActivityDate } from "../workspace/activity";
 import { workspaceBranch } from "../workspace/branch";
 import { workspaceRepoDirs } from "../workspace/repos";
+import { type AnalysisCache, type AnalysisCacheEntry, analysisCacheKey } from "./analysis-cache";
 import { computeSummaryAggregates } from "./flags";
 import { extractPrNumber } from "./pr-detection";
 import { detectTicketFromName } from "./ticket-detection";
@@ -123,6 +124,7 @@ export async function gatherRepoStatus(
   configBase: string | null,
   remotes: RepoRemotes | undefined,
   cache: GitCache,
+  analysisCache?: AnalysisCache,
 ): Promise<RepoStatus> {
   const repo = basename(repoDir);
   const repoPath = `${reposDir}/${repo}`;
@@ -192,14 +194,16 @@ export async function gatherRepoStatus(
   }
 
   // ── Section 4: Share (push/pull status vs share remote) ──
+  // Note: share divergence detection is deferred to the analysis phase below
+  // so it can be served from the analysis cache.
 
   let shareStatus: RepoStatus["share"];
+  let shareDivergenceRef: string | null = null; // ref to use for divergence detection
   if (!detached) {
     // Step 1: Try configured tracking branch
     const upstreamResult = await git(repoDir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}");
     if (upstreamResult.exitCode === 0) {
       const trackingRef = upstreamResult.stdout.trim();
-      // refMode = configured
       const pushLr = await git(repoDir, "rev-list", "--left-right", "--count", `${trackingRef}...HEAD`);
       let toPush: number | null = null;
       let toPull: number | null = null;
@@ -208,15 +212,14 @@ export async function gatherRepoStatus(
         toPull = left;
         toPush = right;
       }
-      const divergence = await detectShareDivergence(repoDir, trackingRef, actualBranch, toPush, toPull);
       shareStatus = {
         remote: shareRemote,
         ref: trackingRef,
         refMode: "configured",
         toPush,
         toPull,
-        ...divergence,
       };
+      shareDivergenceRef = trackingRef;
     } else if (await remoteBranchExists(repoDir, actualBranch, shareRemote)) {
       // Step 2: No tracking config but remote ref exists → implicit
       const implicitRef = `${shareRemote}/${actualBranch}`;
@@ -228,15 +231,14 @@ export async function gatherRepoStatus(
         toPull = left;
         toPush = right;
       }
-      const divergence = await detectShareDivergence(repoDir, implicitRef, actualBranch, toPush, toPull);
       shareStatus = {
         remote: shareRemote,
         ref: implicitRef,
         refMode: "implicit",
         toPush,
         toPull,
-        ...divergence,
       };
+      shareDivergenceRef = implicitRef;
     } else {
       // Step 3: Check if tracking config exists (→ gone) or not (→ noRef)
       const configRemote = await git(repoDir, "config", `branch.${actualBranch}.remote`);
@@ -260,125 +262,94 @@ export async function gatherRepoStatus(
     };
   }
 
-  // Analyze replay-only rebase opportunities for diverged branches.
-  if (baseStatus && compareRef && baseStatus.ahead > 0 && baseStatus.behind > 0) {
-    const replayPlan = await analyzeReplayPlan(repoDir, compareRef);
-    if (replayPlan) {
-      baseStatus.replayPlan = {
-        totalLocal: replayPlan.totalLocal,
-        alreadyOnTarget: replayPlan.alreadyOnTarget,
-        toReplay: replayPlan.toReplay,
-        contiguous: replayPlan.contiguous,
-        ...(replayPlan.mergedPrefix && { mergedPrefix: true }),
-      };
-    }
-  }
+  // ── Analysis phase (share divergence, replay plan, merge detection) ──
+  // These are expensive and cacheable. Check the analysis cache first.
 
-  // ── Merge detection ──
-  // Run when there's divergence from base (ahead/behind > 0), OR when the remote branch is
-  // gone (catches fast-forward merges where ahead=0, behind=0 after the branch was deleted).
-  // Skip when on the base branch itself (base-is-share scenario, e.g. main tracking origin/main).
-  // Skip when branch was never pushed and has no unique commits — the ancestor check would
-  // trivially pass (HEAD is always an ancestor of a ref ahead of it with no diverging commits).
-  // Ancestor check is cheap (single git command), always run when eligible.
-  // Squash check is more expensive — only run when branch is gone OR share is up to date.
-  let mergeMatchingCommit: { hash: string; subject: string } | undefined;
-  if (shouldRunMergeDetection(baseStatus, shareStatus, detached, actualBranch) && baseStatus !== null) {
-    const compareRef = baseRemote ? `${baseRemote}/${baseStatus.ref}` : baseStatus.ref;
-    const { shouldCheckSquash, shouldCheckPrefixes, prefixLimit } = computeMergeDetectionStrategy(
-      baseStatus,
-      shareStatus,
-    );
+  const needsDivergence =
+    shareStatus.toPush !== null && shareStatus.toPush > 0 && shareStatus.toPull !== null && shareStatus.toPull > 0;
+  const needsReplayPlan = baseStatus !== null && compareRef !== null && baseStatus.ahead > 0 && baseStatus.behind > 0;
+  const needsMergeDetection =
+    shouldRunMergeDetection(baseStatus, shareStatus, detached, actualBranch) && baseStatus !== null;
+  const needsAnalysis = needsDivergence || needsReplayPlan || needsMergeDetection;
 
-    // Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
-    let mergeCommitHash: string | undefined;
-    const ancestorResult = await git(repoDir, "merge-base", "--is-ancestor", "HEAD", compareRef);
-    if (ancestorResult.exitCode === 0) {
-      const merge: NonNullable<typeof baseStatus.merge> = { kind: "merge" };
-      // Try to find the merge commit that references this branch for PR attribution
-      const mergeCommit = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, "HEAD");
-      if (mergeCommit) {
-        mergeMatchingCommit = mergeCommit;
-        mergeCommitHash = mergeCommit.hash;
-        merge.commitHash = mergeCommit.hash;
+  if (needsAnalysis) {
+    // Resolve SHAs for cache key (3 cheap rev-parse calls in parallel)
+    const shareRefForSha = shareStatus.ref ?? "";
+    const baseRefForSha = compareRef ?? "";
+    const [headShaResult, baseShaResult, shareShaResult] = await Promise.all([
+      git(repoDir, "rev-parse", "HEAD"),
+      baseRefForSha
+        ? git(repoDir, "rev-parse", baseRefForSha)
+        : Promise.resolve({ exitCode: 0, stdout: "", stderr: "" }),
+      shareRefForSha
+        ? git(repoDir, "rev-parse", shareRefForSha)
+        : Promise.resolve({ exitCode: 0, stdout: "", stderr: "" }),
+    ]);
+    const headSHA = headShaResult.exitCode === 0 ? headShaResult.stdout.trim() : "";
+    const baseSHA = baseShaResult.exitCode === 0 ? baseShaResult.stdout.trim() : "";
+    const shareSHA = shareShaResult.exitCode === 0 ? shareShaResult.stdout.trim() : "";
+
+    const cacheKey = analysisCacheKey(repo, headSHA, baseSHA, shareSHA);
+    const cached = analysisCache?.lookup(cacheKey);
+
+    if (cached) {
+      // ── Cache hit: populate from cached data ──
+      if (cached.outdated) {
+        shareStatus.outdated = cached.outdated;
       }
-      baseStatus.merge = merge;
-      // Ticket fallback: if no merge commit found, or merge commit doesn't yield a PR number
-      if (!mergeMatchingCommit || !extractPrNumber(mergeMatchingCommit.subject)) {
-        const ticket = detectTicketFromName(actualBranch);
-        if (ticket) {
-          const ticketCommit = await findTicketReferencedCommit(repoDir, ticket);
-          if (ticketCommit) mergeMatchingCommit = ticketCommit;
-        }
+      if (baseStatus && cached.merge) {
+        baseStatus.merge = cached.merge;
       }
-    } else if (shouldCheckSquash || shouldCheckPrefixes) {
-      // Phase 2: Squash merge detection via cumulative patch-id (with prefix fallback)
-      let squashResult = await detectBranchMerged(repoDir, compareRef, 200, "HEAD", prefixLimit);
+      if (baseStatus && cached.replayPlan) {
+        baseStatus.replayPlan = cached.replayPlan;
+      }
+    } else {
+      // ── Cache miss: run expensive analysis ──
 
-      // Guard: after `reset --hard <base>` + `git pull`, the merge commit's first parent
-      // is the base tip. The prefix loop finds HEAD~k is-ancestor of base, but the feature
-      // was never merged into base — it's a local pull-merge.
-      if (squashResult?.newCommitsAfterMerge != null && squashResult.kind === "merge" && shareStatus.ref) {
-        const n = squashResult.newCommitsAfterMerge;
-        const [prefixHash, baseHash] = await Promise.all([
-          git(repoDir, "rev-parse", `HEAD~${n}`),
-          git(repoDir, "rev-parse", compareRef),
-        ]);
-        if (
-          prefixHash.exitCode === 0 &&
-          baseHash.exitCode === 0 &&
-          prefixHash.stdout.trim() === baseHash.stdout.trim()
-        ) {
-          // HEAD~k is literally the base tip. Check if share has content not in base.
-          const shareAheadResult = await git(repoDir, "rev-list", "--count", `${compareRef}..${shareStatus.ref}`);
-          if (shareAheadResult.exitCode === 0 && Number.parseInt(shareAheadResult.stdout.trim(), 10) > 0) {
-            squashResult = null;
-          }
+      // Share divergence detection
+      if (needsDivergence && shareDivergenceRef) {
+        const divergence = await detectShareDivergence(
+          repoDir,
+          shareDivergenceRef,
+          actualBranch,
+          shareStatus.toPush,
+          shareStatus.toPull,
+        );
+        if (divergence.outdated) {
+          shareStatus.outdated = divergence.outdated;
         }
       }
 
-      if (squashResult) {
-        const merge: NonNullable<typeof baseStatus.merge> = { kind: squashResult.kind };
-        if (squashResult.newCommitsAfterMerge) {
-          merge.newCommitsAfter = squashResult.newCommitsAfterMerge;
-        }
-        if (squashResult.matchingCommit) {
-          mergeMatchingCommit = squashResult.matchingCommit;
-          merge.commitHash = squashResult.matchingCommit.hash;
-        } else if (squashResult.kind === "merge" && squashResult.newCommitsAfterMerge) {
-          // Regular merge detected via prefix — find the merge commit for attribution
-          const n = squashResult.newCommitsAfterMerge;
-          const mc = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, `HEAD~${n}`);
-          if (mc) {
-            mergeMatchingCommit = mc;
-            mergeCommitHash = mc.hash;
-            merge.commitHash = mc.hash;
-          }
-        }
-        baseStatus.merge = merge;
-        // Ticket fallback: if squash commit doesn't yield a PR number
-        if (!mergeMatchingCommit || !extractPrNumber(mergeMatchingCommit.subject)) {
-          const ticket = detectTicketFromName(actualBranch);
-          if (ticket) {
-            const ticketCommit = await findTicketReferencedCommit(repoDir, ticket);
-            if (ticketCommit) mergeMatchingCommit = ticketCommit;
-          }
+      // Replay plan analysis
+      if (needsReplayPlan && baseStatus && compareRef) {
+        const replayPlan = await analyzeReplayPlan(repoDir, compareRef);
+        if (replayPlan) {
+          baseStatus.replayPlan = {
+            totalLocal: replayPlan.totalLocal,
+            alreadyOnTarget: replayPlan.alreadyOnTarget,
+            toReplay: replayPlan.toReplay,
+            contiguous: replayPlan.contiguous,
+            ...(replayPlan.mergedPrefix && { mergedPrefix: true }),
+          };
         }
       }
-    }
 
-    // Extract PR number from matching commit subject
-    if (baseStatus.merge && mergeMatchingCommit) {
-      const prNumber = extractPrNumber(mergeMatchingCommit.subject);
-      if (prNumber) {
-        // Try to construct a PR URL from the share remote URL
-        let prUrl: string | null = null;
-        const remoteUrl = await cache.getRemoteUrl(repoPath, shareRemote);
-        if (remoteUrl) {
-          const parsed = parseRemoteUrl(remoteUrl);
-          if (parsed) prUrl = buildPrUrl(parsed, prNumber);
-        }
-        baseStatus.merge.detectedPr = { number: prNumber, url: prUrl, mergeCommit: mergeCommitHash };
+      // Merge detection
+      if (needsMergeDetection && baseStatus) {
+        const mergeCompareRef = baseRemote ? `${baseRemote}/${baseStatus.ref}` : baseStatus.ref;
+        await runMergeDetection(repoDir, repoPath, baseStatus, shareStatus, mergeCompareRef, actualBranch, cache);
+      }
+
+      // Store in analysis cache (only if at least one analysis produced a result)
+      const hasCacheableResult = baseStatus?.merge || baseStatus?.replayPlan || shareStatus.outdated;
+      if (analysisCache && hasCacheableResult) {
+        const entry: AnalysisCacheEntry = {
+          merge: baseStatus?.merge,
+          replayPlan: baseStatus?.replayPlan,
+          outdated: shareStatus.outdated,
+          timestamp: Math.floor(Date.now() / 1000),
+        };
+        analysisCache.store(cacheKey, entry);
       }
     }
   }
@@ -386,6 +357,7 @@ export async function gatherRepoStatus(
   // ── Stacked base merge detection ──
   // When configBase is set and resolved, check if the base branch itself
   // has been merged into the repo's true default branch.
+  // Not cached — cheap (2-3 calls) and depends on configBase which varies per workspace.
   if (configBase && baseStatus !== null && baseRemote && !detached) {
     if (baseStatus.ref === configBase) {
       // Base branch exists on remote — use remote ref for detection
@@ -424,6 +396,107 @@ export async function gatherRepoStatus(
     lastActivity: null,
     lastActivityFile: null,
   };
+}
+
+/** Run merge detection and PR attribution. Extracted for cache miss path. */
+async function runMergeDetection(
+  repoDir: string,
+  repoPath: string,
+  baseStatus: NonNullable<RepoStatus["base"]>,
+  shareStatus: RepoStatus["share"],
+  compareRef: string,
+  actualBranch: string,
+  cache: GitCache,
+): Promise<void> {
+  const { shouldCheckSquash, shouldCheckPrefixes, prefixLimit } = computeMergeDetectionStrategy(
+    baseStatus,
+    shareStatus,
+  );
+
+  let mergeMatchingCommit: { hash: string; subject: string } | undefined;
+  let mergeCommitHash: string | undefined;
+
+  // Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
+  const ancestorResult = await git(repoDir, "merge-base", "--is-ancestor", "HEAD", compareRef);
+  if (ancestorResult.exitCode === 0) {
+    const merge: NonNullable<typeof baseStatus.merge> = { kind: "merge" };
+    const mergeCommit = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, "HEAD");
+    if (mergeCommit) {
+      mergeMatchingCommit = mergeCommit;
+      mergeCommitHash = mergeCommit.hash;
+      merge.commitHash = mergeCommit.hash;
+    }
+    baseStatus.merge = merge;
+    if (!mergeMatchingCommit || !extractPrNumber(mergeMatchingCommit.subject)) {
+      const ticket = detectTicketFromName(actualBranch);
+      if (ticket) {
+        const ticketCommit = await findTicketReferencedCommit(repoDir, ticket);
+        if (ticketCommit) mergeMatchingCommit = ticketCommit;
+      }
+    }
+  } else if (shouldCheckSquash || shouldCheckPrefixes) {
+    // Phase 2: Squash merge detection via cumulative patch-id (with prefix fallback)
+    let squashResult = await detectBranchMerged(repoDir, compareRef, 200, "HEAD", prefixLimit);
+
+    // Guard: after `reset --hard <base>` + `git pull`, the merge commit's first parent
+    // is the base tip. The prefix loop finds HEAD~k is-ancestor of base, but the feature
+    // was never merged into base — it's a local pull-merge.
+    if (squashResult?.newCommitsAfterMerge != null && squashResult.kind === "merge" && shareStatus.ref) {
+      const n = squashResult.newCommitsAfterMerge;
+      const [prefixHash, baseHash] = await Promise.all([
+        git(repoDir, "rev-parse", `HEAD~${n}`),
+        git(repoDir, "rev-parse", compareRef),
+      ]);
+      if (prefixHash.exitCode === 0 && baseHash.exitCode === 0 && prefixHash.stdout.trim() === baseHash.stdout.trim()) {
+        const shareAheadResult = await git(repoDir, "rev-list", "--count", `${compareRef}..${shareStatus.ref}`);
+        if (shareAheadResult.exitCode === 0 && Number.parseInt(shareAheadResult.stdout.trim(), 10) > 0) {
+          squashResult = null;
+        }
+      }
+    }
+
+    if (squashResult) {
+      const merge: NonNullable<typeof baseStatus.merge> = { kind: squashResult.kind };
+      if (squashResult.newCommitsAfterMerge) {
+        merge.newCommitsAfter = squashResult.newCommitsAfterMerge;
+      }
+      if (squashResult.matchingCommit) {
+        mergeMatchingCommit = squashResult.matchingCommit;
+        merge.commitHash = squashResult.matchingCommit.hash;
+      } else if (squashResult.kind === "merge" && squashResult.newCommitsAfterMerge) {
+        const n = squashResult.newCommitsAfterMerge;
+        const mc = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, `HEAD~${n}`);
+        if (mc) {
+          mergeMatchingCommit = mc;
+          mergeCommitHash = mc.hash;
+          merge.commitHash = mc.hash;
+        }
+      }
+      baseStatus.merge = merge;
+      if (!mergeMatchingCommit || !extractPrNumber(mergeMatchingCommit.subject)) {
+        const ticket = detectTicketFromName(actualBranch);
+        if (ticket) {
+          const ticketCommit = await findTicketReferencedCommit(repoDir, ticket);
+          if (ticketCommit) mergeMatchingCommit = ticketCommit;
+        }
+      }
+    }
+  }
+
+  // Extract PR number from matching commit subject
+  if (baseStatus.merge && mergeMatchingCommit) {
+    const prNumber = extractPrNumber(mergeMatchingCommit.subject);
+    if (prNumber) {
+      let prUrl: string | null = null;
+      const shareRemote = shareStatus.remote;
+      const remoteUrl = await cache.getRemoteUrl(repoPath, shareRemote);
+      if (remoteUrl) {
+        const parsed = parseRemoteUrl(remoteUrl);
+        if (parsed) prUrl = buildPrUrl(parsed, prNumber);
+      }
+      baseStatus.merge.detectedPr = { number: prNumber, url: prUrl, mergeCommit: mergeCommitHash };
+    }
+  }
 }
 
 /** Lightweight ref-topology gather — resolves identity, base ref, and share ref
@@ -497,7 +570,7 @@ export async function gatherWorkspaceSummary(
   reposDir: string,
   onProgress: ((scanned: number, total: number) => void) | undefined,
   cache: GitCache,
-  options?: { gatherActivity?: boolean; previousResults?: Map<string, RepoStatus> },
+  options?: { gatherActivity?: boolean; previousResults?: Map<string, RepoStatus>; analysisCache?: AnalysisCache },
 ): Promise<WorkspaceSummary> {
   const workspace = basename(wsDir);
   const wb = await workspaceBranch(wsDir);
@@ -526,7 +599,7 @@ export async function gatherWorkspaceSummary(
       const remotes = await cache.resolveRemotes(canonicalPath);
 
       const [status, commitDate, activityDate] = await Promise.all([
-        gatherRepoStatus(repoDir, reposDir, configBase, remotes, cache),
+        gatherRepoStatus(repoDir, reposDir, configBase, remotes, cache, options?.analysisCache),
         getHeadCommitDate(repoDir),
         options?.gatherActivity ? getRepoActivityDate(repoDir) : Promise.resolve(null),
       ]);
