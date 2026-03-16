@@ -10,6 +10,7 @@
  *   bun run test/perf/run.ts > out.json  # capture JSON for comparison
  */
 
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { type PerfEnvConfig, cleanupPerfEnv, createPerfEnv } from "./helpers/env";
 import { type BenchmarkResult, benchmark } from "./helpers/measure";
@@ -95,8 +96,13 @@ function formatScalingTable(report: PerfReport): string {
       const result = tier.benchmarks.find((b) => b.name === benchName);
       if (result) {
         const ms = `${result.durationMs} ms`;
-        const git = result.gitCalls !== null ? ` (${result.gitCalls}gc)` : "";
-        cells.push(`${ms}${git}`.padStart(colWidth));
+        const gitRange =
+          result.gitCallsMin !== null && result.gitCallsMax !== null && result.gitCallsMin !== result.gitCallsMax
+            ? ` (${result.gitCallsMin}..${result.gitCallsMax}gc)`
+            : result.gitCalls !== null
+              ? ` (${result.gitCalls}gc)`
+              : "";
+        cells.push(`${ms}${gitRange}`.padStart(colWidth));
         if (tier.tier === "small") smallMs = result.durationMs;
         if (tier.tier === "large") largeMs = result.durationMs;
       } else {
@@ -120,9 +126,14 @@ function formatTierSummary(tier: TierResult): string {
 
   for (const b of tier.benchmarks) {
     const duration = `${b.durationMs} ms`.padStart(8);
-    const gitCalls = b.gitCalls !== null ? `  ${b.gitCalls} git calls` : "";
+    const range = b.runs > 1 ? ` (${b.durationMinMs}..${b.durationMaxMs})` : "";
+    const gitMedian = b.gitCalls !== null ? `  ${b.gitCalls} git calls` : "";
+    const gitRange =
+      b.runs > 1 && b.gitCallsMin !== null && b.gitCallsMax !== null && b.gitCallsMin !== b.gitCallsMax
+        ? ` (${b.gitCallsMin}..${b.gitCallsMax})`
+        : "";
     const status = b.exitCode === 0 ? "" : ` [exit ${b.exitCode}]`;
-    lines.push(`    ${b.name.padEnd(20)}${duration}${gitCalls}${status}`);
+    lines.push(`    ${b.name.padEnd(20)}${duration}${range}${gitMedian}${gitRange}${status}`);
   }
 
   return lines.join("\n");
@@ -147,6 +158,8 @@ async function runTier(tier: ScaleTier): Promise<TierResult> {
     const results: BenchmarkResult[] = [];
 
     for (const def of BENCHMARKS) {
+      // Clear analysis cache before each benchmark so iteration 1 is always cold
+      await rm(join(env.projectDir, ".arb", "cache"), { recursive: true, force: true });
       process.stderr.write(`  ${def.name}...\n`);
       const cwd = def.cwd === "workspace" ? join(env.projectDir, firstWs) : env.projectDir;
       results.push(await benchmark(env, def.name, def.args, { cwd, runs: def.runs }));

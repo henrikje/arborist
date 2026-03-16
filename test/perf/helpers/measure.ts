@@ -24,8 +24,13 @@ const TEST_ENV: Record<string, string> = {
 export interface BenchmarkResult {
   name: string;
   command: string[];
+  runs: number;
   durationMs: number;
+  durationMinMs: number;
+  durationMaxMs: number;
   gitCalls: number | null;
+  gitCallsMin: number | null;
+  gitCallsMax: number | null;
   exitCode: number;
 }
 
@@ -104,8 +109,13 @@ export async function benchmark(
   return {
     name,
     command: args,
+    runs,
     durationMs: Math.round(median(durations)),
+    durationMinMs: Math.round(Math.min(...durations)),
+    durationMaxMs: Math.round(Math.max(...durations)),
     gitCalls: gitCallCounts.length > 0 ? median(gitCallCounts) : null,
+    gitCallsMin: gitCallCounts.length > 0 ? Math.min(...gitCallCounts) : null,
+    gitCallsMax: gitCallCounts.length > 0 ? Math.max(...gitCallCounts) : null,
     exitCode: lastExitCode,
   };
 }
