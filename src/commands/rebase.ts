@@ -1,9 +1,9 @@
 import type { Command } from "commander";
-import type { ArbContext } from "../lib/core";
+import { arbAction } from "../lib/core";
 import { integrate } from "../lib/sync";
 import { requireWorkspace, resolveReposFromArgsOrStdin } from "../lib/workspace";
 
-export function registerRebaseCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerRebaseCommand(program: Command): void {
   program
     .command("rebase [repos...]")
     .option("--fetch", "Fetch from all remotes before rebase (default)")
@@ -24,24 +24,10 @@ export function registerRebaseCommand(program: Command, getCtx: () => ArbContext
       "Fetches all repos, then rebases the feature branch onto the updated base branch (e.g. main) for all repos, or only the named repos. Shows a plan and asks for confirmation before proceeding.\n\nRepos with uncommitted changes are skipped unless --autostash is used. Repos on a different branch than the workspace are skipped unless --include-wrong-branch is used. Repos already up to date are skipped.\n\nIf any repos conflict, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions.\n\nFetches before rebase by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --autostash to stash uncommitted changes before rebasing and re-apply them after.\n\nUse --verbose to show the incoming commits for each repo in the plan. Use --graph to show a branch divergence diagram with the merge-base point. Combine --graph --verbose to see commits inline in the diagram.\n\nUse --retarget when the configured base branch has been merged — this rebases onto the default branch and updates the workspace config. Use --retarget <branch> for deep stacks where the base was merged into a non-default branch (e.g. --retarget feat/A when B was merged into A).\n\nUse --where to filter repos by status flags. See 'arb help where' for filter syntax. See 'arb help remotes' for remote role resolution. See 'arb help stacked' for stacked workspace workflows.",
     )
     .action(
-      async (
-        repoArgs: string[],
-        options: {
-          fetch?: boolean;
-          yes?: boolean;
-          dryRun?: boolean;
-          verbose?: boolean;
-          graph?: boolean;
-          retarget?: string | boolean;
-          autostash?: boolean;
-          includeWrongBranch?: boolean;
-          where?: string;
-        },
-      ) => {
-        const ctx = getCtx();
+      arbAction(async (ctx, repoArgs: string[], options) => {
         const { wsDir } = requireWorkspace(ctx);
         const repoNames = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
         await integrate(ctx, "rebase", options, repoNames);
-      },
+      }),
     );
 }

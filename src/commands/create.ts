@@ -2,9 +2,9 @@ import { existsSync, mkdirSync } from "node:fs";
 import input from "@inquirer/input";
 import select, { Separator } from "@inquirer/select";
 import type { Command } from "commander";
-import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
-import type { ArbContext } from "../lib/core";
-import { GitCache, type RepoRemotes, git, listRemoteBranches, validateBranchName } from "../lib/git";
+import { ArbError, arbAction, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
+import type { RepoRemotes } from "../lib/git";
+import { git, listRemoteBranches, validateBranchName } from "../lib/git";
 import { render } from "../lib/render";
 import {
   loadFetchTimestamps,
@@ -45,7 +45,7 @@ export function shouldShowBranchPasteHint(
   return validateBranchName(nameArg);
 }
 
-export function registerCreateCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerCreateCommand(program: Command): void {
   program
     .command("create [name] [repos...]")
     .option("-b, --branch <branch>", "Branch name")
@@ -59,12 +59,7 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
       "Create a workspace for a feature or issue. Creates a working copy of each selected repo on a shared feature branch, with isolated working directories. Fetches the selected repos before creating worktrees for fresh remote state (skip with -N/--no-fetch). Automatically seeds files from .arb/templates/ into the new workspace. Running with no arguments opens a guided flow; providing args or flags uses sensible defaults and prompts only for missing required values.\n\nIf the branch already exists locally or on the share remote, arb checks it out instead of creating a new one. This lets you resume work on an existing feature, collaborate on a shared branch, or set up a local workspace for a branch someone else started.\n\nIf any repo fails to attach (for example, the branch is already checked out in another workspace), the entire operation is aborted and any partially created worktrees are rolled back. Use 'arb attach' to add repos individually if partial success is acceptable.\n\nSee 'arb help stacked' for stacking workspaces on feature branches.",
     )
     .action(
-      async (
-        nameArg: string | undefined,
-        repoArgs: string[],
-        options: { branch?: string; base?: string; allRepos?: boolean; yes?: boolean; fetch?: boolean },
-      ) => {
-        const ctx = getCtx();
+      arbAction(async (ctx, nameArg: string | undefined, repoArgs: string[], options) => {
         const isInteractive = process.stdin.isTTY === true;
         const isBareGuidedCreate =
           isInteractive && !nameArg && repoArgs.length === 0 && !options.branch && !options.yes;
@@ -220,8 +215,8 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
           throw new ArbError(msg);
         }
 
-        // Hoist cache + git version check (needed for branch discovery and addWorktrees)
-        const cache = await GitCache.create();
+        // Hoist cache (needed for branch discovery and addWorktrees)
+        const cache = ctx.cache;
         const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
         let remotesMap: Map<string, RepoRemotes> | undefined;
         let alreadyFetched = false;
@@ -443,6 +438,6 @@ export function registerCreateCommand(program: Command, getCtx: () => ArbContext
         }
 
         process.stdout.write(`${wsDir}\n`);
-      },
+      }),
     );
 }

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
+import { ArbError, arbAction, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import {
   GitCache,
@@ -600,7 +600,7 @@ export async function runAbort(
   }
 }
 
-export function registerBranchRenameSubcommand(parent: Command, getCtx: () => ArbContext): void {
+export function registerBranchRenameSubcommand(parent: Command): void {
   parent
     .command("rename [new-name]")
     .option("--continue", "Resume an in-progress rename")
@@ -615,78 +615,79 @@ export function registerBranchRenameSubcommand(parent: Command, getCtx: () => Ar
     .description(
       "Renames the workspace branch locally across all repos and updates .arbws/config.json. The workspace directory is not renamed — use 'arb rename' to rename both the workspace and branch together.\n\nFetches before assessing to get fresh remote state (use -N/--no-fetch to skip). Shows a plan and asks for confirmation before proceeding. Repos with an in-progress git operation (rebase, merge, cherry-pick) are skipped by default — use --include-in-progress to override.\n\nBranch rename is non-atomic across repos: if it fails partway, migration state is preserved in .arbws/config.json so the operation can be resumed. Use --continue to retry remaining repos or --abort to roll back. After rename, tracking is cleared so 'arb push' treats the branch as new and pushes under the new name. Use --delete-remote to also delete the old remote branch during rename.",
     )
-    .action(async (newNameArg: string | undefined, options: RenameOptions) => {
-      const ctx = getCtx();
-      const { wsDir, workspace } = requireWorkspace(ctx);
+    .action(
+      arbAction(async (ctx, newNameArg: string | undefined, options: RenameOptions) => {
+        const { wsDir, workspace } = requireWorkspace(ctx);
 
-      const configFile = `${wsDir}/.arbws/config.json`;
-      const wsConfig = readWorkspaceConfig(configFile);
-      const currentConfigBranch = wsConfig?.branch ?? null;
-      const branchRenameFrom = wsConfig?.branch_rename_from ?? null;
-      const configBase = wsConfig?.base ?? null;
+        const configFile = `${wsDir}/.arbws/config.json`;
+        const wsConfig = readWorkspaceConfig(configFile);
+        const currentConfigBranch = wsConfig?.branch ?? null;
+        const branchRenameFrom = wsConfig?.branch_rename_from ?? null;
+        const configBase = wsConfig?.base ?? null;
 
-      if (!currentConfigBranch) {
-        const msg = `No branch configured for workspace '${workspace}'. Cannot rename.`;
-        error(msg);
-        throw new ArbError(msg);
-      }
-
-      if (options.abort) {
-        return runAbort(wsDir, configFile, currentConfigBranch, branchRenameFrom, configBase, options);
-      }
-
-      let oldBranch: string;
-      let newBranch: string;
-
-      if (options.continue) {
-        if (!branchRenameFrom) {
-          error("No rename in progress. Nothing to continue.");
-          throw new ArbError("No rename in progress. Nothing to continue.");
-        }
-        oldBranch = branchRenameFrom;
-        newBranch = currentConfigBranch;
-      } else {
-        if (!newNameArg) {
-          error("New branch name required. Usage: arb branch rename <new-name>");
-          throw new ArbError("New branch name required. Usage: arb branch rename <new-name>");
+        if (!currentConfigBranch) {
+          const msg = `No branch configured for workspace '${workspace}'. Cannot rename.`;
+          error(msg);
+          throw new ArbError(msg);
         }
 
-        if (!validateBranchName(newNameArg)) {
-          error(`Invalid branch name: '${newNameArg}'`);
-          throw new ArbError(`Invalid branch name: '${newNameArg}'`);
+        if (options.abort) {
+          return runAbort(wsDir, configFile, currentConfigBranch, branchRenameFrom, configBase, options);
         }
 
-        if (branchRenameFrom !== null) {
-          // Migration already in progress
-          if (currentConfigBranch === newNameArg) {
-            // Same target — treat as resume
-            oldBranch = branchRenameFrom;
-            newBranch = currentConfigBranch;
-          } else {
-            const msg = `A rename to '${currentConfigBranch}' is already in progress — use 'arb branch rename --continue' or 'arb branch rename --abort'`;
-            error(msg);
-            throw new ArbError(msg);
+        let oldBranch: string;
+        let newBranch: string;
+
+        if (options.continue) {
+          if (!branchRenameFrom) {
+            error("No rename in progress. Nothing to continue.");
+            throw new ArbError("No rename in progress. Nothing to continue.");
           }
+          oldBranch = branchRenameFrom;
+          newBranch = currentConfigBranch;
         } else {
-          // Fresh run
-          oldBranch = currentConfigBranch;
-          newBranch = newNameArg;
+          if (!newNameArg) {
+            error("New branch name required. Usage: arb branch rename <new-name>");
+            throw new ArbError("New branch name required. Usage: arb branch rename <new-name>");
+          }
 
-          if (oldBranch === newBranch) {
-            info(`Already on branch '${newBranch}' — nothing to do`);
-            return;
+          if (!validateBranchName(newNameArg)) {
+            error(`Invalid branch name: '${newNameArg}'`);
+            throw new ArbError(`Invalid branch name: '${newNameArg}'`);
+          }
+
+          if (branchRenameFrom !== null) {
+            // Migration already in progress
+            if (currentConfigBranch === newNameArg) {
+              // Same target — treat as resume
+              oldBranch = branchRenameFrom;
+              newBranch = currentConfigBranch;
+            } else {
+              const msg = `A rename to '${currentConfigBranch}' is already in progress — use 'arb branch rename --continue' or 'arb branch rename --abort'`;
+              error(msg);
+              throw new ArbError(msg);
+            }
+          } else {
+            // Fresh run
+            oldBranch = currentConfigBranch;
+            newBranch = newNameArg;
+
+            if (oldBranch === newBranch) {
+              info(`Already on branch '${newBranch}' — nothing to do`);
+              return;
+            }
           }
         }
-      }
 
-      // Show hint when workspace could be renamed via arb rename
-      const showRenameWorkspaceHint =
-        !options.continue &&
-        !options.abort &&
-        workspace === oldBranch &&
-        validateWorkspaceName(newBranch) === null &&
-        !existsSync(`${ctx.arbRootDir}/${newBranch}`);
+        // Show hint when workspace could be renamed via arb rename
+        const showRenameWorkspaceHint =
+          !options.continue &&
+          !options.abort &&
+          workspace === oldBranch &&
+          validateWorkspaceName(newBranch) === null &&
+          !existsSync(`${ctx.arbRootDir}/${newBranch}`);
 
-      return runRename(wsDir, ctx, configFile, oldBranch, newBranch, configBase, showRenameWorkspaceHint, options);
-    });
+        return runRename(wsDir, ctx, configFile, oldBranch, newBranch, configBase, showRenameWorkspaceHint, options);
+      }),
+    );
 }

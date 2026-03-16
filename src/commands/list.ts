@@ -2,9 +2,9 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { z } from "zod";
-import { ArbError, type RelativeTimeParts, formatRelativeTimeParts, readWorkspaceConfig } from "../lib/core";
+import { ArbError, type RelativeTimeParts, arbAction, formatRelativeTimeParts, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache } from "../lib/git";
+import type { GitCache } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type ListJsonEntry, ListJsonEntrySchema } from "../lib/json";
 import { createRenderContext, render, runPhasedRender } from "../lib/render";
@@ -13,7 +13,7 @@ import { EMPTY_CELL, cell } from "../lib/render";
 import { buildStatusCountsCell } from "../lib/render";
 import {
   type AgeFilter,
-  AnalysisCache,
+  type AnalysisCache,
   type WorkspaceSummary,
   gatherWorkspaceSummary,
   matchesAge,
@@ -63,7 +63,7 @@ interface ListMetadata {
   toScan: { index: number; wsDir: string }[];
 }
 
-export function registerListCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerListCommand(program: Command): void {
   program
     .command("list")
     .summary("List all workspaces")
@@ -80,30 +80,19 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
     .option("-q, --quiet", "Output one workspace name per line")
     .option("--json", "Output structured JSON")
     .option("--schema", "Print JSON Schema for this command's --json output and exit")
-    .action(
-      async (options: {
-        fetch?: boolean;
-        status?: boolean;
-        dirty?: boolean;
-        where?: string;
-        olderThan?: string;
-        newerThan?: string;
-        quiet?: boolean;
-        json?: boolean;
-        schema?: boolean;
-      }) => {
-        if (options.schema) {
-          if (options.json || options.quiet) {
-            error("Cannot combine --schema with --json or --quiet.");
-            throw new ArbError("Cannot combine --schema with --json or --quiet.");
-          }
-          printSchema(z.array(ListJsonEntrySchema));
-          return;
+    .action(async (options, command) => {
+      if (options.schema) {
+        if (options.json || options.quiet) {
+          error("Cannot combine --schema with --json or --quiet.");
+          throw new ArbError("Cannot combine --schema with --json or --quiet.");
         }
-        const ctx = getCtx();
-        const cache = await GitCache.create();
-        const aCache = AnalysisCache.load(ctx.arbRootDir);
-        try {
+        printSchema(z.array(ListJsonEntrySchema));
+        return;
+      }
+      await arbAction(async (ctx, options) => {
+        const cache = ctx.cache;
+        const aCache = ctx.analysisCache;
+        {
           // Conflict checks
           if (options.quiet && options.json) {
             error("Cannot combine --quiet with --json.");
@@ -369,11 +358,9 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
             });
             process.stdout.write(formatListTable(statusRows, true));
           }
-        } finally {
-          aCache.save();
         }
-      },
-    );
+      })(options, command);
+    });
 }
 
 // ── Metadata gathering ──

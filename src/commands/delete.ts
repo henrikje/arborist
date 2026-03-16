@@ -5,6 +5,7 @@ import {
   ArbError,
   type LastCommitWidths,
   type RelativeTimeParts,
+  arbAction,
   computeLastCommitWidths,
   formatLastCommitCell,
   formatRelativeTimeParts,
@@ -16,6 +17,7 @@ import { EMPTY_CELL, cell } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
 import { enrichMergedLabel, formatStatusCounts } from "../lib/render";
 import {
+  type AnalysisCache,
   LOSE_WORK_FLAGS,
   type WorkspaceSummary,
   computeFlags,
@@ -234,7 +236,7 @@ async function selectFromAssessments(
 async function assessWorkspace(
   name: string,
   ctx: ArbContext,
-  gatherOpts?: { gatherActivity?: boolean },
+  gatherOpts?: { gatherActivity?: boolean; analysisCache?: AnalysisCache },
 ): Promise<WorkspaceAssessment | null> {
   const validationError = validateWorkspaceName(name);
   if (validationError) {
@@ -458,7 +460,7 @@ function buildConfirmMessage(count: number, deleteRemote: boolean): string {
   return `Delete ${plural(count, "workspace")}${remoteSuffix}?`;
 }
 
-export function registerDeleteCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerDeleteCommand(program: Command): void {
   program
     .command("delete [names...]")
     .option("-y, --yes", "Skip confirmation prompt")
@@ -482,21 +484,7 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
       "Delete one or more workspaces and their repos. Fetches workspace repos before assessing for fresh remote state (skip with -N/--no-fetch). Shows the status of each repo (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-delete all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Use --where <filter> to filter by status flags. Use --older-than/--newer-than to filter by workspace activity age. When used without workspace names, these filters select from all matching workspaces (e.g. arb delete --where gone deletes all gone workspaces). In a TTY, --where, --older-than/--newer-than, and --all-safe show an interactive picker with all matches pre-selected, letting you deselect workspaces to keep. When combined with names, filters narrow the selection further (AND logic). Combine with --all-safe to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). See 'arb help where' for filter syntax.\n\nUse --yes to skip confirmation (and interactive selection), --force to override at-risk safety checks, --delete-remote to also delete the remote branches.\n\nSee 'arb help stacked' for stacked workspace deletion.",
     )
     .action(
-      async (
-        nameArgs: string[],
-        options: {
-          yes?: boolean;
-          force?: boolean;
-          deleteRemote?: boolean;
-          allSafe?: boolean;
-          where?: string;
-          olderThan?: string;
-          newerThan?: string;
-          dryRun?: boolean;
-          fetch?: boolean;
-        },
-      ) => {
-        const ctx = getCtx();
+      arbAction(async (ctx, nameArgs: string[], options) => {
         const skipPrompts = options.yes ?? false;
         const forceAtRisk = options.force ?? false;
         const deleteRemote = options.deleteRemote ?? false;
@@ -543,7 +531,9 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
 
           await fetchWorkspaceRepos(candidates);
 
-          const gatherOptsAllSafe = ageFilter ? { gatherActivity: true } : undefined;
+          const gatherOptsAllSafe = ageFilter
+            ? { gatherActivity: true, analysisCache: ctx.analysisCache }
+            : { analysisCache: ctx.analysisCache };
           const totalCandidates = candidates.length;
           let analyzedCandidates = 0;
           const analyzeStart = performance.now();
@@ -651,7 +641,9 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
         await fetchWorkspaceRepos(names);
 
         // Assess all workspaces
-        const gatherOpts = ageFilter ? { gatherActivity: true } : undefined;
+        const gatherOpts = ageFilter
+          ? { gatherActivity: true, analysisCache: ctx.analysisCache }
+          : { analysisCache: ctx.analysisCache };
         const total = names.length;
         let analyzed = 0;
         const analyzeStart = performance.now();
@@ -744,6 +736,6 @@ export function registerDeleteCommand(program: Command, getCtx: () => ArbContext
         if (deletedCurrentWorkspace) {
           process.stdout.write(`${ctx.arbRootDir}\n`);
         }
-      },
+      }),
     );
 }

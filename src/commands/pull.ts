@@ -1,17 +1,8 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict, predictRebaseConflictCommits, predictStashPopConflict } from "../lib/analysis";
-import { ArbError, readWorkspaceConfig } from "../lib/core";
-import type { ArbContext } from "../lib/core";
-import {
-  GitCache,
-  getCommitsBetweenFull,
-  getDiffShortstat,
-  getShortHead,
-  git,
-  gitWithTimeout,
-  networkTimeout,
-} from "../lib/git";
+import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
+import { getCommitsBetweenFull, getDiffShortstat, getShortHead, git, gitWithTimeout, networkTimeout } from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
 import { createRenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -40,7 +31,7 @@ function withoutSkipFields<T extends { skipReason?: string; skipFlag?: string }>
   return next;
 }
 
-export function registerPullCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerPullCommand(program: Command): void {
   program
     .command("pull [repos...]")
     .option("--reset", "Reset to remote tip instead of pulling (overrides rebased-locally skip)")
@@ -57,20 +48,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
       "Pull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Fetches in parallel, then shows a plan and asks for confirmation before pulling.\n\nRepos with uncommitted changes are skipped unless --autostash is used. Repos on a different branch than the workspace are skipped unless --include-wrong-branch is used. Repos where the remote branch has been deleted are skipped.\n\nIf any repos conflict, arb continues with the remaining repos and reports all conflicts at the end. When a remote branch was rebased and local has no unique commits to preserve, arb may safely reset to the rewritten remote tip instead of attempting a three-way merge.\n\nUse --reset to override the rebased-locally skip and reset to the remote tip, discarding the local rebase. Use --verbose to show the incoming commits in the plan. Use --autostash to stash uncommitted changes before pulling and re-apply them after. Use --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nThe pull mode (rebase or merge) is determined per-repo from git config (branch.<name>.rebase, then pull.rebase), defaulting to merge if neither is set. Use --rebase or --merge to override for all repos.\n\nSee 'arb help remotes' for remote role resolution.",
     )
     .action(
-      async (
-        repoArgs: string[],
-        options: {
-          reset?: boolean;
-          rebase?: boolean;
-          merge?: boolean;
-          yes?: boolean;
-          dryRun?: boolean;
-          verbose?: boolean;
-          autostash?: boolean;
-          includeWrongBranch?: boolean;
-          where?: string;
-        },
-      ) => {
+      arbAction(async (ctx, repoArgs: string[], options) => {
         if (options.rebase && options.merge) {
           error("Cannot use both --rebase and --merge");
           throw new ArbError("Cannot use both --rebase and --merge");
@@ -82,13 +60,12 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
           : options.merge
             ? "merge"
             : undefined;
-        const ctx = getCtx();
         const { wsDir, workspace } = requireWorkspace(ctx);
         const branch = await requireBranch(wsDir, workspace);
 
         const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
         const selectedSet = new Set(selectedRepos);
-        const cache = await GitCache.create();
+        const cache = ctx.cache;
         const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
         const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
 
@@ -108,6 +85,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
           configBase,
           remotesMap,
           cache,
+          analysisCache: ctx.analysisCache,
           where,
           classify: async ({ repoDir, status, fetchFailed }) => {
             const headSha = await getShortHead(repoDir);
@@ -316,7 +294,7 @@ export function registerPullCommand(program: Command, getCtx: () => ArbContext):
         if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
         if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
         finishSummary(parts, conflicted.length > 0 || failed.length > 0 || stashPopFailed.length > 0);
-      },
+      }),
     );
 }
 

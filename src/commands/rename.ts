@@ -1,7 +1,7 @@
 import { existsSync, renameSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
+import { ArbError, arbAction, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, branchNameError, git, gitWithTimeout, networkTimeout } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
@@ -344,7 +344,7 @@ async function runWorkspaceRename(
   }
 }
 
-export function registerRenameCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerRenameCommand(program: Command): void {
   program
     .command("rename [new-name]")
     .option("--branch <name>", "Set the branch name independently from the workspace name")
@@ -360,43 +360,130 @@ export function registerRenameCommand(program: Command, getCtx: () => ArbContext
     .description(
       "Renames the workspace directory and branch across all repos. Completes the create/delete/rename lifecycle triad.\n\nThe positional <new-name> sets the workspace directory name and, by default, the branch name. Use --branch to set the branch name independently (e.g. 'arb rename PROJ-208 --branch feat/PROJ-208'). If only --branch is provided, the workspace name is derived from the last path segment.\n\nUse --base to change the base branch as part of the rename, completing the 'repurpose workspace' workflow.\n\nFetches before assessing to get fresh remote state (use -N/--no-fetch to skip). Shows a plan and asks for confirmation before proceeding. Repos with an in-progress git operation (rebase, merge, cherry-pick) are skipped.\n\nShares migration state with 'arb branch rename' — either command can resume or abort work started by the other. Use --continue to resume or --abort to roll back.",
     )
-    .action(async (newNameArg: string | undefined, options: RenameCommandOptions) => {
-      const ctx = getCtx();
-      const { wsDir, workspace } = requireWorkspace(ctx);
+    .action(
+      arbAction(async (ctx, newNameArg: string | undefined, options: RenameCommandOptions) => {
+        const { wsDir, workspace } = requireWorkspace(ctx);
 
-      const configFile = `${wsDir}/.arbws/config.json`;
-      const wsConfig = readWorkspaceConfig(configFile);
-      const currentConfigBranch = wsConfig?.branch ?? null;
-      const branchRenameFrom = wsConfig?.branch_rename_from ?? null;
-      const configBase = wsConfig?.base ?? null;
-      const workspaceRenameTo = wsConfig?.workspace_rename_to ?? null;
+        const configFile = `${wsDir}/.arbws/config.json`;
+        const wsConfig = readWorkspaceConfig(configFile);
+        const currentConfigBranch = wsConfig?.branch ?? null;
+        const branchRenameFrom = wsConfig?.branch_rename_from ?? null;
+        const configBase = wsConfig?.base ?? null;
+        const workspaceRenameTo = wsConfig?.workspace_rename_to ?? null;
 
-      if (!currentConfigBranch) {
-        const msg = `No branch configured for workspace '${workspace}'. Cannot rename.`;
-        error(msg);
-        throw new ArbError(msg);
-      }
-
-      if (options.abort) {
-        return runAbort(wsDir, configFile, currentConfigBranch, branchRenameFrom, configBase, {
-          dryRun: options.dryRun,
-          yes: options.yes,
-        });
-      }
-
-      let oldBranch: string;
-      let newBranch: string;
-      let newWorkspaceName: string;
-
-      if (options.continue) {
-        if (!branchRenameFrom) {
-          error("No rename in progress. Nothing to continue.");
-          throw new ArbError("No rename in progress. Nothing to continue.");
+        if (!currentConfigBranch) {
+          const msg = `No branch configured for workspace '${workspace}'. Cannot rename.`;
+          error(msg);
+          throw new ArbError(msg);
         }
-        oldBranch = branchRenameFrom;
-        newBranch = currentConfigBranch;
-        // Use stored workspace rename target if available, otherwise keep current name
-        newWorkspaceName = workspaceRenameTo ?? workspace;
+
+        if (options.abort) {
+          return runAbort(wsDir, configFile, currentConfigBranch, branchRenameFrom, configBase, {
+            dryRun: options.dryRun,
+            yes: options.yes,
+          });
+        }
+
+        let oldBranch: string;
+        let newBranch: string;
+        let newWorkspaceName: string;
+
+        if (options.continue) {
+          if (!branchRenameFrom) {
+            error("No rename in progress. Nothing to continue.");
+            throw new ArbError("No rename in progress. Nothing to continue.");
+          }
+          oldBranch = branchRenameFrom;
+          newBranch = currentConfigBranch;
+          // Use stored workspace rename target if available, otherwise keep current name
+          newWorkspaceName = workspaceRenameTo ?? workspace;
+          return runWorkspaceRename(
+            wsDir,
+            ctx,
+            workspace,
+            configFile,
+            oldBranch,
+            newBranch,
+            newWorkspaceName,
+            configBase,
+            options.base,
+            options,
+          );
+        }
+
+        // At least one of <new-name> or --branch is required
+        if (!newNameArg && !options.branch) {
+          const msg =
+            "At least one of <new-name> or --branch is required. Usage: arb rename <new-name> [--branch <name>]";
+          error(msg);
+          throw new ArbError(msg);
+        }
+
+        // Resolve workspace name and branch name
+        if (newNameArg && options.branch) {
+          // Both provided
+          newWorkspaceName = newNameArg;
+          newBranch = options.branch;
+        } else if (newNameArg) {
+          // Only positional: workspace name = branch name
+          newWorkspaceName = newNameArg;
+          newBranch = newNameArg;
+        } else {
+          // Only --branch: derive workspace name from branch
+          // biome-ignore lint/style/noNonNullAssertion: checked above
+          const derived = deriveWorkspaceNameFromBranch(options.branch!);
+          if (!derived) {
+            // biome-ignore lint/style/noNonNullAssertion: checked above
+            const msg = `Could not derive workspace name from branch '${options.branch!}'. Pass an explicit workspace name: arb rename <workspace-name> --branch ${options.branch}`;
+            error(msg);
+            throw new ArbError(msg);
+          }
+          newWorkspaceName = derived;
+          // biome-ignore lint/style/noNonNullAssertion: checked above
+          newBranch = options.branch!;
+        }
+
+        // Validate workspace name
+        const wsNameErr = validateWorkspaceName(newWorkspaceName);
+        if (wsNameErr) {
+          error(wsNameErr);
+          throw new ArbError(wsNameErr);
+        }
+
+        // Validate branch name
+        const branchErr = branchNameError(newBranch);
+        if (branchErr) {
+          error(`Invalid branch name: ${branchErr}`);
+          throw new ArbError(`Invalid branch name: '${newBranch}'`);
+        }
+
+        // Check for name collision
+        if (newWorkspaceName !== workspace && existsSync(`${ctx.arbRootDir}/${newWorkspaceName}`)) {
+          const msg = `Directory '${newWorkspaceName}' already exists`;
+          error(msg);
+          throw new ArbError(msg);
+        }
+
+        if (branchRenameFrom !== null) {
+          // Migration already in progress
+          if (currentConfigBranch === newBranch) {
+            // Same target — treat as resume
+            oldBranch = branchRenameFrom;
+          } else {
+            const msg = `A rename to '${currentConfigBranch}' is already in progress — use 'arb rename --continue' or 'arb rename --abort'`;
+            error(msg);
+            throw new ArbError(msg);
+          }
+        } else {
+          oldBranch = currentConfigBranch;
+        }
+
+        // Check for no-op
+        if (oldBranch === newBranch && workspace === newWorkspaceName && !options.base) {
+          info("Already at target name — nothing to do");
+          return;
+        }
+
         return runWorkspaceRename(
           wsDir,
           ctx,
@@ -409,92 +496,6 @@ export function registerRenameCommand(program: Command, getCtx: () => ArbContext
           options.base,
           options,
         );
-      }
-
-      // At least one of <new-name> or --branch is required
-      if (!newNameArg && !options.branch) {
-        const msg =
-          "At least one of <new-name> or --branch is required. Usage: arb rename <new-name> [--branch <name>]";
-        error(msg);
-        throw new ArbError(msg);
-      }
-
-      // Resolve workspace name and branch name
-      if (newNameArg && options.branch) {
-        // Both provided
-        newWorkspaceName = newNameArg;
-        newBranch = options.branch;
-      } else if (newNameArg) {
-        // Only positional: workspace name = branch name
-        newWorkspaceName = newNameArg;
-        newBranch = newNameArg;
-      } else {
-        // Only --branch: derive workspace name from branch
-        // biome-ignore lint/style/noNonNullAssertion: checked above
-        const derived = deriveWorkspaceNameFromBranch(options.branch!);
-        if (!derived) {
-          // biome-ignore lint/style/noNonNullAssertion: checked above
-          const msg = `Could not derive workspace name from branch '${options.branch!}'. Pass an explicit workspace name: arb rename <workspace-name> --branch ${options.branch}`;
-          error(msg);
-          throw new ArbError(msg);
-        }
-        newWorkspaceName = derived;
-        // biome-ignore lint/style/noNonNullAssertion: checked above
-        newBranch = options.branch!;
-      }
-
-      // Validate workspace name
-      const wsNameErr = validateWorkspaceName(newWorkspaceName);
-      if (wsNameErr) {
-        error(wsNameErr);
-        throw new ArbError(wsNameErr);
-      }
-
-      // Validate branch name
-      const branchErr = branchNameError(newBranch);
-      if (branchErr) {
-        error(`Invalid branch name: ${branchErr}`);
-        throw new ArbError(`Invalid branch name: '${newBranch}'`);
-      }
-
-      // Check for name collision
-      if (newWorkspaceName !== workspace && existsSync(`${ctx.arbRootDir}/${newWorkspaceName}`)) {
-        const msg = `Directory '${newWorkspaceName}' already exists`;
-        error(msg);
-        throw new ArbError(msg);
-      }
-
-      if (branchRenameFrom !== null) {
-        // Migration already in progress
-        if (currentConfigBranch === newBranch) {
-          // Same target — treat as resume
-          oldBranch = branchRenameFrom;
-        } else {
-          const msg = `A rename to '${currentConfigBranch}' is already in progress — use 'arb rename --continue' or 'arb rename --abort'`;
-          error(msg);
-          throw new ArbError(msg);
-        }
-      } else {
-        oldBranch = currentConfigBranch;
-      }
-
-      // Check for no-op
-      if (oldBranch === newBranch && workspace === newWorkspaceName && !options.base) {
-        info("Already at target name — nothing to do");
-        return;
-      }
-
-      return runWorkspaceRename(
-        wsDir,
-        ctx,
-        workspace,
-        configFile,
-        oldBranch,
-        newBranch,
-        newWorkspaceName,
-        configBase,
-        options.base,
-        options,
-      );
-    });
+      }),
+    );
 }

@@ -1,9 +1,9 @@
 import type { Command } from "commander";
-import type { ArbContext } from "../lib/core";
+import { arbAction } from "../lib/core";
 import { integrate } from "../lib/sync";
 import { requireWorkspace, resolveReposFromArgsOrStdin } from "../lib/workspace";
 
-export function registerMergeCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerMergeCommand(program: Command): void {
   program
     .command("merge [repos...]")
     .option("--fetch", "Fetch from all remotes before merge (default)")
@@ -20,23 +20,10 @@ export function registerMergeCommand(program: Command, getCtx: () => ArbContext)
       "Fetches all repos, then merges the base branch (e.g. main) into the feature branch for all repos, or only the named repos. Shows a plan and asks for confirmation before proceeding.\n\nRepos with uncommitted changes are skipped unless --autostash is used. Repos on a different branch than the workspace are skipped unless --include-wrong-branch is used. Repos already up to date are skipped.\n\nIf any repos conflict, arb continues with the remaining repos and reports all conflicts at the end with per-repo resolution instructions.\n\nFetches before merge by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --autostash to stash uncommitted changes before merging and re-apply them after.\n\nUse --verbose to show the incoming commits for each repo in the plan. Use --graph to show a branch divergence diagram with the merge-base point. Combine --graph --verbose to see commits inline in the diagram.\n\nUse --where to filter repos by status flags. See 'arb help where' for filter syntax. See 'arb help remotes' for remote role resolution.",
     )
     .action(
-      async (
-        repoArgs: string[],
-        options: {
-          fetch?: boolean;
-          yes?: boolean;
-          dryRun?: boolean;
-          verbose?: boolean;
-          graph?: boolean;
-          autostash?: boolean;
-          includeWrongBranch?: boolean;
-          where?: string;
-        },
-      ) => {
-        const ctx = getCtx();
+      arbAction(async (ctx, repoArgs: string[], options) => {
         const { wsDir } = requireWorkspace(ctx);
         const repoNames = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
         await integrate(ctx, "merge", options, repoNames);
-      },
+      }),
     );
 }

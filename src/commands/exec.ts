@@ -1,15 +1,13 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError, readWorkspaceConfig } from "../lib/core";
-import type { ArbContext } from "../lib/core";
-import { GitCache } from "../lib/git";
+import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
 import { type RenderContext, render } from "../lib/render";
 import { repoHeaderNode } from "../lib/render";
 import { computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
 import { error, isTTY, plural, success } from "../lib/terminal";
 import { collectRepo, requireBranch, requireWorkspace, validateRepoNames, workspaceRepoDirs } from "../lib/workspace";
 
-export function registerExecCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerExecCommand(program: Command): void {
   program
     .command("exec")
     .argument("<command...>", "Command to run in each repo")
@@ -23,8 +21,7 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
       "Run the given command in each repo and report which succeeded or failed. Each repo is preceded by an ==> repo <== header. By default, commands run sequentially and inherit your terminal, so interactive programs work.\n\nUse --parallel (-p) to run concurrently across all repos. Output is buffered per repo and printed in alphabetical order. Stdin is disabled in parallel mode.\n\nUse --repo <name> to target specific repos (repeatable). Use --dirty to only run in repos with local changes, or --where <filter> to filter by status flags. See 'arb help where' for filter syntax. --repo and --where/--dirty can be combined (AND logic).\n\nArb flags must come before the command. Everything after the command name is passed through verbatim:\n\n  arb exec --repo api --repo web -- npm test\n  arb exec --dirty git diff -d    # --dirty → arb, -d → git diff\n  arb exec -p npm install          # parallel install across all repos",
     )
     .action(
-      async (args: string[], options: { repo?: string[]; dirty?: boolean; where?: string; parallel?: boolean }) => {
-        const ctx = getCtx();
+      arbAction(async (ctx, args: string[], options) => {
         const { wsDir } = requireWorkspace(ctx);
 
         // Validate --repo names
@@ -58,11 +55,18 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
           const workspace = ctx.currentWorkspace ?? "";
           const branch = await requireBranch(wsDir, workspace);
           const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
-          const cache = await GitCache.create();
+          const cache = ctx.cache;
           await Promise.all(
             repoDirs.map(async (repoDir) => {
               const repo = basename(repoDir);
-              const status = await gatherRepoStatus(repoDir, ctx.reposDir, configBase, undefined, cache);
+              const status = await gatherRepoStatus(
+                repoDir,
+                ctx.reposDir,
+                configBase,
+                undefined,
+                cache,
+                ctx.analysisCache,
+              );
               const flags = computeFlags(status, branch);
               repoFilter.set(repo, repoMatchesWhere(flags, where));
             }),
@@ -119,7 +123,7 @@ export function registerExecCommand(program: Command, getCtx: () => ArbContext):
         }
 
         if (execFailed.length > 0) throw new ArbError("Command failed in some repos");
-      },
+      }),
     );
 }
 

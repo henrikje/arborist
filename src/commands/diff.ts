@@ -1,8 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError } from "../lib/core";
-import type { ArbContext } from "../lib/core";
-import { GitCache, git, parseGitNumstat } from "../lib/git";
+import { ArbError, arbAction } from "../lib/core";
+import { git, parseGitNumstat } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type DiffJsonFileStat, type DiffJsonOutput, DiffJsonOutputSchema, type DiffJsonRepo } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
@@ -108,7 +107,7 @@ async function resolveDiffTarget(repoDir: string, repo: RepoStatus): Promise<Dif
   return { ref, status: "ok", note: "" };
 }
 
-export function registerDiffCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerDiffCommand(program: Command): void {
   program
     .command("diff [repos...]")
     .option("--fetch", "Fetch from all remotes before showing diff")
@@ -122,25 +121,21 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
     .description(
       "Show the cumulative diff of the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what has this feature branch changed?' by showing the total change set.\n\nDiffs from the merge-base to the working tree, so the output includes committed, staged, and unstaged changes to tracked files — the complete change set of the feature branch. Untracked files (never git-added) are not included in the diff — this is inherent to git diff semantics. Use 'arb status -v' to see untracked files.\n\nUse --fetch to fetch before showing diff (default is no fetch). Use --stat for a summary of changed files. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line). Use --where to filter by status flags. See 'arb help where' for filter syntax. Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.\n\nSee 'arb help scripting' for output modes and piping.",
     )
-    .action(
-      async (
-        repoArgs: string[],
-        options: { stat?: boolean; json?: boolean; schema?: boolean; dirty?: boolean; where?: string; fetch?: boolean },
-      ) => {
-        if (options.schema) {
-          if (options.json) {
-            error("Cannot combine --schema with --json.");
-            throw new ArbError("Cannot combine --schema with --json.");
-          }
-          printSchema(DiffJsonOutputSchema);
-          return;
+    .action(async (repoArgs: string[], options, command) => {
+      if (options.schema) {
+        if (options.json) {
+          error("Cannot combine --schema with --json.");
+          throw new ArbError("Cannot combine --schema with --json.");
         }
-        const ctx = getCtx();
+        printSchema(DiffJsonOutputSchema);
+        return;
+      }
+      await arbAction(async (ctx, repoArgs: string[], options) => {
         const { wsDir, workspace } = requireWorkspace(ctx);
         const branch = await requireBranch(wsDir, workspace);
 
         const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
-        const cache = await GitCache.create();
+        const cache = ctx.cache;
 
         if (options.fetch) {
           const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
@@ -162,7 +157,9 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
 
         const where = resolveWhereFilter(options);
 
-        const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
+        const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache, {
+          analysisCache: ctx.analysisCache,
+        });
         const selectedSet = new Set(selectedRepos);
         let repos = summary.repos.filter((r) => selectedSet.has(r.name));
 
@@ -184,8 +181,8 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
             await outputPipe(repos, wsDir, results, options.stat);
           }
         }
-      },
-    );
+      })(repoArgs, options, command);
+    });
 }
 
 // ── TTY output: delegate to git for diff rendering ────────────────
