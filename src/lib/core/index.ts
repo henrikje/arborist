@@ -6,6 +6,7 @@ export {
   writeProjectConfig,
   writeWorkspaceConfig,
 } from "./config";
+export { type CommandContext, arbAction } from "./command-action";
 export { ArbAbort, ArbError } from "./errors";
 export {
   type LastCommitWidths,

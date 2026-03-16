@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
+import { ArbError, arbAction, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, branchNameError, git } from "../lib/git";
 import { printSchema } from "../lib/json";
@@ -127,7 +127,7 @@ function buildVerboseNodes(repos: RepoRefs[], branch: string, base: string | nul
   return nodes;
 }
 
-export function registerBranchCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerBranchCommand(program: Command): void {
   const branch = program
     .command("branch")
     .summary("Inspect and manage the workspace branch")
@@ -145,24 +145,23 @@ export function registerBranchCommand(program: Command, getCtx: () => ArbContext
     .description(
       "Show the workspace branch, base branch (if configured), and any per-repo deviations. Use --verbose to show a per-repo table with branch and remote tracking info (fetches by default; use -N to skip). Press Escape during the fetch to cancel and use stale data. Use --quiet to output just the branch name (useful for scripting). Use --json for machine-readable output.\n\nSee 'arb help scripting' for output modes and piping.",
     )
-    .action(
-      async (options: { quiet?: boolean; verbose?: boolean; json?: boolean; fetch?: boolean; schema?: boolean }) => {
-        if (options.schema) {
-          if (options.json || options.quiet || options.verbose) {
-            error("Cannot combine --schema with --json, --quiet, or --verbose.");
-            throw new ArbError("Cannot combine --schema with --json, --quiet, or --verbose.");
-          }
-          printSchema(BranchJsonOutputSchema);
-          return;
+    .action(async (options, command) => {
+      if (options.schema) {
+        if (options.json || options.quiet || options.verbose) {
+          error("Cannot combine --schema with --json, --quiet, or --verbose.");
+          throw new ArbError("Cannot combine --schema with --json, --quiet, or --verbose.");
         }
-        const ctx = getCtx();
+        printSchema(BranchJsonOutputSchema);
+        return;
+      }
+      await arbAction(async (ctx, options) => {
         requireWorkspace(ctx);
         await runBranch(ctx, options);
-      },
-    );
+      })(options, command);
+    });
 
-  registerBranchRenameSubcommand(branch, getCtx);
-  registerBranchBaseSubcommand(branch, getCtx);
+  registerBranchRenameSubcommand(branch);
+  registerBranchBaseSubcommand(branch);
 }
 
 async function runBranch(
@@ -397,7 +396,7 @@ function formatVerboseJson(repos: RepoRefs[], branch: string, base: string | nul
 
 // ── Base subcommand ──────────────────────────────────────────────
 
-function registerBranchBaseSubcommand(parent: Command, getCtx: () => ArbContext): void {
+function registerBranchBaseSubcommand(parent: Command): void {
   parent
     .command("base [branch]")
     .option("--unset", "Remove the base branch (track repo default)")
@@ -406,76 +405,79 @@ function registerBranchBaseSubcommand(parent: Command, getCtx: () => ArbContext)
     .description(
       "View, change, or remove the workspace's base branch.\n\nWith no arguments, shows the current base branch. With a branch name, sets the base. With --unset, removes the base so the workspace tracks each repo's default branch.\n\nWhen setting a new base, checks whether the current base was merged into the default branch (squash or regular merge). If so, blocks the config change and guides you toward 'arb rebase --retarget', which rebases safely. Use --force to change the config anyway.\n\nSee 'arb help stacked' for stacked workspace workflows.",
     )
-    .action(async (branchArg: string | undefined, options: { unset?: boolean; force?: boolean }) => {
-      const ctx = getCtx();
-      const { wsDir } = requireWorkspace(ctx);
-      const configFile = `${wsDir}/.arbws/config.json`;
-      const config = readWorkspaceConfig(configFile);
-      const currentBase = config?.base ?? null;
-      const wsBranch = config?.branch ?? (ctx.currentWorkspace as string);
+    .action(
+      arbAction(async (ctx, branchArg: string | undefined, options) => {
+        const { wsDir } = requireWorkspace(ctx);
+        const configFile = `${wsDir}/.arbws/config.json`;
+        const config = readWorkspaceConfig(configFile);
+        const currentBase = config?.base ?? null;
+        const wsBranch = config?.branch ?? (ctx.currentWorkspace as string);
 
-      // Unset mode
-      if (options.unset) {
-        if (branchArg) {
-          error("Cannot combine a branch argument with --unset.");
-          throw new ArbError("Cannot combine a branch argument with --unset.");
-        }
-        if (!currentBase) {
-          info("No base branch configured — already tracking repo default");
+        // Unset mode
+        if (options.unset) {
+          if (branchArg) {
+            error("Cannot combine a branch argument with --unset.");
+            throw new ArbError("Cannot combine a branch argument with --unset.");
+          }
+          if (!currentBase) {
+            info("No base branch configured — already tracking repo default");
+            return;
+          }
+          writeWorkspaceConfig(configFile, { branch: wsBranch });
+          info("Base branch removed (now tracking repo default)");
           return;
         }
-        writeWorkspaceConfig(configFile, { branch: wsBranch });
-        info("Base branch removed (now tracking repo default)");
-        return;
-      }
 
-      // Show mode
-      if (!branchArg) {
+        // Show mode
+        if (!branchArg) {
+          if (currentBase) {
+            process.stdout.write(`${currentBase}\n`);
+          } else {
+            info("No base branch configured — tracking repo default");
+          }
+          return;
+        }
+
+        const cache = ctx.cache;
+        const resolution = await resolveWorkspaceBaseResolution(wsDir, ctx.reposDir, cache);
+        const normalizedBranchArg = rejectExplicitBaseRemotePrefix(branchArg, resolution) ?? branchArg;
+
+        // Set mode
+        const branchErr = branchNameError(normalizedBranchArg);
+        if (branchErr) {
+          error(`Invalid branch name: ${branchErr}`);
+          throw new ArbError(`Invalid branch name: ${normalizedBranchArg}`);
+        }
+
+        if (normalizedBranchArg === wsBranch) {
+          error(`Cannot set base to ${normalizedBranchArg} — that is the workspace branch.`);
+          throw new ArbError(`Cannot set base to ${normalizedBranchArg} — that is the workspace branch.`);
+        }
+
+        // Merged-base safety check
+        if (!options.force && currentBase) {
+          const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache, {
+            analysisCache: ctx.analysisCache,
+          });
+          const hasMergedBase = summary.repos.some((repo) => {
+            const flags = computeFlags(repo, wsBranch);
+            return flags.isBaseMerged;
+          });
+          if (hasMergedBase) {
+            error(`Base branch ${currentBase} was merged into the default branch.`);
+            error("Use 'arb rebase --retarget' to rebase onto the new base safely.");
+            error("'arb branch base' only changes the config — it does not rebase.");
+            error("Use --force to change the config anyway.");
+            throw new ArbError(`Base branch ${currentBase} was merged — use --retarget or --force.`);
+          }
+        }
+
+        writeWorkspaceConfig(configFile, { branch: wsBranch, base: normalizedBranchArg });
         if (currentBase) {
-          process.stdout.write(`${currentBase}\n`);
+          info(`Base branch changed from ${currentBase} to ${normalizedBranchArg}`);
         } else {
-          info("No base branch configured — tracking repo default");
+          info(`Base branch set to ${normalizedBranchArg}`);
         }
-        return;
-      }
-
-      const cache = await GitCache.create();
-      const resolution = await resolveWorkspaceBaseResolution(wsDir, ctx.reposDir, cache);
-      const normalizedBranchArg = rejectExplicitBaseRemotePrefix(branchArg, resolution) ?? branchArg;
-
-      // Set mode
-      const branchErr = branchNameError(normalizedBranchArg);
-      if (branchErr) {
-        error(`Invalid branch name: ${branchErr}`);
-        throw new ArbError(`Invalid branch name: ${normalizedBranchArg}`);
-      }
-
-      if (normalizedBranchArg === wsBranch) {
-        error(`Cannot set base to ${normalizedBranchArg} — that is the workspace branch.`);
-        throw new ArbError(`Cannot set base to ${normalizedBranchArg} — that is the workspace branch.`);
-      }
-
-      // Merged-base safety check
-      if (!options.force && currentBase) {
-        const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
-        const hasMergedBase = summary.repos.some((repo) => {
-          const flags = computeFlags(repo, wsBranch);
-          return flags.isBaseMerged;
-        });
-        if (hasMergedBase) {
-          error(`Base branch ${currentBase} was merged into the default branch.`);
-          error("Use 'arb rebase --retarget' to rebase onto the new base safely.");
-          error("'arb branch base' only changes the config — it does not rebase.");
-          error("Use --force to change the config anyway.");
-          throw new ArbError(`Base branch ${currentBase} was merged — use --retarget or --force.`);
-        }
-      }
-
-      writeWorkspaceConfig(configFile, { branch: wsBranch, base: normalizedBranchArg });
-      if (currentBase) {
-        info(`Base branch changed from ${currentBase} to ${normalizedBranchArg}`);
-      } else {
-        info(`Base branch set to ${normalizedBranchArg}`);
-      }
-    });
+      }),
+    );
 }

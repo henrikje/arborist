@@ -1,9 +1,8 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict } from "../lib/analysis";
-import { ArbError, readWorkspaceConfig } from "../lib/core";
-import type { ArbContext } from "../lib/core";
-import { GitCache, getCommitsBetweenFull, getShortHead, gitWithTimeout, networkTimeout } from "../lib/git";
+import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
+import { getCommitsBetweenFull, getShortHead, gitWithTimeout, networkTimeout } from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
 import { createRenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -22,7 +21,7 @@ import type { PushAssessment } from "../lib/sync";
 import { dryRunNotice, info, inlineResult, inlineStart, plural, red } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
-export function registerPushCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerPushCommand(program: Command): void {
   program
     .command("push [repos...]")
     .option("-f, --force", "Force push with lease")
@@ -39,26 +38,13 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
       "Fetches all repos, then pushes the feature branch for all repos, or only the named repos. Pushes to the share remote (origin by default, or as configured for fork workflows). Sets up tracking on first push. Shows a plan and asks for confirmation before pushing. The plan highlights repos that are behind the base branch, with a hint to rebase before pushing.\n\nSkips repos with no commits to push, or whose branches have been merged into the base branch unless --include-merged is used. Repos on a different branch than the workspace are skipped unless --include-wrong-branch is used; when included, they are pushed to their actual branch. If a remote branch was deleted after merge, use --include-merged to recreate it.\n\nAfter rebase, amend, or squash, Arborist detects that all remote commits are outdated and pushes automatically with --force-with-lease. Use --force when the remote has genuinely new commits that you want to overwrite.\n\nUse --verbose to show the outgoing commits for each repo in the plan. Fetches before push by default; use -N/--no-fetch to skip fetching when refs are known to be fresh. Use --where to filter repos by status flags. See 'arb help where' for filter syntax. See 'arb help remotes' for remote role resolution.",
     )
     .action(
-      async (
-        repoArgs: string[],
-        options: {
-          force?: boolean;
-          includeMerged?: boolean;
-          includeWrongBranch?: boolean;
-          fetch?: boolean;
-          yes?: boolean;
-          dryRun?: boolean;
-          verbose?: boolean;
-          where?: string;
-        },
-      ) => {
-        const ctx = getCtx();
+      arbAction(async (ctx, repoArgs: string[], options) => {
         const { wsDir, workspace } = requireWorkspace(ctx);
         const branch = await requireBranch(wsDir, workspace);
         const where = resolveWhereFilter(options);
 
         const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
-        const cache = await GitCache.create();
+        const cache = ctx.cache;
         const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
         const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
 
@@ -76,6 +62,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
           configBase,
           remotesMap,
           cache,
+          analysisCache: ctx.analysisCache,
           where,
           classify: async ({ repoDir, status }) => {
             const headSha = await getShortHead(repoDir);
@@ -178,7 +165,7 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
         if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
         if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
         finishSummary(parts, false);
-      },
+      }),
     );
 }
 

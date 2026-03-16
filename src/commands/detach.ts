@@ -1,9 +1,8 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Command } from "commander";
-import { ArbError, readWorkspaceConfig } from "../lib/core";
-import type { ArbContext } from "../lib/core";
-import { GitCache, branchExistsLocally, detectOperation, git, isRepoDirty } from "../lib/git";
+import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
+import { branchExistsLocally, detectOperation, git, isRepoDirty } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
@@ -73,7 +72,7 @@ const DETACH_SKIP_LABELS: Partial<Record<keyof RepoFlags, string>> = {
   isWrongBranch: "wrong branch",
 };
 
-export function registerDetachCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerDetachCommand(program: Command): void {
   program
     .command("detach [repos...]")
     .option("-f, --force", "Force detach even with at-risk repos (uncommitted changes, unpushed commits, etc.)")
@@ -88,18 +87,7 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
       "Detach one or more repos from the current workspace without deleting the workspace itself. Shows a plan and asks for confirmation before proceeding. Regenerates templates that reference the repo list (those using {% for repo in workspace.repos %}) to reflect the updated repo list. Skips repos with at-risk state (uncommitted changes, unpushed commits, operation in progress, detached HEAD, wrong branch) unless --force is used. Use --all-repos to detach all repos. Use --delete-branch to also delete the local branch from the canonical repo. Fetches the selected repos before detaching for fresh state (skip with -N/--no-fetch). Use --yes to skip the confirmation prompt. Use --dry-run to see what would happen without executing.",
     )
     .action(
-      async (
-        repoArgs: string[],
-        options: {
-          force?: boolean;
-          allRepos?: boolean;
-          deleteBranch?: boolean;
-          yes?: boolean;
-          dryRun?: boolean;
-          fetch?: boolean;
-        },
-      ) => {
-        const ctx = getCtx();
+      arbAction(async (ctx, repoArgs: string[], options) => {
         const { wsDir, workspace } = requireWorkspace(ctx);
         const branch = await requireBranch(wsDir, workspace);
 
@@ -141,7 +129,7 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
           }
         }
 
-        const cache = await GitCache.create();
+        const cache = ctx.cache;
         const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
 
         // Phase 1: fetch
@@ -178,7 +166,14 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
 
           if (!options.force) {
             try {
-              const status = await gatherRepoStatus(wtPath, ctx.reposDir, configBase, undefined, cache);
+              const status = await gatherRepoStatus(
+                wtPath,
+                ctx.reposDir,
+                configBase,
+                undefined,
+                cache,
+                ctx.analysisCache,
+              );
               const flags = computeFlags(status, branch);
               if (wouldLoseWork(flags)) {
                 const reasons = [...LOSE_WORK_FLAGS]
@@ -291,6 +286,6 @@ export function registerDetachCommand(program: Command, getCtx: () => ArbContext
         process.stderr.write("\n");
         if (detached.length > 0) success(`Detached ${plural(detached.length, "repo")} from ${ctx.currentWorkspace}`);
         if (skipped.length > 0) warn(`Skipped: ${skipped.map((a) => a.repo).join(" ")}`);
-      },
+      }),
     );
 }

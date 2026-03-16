@@ -1,25 +1,25 @@
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Command } from "commander";
-import type { ArbContext } from "../lib/core";
-import { readWorkspaceConfig } from "../lib/core";
-import { GitCache, getRemoteNames, getRemoteUrl } from "../lib/git";
+import { type CommandContext, arbAction, readWorkspaceConfig } from "../lib/core";
+import { getRemoteNames, getRemoteUrl } from "../lib/git";
 import { AnalysisCache, computeFlags, gatherWorkspaceSummary } from "../lib/status";
 import { fetchTtl, loadFetchTimestamps } from "../lib/sync";
 import { listRepos, listWorkspaces, readGitdirFromWorktree, workspaceRepoDirs } from "../lib/workspace";
 import { ARB_VERSION } from "../version";
 
-export function registerDumpCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerDumpCommand(program: Command): void {
   program
     .command("dump", { hidden: true })
     .summary("Dump full workspace state for debugging")
     .description(
       "Collect all arb and git state and print it as JSON. Run this when you encounter a weird workspace state or unexpected sync plan — capture the output, then analyze or share it to diagnose the issue.\n\nOutputs to stdout. Does not fetch, so the dump reflects current local state only.",
     )
-    .action(async () => {
-      const ctx = getCtx();
-      await runDump(ctx);
-    });
+    .action(
+      arbAction(async (ctx) => {
+        await runDump(ctx);
+      }),
+    );
 }
 
 interface WorktreeEntry {
@@ -123,9 +123,9 @@ async function gitTimed(repoDir: string, ...args: string[]): Promise<GitTimedRes
   return { ...winner, timedOut: false };
 }
 
-async function runDump(ctx: ArbContext): Promise<void> {
-  const cache = await GitCache.create();
-  const aCache = AnalysisCache.load(ctx.arbRootDir);
+async function runDump(ctx: CommandContext): Promise<void> {
+  const cache = ctx.cache;
+  const aCache = ctx.analysisCache;
 
   // Errors encountered while producing the dump — always included in output.
   const dumpErrors: string[] = [];

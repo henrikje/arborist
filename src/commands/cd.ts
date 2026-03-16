@@ -1,8 +1,7 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError } from "../lib/core";
-import type { ArbContext } from "../lib/core";
+import { ArbError, arbAction } from "../lib/core";
 import { error, info, selectWithStatus } from "../lib/terminal";
 import { listWorkspaces, workspaceRepoDirs } from "../lib/workspace";
 
@@ -14,107 +13,107 @@ export function buildCdSelectConfig(items: string[], message: string) {
   };
 }
 
-export function registerCdCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerCdCommand(program: Command): void {
   program
     .command("cd [name]")
     .summary("Navigate to a workspace or repo directory")
     .description(
       'Change into a workspace or repo directory. When run from inside a workspace, names are resolved as repos first (e.g. "arb cd backend" navigates to the backend repo). Use "workspace/repo" to be explicit. When run without arguments in a TTY, shows an interactive picker (repos when inside a workspace, workspaces otherwise).\n\nRequires shell integration (installed by install.sh) to change the shell\'s working directory. Without it, the resolved path is printed to stdout.',
     )
-    .action(async (input?: string) => {
-      const ctx = getCtx();
+    .action(
+      arbAction(async (ctx, input?: string) => {
+        if (!input) {
+          if (!process.stdin.isTTY || !process.stderr.isTTY) {
+            error("Usage: arb cd <workspace>");
+            throw new ArbError("Usage: arb cd <workspace>");
+          }
 
-      if (!input) {
-        if (!process.stdin.isTTY || !process.stderr.isTTY) {
-          error("Usage: arb cd <workspace>");
-          throw new ArbError("Usage: arb cd <workspace>");
+          if (ctx.currentWorkspace) {
+            const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
+            const worktreeNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
+            if (worktreeNames.length === 0) {
+              error(`No repos in workspace '${ctx.currentWorkspace}'.`);
+              throw new ArbError(`No repos in workspace '${ctx.currentWorkspace}'.`);
+            }
+
+            const selected = await selectWithStatus(
+              buildCdSelectConfig(worktreeNames, `Select a repo in '${ctx.currentWorkspace}'`),
+              { output: process.stderr },
+            );
+
+            process.stdout.write(`${wsDir}/${selected}\n`);
+            printHintIfNeeded();
+            return;
+          }
+
+          const workspaces = listWorkspaces(ctx.arbRootDir);
+          if (workspaces.length === 0) {
+            error("No workspaces found.");
+            throw new ArbError("No workspaces found.");
+          }
+
+          const selected = await selectWithStatus(buildCdSelectConfig(workspaces, "Select a workspace"), {
+            output: process.stderr,
+          });
+
+          process.stdout.write(`${ctx.arbRootDir}/${selected}\n`);
+          printHintIfNeeded();
+          return;
         }
 
+        // Explicit workspace/subpath syntax — always resolve from root
+        const slashIdx = input.indexOf("/");
+        if (slashIdx >= 0) {
+          const wsName = input.slice(0, slashIdx);
+          const subpath = input.slice(slashIdx + 1);
+
+          const wsDir = `${ctx.arbRootDir}/${wsName}`;
+          if (!existsSync(`${wsDir}/.arbws`)) {
+            error(`Workspace '${wsName}' does not exist`);
+            throw new ArbError(`Workspace '${wsName}' does not exist`);
+          }
+
+          if (subpath) {
+            const fullPath = `${wsDir}/${subpath}`;
+            if (!existsSync(fullPath)) {
+              error(`'${subpath}' not found in workspace '${wsName}'`);
+              throw new ArbError(`'${subpath}' not found in workspace '${wsName}'`);
+            }
+            process.stdout.write(`${fullPath}\n`);
+          } else {
+            process.stdout.write(`${wsDir}\n`);
+          }
+
+          printHintIfNeeded();
+          return;
+        }
+
+        // No slash — scope-aware resolution
         if (ctx.currentWorkspace) {
           const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
           const worktreeNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
-          if (worktreeNames.length === 0) {
-            error(`No repos in workspace '${ctx.currentWorkspace}'.`);
-            throw new ArbError(`No repos in workspace '${ctx.currentWorkspace}'.`);
+
+          if (worktreeNames.includes(input)) {
+            process.stdout.write(`${wsDir}/${input}\n`);
+            printHintIfNeeded();
+            return;
           }
-
-          const selected = await selectWithStatus(
-            buildCdSelectConfig(worktreeNames, `Select a repo in '${ctx.currentWorkspace}'`),
-            { output: process.stderr },
-          );
-
-          process.stdout.write(`${wsDir}/${selected}\n`);
-          printHintIfNeeded();
-          return;
         }
 
-        const workspaces = listWorkspaces(ctx.arbRootDir);
-        if (workspaces.length === 0) {
-          error("No workspaces found.");
-          throw new ArbError("No workspaces found.");
-        }
-
-        const selected = await selectWithStatus(buildCdSelectConfig(workspaces, "Select a workspace"), {
-          output: process.stderr,
-        });
-
-        process.stdout.write(`${ctx.arbRootDir}/${selected}\n`);
-        printHintIfNeeded();
-        return;
-      }
-
-      // Explicit workspace/subpath syntax — always resolve from root
-      const slashIdx = input.indexOf("/");
-      if (slashIdx >= 0) {
-        const wsName = input.slice(0, slashIdx);
-        const subpath = input.slice(slashIdx + 1);
-
-        const wsDir = `${ctx.arbRootDir}/${wsName}`;
+        // Fall back to workspace resolution
+        const wsDir = `${ctx.arbRootDir}/${input}`;
         if (!existsSync(`${wsDir}/.arbws`)) {
-          error(`Workspace '${wsName}' does not exist`);
-          throw new ArbError(`Workspace '${wsName}' does not exist`);
+          const msg = ctx.currentWorkspace
+            ? `'${input}' is not a repo in workspace '${ctx.currentWorkspace}' or a workspace`
+            : `Workspace '${input}' does not exist`;
+          error(msg);
+          throw new ArbError(msg);
         }
 
-        if (subpath) {
-          const fullPath = `${wsDir}/${subpath}`;
-          if (!existsSync(fullPath)) {
-            error(`'${subpath}' not found in workspace '${wsName}'`);
-            throw new ArbError(`'${subpath}' not found in workspace '${wsName}'`);
-          }
-          process.stdout.write(`${fullPath}\n`);
-        } else {
-          process.stdout.write(`${wsDir}\n`);
-        }
-
+        process.stdout.write(`${wsDir}\n`);
         printHintIfNeeded();
-        return;
-      }
-
-      // No slash — scope-aware resolution
-      if (ctx.currentWorkspace) {
-        const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
-        const worktreeNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
-
-        if (worktreeNames.includes(input)) {
-          process.stdout.write(`${wsDir}/${input}\n`);
-          printHintIfNeeded();
-          return;
-        }
-      }
-
-      // Fall back to workspace resolution
-      const wsDir = `${ctx.arbRootDir}/${input}`;
-      if (!existsSync(`${wsDir}/.arbws`)) {
-        const msg = ctx.currentWorkspace
-          ? `'${input}' is not a repo in workspace '${ctx.currentWorkspace}' or a workspace`
-          : `Workspace '${input}' does not exist`;
-        error(msg);
-        throw new ArbError(msg);
-      }
-
-      process.stdout.write(`${wsDir}\n`);
-      printHintIfNeeded();
-    });
+      }),
+    );
 }
 
 function printHintIfNeeded(): void {

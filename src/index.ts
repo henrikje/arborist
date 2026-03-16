@@ -26,7 +26,6 @@ import { registerResetCommand } from "./commands/reset";
 import { registerStatusCommand } from "./commands/status";
 import { registerTemplateCommand } from "./commands/template";
 import { ArbAbort, ArbError, checkForUpdate } from "./lib/core";
-import type { ArbContext } from "./lib/core";
 import { allTopics } from "./lib/help";
 import { bold, dim, error, info } from "./lib/terminal";
 import { debugLog, enableDebug, getGitCallCount, isDebug } from "./lib/terminal";
@@ -152,19 +151,6 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
   return output.join("\n");
 }
 
-function getCtx(): ArbContext {
-  const arbRootDir = detectArbRoot();
-  if (!arbRootDir) {
-    error("Not inside a project. Run 'arb init' to set one up.");
-    throw new ArbError("Not inside a project. Run 'arb init' to set one up.");
-  }
-  return {
-    arbRootDir,
-    reposDir: `${arbRootDir}/.arb/repos`,
-    currentWorkspace: detectWorkspace(arbRootDir),
-  };
-}
-
 const program = new Command();
 program
   .name("arb")
@@ -212,28 +198,28 @@ program.hook("preAction", () => {
 // Register all commands
 registerHelpCommand(program);
 registerInitCommand(program);
-registerRepoCommand(program, getCtx);
-registerCreateCommand(program, getCtx);
-registerDeleteCommand(program, getCtx);
-registerRenameCommand(program, getCtx);
-registerListCommand(program, getCtx);
-registerPathCommand(program, getCtx);
-registerCdCommand(program, getCtx);
-registerAttachCommand(program, getCtx);
-registerDetachCommand(program, getCtx);
-registerStatusCommand(program, getCtx);
-registerBranchCommand(program, getCtx);
-registerPullCommand(program, getCtx);
-registerPushCommand(program, getCtx);
-registerRebaseCommand(program, getCtx);
-registerMergeCommand(program, getCtx);
-registerResetCommand(program, getCtx);
-registerExecCommand(program, getCtx);
-registerLogCommand(program, getCtx);
-registerDiffCommand(program, getCtx);
-registerDumpCommand(program, getCtx);
-registerOpenCommand(program, getCtx);
-registerTemplateCommand(program, getCtx);
+registerRepoCommand(program);
+registerCreateCommand(program);
+registerDeleteCommand(program);
+registerRenameCommand(program);
+registerListCommand(program);
+registerPathCommand(program);
+registerCdCommand(program);
+registerAttachCommand(program);
+registerDetachCommand(program);
+registerStatusCommand(program);
+registerBranchCommand(program);
+registerPullCommand(program);
+registerPushCommand(program);
+registerRebaseCommand(program);
+registerMergeCommand(program);
+registerResetCommand(program);
+registerExecCommand(program);
+registerLogCommand(program);
+registerDiffCommand(program);
+registerDumpCommand(program);
+registerOpenCommand(program);
+registerTemplateCommand(program);
 
 process.on("SIGINT", () => {
   info("Aborted.");

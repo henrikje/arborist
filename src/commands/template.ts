@@ -11,9 +11,9 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import type { Command } from "commander";
-import { ArbError } from "../lib/core";
+import { ArbError, arbAction } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache } from "../lib/git";
+import type { GitCache } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import { cell, join as joinCells } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -93,7 +93,7 @@ function buildTemplateListNodes(
   ];
 }
 
-export function registerTemplateCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerTemplateCommand(program: Command): void {
   const template = program
     .command("template")
     .summary("Manage workspace templates")
@@ -112,144 +112,147 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
     .description(
       "Copy a file or directory from the current workspace into .arb/templates/. If a directory is given, all files within it are added recursively. The scope (workspace or repo) is auto-detected from the source path's location: a file inside a repo directory becomes a repo template, a file elsewhere in the workspace becomes a workspace template. Use --repo or --workspace to override. The path must be inside the workspace unless an explicit scope flag is given. If the template already exists with identical content, succeeds silently. If content differs, use --force to overwrite. If a .arbtemplate version of the file already exists, the add is refused to prevent a conflict; remove the .arbtemplate version first.",
     )
-    .action((path: string, options: { repo?: string[]; workspace?: boolean; force?: boolean }) => {
-      const ctx = getCtx();
-      const srcPath = resolve(path);
+    .action(
+      arbAction(async (ctx, path: string, options) => {
+        const srcPath = resolve(path);
 
-      if (!existsSync(srcPath)) {
-        error(`Path not found: ${path}`);
-        throw new ArbError(`Path not found: ${path}`);
-      }
-
-      const { wsDir } = requireWorkspace(ctx);
-
-      // Resolve scope: explicit flags take priority, otherwise infer from source path
-      let scope: "workspace" | "repo";
-      let repos: string[] | undefined;
-      const hasRepoFlag = options.repo && options.repo.length > 0;
-      const hasWsFlag = options.workspace === true;
-
-      if (hasRepoFlag && hasWsFlag) {
-        error("Cannot use both --repo and --workspace.");
-        throw new ArbError("Cannot use both --repo and --workspace.");
-      }
-
-      if (hasRepoFlag) {
-        scope = "repo";
-        repos = options.repo;
-      } else if (hasWsFlag) {
-        scope = "workspace";
-      } else {
-        const detected = detectScopeFromPath(wsDir, srcPath);
-        if (!detected) {
-          error("Path is outside the workspace. Use --repo or --workspace to specify scope.");
-          throw new ArbError("Path is outside the workspace. Use --repo or --workspace to specify scope.");
+        if (!existsSync(srcPath)) {
+          error(`Path not found: ${path}`);
+          throw new ArbError(`Path not found: ${path}`);
         }
-        scope = detected.scope;
-        if (detected.scope === "repo" && detected.repo) {
-          repos = [detected.repo];
+
+        const { wsDir } = requireWorkspace(ctx);
+
+        // Resolve scope: explicit flags take priority, otherwise infer from source path
+        let scope: "workspace" | "repo";
+        let repos: string[] | undefined;
+        const hasRepoFlag = options.repo && options.repo.length > 0;
+        const hasWsFlag = options.workspace === true;
+
+        if (hasRepoFlag && hasWsFlag) {
+          error("Cannot use both --repo and --workspace.");
+          throw new ArbError("Cannot use both --repo and --workspace.");
         }
-      }
 
-      // Collect files to add: { filePath, relSuffix }
-      const stat = lstatSync(srcPath);
-      const files: { filePath: string; relSuffix: string }[] = [];
-
-      if (stat.isDirectory()) {
-        function walk(dir: string): void {
-          for (const entry of readdirSync(dir)) {
-            const entryPath = join(dir, entry);
-            const entryStat = lstatSync(entryPath);
-            if (entryStat.isSymbolicLink()) continue;
-            if (entryStat.isDirectory()) {
-              walk(entryPath);
-            } else if (entryStat.isFile()) {
-              files.push({ filePath: entryPath, relSuffix: relative(srcPath, entryPath) });
-            }
+        if (hasRepoFlag) {
+          scope = "repo";
+          repos = options.repo;
+        } else if (hasWsFlag) {
+          scope = "workspace";
+        } else {
+          const detected = detectScopeFromPath(wsDir, srcPath);
+          if (!detected) {
+            error("Path is outside the workspace. Use --repo or --workspace to specify scope.");
+            throw new ArbError("Path is outside the workspace. Use --repo or --workspace to specify scope.");
+          }
+          scope = detected.scope;
+          if (detected.scope === "repo" && detected.repo) {
+            repos = [detected.repo];
           }
         }
-        walk(srcPath);
-      } else {
-        files.push({ filePath: srcPath, relSuffix: "" });
-      }
 
-      if (files.length === 0) {
-        info("  No files found to add.");
-        return;
-      }
+        // Collect files to add: { filePath, relSuffix }
+        const stat = lstatSync(srcPath);
+        const files: { filePath: string; relSuffix: string }[] = [];
 
-      // Determine the base relative path for the template
-      let baseRelPath: string;
-      if (scope === "workspace") {
-        const prefix = `${wsDir}/`;
-        if (srcPath.startsWith(prefix)) {
-          baseRelPath = srcPath.slice(prefix.length);
-        } else {
-          baseRelPath = basename(srcPath);
-        }
-      } else {
-        const firstRepo = repos?.[0] ?? "";
-        const repoDir = join(wsDir, firstRepo);
-        const prefix = `${repoDir}/`;
-        if (srcPath.startsWith(prefix)) {
-          baseRelPath = srcPath.slice(prefix.length);
-        } else {
-          baseRelPath = basename(srcPath);
-        }
-      }
-
-      const targetRepos: (string | undefined)[] = scope === "repo" && repos ? repos : [undefined];
-      let hasConflict = false;
-      for (const { filePath, relSuffix } of files) {
-        const relPath = relSuffix ? join(baseRelPath, relSuffix) : baseRelPath;
-
-        for (const repo of targetRepos) {
-          // Compute the plain destination path directly instead of using templateFilePath(),
-          // which has fallback logic that would resolve to an existing .arbtemplate counterpart.
-          const templatePath =
-            scope === "workspace"
-              ? join(ctx.arbRootDir, ".arb", "templates", "workspace", relPath)
-              : join(ctx.arbRootDir, ".arb", "templates", "repos", repo ?? "", relPath);
-
-          // Block if the .arbtemplate counterpart exists — adding a plain file would create
-          // a conflict (both file and file.arbtemplate). Tell the user to remove it first.
-          const arbtplCounterpart = `${templatePath}${ARBTEMPLATE_EXT}`;
-          if (existsSync(arbtplCounterpart)) {
-            const tplDir = scope === "workspace" ? ".arb/templates/workspace" : `.arb/templates/repos/${repo}`;
-            error(
-              `Cannot add ${relPath}: ${tplDir}/${relPath}${ARBTEMPLATE_EXT} already exists. Remove it first to avoid a conflict.`,
-            );
-            hasConflict = true;
-            continue;
-          }
-
-          if (existsSync(templatePath)) {
-            const existingContent = readFileSync(templatePath);
-            const newContent = readFileSync(filePath);
-            if (existingContent.equals(newContent)) {
-              info(`  Template already up to date: ${relPath}${repo ? ` (repo: ${repo})` : ""}`);
-              continue;
+        if (stat.isDirectory()) {
+          function walk(dir: string): void {
+            for (const entry of readdirSync(dir)) {
+              const entryPath = join(dir, entry);
+              const entryStat = lstatSync(entryPath);
+              if (entryStat.isSymbolicLink()) continue;
+              if (entryStat.isDirectory()) {
+                walk(entryPath);
+              } else if (entryStat.isFile()) {
+                files.push({ filePath: entryPath, relSuffix: relative(srcPath, entryPath) });
+              }
             }
-            if (!options.force) {
-              error(`Template already exists: ${relPath}${repo ? ` (repo: ${repo})` : ""}. Use --force to overwrite.`);
+          }
+          walk(srcPath);
+        } else {
+          files.push({ filePath: srcPath, relSuffix: "" });
+        }
+
+        if (files.length === 0) {
+          info("  No files found to add.");
+          return;
+        }
+
+        // Determine the base relative path for the template
+        let baseRelPath: string;
+        if (scope === "workspace") {
+          const prefix = `${wsDir}/`;
+          if (srcPath.startsWith(prefix)) {
+            baseRelPath = srcPath.slice(prefix.length);
+          } else {
+            baseRelPath = basename(srcPath);
+          }
+        } else {
+          const firstRepo = repos?.[0] ?? "";
+          const repoDir = join(wsDir, firstRepo);
+          const prefix = `${repoDir}/`;
+          if (srcPath.startsWith(prefix)) {
+            baseRelPath = srcPath.slice(prefix.length);
+          } else {
+            baseRelPath = basename(srcPath);
+          }
+        }
+
+        const targetRepos: (string | undefined)[] = scope === "repo" && repos ? repos : [undefined];
+        let hasConflict = false;
+        for (const { filePath, relSuffix } of files) {
+          const relPath = relSuffix ? join(baseRelPath, relSuffix) : baseRelPath;
+
+          for (const repo of targetRepos) {
+            // Compute the plain destination path directly instead of using templateFilePath(),
+            // which has fallback logic that would resolve to an existing .arbtemplate counterpart.
+            const templatePath =
+              scope === "workspace"
+                ? join(ctx.arbRootDir, ".arb", "templates", "workspace", relPath)
+                : join(ctx.arbRootDir, ".arb", "templates", "repos", repo ?? "", relPath);
+
+            // Block if the .arbtemplate counterpart exists — adding a plain file would create
+            // a conflict (both file and file.arbtemplate). Tell the user to remove it first.
+            const arbtplCounterpart = `${templatePath}${ARBTEMPLATE_EXT}`;
+            if (existsSync(arbtplCounterpart)) {
+              const tplDir = scope === "workspace" ? ".arb/templates/workspace" : `.arb/templates/repos/${repo}`;
+              error(
+                `Cannot add ${relPath}: ${tplDir}/${relPath}${ARBTEMPLATE_EXT} already exists. Remove it first to avoid a conflict.`,
+              );
               hasConflict = true;
               continue;
             }
-            mkdirSync(dirname(templatePath), { recursive: true });
-            copyFileSync(filePath, templatePath);
-            info(`  Updated template: ${relPath}${repo ? ` (repo: ${repo})` : ""}`);
-          } else {
-            mkdirSync(dirname(templatePath), { recursive: true });
-            copyFileSync(filePath, templatePath);
-            info(`  Added template: ${relPath}${repo ? ` (repo: ${repo})` : ""}`);
+
+            if (existsSync(templatePath)) {
+              const existingContent = readFileSync(templatePath);
+              const newContent = readFileSync(filePath);
+              if (existingContent.equals(newContent)) {
+                info(`  Template already up to date: ${relPath}${repo ? ` (repo: ${repo})` : ""}`);
+                continue;
+              }
+              if (!options.force) {
+                error(
+                  `Template already exists: ${relPath}${repo ? ` (repo: ${repo})` : ""}. Use --force to overwrite.`,
+                );
+                hasConflict = true;
+                continue;
+              }
+              mkdirSync(dirname(templatePath), { recursive: true });
+              copyFileSync(filePath, templatePath);
+              info(`  Updated template: ${relPath}${repo ? ` (repo: ${repo})` : ""}`);
+            } else {
+              mkdirSync(dirname(templatePath), { recursive: true });
+              copyFileSync(filePath, templatePath);
+              info(`  Added template: ${relPath}${repo ? ` (repo: ${repo})` : ""}`);
+            }
           }
         }
-      }
-      if (hasConflict) {
-        error("Some templates already exist. Use --force to overwrite.");
-        throw new ArbError("Some templates already exist. Use --force to overwrite.");
-      }
-    });
+        if (hasConflict) {
+          error("Some templates already exist. Use --force to overwrite.");
+          throw new ArbError("Some templates already exist. Use --force to overwrite.");
+        }
+      }),
+    );
 
   // ── template list ────────────────────────────────────────────────
 
@@ -259,51 +262,51 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
     .description(
       "Show all template files in .arb/templates/ as a columnar table. When run inside a workspace, adds a STATUS column showing drift annotations: template (uses .arbtemplate rendering), conflict (both plain and .arbtemplate exist), modified (workspace copy edited by user), deleted (workspace copy removed), or stale (template source changed since seeding but workspace copy untouched).",
     )
-    .action(async () => {
-      const ctx = getCtx();
-      const templates = listTemplates(ctx.arbRootDir);
+    .action(
+      arbAction(async (ctx) => {
+        const templates = listTemplates(ctx.arbRootDir);
 
-      if (templates.length === 0) {
-        info("  No templates defined.");
-        return;
-      }
-
-      // Check for drift annotations and unknown variables if inside a workspace
-      let diffs: TemplateDiff[] = [];
-      let unknowns: UnknownVariable[] = [];
-      if (ctx.currentWorkspace) {
-        const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
-        if (existsSync(join(wsDir, ".arbws"))) {
-          const cache = await GitCache.create();
-          const repos = workspaceRepoDirs(wsDir).map((d) => basename(d));
-          diffs = await diffTemplates(ctx.arbRootDir, wsDir, repos, cache);
-          unknowns = await checkAllTemplateVariables(ctx.arbRootDir, wsDir, repos, cache);
+        if (templates.length === 0) {
+          info("  No templates defined.");
+          return;
         }
-      }
 
-      // Build diff map: key → kind
-      const diffMap = new Map<string, "modified" | "deleted" | "stale">();
-      for (const d of diffs) {
-        diffMap.set(`${d.scope}:${d.repo ?? ""}:${d.relPath}`, d.kind);
-      }
+        // Check for drift annotations and unknown variables if inside a workspace
+        let diffs: TemplateDiff[] = [];
+        let unknowns: UnknownVariable[] = [];
+        if (ctx.currentWorkspace) {
+          const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
+          if (existsSync(join(wsDir, ".arbws"))) {
+            const repos = workspaceRepoDirs(wsDir).map((d) => basename(d));
+            diffs = await diffTemplates(ctx.arbRootDir, wsDir, repos, ctx.cache);
+            unknowns = await checkAllTemplateVariables(ctx.arbRootDir, wsDir, repos, ctx.cache);
+          }
+        }
 
-      // Build status cells
-      const repoWarningDirs = new Set(checkWorkspaceTemplateRepoWarnings(ctx.arbRootDir));
-      const conflicts: TemplateEntry[] = [];
+        // Build diff map: key → kind
+        const diffMap = new Map<string, "modified" | "deleted" | "stale">();
+        for (const d of diffs) {
+          diffMap.set(`${d.scope}:${d.repo ?? ""}:${d.relPath}`, d.kind);
+        }
 
-      const nodes = buildTemplateListNodes(templates, diffMap, repoWarningDirs, conflicts);
-      const rCtx: RenderContext = { tty: isTTY() };
-      process.stdout.write(render(nodes, rCtx));
+        // Build status cells
+        const repoWarningDirs = new Set(checkWorkspaceTemplateRepoWarnings(ctx.arbRootDir));
+        const conflicts: TemplateEntry[] = [];
 
-      const helperNodes = [
-        ...displayTemplateConflicts(conflicts),
-        ...displayUnknownVariables(unknowns),
-        ...displayRepoDirectoryWarnings([...repoWarningDirs]),
-      ];
-      if (helperNodes.length > 0) {
-        process.stderr.write(render(helperNodes, { tty: isTTY() }));
-      }
-    });
+        const nodes = buildTemplateListNodes(templates, diffMap, repoWarningDirs, conflicts);
+        const rCtx: RenderContext = { tty: isTTY() };
+        process.stdout.write(render(nodes, rCtx));
+
+        const helperNodes = [
+          ...displayTemplateConflicts(conflicts),
+          ...displayUnknownVariables(unknowns),
+          ...displayRepoDirectoryWarnings([...repoWarningDirs]),
+        ];
+        if (helperNodes.length > 0) {
+          process.stderr.write(render(helperNodes, { tty: isTTY() }));
+        }
+      }),
+    );
 
   // ── template diff ────────────────────────────────────────────────
 
@@ -315,98 +318,99 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
     .description(
       "Show content differences between templates and their workspace copies. Generates unified diff output for each drifted file. Exits with code 1 if any drift is found (useful for CI). Use --repo or --workspace to filter scope, and optionally specify a file path to diff only that template.",
     )
-    .action(async (file: string | undefined, options: { repo?: string[]; workspace?: boolean }) => {
-      const ctx = getCtx();
-      const { wsDir } = requireWorkspace(ctx);
-      const cache = await GitCache.create();
-      const repos = workspaceRepoDirs(wsDir).map((d) => basename(d));
-      let diffs = await diffTemplates(ctx.arbRootDir, wsDir, repos, cache);
+    .action(
+      arbAction(async (ctx, file: string | undefined, options) => {
+        const { wsDir } = requireWorkspace(ctx);
+        const cache = ctx.cache;
+        const repos = workspaceRepoDirs(wsDir).map((d) => basename(d));
+        let diffs = await diffTemplates(ctx.arbRootDir, wsDir, repos, cache);
 
-      // template diff only shows modified files (deleted files have no workspace copy to diff)
-      diffs = diffs.filter((d) => d.kind === "modified");
+        // template diff only shows modified files (deleted files have no workspace copy to diff)
+        diffs = diffs.filter((d) => d.kind === "modified");
 
-      // Filter by scope flags
-      const hasRepoFlag = options.repo && options.repo.length > 0;
-      const hasWsFlag = options.workspace === true;
+        // Filter by scope flags
+        const hasRepoFlag = options.repo && options.repo.length > 0;
+        const hasWsFlag = options.workspace === true;
 
-      if (hasRepoFlag && !hasWsFlag) {
-        const repoSet = new Set(options.repo);
-        diffs = diffs.filter((d) => d.scope === "repo" && d.repo !== undefined && repoSet.has(d.repo));
-      } else if (hasWsFlag && !hasRepoFlag) {
-        diffs = diffs.filter((d) => d.scope === "workspace");
-      } else if (hasRepoFlag && hasWsFlag) {
-        const repoSet = new Set(options.repo);
-        diffs = diffs.filter(
-          (d) => d.scope === "workspace" || (d.scope === "repo" && d.repo !== undefined && repoSet.has(d.repo)),
+        if (hasRepoFlag && !hasWsFlag) {
+          const repoSet = new Set(options.repo);
+          diffs = diffs.filter((d) => d.scope === "repo" && d.repo !== undefined && repoSet.has(d.repo));
+        } else if (hasWsFlag && !hasRepoFlag) {
+          diffs = diffs.filter((d) => d.scope === "workspace");
+        } else if (hasRepoFlag && hasWsFlag) {
+          const repoSet = new Set(options.repo);
+          diffs = diffs.filter(
+            (d) => d.scope === "workspace" || (d.scope === "repo" && d.repo !== undefined && repoSet.has(d.repo)),
+          );
+        }
+
+        // Filter by file path
+        if (file) {
+          diffs = diffs.filter((d) => d.relPath === file);
+        }
+
+        if (diffs.length === 0) {
+          info("  No changes.");
+          return;
+        }
+
+        const reposDir = join(ctx.arbRootDir, ".arb", "repos");
+        const allRepos = await workspaceRepoList(wsDir, reposDir, cache);
+
+        for (const diff of diffs) {
+          const tplPath = templateFilePath(ctx.arbRootDir, diff.scope, diff.relPath, diff.repo);
+          const wsPath = workspaceFilePath(wsDir, diff.scope, diff.relPath, diff.repo);
+
+          const tplLabel =
+            diff.scope === "workspace"
+              ? `.arb/templates/workspace/${diff.relPath}`
+              : `.arb/templates/repos/${diff.repo}/${diff.relPath}`;
+          const wsLabel = diff.scope === "workspace" ? diff.relPath : `${diff.repo}/${diff.relPath}`;
+
+          // For .arbtemplate files, render with Liquid before diffing
+          const isArbtpl = tplPath.endsWith(ARBTEMPLATE_EXT);
+          let diffSrcPath = tplPath;
+          let tmpFile: string | null = null;
+          if (isArbtpl) {
+            const repoDir = diff.scope === "repo" && diff.repo ? join(wsDir, diff.repo) : undefined;
+            const tplCtx: TemplateContext = {
+              rootPath: ctx.arbRootDir,
+              workspaceName: basename(wsDir),
+              workspacePath: wsDir,
+              repoName: diff.scope === "repo" ? diff.repo : undefined,
+              repoPath: repoDir,
+              repos: allRepos,
+            };
+            const content = readFileSync(tplPath, "utf-8");
+            tmpFile = join(tmpdir(), `arb-diff-${process.pid}-${Date.now()}`);
+            writeFileSync(tmpFile, renderTemplate(content, tplCtx));
+            diffSrcPath = tmpFile;
+          }
+
+          // Generate diff using system diff command
+          const proc = Bun.spawnSync([
+            "diff",
+            "-u",
+            "--label",
+            `${tplLabel} (template)`,
+            "--label",
+            `${wsLabel} (workspace)`,
+            diffSrcPath,
+            wsPath,
+          ]);
+          const output = proc.stdout.toString();
+          if (output) {
+            process.stdout.write(`${output}\n`);
+          }
+          if (tmpFile) unlinkSync(tmpFile);
+        }
+
+        warn(
+          "Template drift detected. Workspace files differ from their template versions. Run 'arb template diff' to review, or 'arb template apply --force' to reset.",
         );
-      }
-
-      // Filter by file path
-      if (file) {
-        diffs = diffs.filter((d) => d.relPath === file);
-      }
-
-      if (diffs.length === 0) {
-        info("  No changes.");
-        return;
-      }
-
-      const reposDir = join(ctx.arbRootDir, ".arb", "repos");
-      const allRepos = await workspaceRepoList(wsDir, reposDir, cache);
-
-      for (const diff of diffs) {
-        const tplPath = templateFilePath(ctx.arbRootDir, diff.scope, diff.relPath, diff.repo);
-        const wsPath = workspaceFilePath(wsDir, diff.scope, diff.relPath, diff.repo);
-
-        const tplLabel =
-          diff.scope === "workspace"
-            ? `.arb/templates/workspace/${diff.relPath}`
-            : `.arb/templates/repos/${diff.repo}/${diff.relPath}`;
-        const wsLabel = diff.scope === "workspace" ? diff.relPath : `${diff.repo}/${diff.relPath}`;
-
-        // For .arbtemplate files, render with Liquid before diffing
-        const isArbtpl = tplPath.endsWith(ARBTEMPLATE_EXT);
-        let diffSrcPath = tplPath;
-        let tmpFile: string | null = null;
-        if (isArbtpl) {
-          const repoDir = diff.scope === "repo" && diff.repo ? join(wsDir, diff.repo) : undefined;
-          const tplCtx: TemplateContext = {
-            rootPath: ctx.arbRootDir,
-            workspaceName: basename(wsDir),
-            workspacePath: wsDir,
-            repoName: diff.scope === "repo" ? diff.repo : undefined,
-            repoPath: repoDir,
-            repos: allRepos,
-          };
-          const content = readFileSync(tplPath, "utf-8");
-          tmpFile = join(tmpdir(), `arb-diff-${process.pid}-${Date.now()}`);
-          writeFileSync(tmpFile, renderTemplate(content, tplCtx));
-          diffSrcPath = tmpFile;
-        }
-
-        // Generate diff using system diff command
-        const proc = Bun.spawnSync([
-          "diff",
-          "-u",
-          "--label",
-          `${tplLabel} (template)`,
-          "--label",
-          `${wsLabel} (workspace)`,
-          diffSrcPath,
-          wsPath,
-        ]);
-        const output = proc.stdout.toString();
-        if (output) {
-          process.stdout.write(`${output}\n`);
-        }
-        if (tmpFile) unlinkSync(tmpFile);
-      }
-
-      warn(
-        "Template drift detected. Workspace files differ from their template versions. Run 'arb template diff' to review, or 'arb template apply --force' to reset.",
-      );
-      throw new ArbError("Template drift detected.");
-    });
+        throw new ArbError("Template drift detected.");
+      }),
+    );
 
   // ── template apply ───────────────────────────────────────────────
 
@@ -419,29 +423,30 @@ export function registerTemplateCommand(program: Command, getCtx: () => ArbConte
     .description(
       "Re-seed template files into the current workspace. By default, only copies files that don't already exist (safe, non-destructive). Use --force to also reset drifted files to their template version. Files with .arbtemplate extension undergo placeholder substitution. Use --repo or --workspace to limit scope, and optionally specify a file path to apply only that template.",
     )
-    .action(async (file: string | undefined, options: { repo?: string[]; workspace?: boolean; force?: boolean }) => {
-      const ctx = getCtx();
-      const { wsDir } = requireWorkspace(ctx);
-      const cache = await GitCache.create();
-      const allRepos = workspaceRepoDirs(wsDir).map((d) => basename(d));
+    .action(
+      arbAction(async (ctx, file: string | undefined, options) => {
+        const { wsDir } = requireWorkspace(ctx);
+        const cache = ctx.cache;
+        const allRepos = workspaceRepoDirs(wsDir).map((d) => basename(d));
 
-      const hasRepoFlag = options.repo && options.repo.length > 0;
-      const hasWsFlag = options.workspace === true;
+        const hasRepoFlag = options.repo && options.repo.length > 0;
+        const hasWsFlag = options.workspace === true;
 
-      if (hasRepoFlag && options.repo) {
-        validateRepoNames(wsDir, options.repo);
-      }
+        if (hasRepoFlag && options.repo) {
+          validateRepoNames(wsDir, options.repo);
+        }
 
-      // Determine which scopes to apply
-      const applyWorkspace = hasWsFlag || (!hasRepoFlag && !hasWsFlag);
-      const reposToApply = hasRepoFlag && options.repo ? options.repo : !hasWsFlag ? allRepos : [];
+        // Determine which scopes to apply
+        const applyWorkspace = hasWsFlag || (!hasRepoFlag && !hasWsFlag);
+        const reposToApply = hasRepoFlag && options.repo ? options.repo : !hasWsFlag ? allRepos : [];
 
-      if (options.force) {
-        await applyForceMode(ctx, wsDir, applyWorkspace, reposToApply, cache, file);
-      } else {
-        await applyDefaultMode(ctx, wsDir, applyWorkspace, reposToApply, cache, file);
-      }
-    });
+        if (options.force) {
+          await applyForceMode(ctx, wsDir, applyWorkspace, reposToApply, cache, file);
+        } else {
+          await applyDefaultMode(ctx, wsDir, applyWorkspace, reposToApply, cache, file);
+        }
+      }),
+    );
 }
 
 function resolveTemplatesToApply(

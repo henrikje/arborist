@@ -5,11 +5,11 @@ import {
   predictRebaseConflictCommits,
   predictStashPopConflict,
 } from "../analysis/conflict-prediction";
+import type { CommandContext } from "../core/command-action";
 import { readWorkspaceConfig, writeWorkspaceConfig } from "../core/config";
 import { ArbError } from "../core/errors";
-import type { ArbContext } from "../core/types";
 import { getCommitsBetweenFull, getDiffShortstat, getMergeBase, git, remoteBranchExists } from "../git/git";
-import { GitCache } from "../git/git-cache";
+import type { GitCache } from "../git/git-cache";
 import { buildConflictReport, buildStashPopFailureReport } from "../render/conflict-report";
 import { type IntegrateActionDesc, integrateActionCell } from "../render/integrate-cells";
 import { formatBranchGraph } from "../render/integrate-graph";
@@ -34,7 +34,7 @@ export type { RepoAssessment } from "./types";
 import type { RepoAssessment } from "./types";
 
 export async function integrate(
-  ctx: ArbContext,
+  ctx: CommandContext,
   mode: IntegrateMode,
   options: {
     fetch?: boolean;
@@ -57,7 +57,7 @@ export async function integrate(
   // Phase 1: context & repo selection
   const { wsDir, workspace } = requireWorkspace(ctx);
   const branch = await requireBranch(wsDir, workspace);
-  const cache = await GitCache.create();
+  const cache = ctx.cache;
   const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
   const workspaceBaseResolution = retargetExplicit
     ? await resolveWorkspaceBaseResolution(wsDir, ctx.reposDir, cache)
@@ -103,6 +103,7 @@ export async function integrate(
     configBase,
     remotesMap,
     cache,
+    analysisCache: ctx.analysisCache,
     where,
     classify: ({ repoDir, status, fetchFailed }) =>
       assessIntegrateRepo(status, repoDir, branch, fetchFailed, {

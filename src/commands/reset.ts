@@ -1,8 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { readWorkspaceConfig } from "../lib/core";
-import type { ArbContext } from "../lib/core";
-import { GitCache, getShortHead, git } from "../lib/git";
+import { arbAction, readWorkspaceConfig } from "../lib/core";
+import { getShortHead, git } from "../lib/git";
 import type { Cell, OutputNode, Span } from "../lib/render";
 import { cell, createRenderContext, finishSummary, render, skipCell, spans, suffix } from "../lib/render";
 import type { SkipFlag } from "../lib/status";
@@ -262,7 +261,7 @@ export function formatResetPlan(assessments: ResetAssessment[]): string {
 
 // ── Command registration ──
 
-export function registerResetCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerResetCommand(program: Command): void {
   program
     .command("reset [repos...]")
     .option("--fetch", "Fetch from all remotes before reset (default)")
@@ -276,24 +275,14 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
       "Reset all repos (or only the named repos) to the remote share branch HEAD, discarding local commits and staged/unstaged changes. When no remote share branch exists (never pushed), falls back to the base branch. Resolves the correct remote and branch per repo automatically. Untracked files are preserved (no git clean). Shows a plan with what will be lost (dirty files, unpushed commits) and asks for confirmation before proceeding.\n\nRepos whose branch has already been merged (or squash-merged) into base are skipped when the reset target is the base branch. Repos whose configured base branch was merged into the default branch are also skipped (use 'arb rebase --retarget' to update the base first).\n\nUse --base to always reset to the base branch, even when a remote share branch exists.\n\nTo change the base branch, use 'arb branch base <branch>'.\n\nUse --where to filter repos by status flags. See 'arb help where' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
     )
     .action(
-      async (
-        repoArgs: string[],
-        options: {
-          fetch?: boolean;
-          base?: boolean;
-          yes?: boolean;
-          dryRun?: boolean;
-          where?: string;
-        },
-      ) => {
+      arbAction(async (ctx, repoArgs: string[], options) => {
         const where = resolveWhereFilter(options);
-        const ctx = getCtx();
         const { wsDir, workspace } = requireWorkspace(ctx);
         const branch = await requireBranch(wsDir, workspace);
 
         const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
         const selectedSet = new Set(selectedRepos);
-        const cache = await GitCache.create();
+        const cache = ctx.cache;
         const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
         const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
 
@@ -314,6 +303,7 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
           configBase,
           remotesMap,
           cache,
+          analysisCache: ctx.analysisCache,
           where,
           classify: async ({ repoDir, status, fetchFailed }) => {
             const headSha = await getShortHead(repoDir);
@@ -417,6 +407,6 @@ export function registerResetCommand(program: Command, getCtx: () => ArbContext)
         if (alreadyClean.length > 0) parts.push(`${alreadyClean.length} up to date`);
         if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
         finishSummary(parts, failed.length > 0);
-      },
+      }),
     );
 }

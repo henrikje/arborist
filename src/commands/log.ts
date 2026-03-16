@@ -1,8 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError } from "../lib/core";
-import type { ArbContext } from "../lib/core";
-import { GitCache, getCommitsBetweenFull, git } from "../lib/git";
+import { ArbError, arbAction } from "../lib/core";
+import { getCommitsBetweenFull, git } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type LogJsonOutput, LogJsonOutputSchema, type LogJsonRepo } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
@@ -54,7 +53,7 @@ interface RepoLogResult {
 
 const NO_BASE_FALLBACK_LIMIT = 10;
 
-export function registerLogCommand(program: Command, getCtx: () => ArbContext): void {
+export function registerLogCommand(program: Command): void {
   program
     .command("log [repos...]")
     .option("--fetch", "Fetch from all remotes before showing log")
@@ -69,33 +68,21 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
     .description(
       "Show commits on the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what have I done in this workspace?' by showing only the commits that belong to the current feature.\n\nShows commits in the range base..HEAD for each repo. Use --fetch to fetch before showing log (default is no fetch). Use -n to limit how many commits are shown per repo. Use -v/--verbose to also show commit bodies and changed files. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line). Use --where to filter by status flags. See 'arb help where' for filter syntax. Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.\n\nSee 'arb help scripting' for output modes and piping.",
     )
-    .action(
-      async (
-        repoArgs: string[],
-        options: {
-          maxCount?: string;
-          json?: boolean;
-          schema?: boolean;
-          dirty?: boolean;
-          where?: string;
-          fetch?: boolean;
-          verbose?: boolean;
-        },
-      ) => {
-        if (options.schema) {
-          if (options.json) {
-            error("Cannot combine --schema with --json.");
-            throw new ArbError("Cannot combine --schema with --json.");
-          }
-          printSchema(LogJsonOutputSchema);
-          return;
+    .action(async (repoArgs: string[], options, command) => {
+      if (options.schema) {
+        if (options.json) {
+          error("Cannot combine --schema with --json.");
+          throw new ArbError("Cannot combine --schema with --json.");
         }
-        const ctx = getCtx();
+        printSchema(LogJsonOutputSchema);
+        return;
+      }
+      await arbAction(async (ctx, repoArgs: string[], options) => {
         const { wsDir, workspace } = requireWorkspace(ctx);
         const branch = await requireBranch(wsDir, workspace);
 
         const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
-        const cache = await GitCache.create();
+        const cache = ctx.cache;
 
         if (options.fetch) {
           const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
@@ -123,7 +110,9 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
 
         const where = resolveWhereFilter(options);
 
-        const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache);
+        const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache, {
+          analysisCache: ctx.analysisCache,
+        });
         const selectedSet = new Set(selectedRepos);
         let repos = summary.repos.filter((r) => selectedSet.has(r.name));
 
@@ -147,8 +136,8 @@ export function registerLogCommand(program: Command, getCtx: () => ArbContext): 
             outputPipe(results);
           }
         }
-      },
-    );
+      })(repoArgs, options, command);
+    });
 }
 
 // ── TTY output: delegate to git for commit rendering ─────────────
