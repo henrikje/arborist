@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.110.0](https://github.com/henrikje/arborist/compare/v0.109.0...v0.110.0) (2026-03-16)
+
+
+### Features
+
+* **branch:** reject remote-qualified base branch input ([936e979](https://github.com/henrikje/arborist/commit/936e979c179f34ee87711b93d2382d8f531cd1fc))
+* **delete:** add --newer-than flag to arb delete ([9f8139f](https://github.com/henrikje/arborist/commit/9f8139f83bb8a08d19e3a662badbc30003c9e284))
+* **delete:** display all items in interactive selectors with dynamic sizing ([19c2d45](https://github.com/henrikje/arborist/commit/19c2d45994f7053c89409a10fc11b1b9da1348bb))
+* **delete:** show PR numbers in delete table for merged workspaces ([654e42e](https://github.com/henrikje/arborist/commit/654e42ea8ef296d0544ce13fa42fd02ae7a111d7))
+* **detach:** use canonical status model for safety checks ([9b3a68a](https://github.com/henrikje/arborist/commit/9b3a68add56ebd7615788a86b6d5bd75807dc5f4))
+* **errors:** improve error messages with actionable guidance ([870a113](https://github.com/henrikje/arborist/commit/870a1130cc7b6106d57117dffc7e2dc8b795a8df))
+* **exec:** add --parallel flag for concurrent execution ([6e88ef9](https://github.com/henrikje/arborist/commit/6e88ef99fcdec24781957dae6dc4a1e8a94ad599))
+* **log:** surface replayPlan in log and diff output ([f95c203](https://github.com/henrikje/arborist/commit/f95c20390c2eda9af6fe54507976d5256d152026))
+* **pull:** rename --force to --reset ([86172f9](https://github.com/henrikje/arborist/commit/86172f92a740dffcec2c2c2d3bccc01cef99801d))
+* **push:** color behind-base label based on conflict prediction ([800703e](https://github.com/henrikje/arborist/commit/800703e8dc72e9abbece5abfeb793a2e70fcbd09))
+* **rebase:** show base branch change as inline result on retarget ([b52aa0a](https://github.com/henrikje/arborist/commit/b52aa0ae41b07a9b0a866db879e287a976713e72))
+* **rename:** allow branch rename with zero attached repos ([b972586](https://github.com/henrikje/arborist/commit/b972586e5ca1e3baa1933835f906c4cc9a520084))
+* **status:** add shallow clone warnings to push, pull, log, and diff ([6005bed](https://github.com/henrikje/arborist/commit/6005bed66209a1bbdac9f7770077a0e27dc65dbe))
+* **status:** rename "drifted" to "wrong branch", fix help text ([a072551](https://github.com/henrikje/arborist/commit/a07255126431a3a7c6f272686fa0b9e61322a710))
+* **version:** detect and notify when a newer arb version is available ([07f2655](https://github.com/henrikje/arborist/commit/07f26558a9594aa6a8a968c3c341d7477b969029))
+
+
+### Bug Fixes
+
+* **analysis:** walk reflog ancestry to detect fast-forward intermediates as replaced ([60f4202](https://github.com/henrikje/arborist/commit/60f42025a660055adecf991d8bf285596954dbda))
+* **list:** false-positive baseMissing attention for merged stacked bases ([0bf2b62](https://github.com/henrikje/arborist/commit/0bf2b624c04dd8418d759109948a308b04913a8d))
+* **list:** update base cell from summary in phased render ([ffb4e62](https://github.com/henrikje/arborist/commit/ffb4e6299b4f2f3276c437145498ecaff5942d68))
+* **main:** pre-release QA sweep ([01e23a4](https://github.com/henrikje/arborist/commit/01e23a4fca8580505b93bc7ae362dc2280c18c08))
+* **pull:** detect outdated remote commits via replaced and squashed detection ([ac0af07](https://github.com/henrikje/arborist/commit/ac0af07a48af549336f473abec754ee93c50bbd9))
+* **pull:** skip repos with git operation in progress in push, pull, and detach ([39e5317](https://github.com/henrikje/arborist/commit/39e531786ea480daf7bd709344e8c0ed1021c716))
+* **reset:** skip repos with merged branches when resetting to base ([21715a6](https://github.com/henrikje/arborist/commit/21715a6a2bffa8f531bc7ea681257c11aee50f3d))
+* **uninstall:** only remove files installed by install.sh ([265af2c](https://github.com/henrikje/arborist/commit/265af2c2d7af60597cff834252979c111646ed55))
+
 ## [0.109.0](https://github.com/henrikje/arborist/compare/v0.108.0...v0.109.0) (2026-03-12)
 
 
