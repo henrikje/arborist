@@ -155,6 +155,7 @@ interface PushAssessmentBase {
   headSha: string;
   recreate: boolean;
   behindBase: number;
+  baseConflictPrediction?: ConflictPrediction;
   shallow: boolean;
   wrongBranch?: boolean;
   verbose?: {
