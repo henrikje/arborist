@@ -422,8 +422,10 @@ async function runDump(ctx: CommandContext): Promise<void> {
       stderr: { isTTY: process.stderr.isTTY ?? false, columns: process.stderr.columns ?? null },
     },
     errors: dumpErrors,
-    fetchCache: fetchCacheSummary,
-    analysisCache: analysisCacheSummary,
+    cache: {
+      fetch: fetchCacheSummary,
+      analysis: analysisCacheSummary,
+    },
     workspaces,
     canonicalRepos,
     currentWorkspaceStatus,
