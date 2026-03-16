@@ -119,6 +119,27 @@ describe("computeLastCommitWidths", () => {
     expect(widths.maxUnit).toBe(11); // "just now" = 8, but header needs 11
     expect(widths.total).toBe(11);
   });
+
+  test("handles duplicate num/unit lengths correctly", () => {
+    // Two entries with same num length (2) and same unit length (7)
+    // maxNum should be 2, maxUnit should be 7 (expanded to 8 for header: 2+1+8=11)
+    const parts = [
+      { num: "30", unit: "minutes" },
+      { num: "45", unit: "minutes" },
+    ];
+    const widths = computeLastCommitWidths(parts);
+    expect(widths.maxNum).toBe(2);
+    expect(widths.maxUnit).toBe(8); // 7 + 1 to reach header width 11
+  });
+
+  test("does not expand when dataWidth is exactly 11", () => {
+    // "30 minutes" → maxNum=2, maxUnit=7 → 2+1+7=10 < 11 → expands
+    // Need exactly 11: maxNum=2, maxUnit=8 → 2+1+8=11
+    const parts = [{ num: "30", unit: "minutess" }]; // 8-char unit
+    const widths = computeLastCommitWidths(parts);
+    expect(widths.maxUnit).toBe(8); // no expansion needed
+    expect(widths.total).toBe(11);
+  });
 });
 
 describe("formatLastCommitCell", () => {
@@ -165,6 +186,17 @@ describe("latestCommitDate", () => {
   test("returns null for empty array", () => {
     expect(latestCommitDate([])).toBeNull();
   });
+
+  test("returns the date for epoch-adjacent timestamps", () => {
+    // Tests that latestMs initializer (-1) allows ms=0 to be selected
+    const dates = ["1970-01-01T00:00:00Z"];
+    expect(latestCommitDate(dates)).toBe("1970-01-01T00:00:00Z");
+  });
+
+  test("handles duplicate dates by returning the first occurrence", () => {
+    const dates = ["2025-06-15T00:00:00Z", "2025-06-15T00:00:00Z"];
+    expect(latestCommitDate(dates)).toBe("2025-06-15T00:00:00Z");
+  });
 });
 
 describe("parseDuration", () => {
@@ -205,5 +237,13 @@ describe("parseDuration", () => {
 
   test("trims whitespace", () => {
     expect(parseDuration(" 7d")).toBe(7 * 24 * 60 * 60 * 1000);
+  });
+
+  test("returns null for leading noise before valid duration", () => {
+    expect(parseDuration("abc30d")).toBeNull();
+  });
+
+  test("returns null for trailing noise after valid duration", () => {
+    expect(parseDuration("30dabc")).toBeNull();
   });
 });

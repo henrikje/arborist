@@ -322,6 +322,7 @@ describe("computeFlags", () => {
       "feature",
     );
     expect(flags.isDetached).toBe(true);
+    expect(flags.isWrongBranch).toBe(false);
   });
 
   test("hasOperation when operation is in progress", () => {
@@ -1342,6 +1343,23 @@ describe("computeSummaryAggregates outdatedOnlyCount", () => {
     ];
     const result = computeSummaryAggregates(repos, "feature");
     expect(result.outdatedOnlyCount).toBe(1);
+  });
+
+  test("does not count repos where outdated is absent and toPush is zero", () => {
+    const repos = [
+      makeRepo({
+        name: "a",
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 0,
+          toPull: 0,
+        },
+      }),
+    ];
+    const result = computeSummaryAggregates(repos, "feature");
+    expect(result.outdatedOnlyCount).toBe(0);
   });
 
   test("does not count repos where replaced + rebased < toPush", () => {

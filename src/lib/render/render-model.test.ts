@@ -54,6 +54,7 @@ describe("join()", () => {
   test("returns empty cell for empty array", () => {
     const c = join([]);
     expect(c.plain).toBe("");
+    expect(c.spans).toEqual([{ text: "", attention: "default" }]);
   });
 
   test("returns the cell itself for single element", () => {
