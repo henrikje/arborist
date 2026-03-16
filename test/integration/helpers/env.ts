@@ -169,6 +169,22 @@ const templatePromise: Promise<TestEnv> = createTestEnv().catch((err) => {
   throw new Error(`Failed to create test env template: ${err.message}`, { cause: err });
 });
 
+// ── Filesystem case-sensitivity detection ────────────────────────
+
+async function detectCaseSensitiveFS(): Promise<boolean> {
+  const template = await templatePromise;
+  const repoDir = join(template.projectDir, ".arb/repos/repo-a");
+  try {
+    const result = await exec(["git", "-C", repoDir, "config", "core.ignorecase"], { cwd: repoDir });
+    return result.trim() !== "true";
+  } catch {
+    // core.ignorecase not set — filesystem is case-sensitive
+    return true;
+  }
+}
+
+export const isCaseSensitiveFS = await detectCaseSensitiveFS();
+
 /** Create a test env by copying the golden template (much faster than creating from scratch). */
 async function createTestEnvFromTemplate(): Promise<TestEnv> {
   const template = await templatePromise;

@@ -10,6 +10,7 @@ import {
   detectOperation,
   getCommitsBetweenFull,
   getDefaultBranch,
+  isCaseInsensitiveFS,
   isLinkedWorktree,
   isRepoDirty,
   isShallowRepo,
@@ -331,6 +332,19 @@ describe("git repo functions", () => {
       expect(isLinkedWorktree(dir)).toBe(true);
       rmSync(dir, { recursive: true, force: true });
     });
+  });
+
+  describe("isCaseInsensitiveFS", () => {
+    test("returns a boolean matching the platform", () =>
+      withRepo(async ({ repoDir }) => {
+        const result = await isCaseInsensitiveFS(repoDir);
+        expect(typeof result).toBe("boolean");
+        // On macOS (HFS+/APFS) this is true; on Linux ext4 this is false.
+        // We verify it matches what git auto-detected during clone.
+        const proc = Bun.spawnSync(["git", "-C", repoDir, "config", "core.ignorecase"]);
+        const expected = proc.exitCode === 0 && new TextDecoder().decode(proc.stdout).trim() === "true";
+        expect(result).toBe(expected);
+      }));
   });
 
   describe("isShallowRepo", () => {

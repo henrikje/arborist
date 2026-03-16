@@ -337,6 +337,12 @@ export async function getDiffShortstat(
   return parseDiffShortstat(result.stdout);
 }
 
+/** Check whether the filesystem hosting a repo is case-insensitive (macOS HFS+/APFS, Windows NTFS). */
+export async function isCaseInsensitiveFS(repoDir: string): Promise<boolean> {
+  const result = await git(repoDir, "config", "core.ignorecase");
+  return result.exitCode === 0 && result.stdout.trim() === "true";
+}
+
 export async function assertMinimumGitVersion(cache: { getGitVersion(): Promise<GitVersion> }): Promise<void> {
   const version = await cache.getGitVersion();
   if (version.major < 2 || (version.major === 2 && version.minor < 17)) {
