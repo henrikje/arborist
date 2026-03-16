@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
+import { predictMergeConflict } from "../lib/analysis";
 import { ArbError, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, getCommitsBetweenFull, getShortHead, gitWithTimeout, networkTimeout } from "../lib/git";
@@ -88,9 +89,11 @@ export function registerPushCommand(program: Command, getCtx: () => ArbContext):
         const assess = async (fetchFailed: string[], unchangedRepos: Set<string>) =>
           applyForcePushPolicy(await assessWithCache(fetchFailed, unchangedRepos), options.force === true);
 
-        const postAssess = options.verbose
-          ? (nextAssessments: PushAssessment[]) => gatherPushVerboseCommits(nextAssessments, remotesMap)
-          : async (nextAssessments: PushAssessment[]) => nextAssessments;
+        const postAssess = async (nextAssessments: PushAssessment[]) => {
+          await predictPushBaseConflicts(nextAssessments, remotesMap);
+          if (options.verbose) return gatherPushVerboseCommits(nextAssessments, remotesMap);
+          return nextAssessments;
+        };
 
         const assessments = await runPlanFlow({
           shouldFetch,
@@ -285,6 +288,21 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
   const remotes = remotesMap.get(a.repo);
   const forkText = remotes && remotes.base !== remotes.share ? ` → ${a.shareRemote}` : "";
 
+  const behindBaseSuffix = (r: Cell): Cell => {
+    if (a.behindBase <= 0) return r;
+    const label =
+      a.baseConflictPrediction === "conflict"
+        ? ", conflict likely"
+        : a.baseConflictPrediction === "clean"
+          ? ", conflict unlikely"
+          : "";
+    return suffix(
+      r,
+      ` (${a.behindBase} behind base${label})`,
+      a.baseConflictPrediction === "conflict" ? "attention" : "default",
+    );
+  };
+
   let result: Cell;
 
   if (a.outcome === "will-push") {
@@ -307,9 +325,7 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
       desc = plural(a.ahead, "commit");
     }
     result = cell(`${desc} to push${newBranchSuffix}`);
-    if (a.behindBase > 0) {
-      result = suffix(result, ` (${a.behindBase} behind base)`, "attention");
-    }
+    result = behindBaseSuffix(result);
     if (forkText) result = suffix(result, forkText);
     if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
   } else if (a.outcome === "will-force-push-outdated") {
@@ -324,15 +340,11 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
       if (newCount > 0) parts.push(`${newCount} new`);
       const desc = parts.length > 0 ? parts.join(" + ") : plural(a.ahead, "commit");
       result = cell(`${desc} to push${outdatedSuffix}`);
-      if (a.behindBase > 0) {
-        result = suffix(result, ` (${a.behindBase} behind base)`, "attention");
-      }
+      result = behindBaseSuffix(result);
       if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
     } else {
       result = cell(`${plural(a.ahead, "commit")} to push${outdatedSuffix}`);
-      if (a.behindBase > 0) {
-        result = suffix(result, ` (${a.behindBase} behind base)`, "attention");
-      }
+      result = behindBaseSuffix(result);
       if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
     }
   } else if (a.baseAhead > 0 || a.rebased > 0) {
@@ -345,16 +357,12 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
     if (newCount > 0) parts.push(`${newCount} new`);
     const desc = parts.length > 0 ? parts.join(" + ") : plural(a.ahead, "commit");
     result = cell(`${desc} to push (force)`);
-    if (a.behindBase > 0) {
-      result = suffix(result, ` (${a.behindBase} behind base)`, "attention");
-    }
+    result = behindBaseSuffix(result);
     if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
   } else {
     // will-force-push without base info
     result = cell(`${plural(a.ahead, "commit")} to push (force \u2014 ${a.behind} behind ${a.shareRemote})`);
-    if (a.behindBase > 0) {
-      result = suffix(result, ` (${a.behindBase} behind base)`, "attention");
-    }
+    result = behindBaseSuffix(result);
     if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
   }
 
@@ -406,6 +414,27 @@ async function gatherPushVerboseCommits(
         },
       };
     }),
+  );
+}
+
+async function predictPushBaseConflicts(
+  assessments: PushAssessment[],
+  remotesMap: Map<string, RepoRemotes>,
+): Promise<void> {
+  await Promise.all(
+    assessments
+      .filter(
+        (a) =>
+          a.behindBase > 0 &&
+          (a.outcome === "will-push" || a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated"),
+      )
+      .map(async (a) => {
+        const baseRemote = remotesMap.get(a.repo)?.base;
+        if (!baseRemote) return;
+        const ref = `${baseRemote}/${a.baseRef}`;
+        const prediction = await predictMergeConflict(a.repoDir, ref);
+        a.baseConflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
+      }),
   );
 }
 
