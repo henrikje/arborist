@@ -11,6 +11,7 @@ import {
   gitWithTimeout,
   networkTimeout,
   remoteBranchExists,
+  renameBranch,
   validateBranchName,
 } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
@@ -432,7 +433,7 @@ async function runRename(
 
   for (const a of willRename) {
     inlineStart(a.repo, "renaming");
-    const result = await git(a.repoDir, "branch", "-m", oldBranch, newBranch);
+    const result = await renameBranch(a.repoDir, oldBranch, newBranch);
     if (result.exitCode === 0) {
       // Clear stale tracking left by git branch -m.
       // Without this, @{upstream} resolves to origin/<oldBranch> and

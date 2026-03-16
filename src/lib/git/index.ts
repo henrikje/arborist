@@ -3,6 +3,7 @@ export {
   type GitWithTimeoutOptions,
   assertMinimumGitVersion,
   branchExistsLocally,
+  branchInWorktreeCaseInsensitive,
   branchIsInWorktree,
   checkBranchMatch,
   detectOperation,
@@ -24,6 +25,7 @@ export {
   parseGitStatus,
   parseGitStatusFiles,
   remoteBranchExists,
+  renameBranch,
   branchNameError,
   validateBranchName,
 } from "./git";

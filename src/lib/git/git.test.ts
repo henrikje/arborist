@@ -16,6 +16,7 @@ import {
   isShallowRepo,
   parseGitStatus,
   parseGitStatusFiles,
+  renameBranch,
   validateBranchName,
 } from "./git";
 
@@ -332,6 +333,29 @@ describe("git repo functions", () => {
       expect(isLinkedWorktree(dir)).toBe(true);
       rmSync(dir, { recursive: true, force: true });
     });
+  });
+
+  describe("renameBranch", () => {
+    test("renames a branch normally", () =>
+      withRepo(async ({ repoDir }) => {
+        Bun.spawnSync(["git", "-C", repoDir, "branch", "old-name"]);
+        const result = await renameBranch(repoDir, "old-name", "new-name");
+        expect(result.exitCode).toBe(0);
+        expect(await branchExistsLocally(repoDir, "new-name")).toBe(true);
+        expect(await branchExistsLocally(repoDir, "old-name")).toBe(false);
+      }));
+
+    test("handles case-only rename", () =>
+      withRepo(async ({ repoDir }) => {
+        Bun.spawnSync(["git", "-C", repoDir, "branch", "my-feature"]);
+        const result = await renameBranch(repoDir, "my-feature", "My-Feature");
+        expect(result.exitCode).toBe(0);
+        // Verify the branch exists with the new casing
+        const branches = new TextDecoder()
+          .decode(Bun.spawnSync(["git", "-C", repoDir, "branch", "--list"]).stdout)
+          .trim();
+        expect(branches).toContain("My-Feature");
+      }));
   });
 
   describe("isCaseInsensitiveFS", () => {

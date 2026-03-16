@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import input from "@inquirer/input";
 import select, { Separator } from "@inquirer/select";
 import type { Command } from "commander";
@@ -127,13 +127,18 @@ export function registerCreateCommand(program: Command): void {
 
         const wsDir = `${ctx.arbRootDir}/${name}`;
         if (existsSync(wsDir)) {
+          // Resolve actual directory name (may differ in case on case-insensitive FS)
+          const entries = readdirSync(ctx.arbRootDir);
+          const actualName = entries.find((e) => e.toLowerCase() === name.toLowerCase()) ?? name;
+          const caseNote = actualName !== name ? ` (did you mean '${actualName}'?)` : "";
+
           if (isDerivedFromBranch) {
-            const msg = `Derived workspace name '${name}' from branch '${options.branch}' already exists.`;
+            const msg = `Derived workspace name '${name}' from branch '${options.branch}' already exists${caseNote}.`;
             error(msg);
             info(`Pass an explicit workspace name: arb create <workspace-name> --branch ${options.branch}`);
             throw new ArbError(msg);
           }
-          const msg = `Workspace '${name}' already exists`;
+          const msg = `Workspace '${name}' already exists${caseNote}`;
           error(msg);
           throw new ArbError(msg);
         }
