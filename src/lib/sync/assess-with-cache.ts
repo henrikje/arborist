@@ -1,5 +1,6 @@
 import type { GitCache } from "../git/git-cache";
 import type { RepoRemotes } from "../git/remotes";
+import type { AnalysisCache } from "../status/analysis-cache";
 import { computeFlags } from "../status/flags";
 import { gatherRepoStatus } from "../status/status";
 import { repoMatchesWhere } from "../status/where";
@@ -12,6 +13,7 @@ interface BuildCachedStatusAssessOptions<TAssessment> {
   configBase: string | null;
   remotesMap: Map<string, RepoRemotes>;
   cache: GitCache;
+  analysisCache?: AnalysisCache;
   where?: string;
   classify: (input: {
     repo: string;
@@ -36,6 +38,7 @@ export function buildCachedStatusAssess<TAssessment>(options: BuildCachedStatusA
             options.configBase,
             options.remotesMap.get(repo),
             options.cache,
+            options.analysisCache,
           );
           prevStatuses.set(repo, status);
         }

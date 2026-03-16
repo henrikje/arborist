@@ -13,6 +13,7 @@ import { EMPTY_CELL, cell } from "../lib/render";
 import { buildStatusCountsCell } from "../lib/render";
 import {
   type AgeFilter,
+  AnalysisCache,
   type WorkspaceSummary,
   gatherWorkspaceSummary,
   matchesAge,
@@ -101,45 +102,108 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
         }
         const ctx = getCtx();
         const cache = await GitCache.create();
+        const aCache = AnalysisCache.load(ctx.arbRootDir);
+        try {
+          // Conflict checks
+          if (options.quiet && options.json) {
+            error("Cannot combine --quiet with --json.");
+            throw new ArbError("Cannot combine --quiet with --json.");
+          }
 
-        // Conflict checks
-        if (options.quiet && options.json) {
-          error("Cannot combine --quiet with --json.");
-          throw new ArbError("Cannot combine --quiet with --json.");
-        }
+          const whereFilter = resolveWhereFilter(options);
+          const ageFilter = resolveAgeFilter(options);
+          if ((whereFilter || ageFilter) && options.status === false) {
+            error(
+              "Cannot combine --no-status with --where or --older-than/--newer-than. Status gathering is required.",
+            );
+            throw new ArbError("Cannot combine --no-status with filters that require status gathering.");
+          }
 
-        const whereFilter = resolveWhereFilter(options);
-        const ageFilter = resolveAgeFilter(options);
-        if ((whereFilter || ageFilter) && options.status === false) {
-          error("Cannot combine --no-status with --where or --older-than/--newer-than. Status gathering is required.");
-          throw new ArbError("Cannot combine --no-status with filters that require status gathering.");
-        }
+          const workspaces = listWorkspaces(ctx.arbRootDir);
+          const metadata = await gatherListMetadata(ctx, workspaces);
 
-        const workspaces = listWorkspaces(ctx.arbRootDir);
-        const metadata = await gatherListMetadata(ctx, workspaces);
-
-        if (metadata.rows.length === 0) {
-          if (options.json) {
-            process.stdout.write("[]\n");
+          if (metadata.rows.length === 0) {
+            if (options.json) {
+              process.stdout.write("[]\n");
+              return;
+            }
+            info("No workspaces yet. Create one with: arb create <name>");
             return;
           }
-          info("No workspaces yet. Create one with: arb create <name>");
-          return;
-        }
 
-        const showStatus = options.status !== false;
+          const showStatus = options.status !== false;
 
-        const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
-        const repoNames = workspaceRepoNames(metadata);
-        const wantsFetch = options.fetch !== false && !options.quiet;
-        const shouldFetch =
-          wantsFetch && (options.fetch === true || !allReposFresh(repoNames, fetchTimestamps, fetchTtl()));
+          const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
+          const repoNames = workspaceRepoNames(metadata);
+          const wantsFetch = options.fetch !== false && !options.quiet;
+          const shouldFetch =
+            wantsFetch && (options.fetch === true || !allReposFresh(repoNames, fetchTimestamps, fetchTtl()));
 
-        // ── Quiet output path ──
-        if (options.quiet) {
-          if (options.fetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps); // only if explicitly requested
-          if (whereFilter || ageFilter) {
-            const gatherActivityOpts = ageFilter ? { gatherActivity: true } : undefined;
+          // ── Quiet output path ──
+          if (options.quiet) {
+            if (options.fetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps); // only if explicitly requested
+            if (whereFilter || ageFilter) {
+              const gatherActivityOpts = ageFilter
+                ? { gatherActivity: true, analysisCache: aCache }
+                : { analysisCache: aCache };
+              const results = await Promise.all(
+                metadata.toScan.map(async (entry) => {
+                  try {
+                    const summary = await gatherWorkspaceSummary(
+                      entry.wsDir,
+                      ctx.reposDir,
+                      undefined,
+                      cache,
+                      gatherActivityOpts,
+                    );
+                    return { index: entry.index, summary };
+                  } catch {
+                    return { index: entry.index, summary: null };
+                  }
+                }),
+              );
+              const summaryMap = new Map<number, WorkspaceSummary>();
+              for (const { index, summary } of results) {
+                if (summary) summaryMap.set(index, summary);
+              }
+              for (let i = 0; i < metadata.rows.length; i++) {
+                const summary = summaryMap.get(i);
+                if (!summary) continue;
+                const row = metadata.rows[i];
+                if (!row) continue;
+                if (whereFilter && !workspaceMatchesWhere(summary.repos, summary.branch, whereFilter)) continue;
+                if (ageFilter && !matchesAge(summary.lastActivity, ageFilter)) continue;
+                process.stdout.write(`${row.name}\n`);
+              }
+            } else {
+              for (const row of metadata.rows) {
+                process.stdout.write(`${row.name}\n`);
+              }
+            }
+            return;
+          }
+
+          // ── JSON output path ──
+          if (options.json) {
+            if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps);
+
+            const jsonEntries: ListJsonEntry[] = metadata.rows.map((row) => ({
+              workspace: row.name,
+              active: row.marker,
+              branch: row.special === "config-missing" ? null : row.branch || null,
+              base: row.special === "config-missing" ? null : row.base || null,
+              repoCount: row.special === "config-missing" ? null : Number.parseInt(row.repos, 10) || 0,
+              status: row.special,
+            }));
+
+            if (!showStatus) {
+              process.stdout.write(`${JSON.stringify(jsonEntries, null, 2)}\n`);
+              return;
+            }
+
+            const gatherActivityOptsJson = ageFilter
+              ? { gatherActivity: true, analysisCache: aCache }
+              : { analysisCache: aCache };
             const results = await Promise.all(
               metadata.toScan.map(async (entry) => {
                 try {
@@ -148,7 +212,7 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
                     ctx.reposDir,
                     undefined,
                     cache,
-                    gatherActivityOpts,
+                    gatherActivityOptsJson,
                   );
                   return { index: entry.index, summary };
                 } catch {
@@ -156,150 +220,123 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
                 }
               }),
             );
+
             const summaryMap = new Map<number, WorkspaceSummary>();
             for (const { index, summary } of results) {
-              if (summary) summaryMap.set(index, summary);
+              if (!summary) {
+                const entry = jsonEntries[index];
+                if (entry) entry.status = "error";
+                continue;
+              }
+              summaryMap.set(index, summary);
+              const entry = jsonEntries[index];
+              if (entry && entry.status === null) {
+                entry.atRiskCount = summary.atRiskCount;
+                entry.statusCounts = summary.statusCounts.map(({ label, count }) => ({ label, count }));
+                entry.lastCommit = summary.lastCommit;
+                if (summary.lastActivity) entry.lastActivity = summary.lastActivity;
+                if (summary.lastActivityFile) entry.lastActivityFile = summary.lastActivityFile;
+              }
             }
-            for (let i = 0; i < metadata.rows.length; i++) {
-              const summary = summaryMap.get(i);
-              if (!summary) continue;
-              const row = metadata.rows[i];
-              if (!row) continue;
-              if (whereFilter && !workspaceMatchesWhere(summary.repos, summary.branch, whereFilter)) continue;
-              if (ageFilter && !matchesAge(summary.lastActivity, ageFilter)) continue;
-              process.stdout.write(`${row.name}\n`);
+
+            let filtered = jsonEntries;
+            if (whereFilter || ageFilter) {
+              filtered = jsonEntries.filter((_entry, i) => {
+                const summary = summaryMap.get(i);
+                if (!summary) return false;
+                if (whereFilter && !workspaceMatchesWhere(summary.repos, summary.branch, whereFilter)) return false;
+                if (ageFilter && !matchesAge(summary.lastActivity, ageFilter)) return false;
+                return true;
+              });
             }
-          } else {
-            for (const row of metadata.rows) {
-              process.stdout.write(`${row.name}\n`);
-            }
-          }
-          return;
-        }
 
-        // ── JSON output path ──
-        if (options.json) {
-          if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps);
-
-          const jsonEntries: ListJsonEntry[] = metadata.rows.map((row) => ({
-            workspace: row.name,
-            active: row.marker,
-            branch: row.special === "config-missing" ? null : row.branch || null,
-            base: row.special === "config-missing" ? null : row.base || null,
-            repoCount: row.special === "config-missing" ? null : Number.parseInt(row.repos, 10) || 0,
-            status: row.special,
-          }));
-
-          if (!showStatus) {
-            process.stdout.write(`${JSON.stringify(jsonEntries, null, 2)}\n`);
+            process.stdout.write(`${JSON.stringify(filtered, null, 2)}\n`);
             return;
           }
 
-          const gatherActivityOptsJson = ageFilter ? { gatherActivity: true } : undefined;
-          const results = await Promise.all(
-            metadata.toScan.map(async (entry) => {
-              try {
-                const summary = await gatherWorkspaceSummary(
-                  entry.wsDir,
-                  ctx.reposDir,
-                  undefined,
-                  cache,
-                  gatherActivityOptsJson,
-                );
-                return { index: entry.index, summary };
-              } catch {
-                return { index: entry.index, summary: null };
-              }
-            }),
-          );
+          // ── Table output path ──
 
-          const summaryMap = new Map<number, WorkspaceSummary>();
-          for (const { index, summary } of results) {
-            if (!summary) {
-              const entry = jsonEntries[index];
-              if (entry) entry.status = "error";
-              continue;
-            }
-            summaryMap.set(index, summary);
-            const entry = jsonEntries[index];
-            if (entry && entry.status === null) {
-              entry.atRiskCount = summary.atRiskCount;
-              entry.statusCounts = summary.statusCounts.map(({ label, count }) => ({ label, count }));
-              entry.lastCommit = summary.lastCommit;
-              if (summary.lastActivity) entry.lastActivity = summary.lastActivity;
-              if (summary.lastActivityFile) entry.lastActivityFile = summary.lastActivityFile;
-            }
+          if (!showStatus) {
+            if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps);
+            process.stdout.write(formatListTable(metadata.rows, false));
+            return;
           }
 
-          let filtered = jsonEntries;
-          if (whereFilter || ageFilter) {
-            filtered = jsonEntries.filter((_entry, i) => {
-              const summary = summaryMap.get(i);
-              if (!summary) return false;
-              if (whereFilter && !workspaceMatchesWhere(summary.repos, summary.branch, whereFilter)) return false;
-              if (ageFilter && !matchesAge(summary.lastActivity, ageFilter)) return false;
-              return true;
+          const tty = isTTY();
+          const hasFilter = !!(whereFilter || ageFilter);
+          const canPhase = tty && metadata.toScan.length > 0 && !hasFilter;
+
+          if (canPhase && shouldFetch) {
+            // 3-phase: placeholder + fetching → placeholder + scanning → fresh
+            const fetchDirs = repoNames.map((r) => `${ctx.reposDir}/${r}`);
+            const remotesMap = await cache.resolveRemotesMap(repoNames, ctx.reposDir);
+            const { signal: abortSignal, cleanup: abortCleanup } = listenForAbortKeypress();
+            const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, {
+              silent: true,
+              signal: abortSignal,
             });
-          }
+            fetchPromise.catch(() => {}); // Prevent unhandled rejection on abort
+            const state: {
+              fetchResults?: Map<string, FetchResult>;
+              aborted?: boolean;
+            } = {};
+            const placeholder = formatListTable(metadata.rows, true);
 
-          process.stdout.write(`${JSON.stringify(filtered, null, 2)}\n`);
-          return;
-        }
-
-        // ── Table output path ──
-
-        if (!showStatus) {
-          if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps);
-          process.stdout.write(formatListTable(metadata.rows, false));
-          return;
-        }
-
-        const tty = isTTY();
-        const hasFilter = !!(whereFilter || ageFilter);
-        const canPhase = tty && metadata.toScan.length > 0 && !hasFilter;
-
-        if (canPhase && shouldFetch) {
-          // 3-phase: placeholder + fetching → placeholder + scanning → fresh
-          const fetchDirs = repoNames.map((r) => `${ctx.reposDir}/${r}`);
-          const remotesMap = await cache.resolveRemotesMap(repoNames, ctx.reposDir);
-          const { signal: abortSignal, cleanup: abortCleanup } = listenForAbortKeypress();
-          const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, {
-            silent: true,
-            signal: abortSignal,
-          });
-          fetchPromise.catch(() => {}); // Prevent unhandled rejection on abort
-          const state: {
-            fetchResults?: Map<string, FetchResult>;
-            aborted?: boolean;
-          } = {};
-          const placeholder = formatListTable(metadata.rows, true);
-
-          try {
-            await runPhasedRender([
-              {
-                render: () => placeholder + fetchSuffix(fetchDirs.length, { abortable: true }),
-              },
-              {
-                render: async () => {
-                  if (abortSignal.aborted) {
-                    state.aborted = true;
-                    return placeholder;
-                  }
-                  state.fetchResults = await fetchPromise;
-                  if (abortSignal.aborted) {
-                    state.aborted = true;
-                    return placeholder;
-                  }
-                  cache.invalidateAfterFetch();
-                  return placeholder + dim("Scanning...");
+            try {
+              await runPhasedRender([
+                {
+                  render: () => placeholder + fetchSuffix(fetchDirs.length, { abortable: true }),
                 },
-              },
+                {
+                  render: async () => {
+                    if (abortSignal.aborted) {
+                      state.aborted = true;
+                      return placeholder;
+                    }
+                    state.fetchResults = await fetchPromise;
+                    if (abortSignal.aborted) {
+                      state.aborted = true;
+                      return placeholder;
+                    }
+                    cache.invalidateAfterFetch();
+                    return placeholder + dim("Scanning...");
+                  },
+                },
+                {
+                  render: async () => {
+                    if (state.aborted) return placeholder;
+                    const total = metadata.toScan.length;
+                    let analyzed = 0;
+                    const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
+                      analysisCache: aCache,
+                      silent: true,
+                      ageFilter,
+                      onWorkspace: () => analyzeProgress(++analyzed, total),
+                    });
+                    clearScanProgress();
+                    return formatListTable(statusRows, true);
+                  },
+                  write: (o) => process.stdout.write(o),
+                },
+              ]);
+            } finally {
+              abortCleanup();
+            }
+            if (!state.aborted) {
+              reportFetchFailures(repoNames, state.fetchResults as Map<string, FetchResult>);
+              recordFetchResults(fetchTimestamps, state.fetchResults as Map<string, FetchResult>);
+              saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
+            }
+          } else if (canPhase) {
+            // 2-phase: placeholder + scanning → fresh
+            const total = metadata.toScan.length;
+            let analyzed = 0;
+            await runPhasedRender([
+              { render: () => formatListTable(metadata.rows, true) + dim("Scanning...") },
               {
                 render: async () => {
-                  if (state.aborted) return placeholder;
-                  const total = metadata.toScan.length;
-                  let analyzed = 0;
                   const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
+                    analysisCache: aCache,
                     silent: true,
                     ageFilter,
                     onWorkspace: () => analyzeProgress(++analyzed, total),
@@ -310,50 +347,30 @@ export function registerListCommand(program: Command, getCtx: () => ArbContext):
                 write: (o) => process.stdout.write(o),
               },
             ]);
-          } finally {
-            abortCleanup();
+          } else if (hasFilter && metadata.toScan.length > 0) {
+            if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps);
+            // Workspace-level progress, suppress repo-level scanProgress
+            const total = metadata.toScan.length;
+            let analyzed = 0;
+            const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
+              analysisCache: aCache,
+              silent: true,
+              ageFilter,
+              onWorkspace: () => analyzeProgress(++analyzed, total),
+            });
+            clearScanProgress(); // clear the "Analyzing workspaces N/N" line
+            process.stdout.write(formatListTable(statusRows, true));
+          } else {
+            // Non-phased (non-TTY or nothing to scan)
+            if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps);
+            const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
+              analysisCache: aCache,
+              ageFilter,
+            });
+            process.stdout.write(formatListTable(statusRows, true));
           }
-          if (!state.aborted) {
-            reportFetchFailures(repoNames, state.fetchResults as Map<string, FetchResult>);
-            recordFetchResults(fetchTimestamps, state.fetchResults as Map<string, FetchResult>);
-            saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
-          }
-        } else if (canPhase) {
-          // 2-phase: placeholder + scanning → fresh
-          const total = metadata.toScan.length;
-          let analyzed = 0;
-          await runPhasedRender([
-            { render: () => formatListTable(metadata.rows, true) + dim("Scanning...") },
-            {
-              render: async () => {
-                const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
-                  silent: true,
-                  ageFilter,
-                  onWorkspace: () => analyzeProgress(++analyzed, total),
-                });
-                clearScanProgress();
-                return formatListTable(statusRows, true);
-              },
-              write: (o) => process.stdout.write(o),
-            },
-          ]);
-        } else if (hasFilter && metadata.toScan.length > 0) {
-          if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps);
-          // Workspace-level progress, suppress repo-level scanProgress
-          const total = metadata.toScan.length;
-          let analyzed = 0;
-          const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
-            silent: true,
-            ageFilter,
-            onWorkspace: () => analyzeProgress(++analyzed, total),
-          });
-          clearScanProgress(); // clear the "Analyzing workspaces N/N" line
-          process.stdout.write(formatListTable(statusRows, true));
-        } else {
-          // Non-phased (non-TTY or nothing to scan)
-          if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps);
-          const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, { ageFilter });
-          process.stdout.write(formatListTable(statusRows, true));
+        } finally {
+          aCache.save();
         }
       },
     );
@@ -434,7 +451,7 @@ async function gatherListStatus(
   ctx: ArbContext,
   whereFilter: string | undefined,
   cache: GitCache,
-  options?: { silent?: boolean; ageFilter?: AgeFilter; onWorkspace?: () => void },
+  options?: { silent?: boolean; ageFilter?: AgeFilter; onWorkspace?: () => void; analysisCache?: AnalysisCache },
 ): Promise<ListRow[]> {
   const rows = metadata.rows.map((r) => ({ ...r }));
   const summaryByIndex = new Map<number, WorkspaceSummary>();
@@ -450,7 +467,9 @@ async function gatherListStatus(
         scanProgress(scannedRepos, totalRepos);
       };
 
-  const gatherActivityOpts = options?.ageFilter ? { gatherActivity: true } : undefined;
+  const gatherActivityOpts = options?.ageFilter
+    ? { gatherActivity: true, analysisCache: options?.analysisCache }
+    : { analysisCache: options?.analysisCache };
 
   const results = await Promise.all(
     metadata.toScan.map(async (entry) => {
