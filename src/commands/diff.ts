@@ -15,7 +15,13 @@ import {
   repoMatchesWhere,
   resolveWhereFilter,
 } from "../lib/status";
-import { parallelFetch, reportFetchFailures } from "../lib/sync";
+import {
+  loadFetchTimestamps,
+  parallelFetch,
+  recordFetchResults,
+  reportFetchFailures,
+  saveFetchTimestamps,
+} from "../lib/sync";
 import { error, isTTY, plural, stdout, success } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
@@ -137,12 +143,15 @@ export function registerDiffCommand(program: Command, getCtx: () => ArbContext):
         const cache = await GitCache.create();
 
         if (options.fetch) {
+          const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
           const allFetchDirs = workspaceRepoDirs(wsDir);
           const selectedSet = new Set(selectedRepos);
           const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
           const repos = fetchDirs.map((d) => basename(d));
           const remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
           const results = await parallelFetch(fetchDirs, undefined, remotesMap);
+          recordFetchResults(fetchTimestamps, results);
+          saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
           cache.invalidateAfterFetch();
           const failed = reportFetchFailures(repos, results);
           if (failed.length > 0) {

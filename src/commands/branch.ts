@@ -10,7 +10,17 @@ import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { runPhasedRender } from "../lib/render";
 import { type RepoRefs, computeFlags, gatherRepoRefs, gatherWorkspaceSummary } from "../lib/status";
-import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/sync";
+import {
+  type FetchResult,
+  allReposFresh,
+  fetchSuffix,
+  fetchTtl,
+  loadFetchTimestamps,
+  parallelFetch,
+  recordFetchResults,
+  reportFetchFailures,
+  saveFetchTimestamps,
+} from "../lib/sync";
 import { error, info, isTTY, listenForAbortKeypress, stderr } from "../lib/terminal";
 import {
   rejectExplicitBaseRemotePrefix,
@@ -227,9 +237,15 @@ async function runVerboseBranch(
   const gatherRefs = () =>
     Promise.all(repoDirs.map((dir) => gatherRepoRefs(dir, ctx.reposDir, base, undefined, cache)));
 
-  if (options.fetch !== false && !options.json && isTTY()) {
+  const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
+  const repoNamesForFetch = repoDirs.map((d) => basename(d));
+  const shouldFetchVerbose =
+    options.fetch !== false &&
+    (options.fetch === true || !allReposFresh(repoNamesForFetch, fetchTimestamps, fetchTtl()));
+
+  if (shouldFetchVerbose && !options.json && isTTY()) {
     // Phased rendering: stale → fetch → fresh
-    const repoNames = repoDirs.map((d) => basename(d));
+    const repoNames = repoNamesForFetch;
     const { signal: abortSignal, cleanup: abortCleanup } = listenForAbortKeypress();
     const fetchPromise = cache
       .resolveRemotesMap(repoNames, ctx.reposDir)
@@ -275,17 +291,21 @@ async function runVerboseBranch(
     }
     if (!state.aborted) {
       reportFetchFailures(repoNames, state.fetchResults as Map<string, FetchResult>);
+      recordFetchResults(fetchTimestamps, state.fetchResults as Map<string, FetchResult>);
+      saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
     }
     return;
   }
 
-  if (options.fetch !== false) {
+  if (shouldFetchVerbose) {
     // Non-TTY: blocking fetch then render
-    const repoNames = repoDirs.map((d) => basename(d));
+    const repoNames = repoNamesForFetch;
     const remotesMap = await cache.resolveRemotesMap(repoNames, ctx.reposDir);
     const results = await parallelFetch(repoDirs, undefined, remotesMap, options.json ? { silent: true } : undefined);
     cache.invalidateAfterFetch();
     reportFetchFailures(repoNames, results);
+    recordFetchResults(fetchTimestamps, results);
+    saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
   }
 
   const repos = await gatherRefs();

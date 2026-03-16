@@ -5,6 +5,7 @@ import type { ArbContext } from "../lib/core";
 import { readWorkspaceConfig } from "../lib/core";
 import { GitCache, getRemoteNames, getRemoteUrl } from "../lib/git";
 import { computeFlags, gatherWorkspaceSummary } from "../lib/status";
+import { fetchTtl, loadFetchTimestamps } from "../lib/sync";
 import { listRepos, listWorkspaces, readGitdirFromWorktree, workspaceRepoDirs } from "../lib/workspace";
 import { ARB_VERSION } from "../version";
 
@@ -377,6 +378,16 @@ async function runDump(ctx: ArbContext): Promise<void> {
     }
   }
 
+  // Fetch cache summary
+  const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
+  const fetchEntries = Object.entries(fetchTimestamps);
+  const fetchCacheSummary = {
+    path: join(ctx.arbRootDir, ".arb", "cache", "fetch.json"),
+    ttlSeconds: fetchTtl(),
+    entryCount: fetchEntries.length,
+    entries: Object.fromEntries(fetchEntries.map(([repo, ts]) => [repo, new Date(ts).toISOString()])),
+  };
+
   const output = {
     timestamp: new Date().toISOString(),
     arb: {
@@ -398,6 +409,7 @@ async function runDump(ctx: ArbContext): Promise<void> {
       stderr: { isTTY: process.stderr.isTTY ?? false, columns: process.stderr.columns ?? null },
     },
     errors: dumpErrors,
+    fetchCache: fetchCacheSummary,
     workspaces,
     canonicalRepos,
     currentWorkspaceStatus,
