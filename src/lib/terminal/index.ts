@@ -1,4 +1,7 @@
 export type { AbortKeypress } from "./abort-keypress";
+export { enterAlternateScreen, leaveAlternateScreen } from "./alternate-screen";
+export type { WatchEntry, WatchLoopCallbacks, WatchLoopOptions } from "./watch-loop";
+export { runWatchLoop } from "./watch-loop";
 export { checkboxWithPreview } from "./checkbox-with-preview";
 export { checkboxWithStatus } from "./checkbox-with-status";
 export { listenForAbortKeypress } from "./abort-keypress";

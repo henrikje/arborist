@@ -385,7 +385,7 @@ __arb_complete_status() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-d --dirty -w --where --fetch -N --no-fetch -v --verbose -q --quiet --json --schema" -- "$cur"))
+        COMPREPLY=($(compgen -W "-d --dirty -w --where --fetch -N --no-fetch -v --verbose -q --quiet --watch --json --schema" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
