@@ -62,7 +62,7 @@ describe("loadFetchTimestamps", () => {
   });
 
   test("loads existing timestamps", () => {
-    const data = { frontend: 1000, backend: 2000 };
+    const data = { frontend: "2026-03-16T12:00:00.000Z", backend: "2026-03-16T12:01:00.000Z" };
     writeFileSync(`${tmpDir}/.arb/cache/fetch.json`, JSON.stringify(data));
     const ts = loadFetchTimestamps(tmpDir);
     expect(ts).toEqual(data);
@@ -91,11 +91,18 @@ describe("loadFetchTimestamps", () => {
     const ts = loadFetchTimestamps(tmpDir);
     expect(ts).toEqual({});
   });
+
+  test("skips non-string values", () => {
+    const data = { frontend: "2026-03-16T12:00:00.000Z", backend: 1773670268 };
+    writeFileSync(`${tmpDir}/.arb/cache/fetch.json`, JSON.stringify(data));
+    const ts = loadFetchTimestamps(tmpDir);
+    expect(ts).toEqual({ frontend: "2026-03-16T12:00:00.000Z" });
+  });
 });
 
 describe("saveFetchTimestamps", () => {
   test("saves timestamps atomically", () => {
-    const data = { frontend: 1000, backend: 2000 };
+    const data = { frontend: "2026-03-16T12:00:00.000Z", backend: "2026-03-16T12:01:00.000Z" };
     saveFetchTimestamps(tmpDir, data);
     const content = readFileSync(`${tmpDir}/.arb/cache/fetch.json`, "utf-8");
     expect(JSON.parse(content)).toEqual(data);
@@ -103,12 +110,12 @@ describe("saveFetchTimestamps", () => {
 
   test("creates cache directory if missing", () => {
     rmSync(`${tmpDir}/.arb/cache`, { recursive: true, force: true });
-    saveFetchTimestamps(tmpDir, { repo: 1000 });
+    saveFetchTimestamps(tmpDir, { repo: "2026-03-16T12:00:00.000Z" });
     expect(existsSync(`${tmpDir}/.arb/cache/fetch.json`)).toBe(true);
   });
 
   test("does not leave tmp file on success", () => {
-    saveFetchTimestamps(tmpDir, { repo: 1000 });
+    saveFetchTimestamps(tmpDir, { repo: "2026-03-16T12:00:00.000Z" });
     expect(existsSync(`${tmpDir}/.arb/cache/fetch.json.tmp.${process.pid}`)).toBe(false);
   });
 });
@@ -117,20 +124,23 @@ describe("saveFetchTimestamps", () => {
 
 describe("allReposFresh", () => {
   test("returns true when all repos are within TTL", () => {
-    const now = Date.now();
-    const ts = { frontend: now - 5000, backend: now - 3000 };
+    const ts = {
+      frontend: new Date(Date.now() - 5000).toISOString(),
+      backend: new Date(Date.now() - 3000).toISOString(),
+    };
     expect(allReposFresh(["frontend", "backend"], ts, 15)).toBe(true);
   });
 
   test("returns false when any repo is stale", () => {
-    const now = Date.now();
-    const ts = { frontend: now - 5000, backend: now - 20000 };
+    const ts = {
+      frontend: new Date(Date.now() - 5000).toISOString(),
+      backend: new Date(Date.now() - 20000).toISOString(),
+    };
     expect(allReposFresh(["frontend", "backend"], ts, 15)).toBe(false);
   });
 
   test("returns false when a repo has no timestamp", () => {
-    const now = Date.now();
-    const ts = { frontend: now - 5000 };
+    const ts = { frontend: new Date(Date.now() - 5000).toISOString() };
     expect(allReposFresh(["frontend", "backend"], ts, 15)).toBe(false);
   });
 
@@ -139,8 +149,7 @@ describe("allReposFresh", () => {
   });
 
   test("returns false when TTL is 0 (disabled)", () => {
-    const now = Date.now();
-    const ts = { frontend: now };
+    const ts = { frontend: new Date().toISOString() };
     expect(allReposFresh(["frontend"], ts, 0)).toBe(false);
   });
 
@@ -153,22 +162,27 @@ describe("allReposFresh", () => {
 
 describe("recordFetchResults", () => {
   test("records timestamp for successful repos", () => {
-    const ts: Record<string, number> = {};
+    const ts: Record<string, string> = {};
     const results = new Map<string, FetchResult>([
       ["frontend", { repo: "frontend", exitCode: 0, output: "" }],
       ["backend", { repo: "backend", exitCode: 0, output: "updated" }],
     ]);
-    const before = Date.now();
+    const before = new Date().toISOString();
     recordFetchResults(ts, results);
-    const after = Date.now();
-    expect(ts.frontend).toBeGreaterThanOrEqual(before);
-    expect(ts.frontend).toBeLessThanOrEqual(after);
-    expect(ts.backend).toBeGreaterThanOrEqual(before);
-    expect(ts.backend).toBeLessThanOrEqual(after);
+    const after = new Date().toISOString();
+    const fe = ts.frontend;
+    const be = ts.backend;
+    expect(fe).toBeDefined();
+    expect(be).toBeDefined();
+    if (fe === undefined || be === undefined) throw new Error("unreachable");
+    expect(fe >= before).toBe(true);
+    expect(fe <= after).toBe(true);
+    expect(be >= before).toBe(true);
+    expect(be <= after).toBe(true);
   });
 
   test("does not record timestamp for failed repos", () => {
-    const ts: Record<string, number> = {};
+    const ts: Record<string, string> = {};
     const results = new Map<string, FetchResult>([
       ["frontend", { repo: "frontend", exitCode: 0, output: "" }],
       ["backend", { repo: "backend", exitCode: 1, output: "error" }],
@@ -179,9 +193,12 @@ describe("recordFetchResults", () => {
   });
 
   test("overwrites existing timestamp", () => {
-    const ts: Record<string, number> = { frontend: 1000 };
+    const ts: Record<string, string> = { frontend: "2020-01-01T00:00:00.000Z" };
     const results = new Map<string, FetchResult>([["frontend", { repo: "frontend", exitCode: 0, output: "" }]]);
     recordFetchResults(ts, results);
-    expect(ts.frontend).toBeGreaterThan(1000);
+    const fe = ts.frontend;
+    expect(fe).toBeDefined();
+    if (fe === undefined) throw new Error("unreachable");
+    expect(fe > "2020-01-01T00:00:00.000Z").toBe(true);
   });
 });

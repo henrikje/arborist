@@ -389,7 +389,7 @@ async function runDump(ctx: CommandContext): Promise<void> {
     path: join(ctx.arbRootDir, ".arb", "cache", "fetch.json"),
     ttlSeconds: fetchTtl(),
     entryCount: fetchEntries.length,
-    entries: Object.fromEntries(fetchEntries.map(([repo, ts]) => [repo, new Date(ts).toISOString()])),
+    entries: Object.fromEntries(fetchEntries),
   };
 
   // Analysis cache summary
@@ -397,8 +397,8 @@ async function runDump(ctx: CommandContext): Promise<void> {
     path: aCache.path,
     schemaVersion: AnalysisCache.schemaVersion,
     entryCount: aCache.size,
-    oldestTimestamp: aCache.oldestTimestamp ? new Date(aCache.oldestTimestamp * 1000).toISOString() : null,
-    newestTimestamp: aCache.newestTimestamp ? new Date(aCache.newestTimestamp * 1000).toISOString() : null,
+    oldestTimestamp: aCache.oldestTimestamp,
+    newestTimestamp: aCache.newestTimestamp,
   };
 
   const output = {
