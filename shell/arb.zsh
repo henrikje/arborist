@@ -387,8 +387,9 @@ _arb() {
                         '(-N --fetch --no-fetch)--fetch[Fetch before showing status (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching]' \
                         '(-v --verbose -q --quiet --schema)'{-v,--verbose}'[Show file-level detail]' \
-                        '(-q --quiet --json -v --verbose --schema)'{-q,--quiet}'[Output one repo name per line]' \
-                        '(--json -q --quiet --schema)--json[Output structured JSON]' \
+                        '(-q --quiet --json -v --verbose --schema --watch)'{-q,--quiet}'[Output one repo name per line]' \
+                        '(--watch --json -q --quiet --schema)--watch[Continuously refresh status on filesystem changes]' \
+                        '(--json -q --quiet --schema --watch)--json[Output structured JSON]' \
                         '(--schema --json -q --quiet -v --verbose)--schema[Print JSON Schema for --json output]' \
                         '*:repo:($ws_repo_names)'
                     ;;

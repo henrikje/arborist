@@ -74,6 +74,18 @@ Use `,` for OR (match any term) and `+` for AND (match all terms). `+` binds tig
 
 See `arb status --help` for all options.
 
+### Watch mode
+
+Use `--watch` to keep the status table open as a live dashboard that updates automatically when files change or commits are made:
+
+```bash
+arb status --watch
+arb status --watch --verbose
+arb status --watch --where dirty
+```
+
+This opens an alternate screen (like `top` or `less`) that refreshes on filesystem events. Useful in a split terminal while AI agents or other tools work in the repos. Press `f` to fetch remote state on demand, `q` or Escape to quit. Combines with `--verbose`, `--dirty`, `--where`, and `[repos...]` filtering.
+
 When a branch has been merged, the detected PR number from the merge commit, squash commit, or branch tip commit subject appears in `arb status` (e.g. `merged (#123), gone`). Detected values are heuristic — they come from local git data, not API calls.
 
 ## Run commands across repos
