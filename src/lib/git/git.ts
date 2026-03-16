@@ -210,6 +210,54 @@ export async function branchIsInWorktree(repoDir: string, branch: string): Promi
   return result.stdout.split("\n").some((line) => line === target);
 }
 
+/**
+ * Find a branch in any worktree using case-insensitive matching.
+ * Returns the actual branch name and worktree path if found, or null.
+ */
+export async function branchInWorktreeCaseInsensitive(
+  repoDir: string,
+  branch: string,
+): Promise<{ branch: string; worktreePath: string } | null> {
+  const result = await git(repoDir, "worktree", "list", "--porcelain");
+  if (result.exitCode !== 0) return null;
+  const branchPrefix = "branch refs/heads/";
+  const target = branch.toLowerCase();
+  let currentWorktree = "";
+  for (const line of result.stdout.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      currentWorktree = line.slice("worktree ".length);
+    } else if (line.startsWith(branchPrefix)) {
+      const name = line.slice(branchPrefix.length);
+      if (name.toLowerCase() === target) {
+        return { branch: name, worktreePath: currentWorktree };
+      }
+    }
+  }
+  return null;
+}
+
+/** Rename a local branch. Handles case-only renames via a two-step rename. */
+export async function renameBranch(
+  repoDir: string,
+  oldBranch: string,
+  newBranch: string,
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  if (oldBranch !== newBranch && oldBranch.toLowerCase() === newBranch.toLowerCase()) {
+    // git branch -m rejects case-only renames on case-insensitive FS because it
+    // sees the same ref file. Work around this with a two-step rename via a temp branch.
+    const temp = "__arb_case_rename__";
+    const step1 = await git(repoDir, "branch", "-m", oldBranch, temp);
+    if (step1.exitCode !== 0) return step1;
+    const step2 = await git(repoDir, "branch", "-m", temp, newBranch);
+    if (step2.exitCode !== 0) {
+      await git(repoDir, "branch", "-m", temp, oldBranch);
+      return step2;
+    }
+    return step2;
+  }
+  return git(repoDir, "branch", "-m", oldBranch, newBranch);
+}
+
 export async function remoteBranchExists(repoDir: string, branch: string, remote: string): Promise<boolean> {
   const result = await git(repoDir, "show-ref", "--verify", "--quiet", `refs/remotes/${remote}/${branch}`);
   return result.exitCode === 0;

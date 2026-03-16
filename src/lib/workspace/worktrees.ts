@@ -1,6 +1,13 @@
 import { existsSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { branchExistsLocally, git, isRepoDirty, remoteBranchExists } from "../git/git";
+import {
+  branchExistsLocally,
+  branchInWorktreeCaseInsensitive,
+  git,
+  isCaseInsensitiveFS,
+  isRepoDirty,
+  remoteBranchExists,
+} from "../git/git";
 import { GitCache } from "../git/git-cache";
 import type { RepoRemotes } from "../git/remotes";
 import { error, inlineResult, inlineStart, warn } from "../terminal/output";
@@ -123,6 +130,19 @@ export async function addWorktrees(
     const noCheckout = needsRelink ? ["--no-checkout"] : [];
 
     if (branchExists) {
+      // On case-insensitive FS, git may not detect case-variant branch collisions.
+      // Check if a case-variant of this branch is already in a worktree.
+      if (await isCaseInsensitiveFS(repoPath)) {
+        const conflicting = await branchInWorktreeCaseInsensitive(repoPath, branch);
+        if (conflicting && conflicting.branch !== branch) {
+          inlineStart(repo, `attaching branch ${branch}`);
+          inlineResult(repo, "failed");
+          const msg = `fatal: '${branch}' is already checked out at '${conflicting.worktreePath}'`;
+          error(`    ${formatWorktreeError(msg, arbRootDir)}`);
+          result.failed.push(repo);
+          continue;
+        }
+      }
       inlineStart(repo, `attaching branch ${branch}`);
       const wt = await git(repoPath, "worktree", "add", ...noCheckout, wtTarget, branch);
       if (wt.exitCode !== 0) {

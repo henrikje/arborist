@@ -1,9 +1,9 @@
-import { existsSync, renameSync } from "node:fs";
+import { existsSync, realpathSync, renameSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, arbAction, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, branchNameError, git, gitWithTimeout, networkTimeout } from "../lib/git";
+import { GitCache, branchNameError, git, gitWithTimeout, networkTimeout, renameBranch } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { cell } from "../lib/render";
@@ -254,7 +254,7 @@ async function runWorkspaceRename(
     const failures: string[] = [];
     for (const a of willRename) {
       inlineStart(a.repo, "renaming");
-      const result = await git(a.repoDir, "branch", "-m", oldBranch, newBranch);
+      const result = await renameBranch(a.repoDir, oldBranch, newBranch);
       if (result.exitCode === 0) {
         await git(a.repoDir, "config", "--unset", `branch.${newBranch}.remote`);
         await git(a.repoDir, "config", "--unset", `branch.${newBranch}.merge`);
@@ -459,9 +459,14 @@ export function registerRenameCommand(program: Command): void {
 
         // Check for name collision
         if (newWorkspaceName !== workspace && existsSync(`${ctx.arbRootDir}/${newWorkspaceName}`)) {
-          const msg = `Directory '${newWorkspaceName}' already exists`;
-          error(msg);
-          throw new ArbError(msg);
+          // On case-insensitive FS, the "collision" may be with ourselves (case-only rename)
+          const existingPath = realpathSync(`${ctx.arbRootDir}/${newWorkspaceName}`);
+          const currentPath = realpathSync(wsDir);
+          if (existingPath !== currentPath) {
+            const msg = `Directory '${newWorkspaceName}' already exists`;
+            error(msg);
+            throw new ArbError(msg);
+          }
         }
 
         if (branchRenameFrom !== null) {
