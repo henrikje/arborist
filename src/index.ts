@@ -26,6 +26,7 @@ import { registerResetCommand } from "./commands/reset";
 import { registerStatusCommand } from "./commands/status";
 import { registerTemplateCommand } from "./commands/template";
 import { ArbAbort, ArbError, checkForUpdate } from "./lib/core";
+import { killActiveGitProcesses } from "./lib/git";
 import { allTopics } from "./lib/help";
 import { bold, dim, error, info } from "./lib/terminal";
 import { debugLog, enableDebug, getGitCallCount, isDebug } from "./lib/terminal";
@@ -222,6 +223,7 @@ registerOpenCommand(program);
 registerTemplateCommand(program);
 
 process.on("SIGINT", () => {
+  killActiveGitProcesses();
   info("Aborted.");
   process.exit(130);
 });

@@ -28,6 +28,7 @@ const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
   merged: (f) => f.isMerged,
   "base-merged": (f) => f.isBaseMerged,
   "base-missing": (f) => f.isBaseMissing,
+  "timed-out": (f) => f.isTimedOut,
   "at-risk": (f) => isAtRisk(f),
   stale: (f) => hasAnyFlag(f, STALE_FLAGS),
   // Positive / healthy-state terms

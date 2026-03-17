@@ -3,7 +3,7 @@ import { basename, join } from "node:path";
 import {
   branchExistsLocally,
   branchInWorktreeCaseInsensitive,
-  git,
+  gitLocal,
   isCaseInsensitiveFS,
   isRepoDirty,
   remoteBranchExists,
@@ -144,7 +144,7 @@ export async function addWorktrees(
         }
       }
       inlineStart(repo, `attaching branch ${branch}`);
-      const wt = await git(repoPath, "worktree", "add", ...noCheckout, wtTarget, branch);
+      const wt = await gitLocal(repoPath, "worktree", "add", ...noCheckout, wtTarget, branch);
       if (wt.exitCode !== 0) {
         inlineResult(repo, "failed");
         const errText = wt.stderr.trim();
@@ -156,7 +156,17 @@ export async function addWorktrees(
     } else if (shareRemote && (await remoteBranchExists(repoPath, branch, shareRemote))) {
       const startPoint = `${shareRemote}/${branch}`;
       inlineStart(repo, `checking out branch ${branch} from ${startPoint}`);
-      const wt = await git(repoPath, "worktree", "add", ...noCheckout, "--track", "-b", branch, wtTarget, startPoint);
+      const wt = await gitLocal(
+        repoPath,
+        "worktree",
+        "add",
+        ...noCheckout,
+        "--track",
+        "-b",
+        branch,
+        wtTarget,
+        startPoint,
+      );
       if (wt.exitCode !== 0) {
         inlineResult(repo, "failed");
         const errText = wt.stderr.trim();
@@ -173,7 +183,7 @@ export async function addWorktrees(
       // branching from a remote ref. We rely on tracking config being absent for fresh
       // branches and present only after `arb push -u`, so we can detect "gone" branches
       // (pushed, merged, remote branch deleted) vs never-pushed branches.
-      const wt = await git(
+      const wt = await gitLocal(
         repoPath,
         "worktree",
         "add",
@@ -199,7 +209,7 @@ export async function addWorktrees(
     if (needsRelink) {
       if (!relinkWorktreeInPlace(wtTarget, `${wsDir}/${repo}`)) {
         error(`  [${repo}] failed to re-link worktree in place`);
-        await git(repoPath, "worktree", "remove", "--force", wtTarget);
+        await gitLocal(repoPath, "worktree", "remove", "--force", wtTarget);
         result.failed.push(repo);
         continue;
       }
@@ -246,7 +256,7 @@ export function isWorktreeRefValid(repoDir: string): boolean {
  * may be temporarily missing.
  */
 export async function pruneWorktreeEntriesForDir(repoPath: string, targetDir: string): Promise<void> {
-  const listResult = await git(repoPath, "worktree", "list", "--porcelain");
+  const listResult = await gitLocal(repoPath, "worktree", "list", "--porcelain");
   if (listResult.exitCode !== 0) return;
 
   const paths = parseWorktreeList(listResult.stdout);
@@ -258,7 +268,7 @@ export async function pruneWorktreeEntriesForDir(repoPath: string, targetDir: st
     // If the target still exists on disk, it's not stale
     if (existsSync(wtPath)) continue;
     // Stale entry for this workspace — remove it
-    await git(repoPath, "worktree", "remove", "--force", wtPath);
+    await gitLocal(repoPath, "worktree", "remove", "--force", wtPath);
   }
 }
 
@@ -272,14 +282,14 @@ export async function pruneWorktreeEntriesForDir(repoPath: string, targetDir: st
 async function removeStaleEntryAtPath(repoPath: string, targetPath: string): Promise<boolean> {
   if (existsSync(targetPath)) return false;
 
-  const listResult = await git(repoPath, "worktree", "list", "--porcelain");
+  const listResult = await gitLocal(repoPath, "worktree", "list", "--porcelain");
   if (listResult.exitCode !== 0) return false;
 
   const paths = parseWorktreeList(listResult.stdout);
   for (const wtPath of paths) {
     if (wtPath === repoPath) continue;
     if (wtPath === targetPath) {
-      await git(repoPath, "worktree", "remove", "--force", wtPath);
+      await gitLocal(repoPath, "worktree", "remove", "--force", wtPath);
       return true;
     }
   }
@@ -427,21 +437,21 @@ export async function rollbackWorktrees(
   for (const repo of result.created) {
     const repoPath = `${reposDir}/${repo}`;
     try {
-      await git(repoPath, "worktree", "remove", "--force", `${wsDir}/${repo}`);
+      await gitLocal(repoPath, "worktree", "remove", "--force", `${wsDir}/${repo}`);
     } catch {
       warn(`  [${repo}] failed to remove worktree during rollback`);
     }
 
     if (createdSet.has(repo)) {
       try {
-        await git(repoPath, "branch", "-D", branch);
+        await gitLocal(repoPath, "branch", "-D", branch);
       } catch {
         warn(`  [${repo}] failed to delete branch '${branch}' during rollback`);
       }
     }
 
     try {
-      await git(repoPath, "worktree", "prune");
+      await gitLocal(repoPath, "worktree", "prune");
     } catch {
       // Pruning is best-effort
     }

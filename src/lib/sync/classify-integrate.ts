@@ -1,6 +1,6 @@
 import { detectBranchMerged } from "../analysis/merge-detection";
 import { analyzeRetargetReplay } from "../analysis/replay-analysis";
-import { branchExistsLocally, getShortHead, git, remoteBranchExists } from "../git/git";
+import { branchExistsLocally, getShortHead, gitLocal, remoteBranchExists } from "../git/git";
 import { computeFlags } from "../status/flags";
 import type { SkipFlag } from "../status/skip-flags";
 import type { RepoStatus } from "../status/types";
@@ -13,7 +13,7 @@ interface IntegrateClassifierDependencies {
   branchExistsLocally: typeof branchExistsLocally;
   detectBranchMerged: typeof detectBranchMerged;
   getShortHead: typeof getShortHead;
-  git: typeof git;
+  git: typeof gitLocal;
   remoteBranchExists: typeof remoteBranchExists;
 }
 
@@ -22,7 +22,7 @@ const defaultDependencies: IntegrateClassifierDependencies = {
   branchExistsLocally,
   detectBranchMerged,
   getShortHead,
-  git,
+  git: gitLocal,
   remoteBranchExists,
 };
 

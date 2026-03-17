@@ -64,6 +64,7 @@ export interface RepoStatus extends RepoRefs {
     };
   };
   operation: GitOperation;
+  timedOut?: boolean;
   lastCommit: string | null;
   lastActivity: string | null;
   lastActivityFile: string | null;
@@ -83,6 +84,7 @@ export interface RepoFlags {
   isMerged: boolean;
   isBaseMerged: boolean;
   isBaseMissing: boolean;
+  isTimedOut: boolean;
 }
 
 // ── Named flag sets ──
@@ -97,6 +99,7 @@ export const LOSE_WORK_FLAGS = new Set<keyof RepoFlags>([
 
 export const AT_RISK_FLAGS = new Set<keyof RepoFlags>([
   ...LOSE_WORK_FLAGS,
+  "isTimedOut",
   "isShallow",
   "isBaseMerged",
   "isBaseMissing",
@@ -115,6 +118,7 @@ export const FLAG_LABELS: { key: keyof RepoFlags; label: string }[] = [
   { key: "isDetached", label: "detached" },
   { key: "isWrongBranch", label: "wrong branch" },
   // Other at-risk/infrastructure signals.
+  { key: "isTimedOut", label: "timed out" },
   { key: "isBaseMissing", label: "base missing" },
   { key: "isBaseMerged", label: "base merged" },
   { key: "isShallow", label: "shallow" },

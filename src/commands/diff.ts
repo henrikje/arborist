@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, arbAction } from "../lib/core";
-import { git, parseGitNumstat } from "../lib/git";
+import { gitLocal, parseGitNumstat } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type DiffJsonFileStat, type DiffJsonOutput, DiffJsonOutputSchema, type DiffJsonRepo } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
@@ -63,7 +63,7 @@ interface DiffTarget {
 
 async function resolveDiffTarget(repoDir: string, repo: RepoStatus): Promise<DiffTarget | null> {
   if (!repo.base) {
-    const rangeResult = await git(repoDir, "log", "--format=%H", "-n", `${NO_BASE_FALLBACK_LIMIT}`, "HEAD");
+    const rangeResult = await gitLocal(repoDir, "log", "--format=%H", "-n", `${NO_BASE_FALLBACK_LIMIT}`, "HEAD");
     if (rangeResult.exitCode !== 0 || !rangeResult.stdout.trim()) {
       return null;
     }
@@ -71,14 +71,14 @@ async function resolveDiffTarget(repoDir: string, repo: RepoStatus): Promise<Dif
     const oldest = hashes[hashes.length - 1];
     if (!oldest) return null;
 
-    const parentCheck = await git(repoDir, "rev-parse", "--verify", `${oldest}^`);
+    const parentCheck = await gitLocal(repoDir, "rev-parse", "--verify", `${oldest}^`);
     let ref: string;
     if (parentCheck.exitCode === 0) {
       const parent = parentCheck.stdout.trim();
-      const mb = await git(repoDir, "merge-base", parent, "HEAD");
+      const mb = await gitLocal(repoDir, "merge-base", parent, "HEAD");
       ref = mb.exitCode === 0 && mb.stdout.trim() ? mb.stdout.trim() : parent;
     } else {
-      const emptyTree = await git(repoDir, "hash-object", "-t", "tree", "/dev/null");
+      const emptyTree = await gitLocal(repoDir, "hash-object", "-t", "tree", "/dev/null");
       ref = emptyTree.stdout.trim();
     }
 
@@ -92,7 +92,7 @@ async function resolveDiffTarget(repoDir: string, repo: RepoStatus): Promise<Dif
 
   const baseMissing = repo.base.configuredRef != null && repo.base.baseMergedIntoDefault == null;
   const baseRefStr = baseRef(repo.base);
-  const mb = await git(repoDir, "merge-base", baseRefStr, "HEAD");
+  const mb = await gitLocal(repoDir, "merge-base", baseRefStr, "HEAD");
   const ref = mb.exitCode === 0 && mb.stdout.trim() ? mb.stdout.trim() : baseRefStr;
 
   if (baseMissing) {
@@ -235,7 +235,7 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
     }
 
     // Gather stats for summary
-    const numstatResult = await git(repoDir, "diff", "-M", "--numstat", ...gitArgs);
+    const numstatResult = await gitLocal(repoDir, "diff", "-M", "--numstat", ...gitArgs);
     if (numstatResult.exitCode === 0 && numstatResult.stdout.trim()) {
       const parsed = parseGitNumstat(numstatResult.stdout);
       for (const f of parsed) {
@@ -252,7 +252,7 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
     const diffArgs = stat
       ? ["diff", "-M", "--stat", "--color=always", ...gitArgs]
       : ["diff", "-M", "--color=always", ...gitArgs];
-    const result = await git(repoDir, ...diffArgs);
+    const result = await gitLocal(repoDir, ...diffArgs);
     if (result.exitCode === 0 && result.stdout.trim()) {
       stdout(result.stdout);
     }
@@ -319,7 +319,7 @@ async function gatherRepoDiff(repo: RepoStatus, wsDir: string, branch: string): 
   }
 
   // Run numstat
-  const result = await git(repoDir, "diff", "-M", "--numstat", target.ref);
+  const result = await gitLocal(repoDir, "diff", "-M", "--numstat", target.ref);
   if (result.exitCode !== 0) {
     return {
       name: repo.name,
@@ -438,7 +438,7 @@ async function outputPipe(
 
     const repoDir = `${wsDir}/${repo.name}`;
     const diffArgs = stat ? ["diff", "-M", "--stat", result.diffRef] : ["diff", "-M", result.diffRef];
-    const diffResult = await git(repoDir, ...diffArgs);
+    const diffResult = await gitLocal(repoDir, ...diffArgs);
     if (diffResult.exitCode === 0 && diffResult.stdout.trim()) {
       stdout(diffResult.stdout);
     }

@@ -2,7 +2,7 @@ import { basename, dirname, resolve } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict } from "../lib/analysis";
 import { ArbError, type CommandContext, arbAction } from "../lib/core";
-import { git } from "../lib/git/git";
+import { gitLocal, localTimeout } from "../lib/git/git";
 import { printSchema } from "../lib/json";
 import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
 import { createRenderContext, render, runPhasedRender } from "../lib/render";
@@ -43,6 +43,7 @@ import {
   runWatchLoop,
   scanProgress,
   stderr,
+  warn,
 } from "../lib/terminal";
 import {
   readGitdirFromWorktree,
@@ -192,6 +193,7 @@ async function runStatus(
       aborted?: boolean;
       staleTable?: string;
       staleRepos?: RepoStatus[];
+      finalRepos?: RepoStatus[];
     } = {};
 
     try {
@@ -224,6 +226,7 @@ async function runStatus(
               if (unchanged.has(repo.name)) previousResults.set(repo.name, repo);
             }
             const data = await gatherFiltered(previousResults);
+            state.finalRepos = data.repos;
             return await renderStatusTable(data, wsDir, { verbose: options.verbose });
           },
           write: (output) => process.stdout.write(output),
@@ -237,6 +240,7 @@ async function runStatus(
       recordFetchResults(fetchTimestamps, state.fetchResults as Map<string, FetchResult>);
       saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
     }
+    if (state.finalRepos) reportTimeoutHint(state.finalRepos);
     return;
   }
 
@@ -294,6 +298,13 @@ async function runStatus(
   // Table output
   const tableOutput = await renderStatusTable(filteredSummary, wsDir, { verbose: options.verbose });
   process.stdout.write(tableOutput);
+  reportTimeoutHint(filteredSummary.repos);
+}
+
+function reportTimeoutHint(repos: RepoStatus[]): void {
+  const count = repos.filter((r) => r.timedOut).length;
+  if (count === 0) return;
+  warn(`  hint: ${count} repo(s) timed out (ARB_GIT_TIMEOUT=${localTimeout()})`);
 }
 
 async function predictConflicts(
@@ -405,7 +416,7 @@ function watchFooter(fetching: boolean): string {
  * and returns a function that checks if a filename starts with any ignored directory prefix.
  */
 async function buildIgnoreFilter(repoDir: string): Promise<((filename: string) => boolean) | undefined> {
-  const result = await git(repoDir, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory");
+  const result = await gitLocal(repoDir, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory");
   if (result.exitCode !== 0) return undefined;
 
   const ignoredDirs = result.stdout

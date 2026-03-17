@@ -5,6 +5,7 @@ import { z } from "zod";
 import { ArbError, type RelativeTimeParts, arbAction, formatRelativeTimeParts, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import type { GitCache } from "../lib/git";
+import { localTimeout } from "../lib/git/git";
 import { printSchema } from "../lib/json";
 import { type ListJsonEntry, ListJsonEntrySchema } from "../lib/json";
 import { createRenderContext, render, runPhasedRender } from "../lib/render";
@@ -42,6 +43,7 @@ import {
   isTTY,
   listenForAbortKeypress,
   scanProgress,
+  warn,
 } from "../lib/terminal";
 import { listWorkspaces, workspaceBranch, workspaceRepoDirs } from "../lib/workspace";
 
@@ -268,6 +270,7 @@ export function registerListCommand(program: Command): void {
             const state: {
               fetchResults?: Map<string, FetchResult>;
               aborted?: boolean;
+              timedOutCount?: number;
             } = {};
             const placeholder = formatListTable(metadata.rows, true);
 
@@ -296,12 +299,19 @@ export function registerListCommand(program: Command): void {
                     if (state.aborted) return placeholder;
                     const total = metadata.toScan.length;
                     let analyzed = 0;
-                    const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
-                      analysisCache: aCache,
-                      silent: true,
-                      ageFilter,
-                      onWorkspace: () => analyzeProgress(++analyzed, total),
-                    });
+                    const { rows: statusRows, timedOutCount } = await gatherListStatus(
+                      metadata,
+                      ctx,
+                      whereFilter,
+                      cache,
+                      {
+                        analysisCache: aCache,
+                        silent: true,
+                        ageFilter,
+                        onWorkspace: () => analyzeProgress(++analyzed, total),
+                      },
+                    );
+                    state.timedOutCount = timedOutCount;
                     clearScanProgress();
                     return formatListTable(statusRows, true);
                   },
@@ -316,32 +326,42 @@ export function registerListCommand(program: Command): void {
               recordFetchResults(fetchTimestamps, state.fetchResults as Map<string, FetchResult>);
               saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
             }
+            reportListTimeoutHint(state.timedOutCount ?? 0);
           } else if (canPhase) {
             // 2-phase: placeholder + scanning → fresh
             const total = metadata.toScan.length;
             let analyzed = 0;
+            let phaseTimedOutCount = 0;
             await runPhasedRender([
               { render: () => formatListTable(metadata.rows, true) + dim("Scanning...") },
               {
                 render: async () => {
-                  const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
-                    analysisCache: aCache,
-                    silent: true,
-                    ageFilter,
-                    onWorkspace: () => analyzeProgress(++analyzed, total),
-                  });
+                  const { rows: statusRows, timedOutCount } = await gatherListStatus(
+                    metadata,
+                    ctx,
+                    whereFilter,
+                    cache,
+                    {
+                      analysisCache: aCache,
+                      silent: true,
+                      ageFilter,
+                      onWorkspace: () => analyzeProgress(++analyzed, total),
+                    },
+                  );
+                  phaseTimedOutCount = timedOutCount;
                   clearScanProgress();
                   return formatListTable(statusRows, true);
                 },
                 write: (o) => process.stdout.write(o),
               },
             ]);
+            reportListTimeoutHint(phaseTimedOutCount);
           } else if (hasFilter && metadata.toScan.length > 0) {
             if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps);
             // Workspace-level progress, suppress repo-level scanProgress
             const total = metadata.toScan.length;
             let analyzed = 0;
-            const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
+            const { rows: statusRows, timedOutCount } = await gatherListStatus(metadata, ctx, whereFilter, cache, {
               analysisCache: aCache,
               silent: true,
               ageFilter,
@@ -349,18 +369,25 @@ export function registerListCommand(program: Command): void {
             });
             clearScanProgress(); // clear the "Analyzing workspaces N/N" line
             process.stdout.write(formatListTable(statusRows, true));
+            reportListTimeoutHint(timedOutCount);
           } else {
             // Non-phased (non-TTY or nothing to scan)
             if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps);
-            const statusRows = await gatherListStatus(metadata, ctx, whereFilter, cache, {
+            const { rows: statusRows, timedOutCount } = await gatherListStatus(metadata, ctx, whereFilter, cache, {
               analysisCache: aCache,
               ageFilter,
             });
             process.stdout.write(formatListTable(statusRows, true));
+            reportListTimeoutHint(timedOutCount);
           }
         }
       })(options, command);
     });
+}
+
+function reportListTimeoutHint(timedOutCount: number): void {
+  if (timedOutCount === 0) return;
+  warn(`  hint: ${timedOutCount} repo(s) timed out (ARB_GIT_TIMEOUT=${localTimeout()})`);
 }
 
 // ── Metadata gathering ──
@@ -439,7 +466,7 @@ async function gatherListStatus(
   whereFilter: string | undefined,
   cache: GitCache,
   options?: { silent?: boolean; ageFilter?: AgeFilter; onWorkspace?: () => void; analysisCache?: AnalysisCache },
-): Promise<ListRow[]> {
+): Promise<{ rows: ListRow[]; timedOutCount: number }> {
   const rows = metadata.rows.map((r) => ({ ...r }));
   const summaryByIndex = new Map<number, WorkspaceSummary>();
 
@@ -479,12 +506,14 @@ async function gatherListStatus(
 
   if (scannedRepos > 0) clearScanProgress();
 
+  let timedOutCount = 0;
   for (const { index, summary } of results) {
     if (!summary) {
       const row = rows[index];
       if (row) row.statusCell = cell("(remotes not resolved)", "attention");
       continue;
     }
+    timedOutCount += summary.repos.filter((r) => r.timedOut).length;
     summaryByIndex.set(index, summary);
     const row = rows[index];
     if (row) applySummaryToRow(row, summary);
@@ -492,16 +521,17 @@ async function gatherListStatus(
 
   const ageFilter = options?.ageFilter;
   if (whereFilter || ageFilter) {
-    return rows.filter((_, i) => {
+    const filtered = rows.filter((_, i) => {
       const summary = summaryByIndex.get(i);
       if (!summary) return false;
       if (whereFilter && !workspaceMatchesWhere(summary.repos, summary.branch, whereFilter)) return false;
       if (ageFilter && !matchesAge(summary.lastActivity, ageFilter)) return false;
       return true;
     });
+    return { rows: filtered, timedOutCount };
   }
 
-  return rows;
+  return { rows, timedOutCount };
 }
 
 // ── Rendering ──

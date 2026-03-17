@@ -7,8 +7,8 @@ import {
   GitCache,
   branchExistsLocally,
   detectOperation,
-  git,
-  gitWithTimeout,
+  gitLocal,
+  gitNetwork,
   networkTimeout,
   remoteBranchExists,
   renameBranch,
@@ -95,7 +95,7 @@ export async function assessRepo(
   }
 
   // Get current HEAD branch
-  const headResult = await git(repoDir, "symbolic-ref", "--short", "HEAD");
+  const headResult = await gitLocal(repoDir, "symbolic-ref", "--short", "HEAD");
   const currentBranch = headResult.exitCode === 0 ? headResult.stdout.trim() || null : null;
 
   // Check if already on new branch
@@ -438,8 +438,8 @@ async function runRename(
       // Clear stale tracking left by git branch -m.
       // Without this, @{upstream} resolves to origin/<oldBranch> and
       // arb push reports "up to date" instead of pushing the new name.
-      await git(a.repoDir, "config", "--unset", `branch.${newBranch}.remote`);
-      await git(a.repoDir, "config", "--unset", `branch.${newBranch}.merge`);
+      await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.remote`);
+      await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.merge`);
       inlineResult(a.repo, `local branch renamed to ${newBranch}`);
       renameOk++;
     } else {
@@ -457,10 +457,10 @@ async function runRename(
 
   // Clear stale tracking for repos already on the new branch (e.g. --continue after partial)
   for (const a of assessments.filter((a) => a.outcome === "already-on-new")) {
-    const mergeRef = await git(a.repoDir, "config", `branch.${newBranch}.merge`);
+    const mergeRef = await gitLocal(a.repoDir, "config", `branch.${newBranch}.merge`);
     if (mergeRef.exitCode === 0 && mergeRef.stdout.trim() === `refs/heads/${oldBranch}`) {
-      await git(a.repoDir, "config", "--unset", `branch.${newBranch}.remote`);
-      await git(a.repoDir, "config", "--unset", `branch.${newBranch}.merge`);
+      await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.remote`);
+      await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.merge`);
     }
   }
 
@@ -477,7 +477,7 @@ async function runRename(
         const canonicalDir = `${ctx.reposDir}/${a.repo}`;
         const pushTimeout = networkTimeout("ARB_PUSH_TIMEOUT", 120);
         // biome-ignore lint/style/noNonNullAssertion: filtered above
-        const result = await gitWithTimeout(canonicalDir, pushTimeout, ["push", a.shareRemote!, "--delete", oldBranch]);
+        const result = await gitNetwork(canonicalDir, pushTimeout, ["push", a.shareRemote!, "--delete", oldBranch]);
         if (result.exitCode === 0) {
           inlineResult(a.repo, `deleted remote branch ${a.shareRemote}/${oldBranch}`);
         } else {
@@ -526,7 +526,7 @@ export async function runAbort(
   const assessments: AbortAssessment[] = await Promise.all(
     repoDirs.map(async (repoDir): Promise<AbortAssessment> => {
       const repo = basename(repoDir);
-      const headResult = await git(repoDir, "symbolic-ref", "--short", "HEAD");
+      const headResult = await gitLocal(repoDir, "symbolic-ref", "--short", "HEAD");
       const currentBranch = headResult.exitCode === 0 ? headResult.stdout.trim() || null : null;
 
       if (currentBranch === newBranch) {
@@ -571,7 +571,7 @@ export async function runAbort(
   const failures: string[] = [];
   for (const a of toRollBack) {
     inlineStart(a.repo, "reverting");
-    const result = await git(a.repoDir, "branch", "-m", newBranch, oldBranch);
+    const result = await gitLocal(a.repoDir, "branch", "-m", newBranch, oldBranch);
     if (result.exitCode === 0) {
       inlineResult(a.repo, `reverted to ${oldBranch}`);
       rollbackOk++;

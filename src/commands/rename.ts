@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, arbAction, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, branchNameError, git, gitWithTimeout, networkTimeout, renameBranch } from "../lib/git";
+import { GitCache, branchNameError, gitLocal, gitNetwork, networkTimeout, renameBranch } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { cell } from "../lib/render";
@@ -256,8 +256,8 @@ async function runWorkspaceRename(
       inlineStart(a.repo, "renaming");
       const result = await renameBranch(a.repoDir, oldBranch, newBranch);
       if (result.exitCode === 0) {
-        await git(a.repoDir, "config", "--unset", `branch.${newBranch}.remote`);
-        await git(a.repoDir, "config", "--unset", `branch.${newBranch}.merge`);
+        await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.remote`);
+        await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.merge`);
         inlineResult(a.repo, `local branch renamed to ${newBranch}`);
         renameOk++;
       } else {
@@ -275,10 +275,10 @@ async function runWorkspaceRename(
 
     // Clear stale tracking for repos already on the new branch
     for (const a of assessments.filter((a) => a.outcome === "already-on-new")) {
-      const mergeRef = await git(a.repoDir, "config", `branch.${newBranch}.merge`);
+      const mergeRef = await gitLocal(a.repoDir, "config", `branch.${newBranch}.merge`);
       if (mergeRef.exitCode === 0 && mergeRef.stdout.trim() === `refs/heads/${oldBranch}`) {
-        await git(a.repoDir, "config", "--unset", `branch.${newBranch}.remote`);
-        await git(a.repoDir, "config", "--unset", `branch.${newBranch}.merge`);
+        await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.remote`);
+        await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.merge`);
       }
     }
   }
@@ -295,7 +295,7 @@ async function runWorkspaceRename(
         const canonicalDir = `${ctx.reposDir}/${a.repo}`;
         const pushTimeout = networkTimeout("ARB_PUSH_TIMEOUT", 120);
         // biome-ignore lint/style/noNonNullAssertion: filtered above
-        const result = await gitWithTimeout(canonicalDir, pushTimeout, ["push", a.shareRemote!, "--delete", oldBranch]);
+        const result = await gitNetwork(canonicalDir, pushTimeout, ["push", a.shareRemote!, "--delete", oldBranch]);
         if (result.exitCode === 0) {
           inlineResult(a.repo, `deleted remote branch ${a.shareRemote}/${oldBranch}`);
         } else {

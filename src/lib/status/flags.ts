@@ -80,6 +80,7 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
     isMerged,
     isBaseMerged,
     isBaseMissing,
+    isTimedOut: repo.timedOut === true,
   };
 }
 

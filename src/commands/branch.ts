@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, arbAction, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, branchNameError, git } from "../lib/git";
+import { GitCache, branchNameError, gitLocal } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type BranchJsonOutput, BranchJsonOutputSchema, type BranchJsonRepo } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
@@ -194,7 +194,7 @@ async function runBranch(
   const repoDirs = workspaceRepoDirs(wsDir);
   const repos: RepoBranch[] = await Promise.all(
     repoDirs.map(async (dir) => {
-      const result = await git(dir, "symbolic-ref", "--short", "HEAD");
+      const result = await gitLocal(dir, "symbolic-ref", "--short", "HEAD");
       const repoBranch = result.exitCode === 0 ? result.stdout.trim() || null : null;
       return { name: basename(dir), branch: repoBranch };
     }),

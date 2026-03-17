@@ -2,7 +2,7 @@ import { existsSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Command } from "commander";
 import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
-import { branchExistsLocally, detectOperation, git, isRepoDirty } from "../lib/git";
+import { branchExistsLocally, detectOperation, gitLocal, isRepoDirty } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
@@ -248,7 +248,7 @@ export function registerDetachCommand(program: Command): void {
             const removeArgs = ["worktree", "remove"];
             if (options.force) removeArgs.push("--force");
             removeArgs.push(wtPath);
-            const removeResult = await git(canonicalDir, ...removeArgs);
+            const removeResult = await gitLocal(canonicalDir, ...removeArgs);
             if (removeResult.exitCode !== 0) {
               rmSync(wtPath, { recursive: true, force: true });
               await pruneWorktreeEntriesForDir(canonicalDir, wsDir);
@@ -262,7 +262,7 @@ export function registerDetachCommand(program: Command): void {
             }
             if (await branchExistsLocally(`${ctx.reposDir}/${repo}`, branch)) {
               inlineStart(repo, `deleting branch ${branch}`);
-              const delResult = await git(`${ctx.reposDir}/${repo}`, "branch", "-d", branch);
+              const delResult = await gitLocal(`${ctx.reposDir}/${repo}`, "branch", "-d", branch);
               if (delResult.exitCode === 0) {
                 inlineResult(repo, "branch deleted");
               } else {

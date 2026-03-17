@@ -37,8 +37,9 @@ export const whereFilterTopic: HelpTopic = {
     out("    merged         Feature branch has been merged into the base branch");
     out("    base-merged    Configured base branch was merged into the default branch");
     out("    base-missing   Configured base branch not found, fell back to default");
+    out("    timed-out      Git commands timed out (cloud-synced files not yet downloaded)");
     out("    at-risk        Would lose work or need attention if deleted (dirty, unpushed,");
-    out("                   wrong-branch, detached, operation, shallow, base-merged, base-missing)");
+    out("                   wrong-branch, detached, operation, timed-out, shallow, base-merged, base-missing)");
     out("    stale          Any of: behind-share, behind-base, diverged");
     out("");
     out(dim("  Healthy / positive flags:"));

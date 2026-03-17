@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import { readWorkspaceConfig } from "../core/config";
-import { git } from "../git/git";
+import { gitLocal } from "../git/git";
 import { warn } from "../terminal/output";
 import { workspaceRepoDirs } from "./repos";
 
@@ -21,7 +21,7 @@ export async function workspaceBranch(wsDir: string): Promise<WorkspaceBranchRes
   const repoDirs = workspaceRepoDirs(wsDir);
   const firstRepoDir = repoDirs[0];
   if (firstRepoDir) {
-    const result = await git(firstRepoDir, "symbolic-ref", "--short", "HEAD");
+    const result = await gitLocal(firstRepoDir, "symbolic-ref", "--short", "HEAD");
     if (result.exitCode === 0) {
       const branch = result.stdout.trim();
       if (branch) {

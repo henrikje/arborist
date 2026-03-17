@@ -1,4 +1,4 @@
-import { git } from "../git/git";
+import { gitLocal } from "../git/git";
 import { computeCumulativePatchId, computeDiffTreePatchId, computePatchIds } from "./patch-id";
 
 export interface MergeDetectionResult {
@@ -16,7 +16,7 @@ async function checkSquashMatch(
   branchRef: string,
   commitLimit: number,
 ): Promise<MergeDetectionResult | null> {
-  const mergeBaseResult = await git(repoDir, "merge-base", branchRef, baseBranchRef);
+  const mergeBaseResult = await gitLocal(repoDir, "merge-base", branchRef, baseBranchRef);
   if (mergeBaseResult.exitCode !== 0) return null;
   const mergeBase = mergeBaseResult.stdout.trim();
   if (!mergeBase) return null;
@@ -32,7 +32,7 @@ async function checkSquashMatch(
   for (const [patchId, commitHash] of perCommitMap) {
     if (patchId === cumulativePatchId) {
       // Retrieve the commit subject for PR number extraction
-      const subjectResult = await git(repoDir, "log", "-1", "--format=%s", commitHash);
+      const subjectResult = await gitLocal(repoDir, "log", "-1", "--format=%s", commitHash);
       const subject = subjectResult.exitCode === 0 ? subjectResult.stdout.trim() : "";
       return { kind: "squash", matchingCommit: { hash: commitHash, subject } };
     }
@@ -49,7 +49,7 @@ export async function detectBranchMerged(
   prefixLimit = 0,
 ): Promise<MergeDetectionResult | null> {
   // Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
-  const ancestor = await git(repoDir, "merge-base", "--is-ancestor", branchRef, baseBranchRef);
+  const ancestor = await gitLocal(repoDir, "merge-base", "--is-ancestor", branchRef, baseBranchRef);
   if (ancestor.exitCode === 0) return { kind: "merge" };
 
   // Phase 2: Squash check on full range
@@ -61,11 +61,11 @@ export async function detectBranchMerged(
   for (let k = 1; k <= prefixLimit; k++) {
     const prefixRef = `${branchRef}~${k}`;
     // Validate the prefix ref resolves
-    const verifyResult = await git(repoDir, "rev-parse", "--verify", prefixRef);
+    const verifyResult = await gitLocal(repoDir, "rev-parse", "--verify", prefixRef);
     if (verifyResult.exitCode !== 0) break;
 
     // Phase 1 on prefix: ancestor check
-    const prefixAncestor = await git(repoDir, "merge-base", "--is-ancestor", prefixRef, baseBranchRef);
+    const prefixAncestor = await gitLocal(repoDir, "merge-base", "--is-ancestor", prefixRef, baseBranchRef);
     if (prefixAncestor.exitCode === 0) {
       return { kind: "merge", newCommitsAfterMerge: k };
     }
@@ -99,12 +99,19 @@ export async function findMergeCommitForBranch(
   // Resolve afterRef to a full hash for parentage comparison
   let resolvedAfterRef: string | undefined;
   if (afterRef) {
-    const revParse = await git(repoDir, "rev-parse", afterRef);
+    const revParse = await gitLocal(repoDir, "rev-parse", afterRef);
     if (revParse.exitCode === 0) resolvedAfterRef = revParse.stdout.trim();
   }
 
   const range = afterRef ? `${afterRef}..${baseBranchRef}` : baseBranchRef;
-  const result = await git(repoDir, "log", "--merges", "--format=%H %P%x09%s", `--max-count=${commitLimit}`, range);
+  const result = await gitLocal(
+    repoDir,
+    "log",
+    "--merges",
+    "--format=%H %P%x09%s",
+    `--max-count=${commitLimit}`,
+    range,
+  );
   if (result.exitCode !== 0) return null;
 
   let parentageMatch: { hash: string; subject: string } | null = null;
@@ -147,7 +154,7 @@ export async function findTicketReferencedCommit(
   ticketKey: string,
   commitLimit = 100,
 ): Promise<{ hash: string; subject: string } | null> {
-  const result = await git(
+  const result = await gitLocal(
     repoDir,
     "log",
     "--format=%H %s",
@@ -181,7 +188,7 @@ export async function verifySquashRange(
 ): Promise<boolean> {
   try {
     const localRef = `HEAD~${newCommitsAfterMerge}`;
-    const mergeBaseResult = await git(repoDir, "merge-base", localRef, baseBranchRef);
+    const mergeBaseResult = await gitLocal(repoDir, "merge-base", localRef, baseBranchRef);
     if (mergeBaseResult.exitCode !== 0) return false;
     const mergeBase = mergeBaseResult.stdout.trim();
     if (!mergeBase) return false;

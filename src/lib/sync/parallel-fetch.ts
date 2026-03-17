@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { git, gitWithTimeout, networkTimeout } from "../git/git";
+import { gitLocal, gitNetwork, networkTimeout } from "../git/git";
 import type { RepoRemotes } from "../git/remotes";
 import { dim, plural, warn } from "../terminal/output";
 import { isTTY } from "../terminal/tty";
@@ -64,7 +64,7 @@ export async function parallelFetch(
 
       if (remotesToFetch.size > 0) {
         for (const remote of remotesToFetch) {
-          const result = await gitWithTimeout(repoDir, 0, ["fetch", "--prune", remote], {
+          const result = await gitNetwork(repoDir, 0, ["fetch", "--prune", remote], {
             signal: controller.signal,
           });
 
@@ -84,7 +84,7 @@ export async function parallelFetch(
         }
       } else {
         // No resolved remotes — fetch all
-        const result = await gitWithTimeout(repoDir, 0, ["fetch", "--all", "--prune"], {
+        const result = await gitNetwork(repoDir, 0, ["fetch", "--all", "--prune"], {
           signal: controller.signal,
         });
 
@@ -108,11 +108,11 @@ export async function parallelFetch(
       // default-branch renames even when no branch refs were updated by the fetch itself.
       if (baseRemote && lastExitCode === 0) {
         try {
-          const prevHead = await git(repoDir, "symbolic-ref", "--short", `refs/remotes/${baseRemote}/HEAD`);
-          await gitWithTimeout(repoDir, 0, ["remote", "set-head", baseRemote, "--auto"], {
+          const prevHead = await gitLocal(repoDir, "symbolic-ref", "--short", `refs/remotes/${baseRemote}/HEAD`);
+          await gitNetwork(repoDir, 0, ["remote", "set-head", baseRemote, "--auto"], {
             signal: controller.signal,
           });
-          const newHead = await git(repoDir, "symbolic-ref", "--short", `refs/remotes/${baseRemote}/HEAD`);
+          const newHead = await gitLocal(repoDir, "symbolic-ref", "--short", `refs/remotes/${baseRemote}/HEAD`);
           if (prevHead.exitCode === 0 && newHead.exitCode === 0 && prevHead.stdout.trim() !== newHead.stdout.trim()) {
             allOutput += `${allOutput ? "\n" : ""}remote HEAD changed: ${prevHead.stdout.trim()} -> ${newHead.stdout.trim()}`;
           }

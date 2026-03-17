@@ -2,7 +2,14 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict, predictRebaseConflictCommits, predictStashPopConflict } from "../lib/analysis";
 import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
-import { getCommitsBetweenFull, getDiffShortstat, getShortHead, git, gitWithTimeout, networkTimeout } from "../lib/git";
+import {
+  getCommitsBetweenFull,
+  getDiffShortstat,
+  getShortHead,
+  gitLocal,
+  gitNetwork,
+  networkTimeout,
+} from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
 import { createRenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -167,7 +174,7 @@ export function registerPullCommand(program: Command): void {
             const pullArgs = a.needsStash
               ? ["pull", "--rebase", "--autostash", pullRemote, a.branch]
               : ["pull", "--rebase", pullRemote, a.branch];
-            const pullResult = await gitWithTimeout(a.repoDir, pullTimeout, pullArgs);
+            const pullResult = await gitNetwork(a.repoDir, pullTimeout, pullArgs);
             if (pullResult.exitCode === 0) {
               inlineResult(a.repo, `pulled ${plural(a.behind, "commit")} (${a.pullMode})`);
               pullOk++;
@@ -189,15 +196,15 @@ export function registerPullCommand(program: Command): void {
           } else if (strategy === "safe-reset" || strategy === "forced-reset") {
             // Reset to remote tip. Safe-reset: auto-detected, no data loss. Forced-reset: user override via --force.
             if (a.needsStash) {
-              await git(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
+              await gitLocal(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
             }
             const target = a.safeReset?.target ?? `${pullRemote}/${a.branch}`;
             const resetLabel = strategy === "forced-reset" ? "forced reset" : "safe reset";
-            const resetResult = await git(a.repoDir, "reset", "--hard", target);
+            const resetResult = await gitLocal(a.repoDir, "reset", "--hard", target);
             if (resetResult.exitCode === 0) {
               let stashPopOk = true;
               if (a.needsStash) {
-                const popResult = await git(a.repoDir, "stash", "pop");
+                const popResult = await gitLocal(a.repoDir, "stash", "pop");
                 if (popResult.exitCode !== 0) {
                   stashPopOk = false;
                   stashPopFailed.push(a);
@@ -222,18 +229,13 @@ export function registerPullCommand(program: Command): void {
           } else {
             // Merge mode: manual stash cycle when needed
             if (a.needsStash) {
-              await git(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
+              await gitLocal(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
             }
-            const pullResult = await gitWithTimeout(a.repoDir, pullTimeout, [
-              "pull",
-              "--no-rebase",
-              pullRemote,
-              a.branch,
-            ]);
+            const pullResult = await gitNetwork(a.repoDir, pullTimeout, ["pull", "--no-rebase", pullRemote, a.branch]);
             if (pullResult.exitCode === 0) {
               let stashPopOk = true;
               if (a.needsStash) {
-                const popResult = await git(a.repoDir, "stash", "pop");
+                const popResult = await gitLocal(a.repoDir, "stash", "pop");
                 if (popResult.exitCode !== 0) {
                   stashPopOk = false;
                   stashPopFailed.push(a);
@@ -766,7 +768,7 @@ interface SafeResetEligibilityResult {
 
 export async function evaluateSafeResetEligibility(
   input: SafeResetEligibilityInput,
-  gitRunner: typeof git = git,
+  gitRunner: typeof gitLocal = gitLocal,
 ): Promise<SafeResetEligibilityResult> {
   const remoteRef = `${input.shareRemote}/${input.branch}`;
   const oldTipResult = await gitRunner(input.repoDir, "rev-parse", `${remoteRef}@{1}`);
@@ -902,11 +904,11 @@ async function gatherPullVerboseCommits(
 }
 
 async function detectPullMode(repoDir: string, branch: string): Promise<"rebase" | "merge"> {
-  const branchRebase = await git(repoDir, "config", "--get", `branch.${branch}.rebase`);
+  const branchRebase = await gitLocal(repoDir, "config", "--get", `branch.${branch}.rebase`);
   if (branchRebase.exitCode === 0) {
     return branchRebase.stdout.trim() !== "false" ? "rebase" : "merge";
   }
-  const pullRebase = await git(repoDir, "config", "--get", "pull.rebase");
+  const pullRebase = await gitLocal(repoDir, "config", "--get", "pull.rebase");
   if (pullRebase.exitCode === 0) {
     return pullRebase.stdout.trim() !== "false" ? "rebase" : "merge";
   }

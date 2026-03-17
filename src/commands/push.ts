@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict } from "../lib/analysis";
 import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
-import { getCommitsBetweenFull, getShortHead, gitWithTimeout, networkTimeout } from "../lib/git";
+import { getCommitsBetweenFull, getShortHead, gitNetwork, networkTimeout } from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
 import { createRenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -130,7 +130,7 @@ export function registerPushCommand(program: Command): void {
             a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated"
               ? ["push", "-u", "--force-with-lease", a.shareRemote, a.branch]
               : ["push", "-u", a.shareRemote, a.branch];
-          const pushResult = await gitWithTimeout(a.repoDir, pushTimeout, pushArgs);
+          const pushResult = await gitNetwork(a.repoDir, pushTimeout, pushArgs);
           if (pushResult.exitCode === 0) {
             inlineResult(a.repo, `pushed ${plural(a.ahead, "commit")}`);
             pushOk++;

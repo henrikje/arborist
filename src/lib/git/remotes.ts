@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { git } from "./git";
+import { gitLocal } from "./git";
 
 export interface RepoRemotes {
   base: string; // Source of base branches (rebase/merge targets, default branch)
@@ -82,7 +82,7 @@ export async function resolveRemotes(repoDir: string, knownRemoteNames?: string[
 
 /** List all remote names for a repo. */
 export async function getRemoteNames(repoDir: string): Promise<string[]> {
-  const result = await git(repoDir, "remote");
+  const result = await gitLocal(repoDir, "remote");
   if (result.exitCode !== 0 || !result.stdout.trim()) {
     return [];
   }
@@ -91,14 +91,14 @@ export async function getRemoteNames(repoDir: string): Promise<string[]> {
 
 /** Get the URL of a named remote (for display in plan output). */
 export async function getRemoteUrl(repoDir: string, remote: string): Promise<string | null> {
-  const result = await git(repoDir, "remote", "get-url", remote);
+  const result = await gitLocal(repoDir, "remote", "get-url", remote);
   if (result.exitCode !== 0) return null;
   return result.stdout.trim() || null;
 }
 
 /** Read remote.pushDefault from git config. */
 async function getPushDefault(repoDir: string): Promise<string | null> {
-  const result = await git(repoDir, "config", "remote.pushDefault");
+  const result = await gitLocal(repoDir, "config", "remote.pushDefault");
   if (result.exitCode !== 0) return null;
   return result.stdout.trim() || null;
 }
