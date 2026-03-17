@@ -54,6 +54,7 @@ The full list of filter terms:
 |------|----------------------|
 | `dirty` | there are uncommitted changes (staged, modified, untracked, or conflicting files) |
 | `unpushed` | local commits haven't been pushed to the share remote |
+| `not-pushed` | the branch has never been pushed to the share remote |
 | `behind-share` | the share remote has commits not yet pulled |
 | `behind-base` | the base branch has moved ahead (repo needs rebase/merge) |
 | `diverged` | the base branch and local branch have diverged (both ahead and behind) |
@@ -68,7 +69,7 @@ The full list of filter terms:
 | `at-risk` | the repo has unpushed commits, local changes, or is in a dirty operation state |
 | `stale` | the repo needs pulling, rebasing, or has diverged from base |
 | `clean` | no uncommitted changes (inverse of `dirty`) |
-| `pushed` | no unpushed commits (inverse of `unpushed`) |
+| `pushed` | all commits pushed and branch exists on the share remote |
 | `synced-base` | up to date with the base branch (not behind-base or diverged) |
 | `synced-share` | up to date with the share remote (not behind-share) |
 | `synced` | up to date with both base and share |

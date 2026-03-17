@@ -68,7 +68,7 @@ arb() {
 
 _arb_where_filter() {
     local -a all_terms=(
-        dirty unpushed behind-share behind-base diverged wrong-branch detached
+        dirty unpushed not-pushed behind-share behind-base diverged wrong-branch detached
         operation gone shallow merged base-merged base-missing timed-out at-risk stale
         clean pushed synced-base synced-share synced safe
     )

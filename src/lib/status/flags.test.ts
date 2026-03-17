@@ -10,6 +10,7 @@ describe("computeFlags", () => {
     expect(flags).toEqual({
       isDirty: false,
       isUnpushed: false,
+      isNeverPushed: false,
       needsPull: false,
       needsRebase: false,
       isDiverged: false,
@@ -129,6 +130,43 @@ describe("computeFlags", () => {
       "feature",
     );
     expect(flags.isUnpushed).toBe(false);
+  });
+
+  test("isNeverPushed when refMode is noRef", () => {
+    const flags = computeFlags(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: null,
+          refMode: "noRef" as const,
+          toPush: null,
+          toPull: null,
+        },
+      }),
+      "feature",
+    );
+    expect(flags.isNeverPushed).toBe(true);
+  });
+
+  test("not isNeverPushed when refMode is configured", () => {
+    const flags = computeFlags(makeRepo(), "feature");
+    expect(flags.isNeverPushed).toBe(false);
+  });
+
+  test("not isNeverPushed when refMode is gone", () => {
+    const flags = computeFlags(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: null,
+          refMode: "gone",
+          toPush: null,
+          toPull: null,
+        },
+      }),
+      "feature",
+    );
+    expect(flags.isNeverPushed).toBe(false);
   });
 
   test("needsPull when toPull > 0", () => {
