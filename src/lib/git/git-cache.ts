@@ -7,6 +7,13 @@ import {
   resolveRemotes as _resolveRemotes,
 } from "./remotes";
 
+/**
+ * Cache for base-branch patch-id maps, keyed by resolved base SHA.
+ * Shared across workspaces so the expensive `git log -p | git patch-id`
+ * computation runs once per unique base branch position.
+ */
+export type BasePatchIdCache = Map<string, Map<string, string>>;
+
 export interface GitCacheDeps {
   getDefaultBranch: (repoDir: string, remote: string) => Promise<string | null>;
   getRemoteNames: (repoDir: string) => Promise<string[]>;
@@ -38,6 +45,9 @@ export class GitCache {
   private remoteUrlCache = new Map<string, Promise<string | null>>();
   private gitVersionCache: Promise<GitVersion> | null = null;
   private deps: GitCacheDeps;
+
+  /** Shared cache for base-branch patch-id maps used by merge detection. */
+  readonly basePatchIdCache: BasePatchIdCache = new Map();
 
   constructor(deps?: GitCacheDeps) {
     this.deps = deps ?? defaultDeps;

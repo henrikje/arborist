@@ -97,6 +97,31 @@ export async function computeDiffTreePatchId(repoDir: string, hash: string): Pro
 }
 
 /**
+ * Per-commit patch-ids for the most recent commits reachable from `ref`.
+ * Unlike `computePatchIds` (which takes a range), this scans backwards from the tip
+ * without a start boundary — useful for building a shareable map of base-branch patch-ids.
+ */
+export async function computeRecentPatchIds(
+  repoDir: string,
+  ref: string,
+  maxCount: number,
+): Promise<Map<string, string> | null> {
+  const start = isDebug() ? performance.now() : 0;
+  const result = await Bun.$`git -C ${repoDir} log -p --max-count=${maxCount} ${ref} | git patch-id --stable`
+    .quiet()
+    .nothrow();
+  if (isDebug()) {
+    debugGit(
+      `git -C ${repoDir} log -p --max-count=${maxCount} ${ref} | git patch-id --stable`,
+      performance.now() - start,
+      result.exitCode,
+    );
+  }
+  if (result.exitCode !== 0) return null;
+  return parsePatchIdOutput(result.text());
+}
+
+/**
  * Cross-match two patch-id maps. Returns a Map<hashB, hashA> for each matching patchId.
  */
 export function crossMatchPatchIds(mapA: Map<string, string>, mapB: Map<string, string>): Map<string, string> {
