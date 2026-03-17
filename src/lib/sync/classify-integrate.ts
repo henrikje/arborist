@@ -166,7 +166,7 @@ export async function assessIntegrateRepo(
   dependencies: Partial<IntegrateClassifierDependencies> = {},
 ): Promise<RepoAssessment> {
   const deps = { ...defaultDependencies, ...dependencies };
-  const headSha = await deps.getShortHead(repoDir);
+  const headSha = status.headSha ?? (await deps.getShortHead(repoDir));
   const classified = classifyRepo(
     status,
     repoDir,

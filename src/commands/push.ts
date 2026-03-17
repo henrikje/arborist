@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict } from "../lib/analysis";
 import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
-import { getCommitsBetweenFull, getShortHead, gitNetwork, networkTimeout } from "../lib/git";
+import { getCommitsBetweenFull, gitNetwork, networkTimeout } from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
 import { createRenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -65,7 +65,7 @@ export function registerPushCommand(program: Command): void {
           analysisCache: ctx.analysisCache,
           where,
           classify: async ({ repoDir, status }) => {
-            const headSha = await getShortHead(repoDir);
+            const headSha = status.headSha ?? "";
             return assessPushRepo(status, repoDir, branch, headSha, {
               force: options.force,
               includeMerged: options.includeMerged,

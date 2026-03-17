@@ -8,7 +8,7 @@ import {
 import type { CommandContext } from "../core/command-action";
 import { readWorkspaceConfig, writeWorkspaceConfig } from "../core/config";
 import { ArbError } from "../core/errors";
-import { getCommitsBetweenFull, getDiffShortstat, getMergeBase, gitLocal, remoteBranchExists } from "../git/git";
+import { getCommitsBetweenFull, getDiffShortstat, getMergeBase, gitLocal } from "../git/git";
 import type { GitCache } from "../git/git-cache";
 import { buildConflictReport, buildStashPopFailureReport } from "../render/conflict-report";
 import { type IntegrateActionDesc, integrateActionCell } from "../render/integrate-cells";
@@ -105,15 +105,27 @@ export async function integrate(
     cache,
     analysisCache: ctx.analysisCache,
     where,
-    classify: ({ repoDir, status, fetchFailed }) =>
-      assessIntegrateRepo(status, repoDir, branch, fetchFailed, {
-        retarget,
-        retargetExplicit: normalizedRetargetExplicit,
-        autostash,
-        includeWrongBranch,
-        cache,
-        mode,
-      }),
+    classify: ({ repoDir, status, fetchFailed }) => {
+      const repoPath = `${ctx.reposDir}/${basename(repoDir)}`;
+      return assessIntegrateRepo(
+        status,
+        repoDir,
+        branch,
+        fetchFailed,
+        {
+          retarget,
+          retargetExplicit: normalizedRetargetExplicit,
+          autostash,
+          includeWrongBranch,
+          cache,
+          mode,
+        },
+        {
+          remoteBranchExists: (_dir, b, r) => cache.remoteBranchExists(repoPath, b, r),
+          branchExistsLocally: (_dir, b) => cache.branchExistsLocally(repoPath, b),
+        },
+      );
+    },
   });
 
   const postAssess = async (nextAssessments: RepoAssessment[]) => {
@@ -122,7 +134,7 @@ export async function integrate(
       await gatherIntegrateVerboseCommits(nextAssessments);
     }
     if (options.graph) {
-      await gatherIntegrateGraphData(nextAssessments, !!options.verbose);
+      await gatherIntegrateGraphData(nextAssessments, !!options.verbose, cache, ctx.reposDir);
     }
     return nextAssessments;
   };
@@ -216,7 +228,8 @@ export async function integrate(
 
     let result: { exitCode: number; stdout: string; stderr: string };
     if (a.retarget?.from) {
-      const remoteRefExists = await remoteBranchExists(a.repoDir, a.retarget.from, a.baseRemote);
+      const repoPath = `${ctx.reposDir}/${a.repo}`;
+      const remoteRefExists = await cache.remoteBranchExists(repoPath, a.retarget.from, a.baseRemote);
       const oldBaseRef = remoteRefExists ? `${a.baseRemote}/${a.retarget.from}` : a.retarget.from;
       const n = a.retarget.replayCount ?? a.ahead;
       const progressMsg =
@@ -606,7 +619,12 @@ async function gatherIntegrateVerboseCommits(assessments: RepoAssessment[]): Pro
   );
 }
 
-async function gatherIntegrateGraphData(assessments: RepoAssessment[], verbose: boolean): Promise<void> {
+async function gatherIntegrateGraphData(
+  assessments: RepoAssessment[],
+  verbose: boolean,
+  cache: GitCache,
+  reposDir: string,
+): Promise<void> {
   await Promise.all(
     assessments
       .filter((a) => a.outcome === "will-operate")
@@ -614,7 +632,8 @@ async function gatherIntegrateGraphData(assessments: RepoAssessment[], verbose: 
         // Resolve the ref used for merge-base and outgoing commits
         let mergeBaseRef: string;
         if (a.retarget?.from) {
-          const oldBaseRemoteExists = await remoteBranchExists(a.repoDir, a.retarget.from, a.baseRemote);
+          const repoPath = `${reposDir}/${a.repo}`;
+          const oldBaseRemoteExists = await cache.remoteBranchExists(repoPath, a.retarget.from, a.baseRemote);
           mergeBaseRef = oldBaseRemoteExists ? `${a.baseRemote}/${a.retarget.from}` : a.retarget.from;
         } else {
           mergeBaseRef = `${a.baseRemote}/${a.baseBranch}`;

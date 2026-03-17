@@ -1,4 +1,10 @@
-import { getDefaultBranch as _getDefaultBranch, assertMinimumGitVersion, gitLocal } from "./git";
+import {
+  branchExistsLocally as _branchExistsLocally,
+  getDefaultBranch as _getDefaultBranch,
+  remoteBranchExists as _remoteBranchExists,
+  assertMinimumGitVersion,
+  gitLocal,
+} from "./git";
 import { type GitVersion, parseGitVersion } from "./parsing";
 import {
   type RepoRemotes,
@@ -15,16 +21,20 @@ import {
 export type BasePatchIdCache = Map<string, Map<string, string>>;
 
 export interface GitCacheDeps {
+  branchExistsLocally: (repoDir: string, branch: string) => Promise<boolean>;
   getDefaultBranch: (repoDir: string, remote: string) => Promise<string | null>;
   getRemoteNames: (repoDir: string) => Promise<string[]>;
   getRemoteUrl: (repoDir: string, remote: string) => Promise<string | null>;
+  remoteBranchExists: (repoDir: string, branch: string, remote: string) => Promise<boolean>;
   resolveRemotes: (repoDir: string, knownRemoteNames?: string[]) => Promise<RepoRemotes>;
 }
 
 const defaultDeps: GitCacheDeps = {
+  branchExistsLocally: _branchExistsLocally,
   getDefaultBranch: _getDefaultBranch,
   getRemoteNames: _getRemoteNames,
   getRemoteUrl: _getRemoteUrl,
+  remoteBranchExists: _remoteBranchExists,
   resolveRemotes: _resolveRemotes,
 };
 
@@ -43,6 +53,8 @@ export class GitCache {
   private resolvedRemotesCache = new Map<string, Promise<RepoRemotes>>();
   private defaultBranchCache = new Map<string, Promise<string | null>>();
   private remoteUrlCache = new Map<string, Promise<string | null>>();
+  private remoteBranchExistsCache = new Map<string, Promise<boolean>>();
+  private branchExistsLocallyCache = new Map<string, Promise<boolean>>();
   private gitVersionCache: Promise<GitVersion> | null = null;
   private deps: GitCacheDeps;
 
@@ -98,6 +110,26 @@ export class GitCache {
     return cached;
   }
 
+  remoteBranchExists(repoDir: string, branch: string, remote: string): Promise<boolean> {
+    const key = `${repoDir}\0${branch}\0${remote}`;
+    let cached = this.remoteBranchExistsCache.get(key);
+    if (!cached) {
+      cached = this.deps.remoteBranchExists(repoDir, branch, remote);
+      this.remoteBranchExistsCache.set(key, cached);
+    }
+    return cached;
+  }
+
+  branchExistsLocally(repoDir: string, branch: string): Promise<boolean> {
+    const key = `${repoDir}\0${branch}`;
+    let cached = this.branchExistsLocallyCache.get(key);
+    if (!cached) {
+      cached = this.deps.branchExistsLocally(repoDir, branch);
+      this.branchExistsLocallyCache.set(key, cached);
+    }
+    return cached;
+  }
+
   getGitVersion(): Promise<GitVersion> {
     if (!this.gitVersionCache) {
       this.gitVersionCache = gitLocal(".", "--version").then((result) => {
@@ -111,9 +143,11 @@ export class GitCache {
     return this.gitVersionCache;
   }
 
-  /** Clear caches that may change after a fetch (default branch may update). */
+  /** Clear caches that may change after a fetch (default branch, remote refs). */
   invalidateAfterFetch(): void {
     this.defaultBranchCache.clear();
+    this.remoteBranchExistsCache.clear();
+    this.branchExistsLocallyCache.clear();
   }
 
   /** Build a remotes map from cached individual results. */

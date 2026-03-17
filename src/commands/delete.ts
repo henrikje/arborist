@@ -11,7 +11,7 @@ import {
   formatRelativeTimeParts,
 } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, branchExistsLocally, gitLocal, gitNetwork, networkTimeout, remoteBranchExists } from "../lib/git";
+import { GitCache, gitLocal, gitNetwork, networkTimeout } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { EMPTY_CELL, cell } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -411,31 +411,27 @@ async function executeDelete(
   const { wsDir, branch, repos } = assessment;
   const failedRemoteDeletes: string[] = [];
 
+  const deleteCache = new GitCache();
   for (const repo of repos) {
-    await gitLocal(`${ctx.reposDir}/${repo}`, "worktree", "remove", "--force", `${wsDir}/${repo}`);
+    const repoPath = `${ctx.reposDir}/${repo}`;
+    await gitLocal(repoPath, "worktree", "remove", "--force", `${wsDir}/${repo}`);
 
-    if (await branchExistsLocally(`${ctx.reposDir}/${repo}`, branch)) {
-      await gitLocal(`${ctx.reposDir}/${repo}`, "branch", "-D", branch);
+    if (await deleteCache.branchExistsLocally(repoPath, branch)) {
+      await gitLocal(repoPath, "branch", "-D", branch);
     }
 
     if (deleteRemote) {
       let shareRemote: string | undefined;
       try {
-        const deleteCache = new GitCache();
-        const remotes = await deleteCache.resolveRemotes(`${ctx.reposDir}/${repo}`);
+        const remotes = await deleteCache.resolveRemotes(repoPath);
         shareRemote = remotes.share;
       } catch {
         // Ambiguous remotes — can't determine which remote to delete from
       }
       if (shareRemote) {
-        if (await remoteBranchExists(`${ctx.reposDir}/${repo}`, branch, shareRemote)) {
+        if (await deleteCache.remoteBranchExists(repoPath, branch, shareRemote)) {
           const pushTimeout = networkTimeout("ARB_PUSH_TIMEOUT", 120);
-          const pushResult = await gitNetwork(`${ctx.reposDir}/${repo}`, pushTimeout, [
-            "push",
-            shareRemote,
-            "--delete",
-            branch,
-          ]);
+          const pushResult = await gitNetwork(repoPath, pushTimeout, ["push", shareRemote, "--delete", branch]);
           if (pushResult.exitCode !== 0) {
             failedRemoteDeletes.push(repo);
           }

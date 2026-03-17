@@ -2,14 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict, predictRebaseConflictCommits, predictStashPopConflict } from "../lib/analysis";
 import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
-import {
-  getCommitsBetweenFull,
-  getDiffShortstat,
-  getShortHead,
-  gitLocal,
-  gitNetwork,
-  networkTimeout,
-} from "../lib/git";
+import { getCommitsBetweenFull, getDiffShortstat, gitLocal, gitNetwork, networkTimeout } from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
 import { createRenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -95,7 +88,7 @@ export function registerPullCommand(program: Command): void {
           analysisCache: ctx.analysisCache,
           where,
           classify: async ({ repoDir, status, fetchFailed }) => {
-            const headSha = await getShortHead(repoDir);
+            const headSha = status.headSha ?? "";
             const pullMode = flagMode ?? (await detectPullMode(repoDir, branch));
             return assessPullRepo(
               status,
