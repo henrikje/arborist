@@ -7,7 +7,7 @@ import { type FileChange, type GitVersion, parseDiffShortstat, stagedType, unsta
 export type GitOperation = "rebase" | "merge" | "cherry-pick" | "revert" | "bisect" | "am" | null;
 
 export async function detectOperation(repoDir: string): Promise<GitOperation> {
-  const gitDirResult = await git(repoDir, "rev-parse", "--git-dir");
+  const gitDirResult = await gitLocal(repoDir, "rev-parse", "--git-dir");
   if (gitDirResult.exitCode !== 0) return null;
   const gitDir = gitDirResult.stdout.trim();
   const absGitDir = gitDir.startsWith("/") ? gitDir : `${repoDir}/${gitDir}`;
@@ -25,7 +25,7 @@ export async function detectOperation(repoDir: string): Promise<GitOperation> {
 }
 
 export async function isShallowRepo(repoDir: string): Promise<boolean> {
-  const result = await git(repoDir, "rev-parse", "--is-shallow-repository");
+  const result = await gitLocal(repoDir, "rev-parse", "--is-shallow-repository");
   return result.exitCode === 0 && result.stdout.trim() === "true";
 }
 
@@ -40,7 +40,22 @@ export function isLinkedWorktree(repoDir: string): boolean {
   }
 }
 
-export async function git(
+export function localTimeout(): number {
+  const env = process.env.ARB_GIT_TIMEOUT;
+  if (env === "0") return 0;
+  return Number(env) || 5;
+}
+
+const activeProcesses = new Set<{ kill(): void }>();
+
+export function killActiveGitProcesses(): void {
+  for (const proc of activeProcesses) {
+    proc.kill();
+  }
+  activeProcesses.clear();
+}
+
+export async function gitLocal(
   repoDir: string,
   ...args: string[]
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
@@ -51,8 +66,38 @@ export async function git(
     stdout: "pipe",
     stderr: "pipe",
   });
+  activeProcesses.add(proc);
+
+  const timeout = localTimeout();
+  let timedOut = false;
+
+  if (timeout > 0) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout * 1000);
+    const abortPromise = new Promise<"aborted">((resolve) => {
+      controller.signal.addEventListener("abort", () => resolve("aborted"), { once: true });
+    });
+    const raceResult = await Promise.race([proc.exited, abortPromise]);
+    clearTimeout(timeoutId);
+    if (raceResult === "aborted") {
+      timedOut = true;
+      proc.kill();
+      await proc.exited;
+    }
+  } else {
+    await proc.exited;
+  }
+
+  activeProcesses.delete(proc);
+
+  if (timedOut) {
+    if (isDebug()) {
+      debugGit(`git -C ${repoDir} ${args.join(" ")}`, performance.now() - start, 124);
+    }
+    return { exitCode: 124, stdout: "", stderr: `timed out after ${timeout}s` };
+  }
+
   const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
-  await proc.exited;
   const exitCode = proc.exitCode ?? 1;
   if (isDebug()) {
     debugGit(`git -C ${repoDir} ${args.join(" ")}`, performance.now() - start, exitCode);
@@ -70,7 +115,7 @@ export interface GitWithTimeoutOptions {
  * Accepts an optional AbortSignal for external cancellation (e.g. a shared deadline across fetches).
  * Use `cwd` for commands that don't support `-C` (e.g. `git clone`).
  */
-export async function gitWithTimeout(
+export async function gitNetwork(
   repoDir: string,
   timeoutSeconds: number,
   args: string[],
@@ -86,10 +131,12 @@ export async function gitWithTimeout(
     stdout: "pipe",
     stderr: "pipe",
   });
+  activeProcesses.add(proc);
 
   // If an external signal is already aborted, kill immediately and bail
   if (options?.signal?.aborted) {
     proc.kill();
+    activeProcesses.delete(proc);
     await proc.exited;
     if (isDebug()) {
       debugGit(cmdLabel, performance.now() - start, 124);
@@ -114,6 +161,7 @@ export async function gitWithTimeout(
 
   if (raceResult === "aborted") {
     proc.kill();
+    activeProcesses.delete(proc);
     await proc.exited;
     if (timeoutId !== undefined) clearTimeout(timeoutId);
     if (isDebug()) {
@@ -124,6 +172,7 @@ export async function gitWithTimeout(
 
   if (timeoutId !== undefined) clearTimeout(timeoutId);
 
+  activeProcesses.delete(proc);
   const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
   const exitCode = proc.exitCode ?? 1;
   if (isDebug()) {
@@ -138,27 +187,27 @@ export function networkTimeout(specificVar: string, defaultSeconds: number): num
 }
 
 export async function getShortHead(repoDir: string): Promise<string> {
-  const result = await git(repoDir, "rev-parse", "--short", "HEAD");
+  const result = await gitLocal(repoDir, "rev-parse", "--short", "HEAD");
   return result.exitCode === 0 ? result.stdout.trim() : "";
 }
 
 export async function getMergeBase(repoDir: string, ref1: string, ref2: string): Promise<string | null> {
-  const result = await git(repoDir, "merge-base", ref1, ref2);
+  const result = await gitLocal(repoDir, "merge-base", ref1, ref2);
   if (result.exitCode !== 0) return null;
   const full = result.stdout.trim();
   if (!full) return null;
-  const short = await git(repoDir, "rev-parse", "--short", full);
+  const short = await gitLocal(repoDir, "rev-parse", "--short", full);
   return short.exitCode === 0 ? short.stdout.trim() : full.slice(0, 7);
 }
 
 export async function getDefaultBranch(repoDir: string, remote: string): Promise<string | null> {
   // Try remote HEAD first
-  const symRef = await git(repoDir, "symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`);
+  const symRef = await gitLocal(repoDir, "symbolic-ref", "--short", `refs/remotes/${remote}/HEAD`);
   if (symRef.exitCode === 0) {
     return symRef.stdout.trim().replace(new RegExp(`^${remote}/`), "");
   }
   // No remote HEAD — use the repo's own HEAD branch
-  const headRef = await git(repoDir, "symbolic-ref", "--short", "HEAD");
+  const headRef = await gitLocal(repoDir, "symbolic-ref", "--short", "HEAD");
   if (headRef.exitCode === 0) {
     return headRef.stdout.trim();
   }
@@ -193,18 +242,18 @@ export async function checkBranchMatch(
   repoDir: string,
   expected: string,
 ): Promise<{ matches: boolean; actual: string }> {
-  const result = await git(repoDir, "symbolic-ref", "--short", "HEAD");
+  const result = await gitLocal(repoDir, "symbolic-ref", "--short", "HEAD");
   const actual = result.exitCode === 0 ? result.stdout.trim() : "?";
   return { matches: actual === expected, actual };
 }
 
 export async function branchExistsLocally(repoDir: string, branch: string): Promise<boolean> {
-  const result = await git(repoDir, "show-ref", "--verify", "--quiet", `refs/heads/${branch}`);
+  const result = await gitLocal(repoDir, "show-ref", "--verify", "--quiet", `refs/heads/${branch}`);
   return result.exitCode === 0;
 }
 
 export async function branchIsInWorktree(repoDir: string, branch: string): Promise<boolean> {
-  const result = await git(repoDir, "worktree", "list", "--porcelain");
+  const result = await gitLocal(repoDir, "worktree", "list", "--porcelain");
   if (result.exitCode !== 0) return false;
   const target = `branch refs/heads/${branch}`;
   return result.stdout.split("\n").some((line) => line === target);
@@ -218,7 +267,7 @@ export async function branchInWorktreeCaseInsensitive(
   repoDir: string,
   branch: string,
 ): Promise<{ branch: string; worktreePath: string } | null> {
-  const result = await git(repoDir, "worktree", "list", "--porcelain");
+  const result = await gitLocal(repoDir, "worktree", "list", "--porcelain");
   if (result.exitCode !== 0) return null;
   const branchPrefix = "branch refs/heads/";
   const target = branch.toLowerCase();
@@ -246,27 +295,27 @@ export async function renameBranch(
     // git branch -m rejects case-only renames on case-insensitive FS because it
     // sees the same ref file. Work around this with a two-step rename via a temp branch.
     const temp = "__arb_case_rename__";
-    const step1 = await git(repoDir, "branch", "-m", oldBranch, temp);
+    const step1 = await gitLocal(repoDir, "branch", "-m", oldBranch, temp);
     if (step1.exitCode !== 0) return step1;
-    const step2 = await git(repoDir, "branch", "-m", temp, newBranch);
+    const step2 = await gitLocal(repoDir, "branch", "-m", temp, newBranch);
     if (step2.exitCode !== 0) {
-      await git(repoDir, "branch", "-m", temp, oldBranch);
+      await gitLocal(repoDir, "branch", "-m", temp, oldBranch);
       return step2;
     }
     return step2;
   }
-  return git(repoDir, "branch", "-m", oldBranch, newBranch);
+  return gitLocal(repoDir, "branch", "-m", oldBranch, newBranch);
 }
 
 export async function remoteBranchExists(repoDir: string, branch: string, remote: string): Promise<boolean> {
-  const result = await git(repoDir, "show-ref", "--verify", "--quiet", `refs/remotes/${remote}/${branch}`);
+  const result = await gitLocal(repoDir, "show-ref", "--verify", "--quiet", `refs/remotes/${remote}/${branch}`);
   return result.exitCode === 0;
 }
 
 /** List all branch names on a given remote (from locally cached refs). */
 export async function listRemoteBranches(repoDir: string, remote: string): Promise<string[]> {
   const prefix = `refs/remotes/${remote}/`;
-  const result = await git(repoDir, "for-each-ref", "--format=%(refname)", prefix);
+  const result = await gitLocal(repoDir, "for-each-ref", "--format=%(refname)", prefix);
   if (result.exitCode !== 0 || !result.stdout.trim()) return [];
   return result.stdout
     .trim()
@@ -277,16 +326,18 @@ export async function listRemoteBranches(repoDir: string, remote: string): Promi
 }
 
 export async function isRepoDirty(repoDir: string): Promise<boolean> {
-  const result = await git(repoDir, "status", "--porcelain");
+  const result = await gitLocal(repoDir, "status", "--porcelain");
   return result.exitCode !== 0 || !!result.stdout.trim();
 }
 
-export async function parseGitStatus(
-  repoDir: string,
-): Promise<{ staged: number; modified: number; untracked: number; conflicts: number }> {
-  const result = await git(repoDir, "status", "--porcelain");
-  if (result.exitCode !== 0) return { staged: 0, modified: 0, untracked: 0, conflicts: 0 };
-  return result.stdout
+/** Parse `git status --porcelain` stdout into counts. */
+export function parseStatusPorcelain(stdout: string): {
+  staged: number;
+  modified: number;
+  untracked: number;
+  conflicts: number;
+} {
+  return stdout
     .split("\n")
     .filter(Boolean)
     .reduce(
@@ -306,10 +357,18 @@ export async function parseGitStatus(
     );
 }
 
+export async function parseGitStatus(
+  repoDir: string,
+): Promise<{ staged: number; modified: number; untracked: number; conflicts: number }> {
+  const result = await gitLocal(repoDir, "status", "--porcelain");
+  if (result.exitCode !== 0) return { staged: 0, modified: 0, untracked: 0, conflicts: 0 };
+  return parseStatusPorcelain(result.stdout);
+}
+
 export async function parseGitStatusFiles(
   repoDir: string,
 ): Promise<{ staged: FileChange[]; unstaged: FileChange[]; untracked: string[] }> {
-  const result = await git(repoDir, "status", "--porcelain");
+  const result = await gitLocal(repoDir, "status", "--porcelain");
   const staged: FileChange[] = [];
   const unstaged: FileChange[] = [];
   const untracked: string[] = [];
@@ -329,7 +388,7 @@ export async function parseGitStatusFiles(
 }
 
 export async function getHeadCommitDate(repoDir: string): Promise<string | null> {
-  const result = await git(repoDir, "log", "-1", "--format=%aI", "HEAD");
+  const result = await gitLocal(repoDir, "log", "-1", "--format=%aI", "HEAD");
   if (result.exitCode !== 0) return null;
   const date = result.stdout.trim();
   return date || null;
@@ -340,7 +399,7 @@ export async function getCommitsBetween(
   ref1: string,
   ref2: string,
 ): Promise<{ hash: string; subject: string }[]> {
-  const result = await git(repoDir, "log", "--oneline", `${ref1}..${ref2}`);
+  const result = await gitLocal(repoDir, "log", "--oneline", `${ref1}..${ref2}`);
   if (result.exitCode !== 0) return [];
   return result.stdout
     .split("\n")
@@ -359,7 +418,7 @@ export async function getCommitsBetweenFull(
   ref1: string,
   ref2: string,
 ): Promise<{ shortHash: string; fullHash: string; subject: string }[]> {
-  const result = await git(repoDir, "log", "--format=%h %H %s", `${ref1}..${ref2}`);
+  const result = await gitLocal(repoDir, "log", "--format=%h %H %s", `${ref1}..${ref2}`);
   if (result.exitCode !== 0) return [];
   return result.stdout
     .split("\n")
@@ -380,14 +439,14 @@ export async function getDiffShortstat(
   ref1: string,
   ref2: string,
 ): Promise<{ files: number; insertions: number; deletions: number } | null> {
-  const result = await git(repoDir, "diff", "--shortstat", `${ref1}...${ref2}`);
+  const result = await gitLocal(repoDir, "diff", "--shortstat", `${ref1}...${ref2}`);
   if (result.exitCode !== 0) return null;
   return parseDiffShortstat(result.stdout);
 }
 
 /** Check whether the filesystem hosting a repo is case-insensitive (macOS HFS+/APFS, Windows NTFS). */
 export async function isCaseInsensitiveFS(repoDir: string): Promise<boolean> {
-  const result = await git(repoDir, "config", "core.ignorecase");
+  const result = await gitLocal(repoDir, "config", "core.ignorecase");
   return result.exitCode === 0 && result.stdout.trim() === "true";
 }
 

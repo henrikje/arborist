@@ -1,4 +1,4 @@
-import { git } from "../git/git";
+import { gitLocal } from "../git/git";
 import { debugGit, isDebug } from "../terminal/debug";
 import { computeCumulativePatchId, computePatchIds, crossMatchPatchIds } from "./patch-id";
 
@@ -25,7 +25,7 @@ export async function matchDivergedCommits(repoDir: string, baseRef: string): Pr
   const unmatchedIncoming = [...incomingMap.entries()].filter(([, hash]) => !result.rebaseMatches.has(hash));
 
   if (localCommitCount > 1 && unmatchedIncoming.length > 0) {
-    const mergeBaseResult = await git(repoDir, "merge-base", "HEAD", baseRef);
+    const mergeBaseResult = await gitLocal(repoDir, "merge-base", "HEAD", baseRef);
     if (mergeBaseResult.exitCode === 0) {
       const mergeBase = mergeBaseResult.stdout.trim();
       if (mergeBase) {
@@ -80,8 +80,8 @@ export async function detectReplacedCommits(
 ): Promise<{ count: number; replacedHashes: Set<string> } | null> {
   const start = isDebug() ? performance.now() : 0;
   const [reflogResult, remoteResult] = await Promise.all([
-    git(repoDir, "log", "-g", "--format=%H", "-n", "200", branch),
-    git(repoDir, "log", "--format=%H", `HEAD..${trackingRef}`),
+    gitLocal(repoDir, "log", "-g", "--format=%H", "-n", "200", branch),
+    gitLocal(repoDir, "log", "--format=%H", `HEAD..${trackingRef}`),
   ]);
   if (isDebug()) {
     const elapsed = performance.now() - start;
@@ -105,7 +105,15 @@ export async function detectReplacedCommits(
   const olderTips = [...new Set(reflogTips.slice(1))];
   if (olderTips.length > 0) {
     const extStart = isDebug() ? performance.now() : 0;
-    const extendedResult = await git(repoDir, "log", "--format=%H", "--max-count=1000", ...olderTips, "--not", "HEAD");
+    const extendedResult = await gitLocal(
+      repoDir,
+      "log",
+      "--format=%H",
+      "--max-count=1000",
+      ...olderTips,
+      "--not",
+      "HEAD",
+    );
     if (isDebug()) {
       const extElapsed = performance.now() - extStart;
       debugGit(
@@ -138,7 +146,7 @@ export async function detectSquashedCommits(
   trackingRef: string,
   toPull: number,
 ): Promise<{ count: number } | null> {
-  const mergeBaseResult = await git(repoDir, "merge-base", "HEAD", trackingRef);
+  const mergeBaseResult = await gitLocal(repoDir, "merge-base", "HEAD", trackingRef);
   if (mergeBaseResult.exitCode !== 0) return null;
   const mergeBase = mergeBaseResult.stdout.trim();
   if (!mergeBase) return null;

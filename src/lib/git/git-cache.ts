@@ -1,4 +1,4 @@
-import { getDefaultBranch as _getDefaultBranch, assertMinimumGitVersion, git } from "./git";
+import { getDefaultBranch as _getDefaultBranch, assertMinimumGitVersion, gitLocal } from "./git";
 import { type GitVersion, parseGitVersion } from "./parsing";
 import {
   type RepoRemotes,
@@ -90,7 +90,7 @@ export class GitCache {
 
   getGitVersion(): Promise<GitVersion> {
     if (!this.gitVersionCache) {
-      this.gitVersionCache = git(".", "--version").then((result) => {
+      this.gitVersionCache = gitLocal(".", "--version").then((result) => {
         const version = parseGitVersion(result.stdout);
         if (!version) {
           throw new Error(`Failed to parse git version from: ${result.stdout.trim()}`);

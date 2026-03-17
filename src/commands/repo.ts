@@ -3,7 +3,7 @@ import { basename, join } from "node:path";
 import type { Command } from "commander";
 import { z } from "zod";
 import { ArbError, arbAction, readProjectConfig, writeProjectConfig } from "../lib/core";
-import { git, gitWithTimeout, networkTimeout } from "../lib/git";
+import { gitLocal, gitNetwork, networkTimeout } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type RepoListJsonEntry, RepoListJsonEntrySchema } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
@@ -96,7 +96,7 @@ export function registerRepoCommand(program: Command): void {
         }
 
         const cloneTimeout = networkTimeout("ARB_CLONE_TIMEOUT", 300);
-        const result = await gitWithTimeout(target, cloneTimeout, ["clone", url, target], { cwd: ctx.reposDir });
+        const result = await gitNetwork(target, cloneTimeout, ["clone", url, target], { cwd: ctx.reposDir });
         if (result.exitCode !== 0) {
           if (result.exitCode === 124) {
             // Clean up partial clone on timeout
@@ -108,11 +108,11 @@ export function registerRepoCommand(program: Command): void {
           throw new ArbError(`Clone failed: ${errMsg}`);
         }
 
-        await git(target, "checkout", "--detach");
+        await gitLocal(target, "checkout", "--detach");
 
         if (options.upstream) {
           // Add upstream remote
-          const addResult = await git(target, "remote", "add", "upstream", options.upstream);
+          const addResult = await gitLocal(target, "remote", "add", "upstream", options.upstream);
           if (addResult.exitCode !== 0) {
             error(`Failed to add upstream remote: ${addResult.stderr.trim()}`);
             info(`  Add it manually: git -C ${target} remote add upstream ${options.upstream}`);
@@ -120,11 +120,11 @@ export function registerRepoCommand(program: Command): void {
           }
 
           // Set remote.pushDefault so resolveRemotes() detects the fork layout
-          await git(target, "config", "remote.pushDefault", "origin");
+          await gitLocal(target, "config", "remote.pushDefault", "origin");
 
           // Fetch upstream and auto-detect HEAD
           const fetchTimeout = networkTimeout("ARB_FETCH_TIMEOUT", 120);
-          const fetchResult = await gitWithTimeout(target, fetchTimeout, ["fetch", "upstream"]);
+          const fetchResult = await gitNetwork(target, fetchTimeout, ["fetch", "upstream"]);
           if (fetchResult.exitCode !== 0) {
             const fetchErr = fetchResult.stderr.trim();
             const fetchHint = networkErrorHint(classifyNetworkError(fetchErr));
@@ -132,7 +132,7 @@ export function registerRepoCommand(program: Command): void {
             info(`  Retry manually: git -C ${target} fetch upstream`);
             throw new ArbError(`Failed to fetch upstream: ${fetchErr}`);
           }
-          await git(target, "remote", "set-head", "upstream", "--auto");
+          await gitLocal(target, "remote", "set-head", "upstream", "--auto");
 
           info(`  share: origin (${url})`);
           info(`  base:  upstream (${options.upstream})`);

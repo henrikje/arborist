@@ -108,7 +108,7 @@ When the default fetch behavior is active (neither `--fetch` nor `--no-fetch` gi
 
 ### Network timeouts
 
-All git operations that contact the network (fetch, push, pull, clone) must have a timeout to prevent indefinite hangs. Use `gitWithTimeout()` from `src/lib/git/git.ts` for individual network calls, or `parallelFetch()` for batch fetches (which uses `gitWithTimeout()` internally with a shared global deadline).
+All git operations that contact the network (fetch, push, pull, clone) must have a timeout to prevent indefinite hangs. Use `gitNetwork()` from `src/lib/git/git.ts` for individual network calls, or `parallelFetch()` for batch fetches (which uses `gitNetwork()` internally with a shared global deadline). Local git operations use `gitLocal()`, which has its own timeout (default 5s, `ARB_GIT_TIMEOUT` env var) to protect against cloud-synced filesystems blocking on undownloaded files.
 
 Timeout values follow a resolution hierarchy: operation-specific env var → `ARB_NETWORK_TIMEOUT` → built-in default. Use `networkTimeout(specificVar, defaultSeconds)` to resolve. Current defaults: fetch 120s, push 120s, pull 120s, clone 300s. Exit code 124 indicates timeout (matching Unix `timeout` convention).
 

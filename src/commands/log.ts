@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, arbAction } from "../lib/core";
-import { getCommitsBetweenFull, git } from "../lib/git";
+import { getCommitsBetweenFull, gitLocal } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type LogJsonOutput, LogJsonOutputSchema, type LogJsonRepo } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
@@ -206,7 +206,7 @@ async function outputTTY(
     const logArgs = verbose
       ? ["--no-decorate", "--color=always", "--stat"]
       : ["--oneline", "--no-decorate", "--color=always"];
-    const result = await git(repoDir, "log", ...logArgs, ...gitArgs);
+    const result = await gitLocal(repoDir, "log", ...logArgs, ...gitArgs);
     if (result.exitCode === 0 && result.stdout.trim()) {
       stdout(result.stdout);
       // Count commits: in verbose mode match "commit <hash>" (ANSI codes may precede it); in oneline mode each line is one commit
@@ -333,7 +333,7 @@ async function gatherRepoLog(
 }
 
 async function getRecentCommits(repoDir: string, limit: number): Promise<LogCommit[]> {
-  const result = await git(repoDir, "log", "--format=%h %H %s", "-n", `${limit}`, "HEAD");
+  const result = await gitLocal(repoDir, "log", "--format=%h %H %s", "-n", `${limit}`, "HEAD");
   if (result.exitCode !== 0) return [];
   return result.stdout
     .split("\n")
@@ -350,7 +350,7 @@ async function getRecentCommits(repoDir: string, limit: number): Promise<LogComm
 }
 
 async function getCommitVerboseDetail(repoDir: string, fullHash: string): Promise<{ body: string; files: string[] }> {
-  const result = await git(repoDir, "show", "--format=%b%x00", "--name-only", fullHash);
+  const result = await gitLocal(repoDir, "show", "--format=%b%x00", "--name-only", fullHash);
   if (result.exitCode !== 0) return { body: "", files: [] };
   const [bodyPart, filesPart] = result.stdout.split("\0", 2);
   const body = (bodyPart ?? "").trim();

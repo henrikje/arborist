@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { arbAction, readWorkspaceConfig } from "../lib/core";
-import { getShortHead, git } from "../lib/git";
+import { getShortHead, gitLocal } from "../lib/git";
 import type { Cell, OutputNode, Span } from "../lib/render";
 import { cell, createRenderContext, finishSummary, render, skipCell, spans, suffix } from "../lib/render";
 import type { SkipFlag } from "../lib/status";
@@ -360,7 +360,7 @@ export function registerResetCommand(program: Command): void {
 
         for (const a of willReset) {
           inlineStart(a.repo, `resetting to ${a.target}`);
-          const result = await git(a.repoDir, "reset", "--hard", a.target);
+          const result = await gitLocal(a.repoDir, "reset", "--hard", a.target);
           if (result.exitCode === 0) {
             inlineResult(a.repo, `reset to ${a.target}`);
             resetOk++;

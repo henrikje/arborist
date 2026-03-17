@@ -1,3 +1,4 @@
+import { localTimeout } from "../git/git";
 import { debugGit, isDebug } from "../terminal/debug";
 
 /** Parse `"patchId hash\n"` output into a Map<patchId, commitHash>. */
@@ -8,6 +9,17 @@ export function parsePatchIdOutput(text: string): Map<string, string> {
     if (patchId && hash) map.set(patchId, hash);
   }
   return map;
+}
+
+/** Race a Bun.$ shell promise against localTimeout(). Returns null on timeout. */
+async function raceShellTimeout<T>(shellPromise: Promise<T>): Promise<T | null> {
+  const timeout = localTimeout();
+  if (timeout <= 0) return shellPromise;
+  const race = await Promise.race([
+    shellPromise.then((r) => ({ kind: "done" as const, r })),
+    new Promise<{ kind: "timeout" }>((resolve) => setTimeout(() => resolve({ kind: "timeout" }), timeout * 1000)),
+  ]);
+  return race.kind === "timeout" ? null : race.r;
 }
 
 /**
@@ -23,9 +35,15 @@ export async function computePatchIds(
 ): Promise<Map<string, string> | null> {
   const start = isDebug() ? performance.now() : 0;
   const maxCountArgs = maxCount !== undefined ? [`--max-count=${maxCount}`] : [];
-  const result = await Bun.$`git -C ${repoDir} log -p ${maxCountArgs} ${from}..${to} | git patch-id --stable`
-    .quiet()
-    .nothrow();
+  const result = await raceShellTimeout(
+    Bun.$`git -C ${repoDir} log -p ${maxCountArgs} ${from}..${to} | git patch-id --stable`.quiet().nothrow(),
+  );
+  if (result === null) {
+    if (isDebug()) {
+      debugGit(`git -C ${repoDir} log -p ${from}..${to} | git patch-id --stable`, performance.now() - start, 124);
+    }
+    return null;
+  }
   if (isDebug()) {
     const cmd =
       maxCount !== undefined
@@ -43,7 +61,15 @@ export async function computePatchIds(
  */
 export async function computeCumulativePatchId(repoDir: string, from: string, to: string): Promise<string | null> {
   const start = isDebug() ? performance.now() : 0;
-  const result = await Bun.$`git -C ${repoDir} diff ${from}..${to} | git patch-id --stable`.quiet().nothrow();
+  const result = await raceShellTimeout(
+    Bun.$`git -C ${repoDir} diff ${from}..${to} | git patch-id --stable`.quiet().nothrow(),
+  );
+  if (result === null) {
+    if (isDebug()) {
+      debugGit(`git -C ${repoDir} diff ${from}..${to} | git patch-id --stable`, performance.now() - start, 124);
+    }
+    return null;
+  }
   if (isDebug()) {
     debugGit(
       `git -C ${repoDir} diff ${from}..${to} | git patch-id --stable`,
@@ -61,7 +87,10 @@ export async function computeCumulativePatchId(repoDir: string, from: string, to
  * Returns the patch-id string, or null on failure.
  */
 export async function computeDiffTreePatchId(repoDir: string, hash: string): Promise<string | null> {
-  const result = await Bun.$`git -C ${repoDir} diff-tree -p ${hash} | git patch-id --stable`.quiet().nothrow();
+  const result = await raceShellTimeout(
+    Bun.$`git -C ${repoDir} diff-tree -p ${hash} | git patch-id --stable`.quiet().nothrow(),
+  );
+  if (result === null) return null;
   if (result.exitCode !== 0) return null;
   const patchId = result.text().trim().split(" ")[0];
   return patchId || null;

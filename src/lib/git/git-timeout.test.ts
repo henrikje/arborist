@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { gitWithTimeout, networkTimeout } from "./git";
+import { gitNetwork, networkTimeout } from "./git";
 
-describe("gitWithTimeout", () => {
+describe("gitNetwork", () => {
   test("completes normally when command finishes before timeout", async () => {
-    const result = await gitWithTimeout("/tmp", 10, ["version"]);
+    const result = await gitNetwork("/tmp", 10, ["version"]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("git version");
   });
@@ -19,7 +19,7 @@ describe("gitWithTimeout", () => {
     // Start a git command and immediately abort
     setTimeout(() => controller.abort(), 0);
 
-    const result = await gitWithTimeout("/tmp", 0, ["version"], { signal: controller.signal });
+    const result = await gitNetwork("/tmp", 0, ["version"], { signal: controller.signal });
     // Either the command completes instantly (exit 0) or the abort fires (exit 124).
     // On fast machines the command may complete before the abort, so we test the signal-based path separately.
     expect([0, 124]).toContain(result.exitCode);
@@ -29,7 +29,7 @@ describe("gitWithTimeout", () => {
     const controller = new AbortController();
     controller.abort();
 
-    const result = await gitWithTimeout("/tmp", 0, ["version"], { signal: controller.signal });
+    const result = await gitNetwork("/tmp", 0, ["version"], { signal: controller.signal });
     expect(result.exitCode).toBe(124);
     expect(result.stderr).toContain("timed out");
   });
@@ -45,21 +45,21 @@ describe("gitWithTimeout", () => {
     // Run a command that takes at least 100ms — `git init` in a temp dir is fast but
     // we can chain with the signal. Actually, let's use a real timeout test:
     // timeoutSeconds=0 means no timer, only signal-based abort.
-    const result = await gitWithTimeout("/tmp", 0, ["version"], { signal: controller.signal });
+    const result = await gitNetwork("/tmp", 0, ["version"], { signal: controller.signal });
     clearTimeout(timer);
     // git version is so fast it may complete before the 50ms abort
     expect([0, 124]).toContain(result.exitCode);
   });
 
   test("propagates non-zero exit codes from git", async () => {
-    const result = await gitWithTimeout("/tmp", 10, ["status"]);
+    const result = await gitNetwork("/tmp", 10, ["status"]);
     // /tmp is not a git repo, so git status should fail
     expect(result.exitCode).not.toBe(0);
     expect(result.exitCode).not.toBe(124);
   });
 
   test("uses cwd option when provided", async () => {
-    const result = await gitWithTimeout("unused", 10, ["version"], { cwd: "/tmp" });
+    const result = await gitNetwork("unused", 10, ["version"], { cwd: "/tmp" });
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("git version");
   });
@@ -68,7 +68,7 @@ describe("gitWithTimeout", () => {
     const controller = new AbortController();
     controller.abort();
 
-    const result = await gitWithTimeout("/tmp", 42, ["version"], { signal: controller.signal });
+    const result = await gitNetwork("/tmp", 42, ["version"], { signal: controller.signal });
     expect(result.exitCode).toBe(124);
     expect(result.stderr).toBe("timed out after 42s");
   });

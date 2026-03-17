@@ -8,7 +8,7 @@ import {
 import type { CommandContext } from "../core/command-action";
 import { readWorkspaceConfig, writeWorkspaceConfig } from "../core/config";
 import { ArbError } from "../core/errors";
-import { getCommitsBetweenFull, getDiffShortstat, getMergeBase, git, remoteBranchExists } from "../git/git";
+import { getCommitsBetweenFull, getDiffShortstat, getMergeBase, gitLocal, remoteBranchExists } from "../git/git";
 import type { GitCache } from "../git/git-cache";
 import { buildConflictReport, buildStashPopFailureReport } from "../render/conflict-report";
 import { type IntegrateActionDesc, integrateActionCell } from "../render/integrate-cells";
@@ -227,29 +227,29 @@ export async function integrate(
       const retargetArgs = ["rebase"];
       if (a.needsStash) retargetArgs.push("--autostash");
       retargetArgs.push("--onto", ref, oldBaseRef);
-      result = await git(a.repoDir, ...retargetArgs);
+      result = await gitLocal(a.repoDir, ...retargetArgs);
     } else if (mode === "rebase") {
       const progressMsg = `rebasing ${a.branch} onto ${ref}`;
       inlineStart(a.repo, progressMsg);
       const rebaseArgs = ["rebase"];
       if (a.needsStash) rebaseArgs.push("--autostash");
       rebaseArgs.push(ref);
-      result = await git(a.repoDir, ...rebaseArgs);
+      result = await gitLocal(a.repoDir, ...rebaseArgs);
     } else {
       // Merge mode
       const progressMsg = `merging ${ref} into ${a.branch}`;
       inlineStart(a.repo, progressMsg);
       if (a.needsStash) {
-        await git(a.repoDir, "stash", "push", "-m", "arb: autostash before merge");
+        await gitLocal(a.repoDir, "stash", "push", "-m", "arb: autostash before merge");
       }
-      result = await git(a.repoDir, "merge", ref);
+      result = await gitLocal(a.repoDir, "merge", ref);
     }
 
     if (result.exitCode === 0) {
       // For merge mode with stash, pop the stash
       let stashPopOk = true;
       if (a.needsStash && mode === "merge") {
-        const popResult = await git(a.repoDir, "stash", "pop");
+        const popResult = await gitLocal(a.repoDir, "stash", "pop");
         if (popResult.exitCode !== 0) {
           stashPopOk = false;
           stashPopFailed.push(a);

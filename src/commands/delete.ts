@@ -11,7 +11,7 @@ import {
   formatRelativeTimeParts,
 } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, branchExistsLocally, git, gitWithTimeout, networkTimeout, remoteBranchExists } from "../lib/git";
+import { GitCache, branchExistsLocally, gitLocal, gitNetwork, networkTimeout, remoteBranchExists } from "../lib/git";
 import { type RenderContext, render } from "../lib/render";
 import { EMPTY_CELL, cell } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -412,10 +412,10 @@ async function executeDelete(
   const failedRemoteDeletes: string[] = [];
 
   for (const repo of repos) {
-    await git(`${ctx.reposDir}/${repo}`, "worktree", "remove", "--force", `${wsDir}/${repo}`);
+    await gitLocal(`${ctx.reposDir}/${repo}`, "worktree", "remove", "--force", `${wsDir}/${repo}`);
 
     if (await branchExistsLocally(`${ctx.reposDir}/${repo}`, branch)) {
-      await git(`${ctx.reposDir}/${repo}`, "branch", "-D", branch);
+      await gitLocal(`${ctx.reposDir}/${repo}`, "branch", "-D", branch);
     }
 
     if (deleteRemote) {
@@ -430,7 +430,7 @@ async function executeDelete(
       if (shareRemote) {
         if (await remoteBranchExists(`${ctx.reposDir}/${repo}`, branch, shareRemote)) {
           const pushTimeout = networkTimeout("ARB_PUSH_TIMEOUT", 120);
-          const pushResult = await gitWithTimeout(`${ctx.reposDir}/${repo}`, pushTimeout, [
+          const pushResult = await gitNetwork(`${ctx.reposDir}/${repo}`, pushTimeout, [
             "push",
             shareRemote,
             "--delete",
@@ -449,7 +449,7 @@ async function executeDelete(
   rmSync(wsDir, { recursive: true, force: true });
 
   for (const repo of repos) {
-    await git(`${ctx.reposDir}/${repo}`, "worktree", "prune");
+    await gitLocal(`${ctx.reposDir}/${repo}`, "worktree", "prune");
   }
 
   return failedRemoteDeletes;

@@ -21,6 +21,7 @@ describe("computeFlags", () => {
       isMerged: false,
       isBaseMerged: false,
       isBaseMissing: false,
+      isTimedOut: false,
     });
   });
 

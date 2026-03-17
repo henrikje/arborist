@@ -9,10 +9,10 @@ import {
   branchIsInWorktree,
   detectOperation,
   getHeadCommitDate,
-  git,
+  gitLocal,
   isLinkedWorktree,
   isShallowRepo,
-  parseGitStatus,
+  parseStatusPorcelain,
   remoteBranchExists,
 } from "../git/git";
 import type { GitCache } from "../git/git-cache";
@@ -135,12 +135,33 @@ export async function gatherRepoStatus(
   const worktreeKind: "full" | "linked" = isLinkedWorktree(repoDir) ? "linked" : "full";
 
   // Parallel group: branch, porcelain status, shallow check, git-dir for operations
-  const [branchResult, local, shallow, gitDirResult] = await Promise.all([
-    git(repoDir, "symbolic-ref", "--short", "HEAD"),
-    parseGitStatus(repoDir),
+  const [branchResult, statusResult, shallow, gitDirResult] = await Promise.all([
+    gitLocal(repoDir, "symbolic-ref", "--short", "HEAD"),
+    gitLocal(repoDir, "status", "--porcelain"),
     isShallowRepo(repoDir),
     detectOperation(repoDir),
   ]);
+
+  // Short-circuit if any initial call timed out (exit code 124 = cloud-stalled filesystem)
+  if (branchResult.exitCode === 124 || statusResult.exitCode === 124) {
+    return {
+      name: repo,
+      identity: { worktreeKind, headMode: { kind: "detached" }, shallow: false },
+      local: { staged: 0, modified: 0, untracked: 0, conflicts: 0 },
+      base: null,
+      share: { remote: "", ref: null, refMode: "noRef", toPush: null, toPull: null },
+      operation: null,
+      timedOut: true,
+      lastCommit: null,
+      lastActivity: null,
+      lastActivityFile: null,
+    };
+  }
+
+  const local =
+    statusResult.exitCode !== 0
+      ? { staged: 0, modified: 0, untracked: 0, conflicts: 0 }
+      : parseStatusPorcelain(statusResult.stdout);
 
   const actualBranch = branchResult.exitCode === 0 ? branchResult.stdout.trim() : "";
   const detached = actualBranch === "";
@@ -178,7 +199,7 @@ export async function gatherRepoStatus(
 
     if (defaultBranch) {
       compareRef = baseRemote ? `${baseRemote}/${defaultBranch}` : defaultBranch;
-      const lr = await git(repoDir, "rev-list", "--left-right", "--count", `${compareRef}...HEAD`);
+      const lr = await gitLocal(repoDir, "rev-list", "--left-right", "--count", `${compareRef}...HEAD`);
       if (lr.exitCode === 0) {
         const { left: behind, right: ahead } = parseLeftRight(lr.stdout);
         baseStatus = {
@@ -201,10 +222,10 @@ export async function gatherRepoStatus(
   let shareDivergenceRef: string | null = null; // ref to use for divergence detection
   if (!detached) {
     // Step 1: Try configured tracking branch
-    const upstreamResult = await git(repoDir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}");
+    const upstreamResult = await gitLocal(repoDir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}");
     if (upstreamResult.exitCode === 0) {
       const trackingRef = upstreamResult.stdout.trim();
-      const pushLr = await git(repoDir, "rev-list", "--left-right", "--count", `${trackingRef}...HEAD`);
+      const pushLr = await gitLocal(repoDir, "rev-list", "--left-right", "--count", `${trackingRef}...HEAD`);
       let toPush: number | null = null;
       let toPull: number | null = null;
       if (pushLr.exitCode === 0) {
@@ -223,7 +244,7 @@ export async function gatherRepoStatus(
     } else if (await remoteBranchExists(repoDir, actualBranch, shareRemote)) {
       // Step 2: No tracking config but remote ref exists → implicit
       const implicitRef = `${shareRemote}/${actualBranch}`;
-      const pushLr = await git(repoDir, "rev-list", "--left-right", "--count", `${implicitRef}...HEAD`);
+      const pushLr = await gitLocal(repoDir, "rev-list", "--left-right", "--count", `${implicitRef}...HEAD`);
       let toPush: number | null = null;
       let toPull: number | null = null;
       if (pushLr.exitCode === 0) {
@@ -241,7 +262,7 @@ export async function gatherRepoStatus(
       shareDivergenceRef = implicitRef;
     } else {
       // Step 3: Check if tracking config exists (→ gone) or not (→ noRef)
-      const configRemote = await git(repoDir, "config", `branch.${actualBranch}.remote`);
+      const configRemote = await gitLocal(repoDir, "config", `branch.${actualBranch}.remote`);
       const isGone = configRemote.exitCode === 0 && configRemote.stdout.trim().length > 0;
       shareStatus = {
         remote: shareRemote,
@@ -277,12 +298,12 @@ export async function gatherRepoStatus(
     const shareRefForSha = shareStatus.ref ?? "";
     const baseRefForSha = compareRef ?? "";
     const [headShaResult, baseShaResult, shareShaResult] = await Promise.all([
-      git(repoDir, "rev-parse", "HEAD"),
+      gitLocal(repoDir, "rev-parse", "HEAD"),
       baseRefForSha
-        ? git(repoDir, "rev-parse", baseRefForSha)
+        ? gitLocal(repoDir, "rev-parse", baseRefForSha)
         : Promise.resolve({ exitCode: 0, stdout: "", stderr: "" }),
       shareRefForSha
-        ? git(repoDir, "rev-parse", shareRefForSha)
+        ? gitLocal(repoDir, "rev-parse", shareRefForSha)
         : Promise.resolve({ exitCode: 0, stdout: "", stderr: "" }),
     ]);
     const headSHA = headShaResult.exitCode === 0 ? headShaResult.stdout.trim() : "";
@@ -417,7 +438,7 @@ async function runMergeDetection(
   let mergeCommitHash: string | undefined;
 
   // Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
-  const ancestorResult = await git(repoDir, "merge-base", "--is-ancestor", "HEAD", compareRef);
+  const ancestorResult = await gitLocal(repoDir, "merge-base", "--is-ancestor", "HEAD", compareRef);
   if (ancestorResult.exitCode === 0) {
     const merge: NonNullable<typeof baseStatus.merge> = { kind: "merge" };
     const mergeCommit = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, "HEAD");
@@ -444,11 +465,11 @@ async function runMergeDetection(
     if (squashResult?.newCommitsAfterMerge != null && squashResult.kind === "merge" && shareStatus.ref) {
       const n = squashResult.newCommitsAfterMerge;
       const [prefixHash, baseHash] = await Promise.all([
-        git(repoDir, "rev-parse", `HEAD~${n}`),
-        git(repoDir, "rev-parse", compareRef),
+        gitLocal(repoDir, "rev-parse", `HEAD~${n}`),
+        gitLocal(repoDir, "rev-parse", compareRef),
       ]);
       if (prefixHash.exitCode === 0 && baseHash.exitCode === 0 && prefixHash.stdout.trim() === baseHash.stdout.trim()) {
-        const shareAheadResult = await git(repoDir, "rev-list", "--count", `${compareRef}..${shareStatus.ref}`);
+        const shareAheadResult = await gitLocal(repoDir, "rev-list", "--count", `${compareRef}..${shareStatus.ref}`);
         if (shareAheadResult.exitCode === 0 && Number.parseInt(shareAheadResult.stdout.trim(), 10) > 0) {
           squashResult = null;
         }
@@ -512,7 +533,7 @@ export async function gatherRepoRefs(
   const repoPath = `${reposDir}/${repo}`;
 
   // Identity: resolve HEAD branch
-  const branchResult = await git(repoDir, "symbolic-ref", "--short", "HEAD");
+  const branchResult = await gitLocal(repoDir, "symbolic-ref", "--short", "HEAD");
   const actualBranch = branchResult.exitCode === 0 ? branchResult.stdout.trim() : "";
   const detached = actualBranch === "";
   const headMode: RepoRefs["identity"]["headMode"] = detached
@@ -548,13 +569,13 @@ export async function gatherRepoRefs(
   // Share: resolve ref and refMode only (no push/pull counts, no divergence)
   let shareRefs: RepoRefs["share"];
   if (!detached) {
-    const upstreamResult = await git(repoDir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}");
+    const upstreamResult = await gitLocal(repoDir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}");
     if (upstreamResult.exitCode === 0) {
       shareRefs = { remote: shareRemote, ref: upstreamResult.stdout.trim(), refMode: "configured" };
     } else if (await remoteBranchExists(repoDir, actualBranch, shareRemote)) {
       shareRefs = { remote: shareRemote, ref: `${shareRemote}/${actualBranch}`, refMode: "implicit" };
     } else {
-      const configRemote = await git(repoDir, "config", `branch.${actualBranch}.remote`);
+      const configRemote = await gitLocal(repoDir, "config", `branch.${actualBranch}.remote`);
       const isGone = configRemote.exitCode === 0 && configRemote.stdout.trim().length > 0;
       shareRefs = { remote: shareRemote, ref: null, refMode: isGone ? "gone" : "noRef" };
     }

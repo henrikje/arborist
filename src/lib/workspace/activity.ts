@@ -1,6 +1,6 @@
 import { type Dirent, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { git } from "../git/git";
+import { gitLocal } from "../git/git";
 
 /** Result of an activity-date probe: the ISO date and the file that determined it. */
 export interface ActivityResult {
@@ -44,7 +44,7 @@ function maxMtimeRecursive(dir: string): { ms: number; file: string | null } {
 /** Phase B: use `git ls-files` to enumerate tracked + untracked non-ignored files in a repo worktree,
  * then stat each to find the most recent mtime. Returns the date and the file that determined it. */
 export async function getRepoActivityDate(repoDir: string): Promise<ActivityResult | null> {
-  const result = await git(repoDir, "ls-files", "--cached", "--others", "--exclude-standard", "-z");
+  const result = await gitLocal(repoDir, "ls-files", "--cached", "--others", "--exclude-standard", "-z");
   if (result.exitCode !== 0) return null;
 
   const files = result.stdout.split("\0").filter(Boolean);

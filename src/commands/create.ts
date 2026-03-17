@@ -4,7 +4,7 @@ import select, { Separator } from "@inquirer/select";
 import type { Command } from "commander";
 import { ArbError, arbAction, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { RepoRemotes } from "../lib/git";
-import { git, listRemoteBranches, validateBranchName } from "../lib/git";
+import { gitLocal, listRemoteBranches, validateBranchName } from "../lib/git";
 import { render } from "../lib/render";
 import {
   loadFetchTimestamps,
@@ -326,7 +326,7 @@ export function registerCreateCommand(program: Command): void {
           const localChecks = await Promise.all(
             wsBranchesToCheck.map(async (wsBranch) => {
               for (const repo of repos) {
-                const result = await git(
+                const result = await gitLocal(
                   `${ctx.reposDir}/${repo}`,
                   "show-ref",
                   "--verify",

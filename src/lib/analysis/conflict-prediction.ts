@@ -1,10 +1,10 @@
-import { git } from "../git/git";
+import { gitLocal } from "../git/git";
 
 export async function predictMergeConflict(
   repoDir: string,
   ref: string,
 ): Promise<{ hasConflict: boolean; files: string[] } | null> {
-  const result = await git(repoDir, "merge-tree", "--write-tree", "--name-only", "HEAD", ref);
+  const result = await gitLocal(repoDir, "merge-tree", "--write-tree", "--name-only", "HEAD", ref);
   if (result.exitCode === 0) return { hasConflict: false, files: [] };
   if (result.exitCode === 1) {
     // Exit 1 with stdout = conflict detected (stdout has tree hash + file list)
@@ -25,7 +25,7 @@ export async function predictRebaseConflictCommits(
   targetRef: string,
 ): Promise<{ shortHash: string; files: string[] }[]> {
   // List incoming commits (commits on targetRef not on HEAD), in chronological order
-  const logResult = await git(repoDir, "log", "--format=%H %h", "--reverse", `HEAD..${targetRef}`);
+  const logResult = await gitLocal(repoDir, "log", "--format=%H %h", "--reverse", `HEAD..${targetRef}`);
   if (logResult.exitCode !== 0) return [];
   const commits = logResult.stdout
     .split("\n")
@@ -40,7 +40,7 @@ export async function predictRebaseConflictCommits(
   for (const commit of commits) {
     // Simulate cherry-picking this commit onto HEAD by using merge-tree
     // merge-base is commit's parent, ours is HEAD, theirs is the commit
-    const result = await git(
+    const result = await gitLocal(
       repoDir,
       "merge-tree",
       "--write-tree",
@@ -65,8 +65,8 @@ export async function predictRebaseConflictCommits(
 export async function predictStashPopConflict(repoDir: string, ref: string): Promise<{ overlapping: string[] }> {
   // Get dirty file paths (unstaged + staged)
   const [unstaged, staged] = await Promise.all([
-    git(repoDir, "diff", "--name-only"),
-    git(repoDir, "diff", "--name-only", "--cached"),
+    gitLocal(repoDir, "diff", "--name-only"),
+    gitLocal(repoDir, "diff", "--name-only", "--cached"),
   ]);
   const dirtyFiles = new Set<string>();
   for (const line of unstaged.stdout.split("\n").filter(Boolean)) dirtyFiles.add(line);
@@ -75,7 +75,7 @@ export async function predictStashPopConflict(repoDir: string, ref: string): Pro
   if (dirtyFiles.size === 0) return { overlapping: [] };
 
   // Get incoming change paths (three-dot diff)
-  const incoming = await git(repoDir, "diff", "--name-only", `HEAD...${ref}`);
+  const incoming = await gitLocal(repoDir, "diff", "--name-only", `HEAD...${ref}`);
   const incomingFiles = new Set<string>();
   if (incoming.exitCode === 0) {
     for (const line of incoming.stdout.split("\n").filter(Boolean)) incomingFiles.add(line);
