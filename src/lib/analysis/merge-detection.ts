@@ -1,5 +1,6 @@
 import { gitLocal } from "../git/git";
-import { computeCumulativePatchId, computeDiffTreePatchId, computePatchIds } from "./patch-id";
+import type { BasePatchIdCache } from "../git/git-cache";
+import { computeCumulativePatchId, computeDiffTreePatchId, computePatchIds, computeRecentPatchIds } from "./patch-id";
 
 export interface MergeDetectionResult {
   kind: "merge" | "squash";
@@ -15,6 +16,7 @@ async function checkSquashMatch(
   baseBranchRef: string,
   branchRef: string,
   commitLimit: number,
+  basePatchIdMap?: Map<string, string>,
 ): Promise<MergeDetectionResult | null> {
   const mergeBaseResult = await gitLocal(repoDir, "merge-base", branchRef, baseBranchRef);
   if (mergeBaseResult.exitCode !== 0) return null;
@@ -25,8 +27,8 @@ async function checkSquashMatch(
   const cumulativePatchId = await computeCumulativePatchId(repoDir, mergeBase, branchRef);
   if (!cumulativePatchId) return null;
 
-  // Per-commit patch-ids for recent base commits
-  const perCommitMap = await computePatchIds(repoDir, mergeBase, baseBranchRef, commitLimit);
+  // Per-commit patch-ids for recent base commits (use shared map when available)
+  const perCommitMap = basePatchIdMap ?? (await computePatchIds(repoDir, mergeBase, baseBranchRef, commitLimit));
   if (!perCommitMap) return null;
 
   for (const [patchId, commitHash] of perCommitMap) {
@@ -47,13 +49,17 @@ export async function detectBranchMerged(
   commitLimit = 200,
   branchRef = "HEAD",
   prefixLimit = 0,
+  basePatchIdCache?: BasePatchIdCache,
 ): Promise<MergeDetectionResult | null> {
   // Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
   const ancestor = await gitLocal(repoDir, "merge-base", "--is-ancestor", branchRef, baseBranchRef);
   if (ancestor.exitCode === 0) return { kind: "merge" };
 
+  // Resolve base branch patch-id map (shared across Phase 2 + Phase 3, and across workspaces)
+  const basePatchIdMap = await resolveBasePatchIdMap(repoDir, baseBranchRef, commitLimit, basePatchIdCache);
+
   // Phase 2: Squash check on full range
-  const squashResult = await checkSquashMatch(repoDir, baseBranchRef, branchRef, commitLimit);
+  const squashResult = await checkSquashMatch(repoDir, baseBranchRef, branchRef, commitLimit, basePatchIdMap);
   if (squashResult) return squashResult;
 
   // Phase 3: Prefix loop — check HEAD~1, HEAD~2, ..., HEAD~prefixLimit
@@ -71,13 +77,44 @@ export async function detectBranchMerged(
     }
 
     // Phase 2 on prefix: squash check
-    const prefixSquash = await checkSquashMatch(repoDir, baseBranchRef, prefixRef, commitLimit);
+    const prefixSquash = await checkSquashMatch(repoDir, baseBranchRef, prefixRef, commitLimit, basePatchIdMap);
     if (prefixSquash) {
       return { ...prefixSquash, newCommitsAfterMerge: k };
     }
   }
 
   return null;
+}
+
+/**
+ * Resolve the per-commit patch-id map for a base branch, using the cache when available.
+ * The map covers the most recent `commitLimit` commits from the base branch tip.
+ */
+async function resolveBasePatchIdMap(
+  repoDir: string,
+  baseBranchRef: string,
+  commitLimit: number,
+  cache?: BasePatchIdCache,
+): Promise<Map<string, string> | undefined> {
+  // Resolve the base branch to a SHA for a stable cache key
+  const revParseResult = await gitLocal(repoDir, "rev-parse", baseBranchRef);
+  if (revParseResult.exitCode !== 0) return undefined;
+  const baseSHA = revParseResult.stdout.trim();
+  if (!baseSHA) return undefined;
+
+  // Cache hit — return shared map
+  if (cache) {
+    const cached = cache.get(baseSHA);
+    if (cached) return cached;
+  }
+
+  // Cache miss — compute from the base branch tip (no from-ref, covers all callers' ranges)
+  const map = await computeRecentPatchIds(repoDir, baseBranchRef, commitLimit);
+  if (!map) return undefined;
+
+  // Store in cache for reuse
+  cache?.set(baseSHA, map);
+  return map;
 }
 
 /**

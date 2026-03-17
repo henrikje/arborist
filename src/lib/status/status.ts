@@ -457,7 +457,7 @@ async function runMergeDetection(
     }
   } else if (shouldCheckSquash || shouldCheckPrefixes) {
     // Phase 2: Squash merge detection via cumulative patch-id (with prefix fallback)
-    let squashResult = await detectBranchMerged(repoDir, compareRef, 200, "HEAD", prefixLimit);
+    let squashResult = await detectBranchMerged(repoDir, compareRef, 200, "HEAD", prefixLimit, cache.basePatchIdCache);
 
     // Guard: after `reset --hard <base>` + `git pull`, the merge commit's first parent
     // is the base tip. The prefix loop finds HEAD~k is-ancestor of base, but the feature
@@ -591,7 +591,11 @@ export async function gatherWorkspaceSummary(
   reposDir: string,
   onProgress: ((scanned: number, total: number) => void) | undefined,
   cache: GitCache,
-  options?: { gatherActivity?: boolean; previousResults?: Map<string, RepoStatus>; analysisCache?: AnalysisCache },
+  options?: {
+    gatherActivity?: boolean;
+    previousResults?: Map<string, RepoStatus>;
+    analysisCache?: AnalysisCache;
+  },
 ): Promise<WorkspaceSummary> {
   const workspace = basename(wsDir);
   const wb = await workspaceBranch(wsDir);
