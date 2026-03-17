@@ -27,7 +27,7 @@ describe("validateWhere", () => {
   test("returns null for all valid terms", () => {
     expect(
       validateWhere(
-        "dirty,unpushed,behind-share,behind-base,diverged,wrong-branch,detached,operation,gone,shallow,merged,base-merged,base-missing,timed-out,at-risk,stale,clean,pushed,synced-base,synced-share,synced,safe",
+        "dirty,unpushed,not-pushed,behind-share,behind-base,diverged,wrong-branch,detached,operation,gone,shallow,merged,base-merged,base-missing,timed-out,at-risk,stale,clean,pushed,synced-base,synced-share,synced,safe",
       ),
     ).toBeNull();
   });
@@ -214,6 +214,18 @@ describe("repoMatchesWhere", () => {
             refMode: "configured",
             toPush: 2,
             toPull: 0,
+          },
+        },
+      ],
+      [
+        "not-pushed",
+        {
+          share: {
+            remote: "origin",
+            ref: null,
+            refMode: "noRef" as const,
+            toPush: null,
+            toPull: null,
           },
         },
       ],
@@ -496,6 +508,67 @@ describe("positive filter terms", () => {
       "feature",
     );
     expect(repoMatchesWhere(flags, "pushed")).toBe(false);
+  });
+
+  test("pushed does not match never-pushed repo with no work", () => {
+    const flags = computeFlags(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: null,
+          refMode: "noRef" as const,
+          toPush: null,
+          toPull: null,
+        },
+      }),
+      "feature",
+    );
+    expect(repoMatchesWhere(flags, "pushed")).toBe(false);
+  });
+
+  test("pushed does not match never-pushed repo with work", () => {
+    const flags = computeFlags(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: null,
+          refMode: "noRef" as const,
+          toPush: null,
+          toPull: null,
+        },
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: null,
+          ahead: 3,
+          behind: 0,
+          baseMergedIntoDefault: null,
+        },
+      }),
+      "feature",
+    );
+    expect(repoMatchesWhere(flags, "pushed")).toBe(false);
+  });
+
+  test("not-pushed matches never-pushed repo", () => {
+    const flags = computeFlags(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: null,
+          refMode: "noRef" as const,
+          toPush: null,
+          toPull: null,
+        },
+      }),
+      "feature",
+    );
+    expect(repoMatchesWhere(flags, "not-pushed")).toBe(true);
+  });
+
+  test("not-pushed does not match pushed repo", () => {
+    const flags = computeFlags(makeRepo(), "feature");
+    expect(repoMatchesWhere(flags, "not-pushed")).toBe(false);
   });
 
   test("synced-base matches repo with no rebase needed and not diverged", () => {

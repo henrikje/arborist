@@ -26,6 +26,7 @@ export const whereFilterTopic: HelpTopic = {
     out(dim("  Problem / status flags:"));
     out("    dirty          Uncommitted changes (staged, modified, or untracked files)");
     out("    unpushed       Commits not yet pushed to the share remote");
+    out("    not-pushed     Branch has never been pushed to the share remote");
     out("    behind-share   Share remote has commits not yet pulled");
     out("    behind-base    Base branch has commits not yet rebased/merged");
     out("    diverged       Both ahead of and behind the base branch");
@@ -44,7 +45,7 @@ export const whereFilterTopic: HelpTopic = {
     out("");
     out(dim("  Healthy / positive flags:"));
     out("    clean          No uncommitted changes (opposite of dirty)");
-    out("    pushed         All commits pushed to the share remote (opposite of unpushed)");
+    out("    pushed         All commits pushed and branch exists on the share remote");
     out("    synced-base    Up to date with the base branch");
     out("    synced-share   Up to date with the share remote");
     out("    synced         Fully synchronized (no stale flags)");

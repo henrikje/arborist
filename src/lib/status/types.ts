@@ -74,6 +74,7 @@ export interface RepoStatus extends RepoRefs {
 export interface RepoFlags {
   isDirty: boolean;
   isUnpushed: boolean;
+  isNeverPushed: boolean;
   needsPull: boolean;
   needsRebase: boolean;
   isDiverged: boolean;

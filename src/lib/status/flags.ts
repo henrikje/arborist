@@ -35,13 +35,15 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 
   const isGone = repo.share.refMode === "gone";
 
+  const isNeverPushed = repo.share.refMode === "noRef";
+
   // isUnpushed: has commits to push to share remote, or never pushed with commits ahead of base
   // Note: "gone" branches are excluded — the remote deleted the branch (typically after PR merge),
   // so "unpushed" would be misleading. The "gone" flag alone signals the state.
   let isUnpushed = false;
   if (repo.share.toPush !== null && repo.share.toPush > 0) {
     isUnpushed = true;
-  } else if (repo.share.refMode === "noRef" && repo.base !== null && repo.base.ahead > 0) {
+  } else if (isNeverPushed && repo.base !== null && repo.base.ahead > 0) {
     isUnpushed = true;
   }
 
@@ -69,6 +71,7 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
   return {
     isDirty: localDirty,
     isUnpushed,
+    isNeverPushed,
     needsPull,
     needsRebase,
     isDiverged,

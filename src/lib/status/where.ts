@@ -17,6 +17,7 @@ const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
   // Negative / problem-condition terms
   dirty: (f) => f.isDirty,
   unpushed: (f) => f.isUnpushed,
+  "not-pushed": (f) => f.isNeverPushed,
   "behind-share": (f) => f.needsPull,
   "behind-base": (f) => f.needsRebase,
   diverged: (f) => f.isDiverged,
@@ -33,7 +34,7 @@ const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
   stale: (f) => hasAnyFlag(f, STALE_FLAGS),
   // Positive / healthy-state terms
   clean: (f) => !f.isDirty,
-  pushed: (f) => !f.isUnpushed,
+  pushed: (f) => !f.isUnpushed && !f.isNeverPushed,
   "synced-base": (f) => !f.needsRebase && !f.isDiverged,
   "synced-share": (f) => !f.needsPull,
   synced: (f) => !hasAnyFlag(f, STALE_FLAGS),
