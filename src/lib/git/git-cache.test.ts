@@ -4,9 +4,11 @@ import { GitCache } from "./git-cache";
 
 function makeMockDeps() {
   return {
+    branchExistsLocally: mock(() => Promise.resolve(true)),
     getDefaultBranch: mock(() => Promise.resolve("main" as string | null)),
     getRemoteNames: mock(() => Promise.resolve(["origin"])),
     getRemoteUrl: mock(() => Promise.resolve("https://github.com/org/repo.git" as string | null)),
+    remoteBranchExists: mock(() => Promise.resolve(true)),
     resolveRemotes: mock(() => Promise.resolve({ base: "origin", share: "origin" })),
   } satisfies GitCacheDeps;
 }
@@ -51,6 +53,30 @@ describe("GitCache", () => {
       expect(b).toEqual({ base: "origin", share: "origin" });
       expect(deps.getRemoteNames).toHaveBeenCalledTimes(1);
     });
+
+    test("two concurrent remoteBranchExists calls with same key coalesce into one", async () => {
+      const deps = makeMockDeps();
+      const cache = new GitCache(deps);
+      const [a, b] = await Promise.all([
+        cache.remoteBranchExists("/repo", "main", "origin"),
+        cache.remoteBranchExists("/repo", "main", "origin"),
+      ]);
+      expect(a).toBe(true);
+      expect(b).toBe(true);
+      expect(deps.remoteBranchExists).toHaveBeenCalledTimes(1);
+    });
+
+    test("two concurrent branchExistsLocally calls with same key coalesce into one", async () => {
+      const deps = makeMockDeps();
+      const cache = new GitCache(deps);
+      const [a, b] = await Promise.all([
+        cache.branchExistsLocally("/repo", "feature"),
+        cache.branchExistsLocally("/repo", "feature"),
+      ]);
+      expect(a).toBe(true);
+      expect(b).toBe(true);
+      expect(deps.branchExistsLocally).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("cache isolation", () => {
@@ -73,6 +99,30 @@ describe("GitCache", () => {
       expect(a).toEqual(["origin"]);
       expect(b).toEqual(["origin"]);
       expect(deps.getRemoteNames).toHaveBeenCalledTimes(2);
+    });
+
+    test("remoteBranchExists with different branch triggers separate call", async () => {
+      const deps = makeMockDeps();
+      const cache = new GitCache(deps);
+      const [a, b] = await Promise.all([
+        cache.remoteBranchExists("/repo", "main", "origin"),
+        cache.remoteBranchExists("/repo", "develop", "origin"),
+      ]);
+      expect(a).toBe(true);
+      expect(b).toBe(true);
+      expect(deps.remoteBranchExists).toHaveBeenCalledTimes(2);
+    });
+
+    test("branchExistsLocally with different branch triggers separate call", async () => {
+      const deps = makeMockDeps();
+      const cache = new GitCache(deps);
+      const [a, b] = await Promise.all([
+        cache.branchExistsLocally("/repo", "main"),
+        cache.branchExistsLocally("/repo", "feature"),
+      ]);
+      expect(a).toBe(true);
+      expect(b).toBe(true);
+      expect(deps.branchExistsLocally).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -99,6 +149,30 @@ describe("GitCache", () => {
 
       await cache.getRemoteNames("/repo");
       expect(deps.getRemoteNames).toHaveBeenCalledTimes(1);
+    });
+
+    test("after invalidation remoteBranchExists makes a new call", async () => {
+      const deps = makeMockDeps();
+      const cache = new GitCache(deps);
+      await cache.remoteBranchExists("/repo", "main", "origin");
+      expect(deps.remoteBranchExists).toHaveBeenCalledTimes(1);
+
+      cache.invalidateAfterFetch();
+
+      await cache.remoteBranchExists("/repo", "main", "origin");
+      expect(deps.remoteBranchExists).toHaveBeenCalledTimes(2);
+    });
+
+    test("after invalidation branchExistsLocally makes a new call", async () => {
+      const deps = makeMockDeps();
+      const cache = new GitCache(deps);
+      await cache.branchExistsLocally("/repo", "feature");
+      expect(deps.branchExistsLocally).toHaveBeenCalledTimes(1);
+
+      cache.invalidateAfterFetch();
+
+      await cache.branchExistsLocally("/repo", "feature");
+      expect(deps.branchExistsLocally).toHaveBeenCalledTimes(2);
     });
   });
 

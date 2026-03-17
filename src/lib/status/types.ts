@@ -64,6 +64,7 @@ export interface RepoStatus extends RepoRefs {
     };
   };
   operation: GitOperation;
+  headSha?: string;
   timedOut?: boolean;
   lastCommit: string | null;
   lastActivity: string | null;

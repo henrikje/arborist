@@ -82,6 +82,8 @@ export const StatusJsonRepoSchema = z.object({
     })
     .optional(),
   operation: GitOperationSchema,
+  headSha: z.string().optional(),
+  timedOut: z.boolean().optional(),
   lastCommit: z.string().nullable(),
   lastActivity: z.string().nullable().optional(),
   lastActivityFile: z.string().nullable().optional(),
