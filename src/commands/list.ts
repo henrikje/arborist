@@ -22,18 +22,7 @@ import {
   resolveWhereFilter,
   workspaceMatchesWhere,
 } from "../lib/status";
-import {
-  type FetchResult,
-  type FetchTimestamps,
-  allReposFresh,
-  fetchSuffix,
-  fetchTtl,
-  loadFetchTimestamps,
-  parallelFetch,
-  recordFetchResults,
-  reportFetchFailures,
-  saveFetchTimestamps,
-} from "../lib/sync";
+import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/sync";
 import {
   analyzeProgress,
   clearScanProgress,
@@ -124,15 +113,13 @@ export function registerListCommand(program: Command): void {
 
           const showStatus = options.status !== false;
 
-          const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
           const repoNames = workspaceRepoNames(metadata);
           const wantsFetch = options.fetch !== false && !options.quiet;
-          const shouldFetch =
-            wantsFetch && (options.fetch === true || !allReposFresh(repoNames, fetchTimestamps, fetchTtl()));
+          const shouldFetch = wantsFetch;
 
           // ── Quiet output path ──
           if (options.quiet) {
-            if (options.fetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps); // only if explicitly requested
+            if (options.fetch) await blockingFetchRepos(ctx, cache, repoNames); // only if explicitly requested
             if (whereFilter || ageFilter) {
               const gatherActivityOpts = ageFilter
                 ? { gatherActivity: true, analysisCache: aCache }
@@ -176,7 +163,7 @@ export function registerListCommand(program: Command): void {
 
           // ── JSON output path ──
           if (options.json) {
-            if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps);
+            if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames);
 
             const jsonEntries: ListJsonEntry[] = metadata.rows.map((row) => ({
               workspace: row.name,
@@ -248,7 +235,7 @@ export function registerListCommand(program: Command): void {
           // ── Table output path ──
 
           if (!showStatus) {
-            if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps);
+            if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames);
             process.stdout.write(formatListTable(metadata.rows, false));
             return;
           }
@@ -323,8 +310,6 @@ export function registerListCommand(program: Command): void {
             }
             if (!state.aborted) {
               reportFetchFailures(repoNames, state.fetchResults as Map<string, FetchResult>);
-              recordFetchResults(fetchTimestamps, state.fetchResults as Map<string, FetchResult>);
-              saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
             }
             reportListTimeoutHint(state.timedOutCount ?? 0);
           } else if (canPhase) {
@@ -357,7 +342,7 @@ export function registerListCommand(program: Command): void {
             ]);
             reportListTimeoutHint(phaseTimedOutCount);
           } else if (hasFilter && metadata.toScan.length > 0) {
-            if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps);
+            if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames);
             // Workspace-level progress, suppress repo-level scanProgress
             const total = metadata.toScan.length;
             let analyzed = 0;
@@ -372,7 +357,7 @@ export function registerListCommand(program: Command): void {
             reportListTimeoutHint(timedOutCount);
           } else {
             // Non-phased (non-TTY or nothing to scan)
-            if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames, fetchTimestamps);
+            if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames);
             const { rows: statusRows, timedOutCount } = await gatherListStatus(metadata, ctx, whereFilter, cache, {
               analysisCache: aCache,
               ageFilter,
@@ -620,22 +605,13 @@ function workspaceRepoNames(metadata: ListMetadata): string[] {
   return [...names].sort();
 }
 
-async function blockingFetchRepos(
-  ctx: ArbContext,
-  cache: GitCache,
-  repoNames: string[],
-  fetchTimestamps?: FetchTimestamps,
-): Promise<void> {
+async function blockingFetchRepos(ctx: ArbContext, cache: GitCache, repoNames: string[]): Promise<void> {
   if (repoNames.length === 0) return;
   const fetchDirs = repoNames.map((r) => `${ctx.reposDir}/${r}`);
   const remotesMap = await cache.resolveRemotesMap(repoNames, ctx.reposDir);
   const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
   reportFetchFailures(repoNames, fetchResults);
   cache.invalidateAfterFetch();
-  if (fetchTimestamps) {
-    recordFetchResults(fetchTimestamps, fetchResults);
-    saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
-  }
 }
 
 function applySummaryToRow(row: ListRow, summary: WorkspaceSummary): void {

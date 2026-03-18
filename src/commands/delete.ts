@@ -29,14 +29,7 @@ import {
   workspaceMatchesWhere,
   wouldLoseWork,
 } from "../lib/status";
-import {
-  confirmOrExit,
-  loadFetchTimestamps,
-  parallelFetch,
-  recordFetchResults,
-  reportFetchFailures,
-  saveFetchTimestamps,
-} from "../lib/sync";
+import { confirmOrExit, parallelFetch, reportFetchFailures } from "../lib/sync";
 import {
   type TemplateDiff,
   diffTemplates,
@@ -503,11 +496,8 @@ export function registerDeleteCommand(program: Command): void {
           // regardless of how many workspaces reference it.
           const allRepoDirs = [...allRepoNames].map((name) => `${ctx.reposDir}/${name}`);
           const cache = await GitCache.create();
-          const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
           const remotesMap = await cache.resolveRemotesMap([...allRepoNames], ctx.reposDir);
           const fetchResults = await parallelFetch(allRepoDirs, undefined, remotesMap);
-          recordFetchResults(fetchTimestamps, fetchResults);
-          saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
           reportFetchFailures([...allRepoNames], fetchResults);
         };
 

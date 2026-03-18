@@ -195,8 +195,6 @@ async function runWorkspaceRename(
 
   const assessments = await runPlanFlow({
     shouldFetch,
-    forceFetch: options.fetch === true,
-    arbRootDir: ctx.arbRootDir,
     fetchDirs: repoDirs,
     reposForFetchReport: repos,
     remotesMap: fullRemotesMap,

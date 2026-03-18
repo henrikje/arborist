@@ -26,11 +26,3 @@ export {
   networkErrorHint,
 } from "./network-errors";
 export { VERBOSE_COMMIT_LIMIT } from "./constants";
-export {
-  type FetchTimestamps,
-  allReposFresh,
-  fetchTtl,
-  loadFetchTimestamps,
-  recordFetchResults,
-  saveFetchTimestamps,
-} from "./fetch-freshness";

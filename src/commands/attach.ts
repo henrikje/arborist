@@ -2,13 +2,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
 import { render } from "../lib/render";
-import {
-  loadFetchTimestamps,
-  parallelFetch,
-  recordFetchResults,
-  reportFetchFailures,
-  saveFetchTimestamps,
-} from "../lib/sync";
+import { parallelFetch, reportFetchFailures } from "../lib/sync";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
 import { error, info, plural, success, warn } from "../lib/terminal";
 import { readNamesFromStdin } from "../lib/terminal";
@@ -76,7 +70,6 @@ export function registerAttachCommand(program: Command): void {
           }
         }
         const cache = ctx.cache;
-        const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
         const base = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
         const remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
 
@@ -84,8 +77,6 @@ export function registerAttachCommand(program: Command): void {
           const fetchDirs = repos.map((r) => `${ctx.reposDir}/${r}`);
           const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
           reportFetchFailures(repos, fetchResults);
-          recordFetchResults(fetchTimestamps, fetchResults);
-          saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
         }
 
         const result = await addWorktrees(
