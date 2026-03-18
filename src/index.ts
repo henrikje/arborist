@@ -247,8 +247,12 @@ try {
   await program.parseAsync();
   printDebugSummary();
   if (updateCheckPromise) {
-    const result = await updateCheckPromise;
-    if (result) {
+    const TIMEOUT = Symbol("timeout");
+    const result = await Promise.race([
+      updateCheckPromise,
+      new Promise<typeof TIMEOUT>((resolve) => setTimeout(resolve, 100, TIMEOUT)),
+    ]);
+    if (result !== TIMEOUT && result !== null) {
       process.stderr.write(`\n${result.notice}`);
     }
   }
@@ -268,3 +272,4 @@ try {
   }
   throw err;
 }
+process.exit(0);
