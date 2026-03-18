@@ -6,6 +6,8 @@ Date: 2026-03-18
 
 DR-0078 introduced a passive update check that runs concurrently with command execution: the check promise is kicked off before `parseAsync()` and awaited after. The implicit assumption was that commands would take longer than the network request. In practice, many commands (especially `arb status -N`, `arb list`, `arb path`) finish faster than a GitHub API round-trip on a stale cache, causing a visible 1-2 second pause before the process exits. Additionally, the happy path in `index.ts` had no explicit `process.exit()`, relying on the event loop to drain naturally — which can be delayed by lingering HTTP connection pools from the `fetch()` call.
 
+DR-0078 also skipped the update check entirely for dev builds. Since `isNewerVersion` already returns false for unparseable versions (dev builds can never trigger the notice), the dev guard was redundant and prevented dev builds from keeping the cache warm.
+
 ## Options
 
 ### Fire-and-forget the update check
@@ -31,14 +33,17 @@ Keep the unconditional `await updateCheckPromise` but add `process.exit(0)` afte
 
 ## Decision
 
-Race the update check against a 100ms timeout, then call `process.exit(0)`.
+Race the update check against a 100ms timeout, then call `process.exit(0)`. Remove the dev-build guard from `shouldCheck`.
 
 ## Reasoning
 
 The 100ms race window preserves DR-0078's intent for the common case: cache hits resolve synchronously (well under 1ms), so the notice appears immediately. On stale-cache invocations — which happen at most once every 24 hours — the fetch may be abandoned, but this is self-correcting: the next invocation retries. The explicit `process.exit(0)` follows DR-0036's convention (only `index.ts` calls `process.exit()`) and ensures the abandoned fetch and any lingering HTTP handles do not keep the process alive.
+
+Removing the dev-build guard is safe because `isNewerVersion` already returns false for unparseable versions — dev builds can never trigger the notice. Letting dev builds run the check keeps the cache warm, so switching between dev and release builds doesn't cause a stale-cache fetch on the first release invocation.
 
 ## Consequences
 
 - Commands exit within ~100ms of completing their main work, even on stale-cache invocations.
 - On the rare stale-cache invocation where the fetch does not complete within 100ms, the cache write is abandoned and the notice is deferred to a subsequent invocation.
 - The explicit `process.exit(0)` means any future code that adds cleanup logic after the try/catch must run before the exit call.
+- Dev builds now run the update check, keeping the cache warm for release builds.

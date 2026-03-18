@@ -131,8 +131,7 @@ export function formatUpdateNotice(current: string, latest: string): string {
 
 // ── Main entry point ──
 
-function shouldCheck(currentVersion: string): boolean {
-  if (currentVersion.startsWith("dev")) return false;
+function shouldCheck(): boolean {
   if (process.env.ARB_NO_UPDATE_CHECK) return false;
   if (!isTTY()) return false;
   return true;
@@ -140,7 +139,7 @@ function shouldCheck(currentVersion: string): boolean {
 
 export async function checkForUpdate(currentVersion: string, arbRootDir: string): Promise<UpdateCheckResult | null> {
   try {
-    if (!shouldCheck(currentVersion)) return null;
+    if (!shouldCheck()) return null;
 
     const cacheFile = join(arbRootDir, ".arb", CACHE_FILENAME);
     let cache = readUpdateCache(cacheFile);
