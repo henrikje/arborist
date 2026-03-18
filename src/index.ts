@@ -33,33 +33,13 @@ import { debugLog, enableDebug, getGitCallCount, isDebug } from "./lib/terminal"
 import { detectArbRoot, detectWorkspace } from "./lib/workspace";
 import { ARB_VERSION } from "./version";
 
-const COMMAND_GROUPS = [
-  {
-    title: "Setup Commands:",
-    description: "  Set up the project and clone repos.",
-    commands: ["init", "repo", "template", "help"],
-  },
-  {
-    title: "Workspace Commands:",
-    description: "  Create and manage workspaces.",
-    commands: ["create", "delete", "rename", "list", "path", "cd", "attach", "detach"],
-  },
-  {
-    title: "Inspection Commands:",
-    description: "  Inspect workspace branch state across repositories.",
-    commands: ["status", "branch", "log", "diff"],
-  },
-  {
-    title: "Synchronization Commands:",
-    description: "  Synchronize workspace branches with remotes and base branches.",
-    commands: ["pull", "push", "rebase", "merge", "reset"],
-  },
-  {
-    title: "Execution Commands:",
-    description: "  Run commands or open tools across workspace repos.",
-    commands: ["exec", "open"],
-  },
-] as const;
+const GROUP_DESCRIPTIONS: Record<string, string> = {
+  "Setup Commands:": "  Set up the project and clone repos.",
+  "Workspace Commands:": "  Create and manage workspaces.",
+  "Inspection Commands:": "  Inspect workspace branch state across repositories.",
+  "Synchronization Commands:": "  Synchronize workspace branches with remotes and base branches.",
+  "Execution Commands:": "  Run commands or open tools across workspace repos.",
+};
 
 function arbFormatHelp(cmd: Command, helper: Help): string {
   const termWidth = helper.padWidth(cmd, helper);
@@ -91,34 +71,39 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
   }
 
   // Commands — grouped for root help, flat for subcommands
-  const allCommands = helper.visibleCommands(cmd);
+  const commandGroups = helper.groupItems(
+    [...cmd.commands],
+    helper.visibleCommands(cmd),
+    (sub: Command) => sub.helpGroup() || "Commands:",
+  );
 
   if (cmd.name() === "arb") {
-    const commandsByName = new Map(allCommands.map((subcommand) => [subcommand.name(), subcommand]));
-
-    for (const group of COMMAND_GROUPS) {
-      const groupedCommands = group.commands
-        .map((name) => commandsByName.get(name))
-        .filter((subcommand): subcommand is Command => Boolean(subcommand));
-      if (groupedCommands.length === 0) {
-        continue;
-      }
-      const list = groupedCommands.map((subcommand) =>
+    commandGroups.forEach((commands, group) => {
+      if (commands.length === 0) return;
+      const list = commands.map((subcommand) =>
         callFormatItem(
           helper.styleSubcommandTerm(helper.subcommandTerm(subcommand)),
           helper.styleSubcommandDescription(helper.subcommandDescription(subcommand)),
         ),
       );
-      output = output.concat([helper.styleTitle(group.title), dim(group.description), "", ...list, ""]);
-    }
-  } else if (allCommands.length > 0) {
-    const list = allCommands.map((subcommand) =>
-      callFormatItem(
-        helper.styleSubcommandTerm(helper.subcommandTerm(subcommand)),
-        helper.styleSubcommandDescription(helper.subcommandDescription(subcommand)),
-      ),
-    );
-    output = output.concat([helper.styleTitle("Commands:"), ...list, ""]);
+      const description = GROUP_DESCRIPTIONS[group];
+      if (description) {
+        output = output.concat([helper.styleTitle(group), dim(description), "", ...list, ""]);
+      } else {
+        output = output.concat([helper.styleTitle(group), ...list, ""]);
+      }
+    });
+  } else {
+    commandGroups.forEach((commands, group) => {
+      if (commands.length === 0) return;
+      const list = commands.map((subcommand) =>
+        callFormatItem(
+          helper.styleSubcommandTerm(helper.subcommandTerm(subcommand)),
+          helper.styleSubcommandDescription(helper.subcommandDescription(subcommand)),
+        ),
+      );
+      output = output.concat([helper.styleTitle(group), ...list, ""]);
+    });
   }
 
   // Help Topics (root command only, before options)
@@ -197,9 +182,16 @@ program.hook("preAction", () => {
 });
 
 // Register all commands
+
+// ── Setup Commands ──────────────────────────────────────────────
+program.commandsGroup("Setup Commands:");
 registerHelpCommand(program);
 registerInitCommand(program);
 registerRepoCommand(program);
+registerTemplateCommand(program);
+
+// ── Workspace Commands ──────────────────────────────────────────
+program.commandsGroup("Workspace Commands:");
 registerCreateCommand(program);
 registerDeleteCommand(program);
 registerRenameCommand(program);
@@ -208,19 +200,29 @@ registerPathCommand(program);
 registerCdCommand(program);
 registerAttachCommand(program);
 registerDetachCommand(program);
+
+// ── Inspection Commands ─────────────────────────────────────────
+program.commandsGroup("Inspection Commands:");
 registerStatusCommand(program);
 registerBranchCommand(program);
+registerLogCommand(program);
+registerDiffCommand(program);
+
+// ── Synchronization Commands ────────────────────────────────────
+program.commandsGroup("Synchronization Commands:");
 registerPullCommand(program);
 registerPushCommand(program);
 registerRebaseCommand(program);
 registerMergeCommand(program);
 registerResetCommand(program);
+
+// ── Execution Commands ──────────────────────────────────────────
+program.commandsGroup("Execution Commands:");
 registerExecCommand(program);
-registerLogCommand(program);
-registerDiffCommand(program);
-registerDumpCommand(program);
 registerOpenCommand(program);
-registerTemplateCommand(program);
+
+// ── Hidden ──────────────────────────────────────────────────────
+registerDumpCommand(program);
 
 process.on("SIGINT", () => {
   killActiveGitProcesses();
