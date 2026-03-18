@@ -116,7 +116,9 @@ Timeout values follow a resolution hierarchy: operation-specific env var → `AR
 
 ### TTY-aware behavior
 
-Colors, progress indicators, and interactive prompts only appear when stderr is connected to a terminal. In non-TTY contexts (pipes, CI), output is plain text and confirmation prompts require `--yes`. The `output.ts` module wraps all color formatting through `isTTY()`.
+Colors, progress indicators, and interactive prompts only appear when stderr is connected to a terminal. In non-TTY contexts (pipes, CI), output is plain text and confirmation prompts require `--yes`.
+
+Color output is additionally disabled when the `NO_COLOR` environment variable is set (any value, including empty — per the no-color.org convention) or when `TERM=dumb`. The `shouldColor()` function in `tty.ts` encapsulates this logic. Use `shouldColor()` for color decisions and `isTTY()` for interactive features (prompts, cursor control, progress indicators).
 
 ### Repo specification: positional vs option
 

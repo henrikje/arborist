@@ -24,9 +24,9 @@ import {
   info,
   inlineResult,
   inlineStart,
-  isTTY,
   plural,
   red,
+  shouldColor,
   success,
   warn,
   yellow,
@@ -284,7 +284,7 @@ function formatPlan(
     newWorkspaceName,
     showRenameWorkspaceHint,
   );
-  const rCtx: RenderContext = { tty: isTTY() };
+  const rCtx: RenderContext = { tty: shouldColor() };
   let out = render(nodes, rCtx);
   if (fetchingNotice) {
     out += fetchingNotice;
@@ -324,7 +324,7 @@ export function formatAbortPlan(assessments: AbortAssessment[], oldBranch: strin
     },
   ];
 
-  const rCtx: RenderContext = { tty: isTTY() };
+  const rCtx: RenderContext = { tty: shouldColor() };
   return `${render(nodes, rCtx)}\n`;
 }
 

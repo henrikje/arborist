@@ -21,7 +21,7 @@ import { verboseCommitsToNodes } from "../render/status-verbose";
 import { RETARGET_EXEMPT_SKIPS } from "../status/skip-flags";
 import { resolveWhereFilter } from "../status/where";
 import { dryRunNotice, error, info, inlineResult, inlineStart, plural, yellow } from "../terminal/output";
-import { isTTY } from "../terminal/tty";
+import { shouldColor } from "../terminal/tty";
 import { rejectExplicitBaseRemotePrefix, resolveWorkspaceBaseResolution } from "../workspace/base";
 import { workspaceBranch } from "../workspace/branch";
 import { requireBranch, requireWorkspace } from "../workspace/context";
@@ -330,7 +330,7 @@ export async function integrate(
   // Stash pop failure report
   const stashNodes = buildStashPopFailureReport(stashPopFailed, mode === "rebase" ? "Rebase" : "Merge");
 
-  const reportCtx = { tty: isTTY() };
+  const reportCtx = { tty: shouldColor() };
   if (conflictNodes.length > 0) process.stderr.write(render(conflictNodes, reportCtx));
   if (stashNodes.length > 0) process.stderr.write(render(stashNodes, reportCtx));
 
@@ -675,7 +675,7 @@ export function formatIntegratePlan(
   const nodes = buildIntegratePlanNodes(assessments, mode, verbose, graph, configActions);
   const envCols = Number(process.env.COLUMNS);
   const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
-  const ctx: RenderContext = { tty: isTTY(), terminalWidth: termCols > 0 ? termCols : undefined };
+  const ctx: RenderContext = { tty: shouldColor(), terminalWidth: termCols > 0 ? termCols : undefined };
   return render(nodes, ctx);
 }
 

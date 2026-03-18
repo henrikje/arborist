@@ -14,9 +14,9 @@ import {
   error,
   inlineResult,
   inlineStart,
-  isTTY,
   plural,
   readNamesFromStdin,
+  shouldColor,
   success,
   warn,
 } from "../lib/terminal";
@@ -206,7 +206,7 @@ export function registerDetachCommand(program: Command): void {
 
         // Phase 3: plan
         const planNodes = buildDetachPlanNodes(assessments);
-        const rCtx: RenderContext = { tty: isTTY() };
+        const rCtx: RenderContext = { tty: shouldColor() };
         process.stderr.write(render(planNodes, rCtx));
 
         if (options.dryRun) {
@@ -269,7 +269,7 @@ export function registerDetachCommand(program: Command): void {
           const remainingRepos = workspaceRepoDirs(wsDir).map((d) => basename(d));
           const wsTemplates = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir, changed);
           const repoTemplates = await applyRepoTemplates(ctx.arbRootDir, wsDir, remainingRepos, changed);
-          displayOverlaySummary(wsTemplates, repoTemplates, (nodes) => render(nodes, { tty: isTTY() }));
+          displayOverlaySummary(wsTemplates, repoTemplates, (nodes) => render(nodes, { tty: shouldColor() }));
         }
 
         // Phase 6: summarize

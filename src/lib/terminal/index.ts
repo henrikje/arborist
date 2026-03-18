@@ -39,4 +39,4 @@ export type { EchoSuppression } from "./suppress-echo";
 export { suppressEcho } from "./suppress-echo";
 export type { StdinSuppression } from "./suppress-stdin";
 export { suppressStdin } from "./suppress-stdin";
-export { isTTY } from "./tty";
+export { isTTY, shouldColor } from "./tty";

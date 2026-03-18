@@ -34,7 +34,7 @@ Organized into semantic subdirectories. Each directory has a barrel `index.ts` r
 - Command files and `src/index.ts` use barrel imports.
 
 - **`core/`** — Foundation: `types.ts` (ArbContext), `errors.ts` (ArbError, ArbAbort), `config.ts` (JSON config with Zod schemas, auto-migrates legacy INI), `time.ts` (relative time formatting)
-- **`terminal/`** — Terminal I/O: `output.ts` (ANSI colors, logging, progress), `tty.ts` (TTY detection), `debug.ts`, `stdin.ts`, `abort-keypress.ts`
+- **`terminal/`** — Terminal I/O: `output.ts` (ANSI colors, logging, progress), `tty.ts` (TTY detection, `shouldColor()` for color decisions respecting `NO_COLOR`/`TERM=dumb`), `debug.ts`, `stdin.ts`, `abort-keypress.ts`
 - **`git/`** — Git operations: `git.ts` (process spawning, branch/status/remote ops), `git-cache.ts` (request-scoped promise coalescing), `remotes.ts` (remote role resolution), `remote-url.ts` (URL parsing, PR URL construction)
 - **`status/`** — Canonical status model: `status.ts` (RepoStatus, RepoFlags, gathering, filtering — see ARCHITECTURE.md), `skip-flags.ts`, `pr-detection.ts`, `ticket-detection.ts`, `test-helpers.ts` (makeRepo fixtures)
 - **`render/`** — Declarative render model: `model.ts` (Cell, Span, Attention, OutputNode types, cell helpers — zero lib imports), `analysis.ts` (analyze* functions, buildStatusCountsCell, formatStatusCounts, flagLabels), `render.ts` (OutputNode[] → ANSI string), `status-view.ts`, `status-verbose.ts`, `conflict-report.ts`, `repo-header.ts`, `plan-format.ts`, `integrate-graph.ts`, `phased-render.ts`

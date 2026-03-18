@@ -83,11 +83,12 @@ Verify adherence to the color semantics in GUIDELINES.md:
 - `--yes` skips confirmation prompts without overriding safety checks.
 - Error recovery guidance is provided for all failure modes (conflicts, auth errors, etc.).
 - `requireWorkspace()` and `requireBranch()` are called before any work that needs them.
-- Interactive prompts guard on `process.stdin.isTTY` (not `isTTY()`, which checks stderr). The `isTTY()` helper is for colors and progress only.
+- Interactive prompts guard on `process.stdin.isTTY` (not `isTTY()`, which checks stderr). Use `shouldColor()` for color decisions and `isTTY()` for interactive features (progress, cursor control).
 - All `@inquirer` calls use `{ output: process.stderr }` so prompts don't contaminate stdout.
 - Git and subprocess spawns use explicit `cwd` rather than inheriting the process working directory.
 - Validation errors surface before interactive prompts, not after the user has already answered questions.
 - Non-TTY mode works correctly: no interactive prompts without `--yes`, no ANSI codes in piped output.
+- `NO_COLOR` and `TERM=dumb` correctly disable color output while preserving interactive features.
 
 ### 7. Spelling, grammar, and wording
 

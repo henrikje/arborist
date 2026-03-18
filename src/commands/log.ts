@@ -15,7 +15,7 @@ import {
   resolveWhereFilter,
 } from "../lib/status";
 import { parallelFetch, reportFetchFailures } from "../lib/sync";
-import { error, isTTY, plural, stdout, success } from "../lib/terminal";
+import { error, isTTY, plural, shouldColor, stdout, success } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
 interface LogCommit {
@@ -141,7 +141,7 @@ async function outputTTY(
   verbose?: boolean,
 ): Promise<void> {
   let totalCommits = 0;
-  const ctx: RenderContext = { tty: isTTY() };
+  const ctx: RenderContext = { tty: shouldColor() };
 
   for (let i = 0; i < repos.length; i++) {
     const repo = repos[i];
@@ -194,9 +194,8 @@ async function outputTTY(
     process.stderr.write(render([repoHeaderNode(repo.name, note || undefined)], ctx));
 
     // Let git render the commits
-    const logArgs = verbose
-      ? ["--no-decorate", "--color=always", "--stat"]
-      : ["--oneline", "--no-decorate", "--color=always"];
+    const colorFlag = shouldColor() ? "--color=always" : "--color=never";
+    const logArgs = verbose ? ["--no-decorate", colorFlag, "--stat"] : ["--oneline", "--no-decorate", colorFlag];
     const result = await gitLocal(repoDir, "log", ...logArgs, ...gitArgs);
     if (result.exitCode === 0 && result.stdout.trim()) {
       stdout(result.stdout);

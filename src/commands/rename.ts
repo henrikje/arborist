@@ -14,9 +14,9 @@ import {
   info,
   inlineResult,
   inlineStart,
-  isTTY,
   plural,
   red,
+  shouldColor,
   warn,
   yellow,
 } from "../lib/terminal";
@@ -69,7 +69,7 @@ function formatRenamePlan(
     }
   }
 
-  const rCtx: RenderContext = { tty: isTTY() };
+  const rCtx: RenderContext = { tty: shouldColor() };
   let out = render(nodes, rCtx);
   if (fetchingNotice) {
     out += fetchingNotice;

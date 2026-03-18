@@ -50,6 +50,7 @@ import {
   plural,
   readNamesFromStdin,
   red,
+  shouldColor,
   success,
   warn,
 } from "../lib/terminal";
@@ -387,7 +388,7 @@ function buildDeleteTableNodes(assessments: WorkspaceAssessment[]): OutputNode[]
 }
 
 function displayDeleteTable(assessments: WorkspaceAssessment[]): void {
-  const rCtx: RenderContext = { tty: isTTY() };
+  const rCtx: RenderContext = { tty: shouldColor() };
   const tableNodes = buildDeleteTableNodes(assessments);
   const infoNodes = buildDeleteInfoNodes(assessments);
   process.stderr.write(`\n${render(tableNodes, rCtx)}\n`);

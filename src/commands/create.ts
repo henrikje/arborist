@@ -8,7 +8,7 @@ import { gitLocal, listRemoteBranches, validateBranchName } from "../lib/git";
 import { render } from "../lib/render";
 import { parallelFetch, reportFetchFailures } from "../lib/sync";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
-import { bold, cyan, dim, error, info, isTTY, plural, readNamesFromStdin, success, warn } from "../lib/terminal";
+import { bold, cyan, dim, error, info, plural, readNamesFromStdin, shouldColor, success, warn } from "../lib/terminal";
 import {
   addWorktrees,
   listDefaultRepos,
@@ -417,7 +417,7 @@ export function registerCreateCommand(program: Command): void {
 
         const wsTemplates = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir, undefined, cache);
         const repoTemplates = await applyRepoTemplates(ctx.arbRootDir, wsDir, result.created, undefined, cache);
-        displayOverlaySummary(wsTemplates, repoTemplates, (nodes) => render(nodes, { tty: isTTY() }));
+        displayOverlaySummary(wsTemplates, repoTemplates, (nodes) => render(nodes, { tty: shouldColor() }));
 
         process.stderr.write("\n");
         const branchSuffix = branch === defaultBranch ? "" : ` on branch ${branch}`;

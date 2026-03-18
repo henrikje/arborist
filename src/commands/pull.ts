@@ -13,7 +13,7 @@ import { type RepoStatus, computeFlags, resolveWhereFilter } from "../lib/status
 import { VERBOSE_COMMIT_LIMIT, buildCachedStatusAssess, confirmOrExit, runPlanFlow } from "../lib/sync";
 export type { PullAssessment } from "../lib/sync";
 import type { PullAssessment } from "../lib/sync";
-import { dryRunNotice, error, info, inlineResult, inlineStart, isTTY, plural, yellow } from "../lib/terminal";
+import { dryRunNotice, error, info, inlineResult, inlineStart, plural, shouldColor, yellow } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
 type PullStrategy = "rebase-pull" | "merge-pull" | "safe-reset" | "forced-reset";
@@ -274,7 +274,7 @@ export function registerPullCommand(program: Command): void {
         // Stash pop failure report
         const stashNodes = buildStashPopFailureReport(stashPopFailed, "Pull");
 
-        const reportCtx = { tty: isTTY() };
+        const reportCtx = { tty: shouldColor() };
         if (conflictNodes.length > 0) process.stderr.write(render(conflictNodes, reportCtx));
         if (failureNodes.length > 0) process.stderr.write(render(failureNodes, reportCtx));
         if (stashNodes.length > 0) process.stderr.write(render(stashNodes, reportCtx));

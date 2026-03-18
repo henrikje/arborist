@@ -6,3 +6,9 @@ export function isTTY(): boolean {
     return false;
   }
 }
+
+export function shouldColor(): boolean {
+  if (process.env.NO_COLOR !== undefined) return false;
+  if (process.env.TERM === "dumb") return false;
+  return isTTY();
+}
