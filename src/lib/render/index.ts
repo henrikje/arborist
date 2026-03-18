@@ -42,7 +42,7 @@ export {
   spans,
   suffix,
 } from "./model";
-export { type RenderPhase, runPhasedRender } from "./phased-render";
+export { type PhasedRenderOptions, type RenderPhase, runPhasedRender } from "./phased-render";
 export { headShaCell, skipCell, stashHintCell, upToDateCell, withSuffixes } from "./plan-format";
 export { type RenderContext, createRenderContext, finishSummary, render, renderCell } from "./render";
 export { buildRepoSkipHeader, repoHeaderNode } from "./repo-header";

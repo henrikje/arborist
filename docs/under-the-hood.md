@@ -93,4 +93,4 @@ Instead, arb renders in two phases. **Phase 1** displays a status table immediat
 
 The transition is seamless: the old table clears and the new one appears in place. There is no blank-screen gap — you always have content to read. If the fetch reveals that nothing changed, arb skips the re-render entirely.
 
-In a workspace with many repos or a slow network, this means you get actionable information in milliseconds rather than waiting seconds for the fetch. Press Escape during the fetch phase to cancel it and keep the stale data.
+In a workspace with many repos or a slow network, this means you get actionable information in milliseconds rather than waiting seconds for the fetch. Press Ctrl+C during the fetch phase to cancel it and keep the stale data. Characters you type during the fetch are preserved — they appear at your shell prompt when arb exits, so you can start composing your next command without waiting.

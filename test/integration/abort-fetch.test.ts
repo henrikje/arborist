@@ -39,7 +39,7 @@ describe("escape-to-cancel background fetch", () => {
       const output = stdout + stderr;
       expect(exitCode).toBe(0);
       expect(output).toContain("repo-a");
-      expect(output).not.toContain("<Esc to cancel>");
+      expect(output).not.toContain("to cancel>");
     }));
 
   test("arb list piped to cat produces clean output", () =>
@@ -56,7 +56,7 @@ describe("escape-to-cancel background fetch", () => {
       const output = stdout + stderr;
       expect(exitCode).toBe(0);
       expect(output).toContain("my-feature");
-      expect(output).not.toContain("<Esc to cancel>");
+      expect(output).not.toContain("to cancel>");
     }));
 
   test("arb status with piped stdin still works", () =>

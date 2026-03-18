@@ -11,7 +11,7 @@ import type { OutputNode } from "../lib/render";
 import { runPhasedRender } from "../lib/render";
 import { type RepoRefs, computeFlags, gatherRepoRefs, gatherWorkspaceSummary } from "../lib/status";
 import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/sync";
-import { error, info, isTTY, listenForAbortKeypress, stderr } from "../lib/terminal";
+import { error, info, isTTY, listenForAbortSignal, stderr } from "../lib/terminal";
 import {
   rejectExplicitBaseRemotePrefix,
   requireWorkspace,
@@ -133,7 +133,7 @@ export function registerBranchCommand(program: Command): void {
     .option("--schema", "Print JSON Schema for this command's --json output and exit")
     .summary("Show the workspace branch (default)")
     .description(
-      "Show the workspace branch, base branch (if configured), and any per-repo deviations. Use --verbose to show a per-repo table with branch and remote tracking info (fetches by default; use -N to skip). Press Escape during the fetch to cancel and use stale data. Use --quiet to output just the branch name (useful for scripting). Use --json for machine-readable output.\n\nSee 'arb help scripting' for output modes and piping.",
+      "Show the workspace branch, base branch (if configured), and any per-repo deviations. Use --verbose to show a per-repo table with branch and remote tracking info (fetches by default; use -N to skip). Press Ctrl+C during the fetch to cancel and use stale data. Use --quiet to output just the branch name (useful for scripting). Use --json for machine-readable output.\n\nSee 'arb help scripting' for output modes and piping.",
     )
     .action(async (options, command) => {
       if (options.schema) {
@@ -232,7 +232,7 @@ async function runVerboseBranch(
   if (shouldFetchVerbose && !options.json && isTTY()) {
     // Phased rendering: stale → fetch → fresh
     const repoNames = repoNamesForFetch;
-    const { signal: abortSignal, cleanup: abortCleanup } = listenForAbortKeypress();
+    const { signal: abortSignal, cleanup: abortCleanup } = listenForAbortSignal();
     const fetchPromise = cache
       .resolveRemotesMap(repoNames, ctx.reposDir)
       .then((remotesMap) => parallelFetch(repoDirs, undefined, remotesMap, { silent: true, signal: abortSignal }));
@@ -245,33 +245,36 @@ async function runVerboseBranch(
     } = {};
 
     try {
-      await runPhasedRender([
-        {
-          render: async () => {
-            const repos = await gatherRefs();
-            state.staleOutput = formatVerboseOutput(repos, branch, base);
-            return state.staleOutput + fetchSuffix(repoNames.length, { abortable: true });
+      await runPhasedRender(
+        [
+          {
+            render: async () => {
+              const repos = await gatherRefs();
+              state.staleOutput = formatVerboseOutput(repos, branch, base);
+              return state.staleOutput + fetchSuffix(repoNames.length, { abortable: true });
+            },
+            write: stderr,
           },
-          write: stderr,
-        },
-        {
-          render: async () => {
-            if (abortSignal.aborted) {
-              state.aborted = true;
-              return state.staleOutput as string;
-            }
-            state.fetchResults = await fetchPromise;
-            if (abortSignal.aborted) {
-              state.aborted = true;
-              return state.staleOutput as string;
-            }
-            cache.invalidateAfterFetch();
-            const repos = await gatherRefs();
-            return formatVerboseOutput(repos, branch, base);
+          {
+            render: async () => {
+              if (abortSignal.aborted) {
+                state.aborted = true;
+                return state.staleOutput as string;
+              }
+              state.fetchResults = await fetchPromise;
+              if (abortSignal.aborted) {
+                state.aborted = true;
+                return state.staleOutput as string;
+              }
+              cache.invalidateAfterFetch();
+              const repos = await gatherRefs();
+              return formatVerboseOutput(repos, branch, base);
+            },
+            write: (output) => process.stdout.write(output),
           },
-          write: (output) => process.stdout.write(output),
-        },
-      ]);
+        ],
+        { preserveTypeahead: true },
+      );
     } finally {
       abortCleanup();
     }

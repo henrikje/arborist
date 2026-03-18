@@ -66,7 +66,7 @@ describe("fetchSuffix", () => {
     process.stdin.isTTY = true;
     const result = fetchSuffix(3, { abortable: true });
     expect(result).toContain("Fetching 3 repos...");
-    expect(result).toContain("<Esc to cancel>");
+    expect(result).toContain("<Ctrl+C to cancel>");
     process.stdin.isTTY = saved;
     spy.mockRestore();
   });

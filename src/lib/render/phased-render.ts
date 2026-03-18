@@ -1,4 +1,5 @@
 import { clearLines, countLines, stderr } from "../terminal/output";
+import { suppressEcho } from "../terminal/suppress-echo";
 import { suppressStdin } from "../terminal/suppress-stdin";
 
 export interface RenderPhase {
@@ -6,8 +7,14 @@ export interface RenderPhase {
   write?: (output: string) => void;
 }
 
-export async function runPhasedRender(phases: RenderPhase[]): Promise<void> {
-  const { restore } = suppressStdin();
+export interface PhasedRenderOptions {
+  /** Use echo suppression instead of raw mode so typed characters stay in the
+   *  kernel input buffer and survive for the shell after this process exits. */
+  preserveTypeahead?: boolean;
+}
+
+export async function runPhasedRender(phases: RenderPhase[], options?: PhasedRenderOptions): Promise<void> {
+  const { restore } = options?.preserveTypeahead ? suppressEcho() : suppressStdin();
   let prevOutput: string | undefined;
 
   try {
