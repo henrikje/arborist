@@ -91,7 +91,7 @@ export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags, hasPullCon
 
   // Simple non-attention cases (no push activity)
   if (!pushText) return cell(pullText);
-  if (pushText === "up to date" || pushText === "gone" || pushText === "not pushed") return cell(pushText);
+  if (pushText === "up to date" || pushText === "gone" || pushText === "no branch") return cell(pushText);
 
   // Behind-only: already handled above (pushText empty)
 
@@ -100,7 +100,7 @@ export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags, hasPullCon
   const baseAhead = repo.base?.ahead ?? toPush;
   const totalMatched = repo.share.outdated?.total ?? 0;
   const newCount = Math.max(0, Math.min(baseAhead, toPush) - totalMatched);
-  const pushNeedsAttention = flags.isUnpushed && (totalMatched === 0 || newCount > 0);
+  const pushNeedsAttention = flags.isAheadOfShare && (totalMatched === 0 || newCount > 0);
   const pushSpans = pushSideSpans(pushText, pushNewText, pushNeedsAttention);
 
   // Merged with new work — color only the push suffix portion
@@ -204,7 +204,7 @@ export function formatStatusCounts(
 ): string {
   return statusCounts
     .flatMap(({ label, key, count }) => {
-      if (key === "isUnpushed" && outdatedOnlyCount > 0) {
+      if (key === "isAheadOfShare" && outdatedOnlyCount > 0) {
         const genuine = count - outdatedOnlyCount;
         const parts: string[] = [];
         if (genuine > 0) parts.push(yellow(label));
@@ -222,7 +222,7 @@ export function buildStatusCountsCell(
   atRiskKeys: Set<keyof RepoFlags> = AT_RISK_FLAGS,
 ): Cell {
   const parts: Cell[] = statusCounts.flatMap(({ label, key, count }) => {
-    if (key === "isUnpushed" && outdatedOnlyCount > 0) {
+    if (key === "isAheadOfShare" && outdatedOnlyCount > 0) {
       const genuine = count - outdatedOnlyCount;
       const cells: Cell[] = [];
       if (genuine > 0) cells.push(cell(label, "attention"));

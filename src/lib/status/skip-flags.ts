@@ -13,7 +13,7 @@ export type SkipFlag =
   | "behind-remote"
   | "diverged"
   // Pull-specific
-  | "not-pushed"
+  | "no-share"
   | "remote-gone"
   | "rebased-locally"
   // Integrate-specific
@@ -26,7 +26,7 @@ export type SkipFlag =
 export const BENIGN_SKIPS: ReadonlySet<SkipFlag> = new Set([
   "already-merged",
   "no-commits",
-  "not-pushed",
+  "no-share",
   "no-base-branch",
 ]);
 

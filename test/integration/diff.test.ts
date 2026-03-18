@@ -163,13 +163,13 @@ describe("positional repo filtering", () => {
 // ── --where filtering ────────────────────────────────────────────
 
 describe("--where filtering", () => {
-  test("arb diff --where unpushed filters by status", () =>
+  test("arb diff --where ahead-share filters by status", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       await write(join(env.projectDir, "my-feature/repo-a/file.txt"), "change");
       await git(join(env.projectDir, "my-feature/repo-a"), ["add", "file.txt"]);
       await git(join(env.projectDir, "my-feature/repo-a"), ["commit", "-m", "Unpushed change"]);
-      const result = await arb(env, ["diff", "--where", "unpushed", "--json"], {
+      const result = await arb(env, ["diff", "--where", "ahead-share", "--json"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);

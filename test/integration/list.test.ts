@@ -81,7 +81,7 @@ describe("list", () => {
       await write(join(env.projectDir, "ws-one/repo-a/dirty.txt"), "dirty");
       const result = await arb(env, ["list"]);
       expect(result.output).toContain("dirty");
-      expect(result.output).toContain("unpushed");
+      expect(result.output).toContain("ahead share");
       expect(result.output).not.toContain("with issues");
     }));
 
@@ -450,7 +450,7 @@ describe("list filters", () => {
   test("arb list --dirty --where conflicts", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "ws-one", "repo-a"]);
-      const result = await arb(env, ["list", "--dirty", "--where", "unpushed"]);
+      const result = await arb(env, ["list", "--dirty", "--where", "ahead-share"]);
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("Cannot combine --dirty with --where");
     }));

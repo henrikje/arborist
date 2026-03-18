@@ -461,7 +461,7 @@ describe("plainRemoteDiff", () => {
     expect(plainRemoteDiff(repo)).toBe("5 to push");
   });
 
-  test("noRef without ahead returns not pushed", () => {
+  test("noRef without ahead returns no branch", () => {
     const repo = makeRepo({
       base: {
         remote: "origin",
@@ -479,7 +479,7 @@ describe("plainRemoteDiff", () => {
         toPull: null,
       },
     });
-    expect(plainRemoteDiff(repo)).toBe("not pushed");
+    expect(plainRemoteDiff(repo)).toBe("no branch");
   });
 
   test("merged with share up to date returns merged with PR number", () => {
@@ -1033,7 +1033,7 @@ describe("analyzeRemoteDiff", () => {
     const flags = computeFlags(repo, "feature");
     const result = analyzeRemoteDiff(repo, flags);
     expect(result.plain).toBe("5 to push → 1 to pull");
-    // Push span is attention (isUnpushed, rebased=0), arrow is muted
+    // Push span is attention (isAheadOfShare, rebased=0), arrow is muted
     expect(result.spans[0]?.attention).toBe("attention");
     expect(result.spans[1]?.text).toBe(" → ");
     expect(result.spans[1]?.attention).toBe("muted");
@@ -1056,7 +1056,7 @@ describe("analyzeRemoteDiff", () => {
     expect(result.spans[0]?.attention).toBe("default");
   });
 
-  test("unpushed returns attention", () => {
+  test("ahead-share returns attention", () => {
     const repo = makeRepo({
       share: {
         remote: "origin",
@@ -1067,7 +1067,7 @@ describe("analyzeRemoteDiff", () => {
       },
     });
     const flags = computeFlags(repo, "feature");
-    expect(flags.isUnpushed).toBe(true);
+    expect(flags.isAheadOfShare).toBe(true);
     const result = analyzeRemoteDiff(repo, flags);
     expect(result.plain).toBe("3 to push");
     expect(result.spans[0]?.attention).toBe("attention");
@@ -1276,7 +1276,7 @@ describe("flagLabels", () => {
     expect(flagLabels(flags)).toContain("dirty");
   });
 
-  test("merged repo suppresses needsRebase and isDiverged", () => {
+  test("merged repo suppresses isBehindBase and isDiverged", () => {
     const repo = makeRepo({
       base: {
         remote: "origin",
@@ -1290,7 +1290,7 @@ describe("flagLabels", () => {
     });
     const flags = computeFlags(repo, "feature");
     expect(flags.isMerged).toBe(true);
-    expect(flags.needsRebase).toBe(true);
+    expect(flags.isBehindBase).toBe(true);
     expect(flags.isDiverged).toBe(true);
     const labels = flagLabels(flags);
     expect(labels).toContain("merged");
@@ -1326,15 +1326,15 @@ describe("flagLabels", () => {
 // ── formatStatusCounts ──
 
 describe("formatStatusCounts", () => {
-  test("outdatedOnly splitting: isUnpushed with outdatedOnlyCount", () => {
-    const statusCounts = [{ label: "3 unpushed", count: 3, key: "isUnpushed" as const }];
+  test("outdatedOnly splitting: isAheadOfShare with outdatedOnlyCount", () => {
+    const statusCounts = [{ label: "3 ahead share", count: 3, key: "isAheadOfShare" as const }];
     const result = formatStatusCounts(statusCounts, 2);
     // genuine = 3 - 2 = 1 > 0, so we get yellow(label) + "outdated"
     expect(result).toContain("outdated");
   });
 
   test("outdatedOnly when genuine is 0 only shows outdated", () => {
-    const statusCounts = [{ label: "2 unpushed", count: 2, key: "isUnpushed" as const }];
+    const statusCounts = [{ label: "2 ahead share", count: 2, key: "isAheadOfShare" as const }];
     const result = formatStatusCounts(statusCounts, 2);
     // genuine = 2 - 2 = 0, so only "outdated" part
     expect(result).toBe("outdated");
@@ -1343,18 +1343,18 @@ describe("formatStatusCounts", () => {
   test("yellowKeys highlighting: AT_RISK_FLAGS keys get attention", () => {
     const statusCounts = [
       { label: "2 dirty", count: 2, key: "isDirty" as const },
-      { label: "1 behind share", count: 1, key: "needsPull" as const },
+      { label: "1 behind share", count: 1, key: "isBehindShare" as const },
     ];
-    // needsPull is NOT in AT_RISK_FLAGS, isDirty IS in AT_RISK_FLAGS
+    // isBehindShare is NOT in AT_RISK_FLAGS, isDirty IS in AT_RISK_FLAGS
     const result = formatStatusCounts(statusCounts, 0);
     // "2 dirty" should be yellow'd, "1 behind share" should be plain
     expect(result).toContain("1 behind share");
   });
 
   test("non-AT_RISK key without yellowKeys override uses plain text", () => {
-    const statusCounts = [{ label: "1 behind base", count: 1, key: "needsRebase" as const }];
+    const statusCounts = [{ label: "1 behind base", count: 1, key: "isBehindBase" as const }];
     const result = formatStatusCounts(statusCounts, 0);
-    // needsRebase is not in AT_RISK_FLAGS, so plain text
+    // isBehindBase is not in AT_RISK_FLAGS, so plain text
     expect(result).toBe("1 behind base");
   });
 });
@@ -1362,20 +1362,20 @@ describe("formatStatusCounts", () => {
 // ── buildStatusCountsCell ──
 
 describe("buildStatusCountsCell", () => {
-  test("genuine+outdated split: isUnpushed with outdatedOnlyCount", () => {
-    const statusCounts = [{ label: "5 unpushed", count: 5, key: "isUnpushed" as const }];
+  test("genuine+outdated split: isAheadOfShare with outdatedOnlyCount", () => {
+    const statusCounts = [{ label: "5 ahead share", count: 5, key: "isAheadOfShare" as const }];
     const result = buildStatusCountsCell(statusCounts, 2);
-    // genuine = 5 - 2 = 3 > 0, so two parts: attention "5 unpushed" + default "outdated"
-    expect(result.plain).toContain("5 unpushed");
+    // genuine = 5 - 2 = 3 > 0, so two parts: attention "5 ahead share" + default "outdated"
+    expect(result.plain).toContain("5 ahead share");
     expect(result.plain).toContain("outdated");
     const attentionSpans = result.spans.filter((s) => s.attention === "attention");
     const defaultSpans = result.spans.filter((s) => s.attention === "default");
-    expect(attentionSpans.some((s) => s.text === "5 unpushed")).toBe(true);
+    expect(attentionSpans.some((s) => s.text === "5 ahead share")).toBe(true);
     expect(defaultSpans.some((s) => s.text === "outdated")).toBe(true);
   });
 
   test("outdated only (genuine=0): only outdated part with default", () => {
-    const statusCounts = [{ label: "3 unpushed", count: 3, key: "isUnpushed" as const }];
+    const statusCounts = [{ label: "3 ahead share", count: 3, key: "isAheadOfShare" as const }];
     const result = buildStatusCountsCell(statusCounts, 3);
     // genuine = 3 - 3 = 0, so only "outdated"
     expect(result.plain).toBe("outdated");
@@ -1385,10 +1385,10 @@ describe("buildStatusCountsCell", () => {
   test("atRiskKeys get attention, others get default", () => {
     const statusCounts = [
       { label: "2 dirty", count: 2, key: "isDirty" as const },
-      { label: "1 behind base", count: 1, key: "needsRebase" as const },
+      { label: "1 behind base", count: 1, key: "isBehindBase" as const },
     ];
     const result = buildStatusCountsCell(statusCounts, 0);
-    // isDirty is in AT_RISK_FLAGS → attention, needsRebase is not → default
+    // isDirty is in AT_RISK_FLAGS → attention, isBehindBase is not → default
     const dirtySpan = result.spans.find((s) => s.text === "2 dirty");
     const rebaseSpan = result.spans.find((s) => s.text === "1 behind base");
     expect(dirtySpan?.attention).toBe("attention");
@@ -1397,11 +1397,11 @@ describe("buildStatusCountsCell", () => {
 
   test("multiple counts joined with comma separator", () => {
     const statusCounts = [
-      { label: "1 unpushed", count: 1, key: "isUnpushed" as const },
-      { label: "2 behind share", count: 2, key: "needsPull" as const },
+      { label: "1 ahead share", count: 1, key: "isAheadOfShare" as const },
+      { label: "2 behind share", count: 2, key: "isBehindShare" as const },
     ];
     const result = buildStatusCountsCell(statusCounts, 0);
-    expect(result.plain).toBe("1 unpushed, 2 behind share");
+    expect(result.plain).toBe("1 ahead share, 2 behind share");
   });
 });
 

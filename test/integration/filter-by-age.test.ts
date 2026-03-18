@@ -133,7 +133,7 @@ describe("arb list --older-than composed with --where", () => {
       await git(wsOldRepoDir, ["commit", `--date=${oldDate.toISOString()}`, "-m", "unpushed work"]);
       backdateMtime(join(env.projectDir, "ws-old"), oldDate);
       // ws-old now has an unpushed commit; ws-new has no commits ahead of base
-      const result = await arb(env, ["list", "--older-than", "1d", "--where", "unpushed", "--no-fetch"]);
+      const result = await arb(env, ["list", "--older-than", "1d", "--where", "ahead-share", "--no-fetch"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("ws-old");
       expect(result.output).not.toContain("ws-new");
@@ -232,7 +232,7 @@ describe("arb delete --newer-than", () => {
         "--newer-than",
         "1d",
         "--where",
-        "unpushed",
+        "ahead-share",
         "--dry-run",
         "--force",
         "--no-fetch",

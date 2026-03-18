@@ -369,7 +369,7 @@ export function assessPullRepo(
 
   // No remote branch
   if (status.share.refMode === "noRef") {
-    return { ...base, outcome: "skip", skipReason: "no remote branch", skipFlag: "not-pushed" };
+    return { ...base, outcome: "skip", skipReason: "no remote branch", skipFlag: "no-share" };
   }
 
   // Remote branch gone

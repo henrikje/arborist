@@ -319,7 +319,7 @@ describe("analyzeRemoteDiff", () => {
     expect(lastSpan?.attention).toBe("attention");
   });
 
-  test("not pushed — default attention", () => {
+  test("no branch — default attention", () => {
     const repo = makeRepo({
       share: {
         remote: "origin",
@@ -339,7 +339,7 @@ describe("analyzeRemoteDiff", () => {
     });
     const flags = computeFlags(repo, "feature");
     const c = analyzeRemoteDiff(repo, flags);
-    expect(c.plain).toBe("not pushed");
+    expect(c.plain).toBe("no branch");
     expect(c.spans[0]?.attention).toBe("default");
   });
 

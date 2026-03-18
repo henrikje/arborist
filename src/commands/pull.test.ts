@@ -241,7 +241,7 @@ describe("assessPullRepo", () => {
     );
     expect(a.outcome).toBe("skip");
     expect(a.skipReason).toBe("no remote branch");
-    expect(a.skipFlag).toBe("not-pushed");
+    expect(a.skipFlag).toBe("no-share");
   });
 
   test("skips when remote branch gone", () => {
@@ -952,7 +952,7 @@ describe("resetRebasedSkips", () => {
     const assessments = [
       makeAssessment({ skipFlag: "dirty", skipReason: "uncommitted changes (use --autostash)" }),
       makeAssessment({ skipFlag: "detached-head", skipReason: "HEAD is detached" }),
-      makeAssessment({ skipFlag: "not-pushed", skipReason: "no remote branch" }),
+      makeAssessment({ skipFlag: "no-share", skipReason: "no remote branch" }),
     ];
     const nextAssessments = resetRebasedSkips(assessments, makeRemotesMap(["repo-a", {}]));
     expect(nextAssessments[0]?.outcome).toBe("skip");

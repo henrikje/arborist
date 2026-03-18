@@ -73,10 +73,12 @@ export interface RepoStatus extends RepoRefs {
 
 export interface RepoFlags {
   isDirty: boolean;
-  isUnpushed: boolean;
-  isNeverPushed: boolean;
-  needsPull: boolean;
-  needsRebase: boolean;
+  hasConflict: boolean;
+  isAheadOfShare: boolean;
+  hasNoShare: boolean;
+  isBehindShare: boolean;
+  isAheadOfBase: boolean;
+  isBehindBase: boolean;
   isDiverged: boolean;
   isWrongBranch: boolean;
   isDetached: boolean;
@@ -93,7 +95,7 @@ export interface RepoFlags {
 
 export const LOSE_WORK_FLAGS = new Set<keyof RepoFlags>([
   "isDirty",
-  "isUnpushed",
+  "isAheadOfShare",
   "isDetached",
   "isWrongBranch",
   "hasOperation",
@@ -107,15 +109,16 @@ export const AT_RISK_FLAGS = new Set<keyof RepoFlags>([
   "isBaseMissing",
 ]);
 
-export const STALE_FLAGS = new Set<keyof RepoFlags>(["needsPull", "needsRebase", "isDiverged"]);
+export const STALE_FLAGS = new Set<keyof RepoFlags>(["isBehindShare", "isBehindBase", "isDiverged"]);
 
 /** Flags that are always true when isMerged is true — displaying them adds noise. */
-export const MERGED_IMPLIED_FLAGS = new Set<keyof RepoFlags>(["needsRebase", "isDiverged"]);
+export const MERGED_IMPLIED_FLAGS = new Set<keyof RepoFlags>(["isBehindBase", "isDiverged"]);
 
 export const FLAG_LABELS: { key: keyof RepoFlags; label: string }[] = [
   // Work-safety / immediate-attention flags.
   { key: "isDirty", label: "dirty" },
-  { key: "isUnpushed", label: "unpushed" },
+  { key: "hasConflict", label: "conflict" },
+  { key: "isAheadOfShare", label: "ahead share" },
   { key: "hasOperation", label: "operation" },
   { key: "isDetached", label: "detached" },
   { key: "isWrongBranch", label: "wrong branch" },
@@ -129,8 +132,8 @@ export const FLAG_LABELS: { key: keyof RepoFlags; label: string }[] = [
   { key: "isGone", label: "gone" },
   // Staleness and informational tails.
   { key: "isDiverged", label: "diverged" },
-  { key: "needsPull", label: "behind share" },
-  { key: "needsRebase", label: "behind base" },
+  { key: "isBehindShare", label: "behind share" },
+  { key: "isBehindBase", label: "behind base" },
 ];
 
 // ── Age Filtering ──

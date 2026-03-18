@@ -9,10 +9,12 @@ describe("computeFlags", () => {
     const flags = computeFlags(makeRepo(), "feature");
     expect(flags).toEqual({
       isDirty: false,
-      isUnpushed: false,
-      isNeverPushed: false,
-      needsPull: false,
-      needsRebase: false,
+      hasConflict: false,
+      isAheadOfShare: false,
+      hasNoShare: false,
+      isBehindShare: false,
+      isAheadOfBase: false,
+      isBehindBase: false,
       isDiverged: false,
       isWrongBranch: false,
       isDetached: false,
@@ -46,7 +48,44 @@ describe("computeFlags", () => {
     expect(flags.isDirty).toBe(true);
   });
 
-  test("isUnpushed when toPush > 0", () => {
+  test("hasConflict when local has conflicts", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 0, modified: 0, untracked: 0, conflicts: 2 } }), "feature");
+    expect(flags.hasConflict).toBe(true);
+  });
+
+  test("not hasConflict when no conflicts", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 1, modified: 1, untracked: 1, conflicts: 0 } }), "feature");
+    expect(flags.hasConflict).toBe(false);
+  });
+
+  test("isAheadOfBase when base.ahead > 0", () => {
+    const flags = computeFlags(
+      makeRepo({
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: null,
+          ahead: 3,
+          behind: 0,
+          baseMergedIntoDefault: null,
+        },
+      }),
+      "feature",
+    );
+    expect(flags.isAheadOfBase).toBe(true);
+  });
+
+  test("not isAheadOfBase when base.ahead is 0", () => {
+    const flags = computeFlags(makeRepo(), "feature");
+    expect(flags.isAheadOfBase).toBe(false);
+  });
+
+  test("not isAheadOfBase when base is null", () => {
+    const flags = computeFlags(makeRepo({ base: null }), "feature");
+    expect(flags.isAheadOfBase).toBe(false);
+  });
+
+  test("isAheadOfShare when toPush > 0", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -59,10 +98,10 @@ describe("computeFlags", () => {
       }),
       "feature",
     );
-    expect(flags.isUnpushed).toBe(true);
+    expect(flags.isAheadOfShare).toBe(true);
   });
 
-  test("isUnpushed when noRef with base.ahead > 0", () => {
+  test("isAheadOfShare when noRef with base.ahead > 0", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -83,10 +122,10 @@ describe("computeFlags", () => {
       }),
       "feature",
     );
-    expect(flags.isUnpushed).toBe(true);
+    expect(flags.isAheadOfShare).toBe(true);
   });
 
-  test("not isUnpushed when gone even with base.ahead > 0", () => {
+  test("not isAheadOfShare when gone even with base.ahead > 0", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -107,16 +146,16 @@ describe("computeFlags", () => {
       }),
       "feature",
     );
-    expect(flags.isUnpushed).toBe(false);
+    expect(flags.isAheadOfShare).toBe(false);
     expect(flags.isGone).toBe(true);
   });
 
-  test("not isUnpushed when up to date with remote", () => {
+  test("not isAheadOfShare when up to date with remote", () => {
     const flags = computeFlags(makeRepo(), "feature");
-    expect(flags.isUnpushed).toBe(false);
+    expect(flags.isAheadOfShare).toBe(false);
   });
 
-  test("not isUnpushed when share has no ref and no base ahead", () => {
+  test("not isAheadOfShare when share has no ref and no base ahead", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -129,10 +168,10 @@ describe("computeFlags", () => {
       }),
       "feature",
     );
-    expect(flags.isUnpushed).toBe(false);
+    expect(flags.isAheadOfShare).toBe(false);
   });
 
-  test("isNeverPushed when refMode is noRef", () => {
+  test("hasNoShare when refMode is noRef", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -145,15 +184,15 @@ describe("computeFlags", () => {
       }),
       "feature",
     );
-    expect(flags.isNeverPushed).toBe(true);
+    expect(flags.hasNoShare).toBe(true);
   });
 
-  test("not isNeverPushed when refMode is configured", () => {
+  test("not hasNoShare when refMode is configured", () => {
     const flags = computeFlags(makeRepo(), "feature");
-    expect(flags.isNeverPushed).toBe(false);
+    expect(flags.hasNoShare).toBe(false);
   });
 
-  test("not isNeverPushed when refMode is gone", () => {
+  test("not hasNoShare when refMode is gone", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -166,10 +205,10 @@ describe("computeFlags", () => {
       }),
       "feature",
     );
-    expect(flags.isNeverPushed).toBe(false);
+    expect(flags.hasNoShare).toBe(false);
   });
 
-  test("needsPull when toPull > 0", () => {
+  test("isBehindShare when toPull > 0", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -182,10 +221,10 @@ describe("computeFlags", () => {
       }),
       "feature",
     );
-    expect(flags.needsPull).toBe(true);
+    expect(flags.isBehindShare).toBe(true);
   });
 
-  test("needsPull is false when all pull commits are replaced", () => {
+  test("isBehindShare is false when all pull commits are replaced", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -199,10 +238,10 @@ describe("computeFlags", () => {
       }),
       "feature",
     );
-    expect(flags.needsPull).toBe(false);
+    expect(flags.isBehindShare).toBe(false);
   });
 
-  test("needsPull is false when all pull commits are rebased + replaced", () => {
+  test("isBehindShare is false when all pull commits are rebased + replaced", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -216,10 +255,10 @@ describe("computeFlags", () => {
       }),
       "feature",
     );
-    expect(flags.needsPull).toBe(false);
+    expect(flags.isBehindShare).toBe(false);
   });
 
-  test("needsPull is true when some pull commits are genuinely new despite replaced", () => {
+  test("isBehindShare is true when some pull commits are genuinely new despite replaced", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -233,10 +272,10 @@ describe("computeFlags", () => {
       }),
       "feature",
     );
-    expect(flags.needsPull).toBe(true);
+    expect(flags.isBehindShare).toBe(true);
   });
 
-  test("needsPull is false when all pull commits are squashed", () => {
+  test("isBehindShare is false when all pull commits are squashed", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -250,10 +289,10 @@ describe("computeFlags", () => {
       }),
       "feature",
     );
-    expect(flags.needsPull).toBe(false);
+    expect(flags.isBehindShare).toBe(false);
   });
 
-  test("needsPull is true when squashed only partially covers pull", () => {
+  test("isBehindShare is true when squashed only partially covers pull", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -267,10 +306,10 @@ describe("computeFlags", () => {
       }),
       "feature",
     );
-    expect(flags.needsPull).toBe(true);
+    expect(flags.isBehindShare).toBe(true);
   });
 
-  test("needsRebase when behind base", () => {
+  test("isBehindBase when behind base", () => {
     const flags = computeFlags(
       makeRepo({
         base: {
@@ -284,7 +323,7 @@ describe("computeFlags", () => {
       }),
       "feature",
     );
-    expect(flags.needsRebase).toBe(true);
+    expect(flags.isBehindBase).toBe(true);
   });
 
   test("isDiverged when both ahead and behind base", () => {
@@ -571,7 +610,7 @@ describe("isAtRisk", () => {
     expect(isAtRisk(flags)).toBe(true);
   });
 
-  test("returns false when only needsRebase (stale, not at-risk)", () => {
+  test("returns false when only isBehindBase (stale, not at-risk)", () => {
     const flags = computeFlags(
       makeRepo({
         base: {
@@ -605,7 +644,7 @@ describe("isAtRisk", () => {
     expect(isAtRisk(flags)).toBe(false);
   });
 
-  test("returns false when only needsPull (stale, not at-risk)", () => {
+  test("returns false when only isBehindShare (stale, not at-risk)", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -679,7 +718,7 @@ describe("flagLabels", () => {
     expect(flagLabels(flags)).toEqual([]);
   });
 
-  test("returns correct labels for dirty + unpushed repo", () => {
+  test("returns correct labels for dirty + ahead share repo", () => {
     const flags = computeFlags(
       makeRepo({
         local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
@@ -693,7 +732,7 @@ describe("flagLabels", () => {
       }),
       "feature",
     );
-    expect(flagLabels(flags)).toEqual(["dirty", "unpushed"]);
+    expect(flagLabels(flags)).toEqual(["dirty", "ahead share"]);
   });
 
   test("returns all relevant labels for multiple issues", () => {
@@ -888,7 +927,7 @@ describe("wouldLoseWork", () => {
     expect(wouldLoseWork(flags)).toBe(true);
   });
 
-  test("returns true when isUnpushed", () => {
+  test("returns true when isAheadOfShare", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -929,7 +968,7 @@ describe("wouldLoseWork", () => {
     expect(wouldLoseWork(flags)).toBe(true);
   });
 
-  test("returns false when only needsPull", () => {
+  test("returns false when only isBehindShare", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -945,7 +984,7 @@ describe("wouldLoseWork", () => {
     expect(wouldLoseWork(flags)).toBe(false);
   });
 
-  test("returns false when only needsRebase", () => {
+  test("returns false when only isBehindBase", () => {
     const flags = computeFlags(
       makeRepo({
         base: {
@@ -1190,7 +1229,7 @@ describe("computeSummaryAggregates decoupled display gate", () => {
     ];
     const result = computeSummaryAggregates(repos, "feature");
     expect(result.atRiskCount).toBe(0);
-    expect(result.statusCounts.some((c) => c.key === "needsRebase")).toBe(true);
+    expect(result.statusCounts.some((c) => c.key === "isBehindBase")).toBe(true);
   });
 
   test("statusCounts includes gone flag even when not at-risk", () => {
@@ -1248,7 +1287,7 @@ describe("computeSummaryAggregates decoupled display gate", () => {
     ];
     const result = computeSummaryAggregates(repos, "feature");
     // "behind base" should appear with count 1 (only the non-merged repo)
-    const behindBase = result.statusCounts.find((c) => c.key === "needsRebase");
+    const behindBase = result.statusCounts.find((c) => c.key === "isBehindBase");
     expect(behindBase).toBeDefined();
     expect(behindBase?.count).toBe(1);
     // "diverged" should not appear (only the merged repo had it, and it's suppressed)
@@ -1439,26 +1478,26 @@ describe("computeSummaryAggregates outdatedOnlyCount", () => {
 });
 
 describe("formatStatusCounts with outdated", () => {
-  test("shows yellow unpushed when no outdated repos", () => {
-    const statusCounts = [{ label: "unpushed", count: 3, key: "isUnpushed" as const }];
+  test("shows yellow ahead share when no outdated repos", () => {
+    const statusCounts = [{ label: "ahead share", count: 3, key: "isAheadOfShare" as const }];
     const result = formatStatusCounts(statusCounts, 0);
-    expect(result).toContain("unpushed");
+    expect(result).toContain("ahead share");
   });
 
-  test("shows outdated instead of unpushed when all are outdated-only", () => {
-    const statusCounts = [{ label: "unpushed", count: 3, key: "isUnpushed" as const }];
+  test("shows outdated instead of ahead share when all are outdated-only", () => {
+    const statusCounts = [{ label: "ahead share", count: 3, key: "isAheadOfShare" as const }];
     const result = formatStatusCounts(statusCounts, 3);
     expect(result).toBe("outdated");
   });
 
-  test("shows both unpushed and outdated when mixed", () => {
-    const statusCounts = [{ label: "unpushed", count: 3, key: "isUnpushed" as const }];
+  test("shows both ahead share and outdated when mixed", () => {
+    const statusCounts = [{ label: "ahead share", count: 3, key: "isAheadOfShare" as const }];
     const result = formatStatusCounts(statusCounts, 2);
-    expect(result).toContain("unpushed");
+    expect(result).toContain("ahead share");
     expect(result).toContain("outdated");
   });
 
-  test("does not affect non-unpushed labels", () => {
+  test("does not affect non-ahead-share labels", () => {
     const statusCounts = [{ label: "dirty", count: 2, key: "isDirty" as const }];
     const result = formatStatusCounts(statusCounts, 1);
     expect(result).toContain("dirty");

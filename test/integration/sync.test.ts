@@ -1314,8 +1314,8 @@ describe("--where filtering", () => {
       await git(join(env.projectDir, "my-feature/repo-b"), ["add", "feature.txt"]);
       await git(join(env.projectDir, "my-feature/repo-b"), ["commit", "-m", "feature"]);
 
-      // --where unpushed should only show repo-b (which has a commit), not repo-a (only dirty)
-      const result = await arb(env, ["push", "--where", "unpushed", "--dry-run", "--no-fetch"], {
+      // --where ahead-share should only show repo-b (which has a commit), not repo-a (only dirty)
+      const result = await arb(env, ["push", "--where", "ahead-share", "--dry-run", "--no-fetch"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);

@@ -13,7 +13,7 @@ Shows all workspaces with their branch, repo count, last commit date, and aggreg
 ```
   WORKSPACE    BRANCH          REPOS    LAST COMMIT    STATUS
 * ws-one       my-feature      2         3 days        no issues
-  ws-two       feat/payments   1         2 months      dirty, unpushed
+  ws-two       feat/payments   1         2 months      dirty, ahead share
 ```
 
 The active workspace (the one you're currently inside) is marked with `*`. The LAST COMMIT column shows when work last happened (the most recent commit author date across all repos), helping you gauge workspace staleness.
@@ -22,7 +22,7 @@ Fetches all repos by default for fresh remote data (skip with `-N`/`--no-fetch`)
 
 ```bash
 arb list --where at-risk           # workspaces with at-risk repos
-arb list --where dirty+unpushed    # workspaces where a repo is both dirty AND unpushed
+arb list --where dirty+ahead-share    # workspaces where a repo is both dirty AND ahead-share
 arb list --where stale             # workspaces that may need attention
 ```
 
@@ -33,7 +33,7 @@ Use `--older-than` and `--newer-than` to filter by workspace age — how recentl
 ```bash
 arb list --older-than 30d    # workspaces with no activity in the last 30 days
 arb list --newer-than 7d     # workspaces active in the last week
-arb list --older-than 2w --where unpushed   # old workspaces that still have unpushed commits
+arb list --older-than 2w --where ahead-share   # old workspaces that still have unpushed commits
 ```
 
 Durations use `d` (days), `w` (weeks), `m` (months), or `y` (years). `--older-than` and `--newer-than` compose with `--where` as AND.
