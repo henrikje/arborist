@@ -17,11 +17,10 @@ describe("version & help", () => {
       expect(result.exitCode).not.toBe(0);
     }));
 
-  test("arb -v outputs version number", () =>
+  test("arb -v is not a version alias", () =>
     withBareEnv(async (env) => {
       const result = await arb(env, ["-v"]);
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toMatch(/^Arborist (dev\.[0-9a-f]+|[0-9]+\.[0-9]+\.[0-9]+)/);
+      expect(result.exitCode).not.toBe(0);
     }));
 });
 

@@ -157,7 +157,7 @@ program
   .name("arb")
   .enablePositionalOptions()
   .description("Arborist is a workspace manager that makes multi-repo development safe and simple.")
-  .version(`Arborist ${ARB_VERSION}`, "-v, --version")
+  .version(`Arborist ${ARB_VERSION}`, "--version")
   .option("-C <directory>", "Run as if arb was started in <directory>")
   .option("--debug", "Enable debug output")
   .usage("[options] [command]")
