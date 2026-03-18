@@ -148,7 +148,8 @@ export async function integrate(
     remotesMap,
     assess,
     postAssess,
-    formatPlan: (nextAssessments) => formatIntegratePlan(nextAssessments, mode, options.verbose, options.graph),
+    formatPlan: (nextAssessments) =>
+      formatIntegratePlan(nextAssessments, mode, options.verbose, options.graph, workspace),
     onPostFetch: () => cache.invalidateAfterFetch(),
   });
 
@@ -191,6 +192,7 @@ export async function integrate(
   const skipped = assessments.filter((a) => a.outcome === "skip" && !isDirtyButUpToDate(a));
 
   if (willOperate.length === 0) {
+    // Retarget config (explicit --retarget)
     const wroteRetargetConfig = await maybeWriteRetargetConfig({
       dryRun: options.dryRun,
       wsDir,
@@ -202,29 +204,33 @@ export async function integrate(
     if (wroteRetargetConfig && retargetConfigTarget && retargetConfigFrom) {
       inlineResult(workspace, `base branch changed from ${retargetConfigFrom} to ${retargetConfigTarget}`);
       process.stderr.write("\n");
+      return;
     }
+
+    // Stale base fallback (needs confirmation — plan already shows the change)
     if (!wroteRetargetConfig && hasBaseFallback(assessments)) {
-      if (!options.dryRun) {
-        await confirmOrExit({
-          yes: options.yes,
-          message: "All repos up to date. Update stale base branch config?",
-        });
+      if (options.dryRun) {
+        dryRunNotice();
+        return;
       }
+      await confirmOrExit({
+        yes: options.yes,
+        message: "Update base branch?",
+      });
+      process.stderr.write("\n");
       const fallbackResult = await maybeWriteBaseFallbackConfig({
-        dryRun: options.dryRun,
+        dryRun: false,
         wsDir,
         branch,
         assessments,
       });
       if (fallbackResult) {
         inlineResult(workspace, `base branch changed from ${fallbackResult.from} to ${fallbackResult.to}`);
-        process.stderr.write("\n");
       }
-      if (options.dryRun) {
-        dryRunNotice();
-      }
+      process.stderr.write("\n");
       return;
     }
+
     info(upToDate.length > 0 ? "All repos up to date" : "Nothing to do");
     return;
   }
@@ -529,11 +535,58 @@ function isDirtyButUpToDate(a: RepoAssessment): boolean {
   return a.outcome === "skip" && a.skipFlag === "dirty" && a.baseBranch != null && a.behind === 0;
 }
 
+export interface PlannedConfigAction {
+  workspace: string;
+  description: string;
+}
+
+/** Derive planned workspace config changes from assessments (for plan display). */
+export function computePlannedConfigActions(assessments: RepoAssessment[], workspace: string): PlannedConfigAction[] {
+  // Retarget config change (takes priority — mutually exclusive with fallback)
+  const retargetTargets = [
+    ...new Set(
+      assessments
+        .filter((a) => a.retarget?.to && a.retarget.reason !== "branch-merged")
+        .map((a) => a.retarget?.to as string),
+    ),
+  ];
+  if (retargetTargets.length === 1) {
+    const target = retargetTargets[0];
+    const from = assessments.find((a) => a.retarget?.to === target && a.retarget?.reason !== "branch-merged")?.retarget
+      ?.from;
+    if (from && target) {
+      return [{ workspace, description: `change base branch from ${from} to ${target}` }];
+    }
+  }
+
+  // Stale base fallback
+  if (hasBaseFallback(assessments)) {
+    const hasBaseMergedSkip = assessments.some(
+      (a) => a.outcome === "skip" && a.skipFlag === "base-merged-into-default",
+    );
+    if (!hasBaseMergedSkip) {
+      const nonSkip = assessments.filter((a) => a.outcome !== "skip" || isDirtyButUpToDate(a));
+      const first = nonSkip.find((a) => a.baseFallback != null);
+      if (first?.baseFallback) {
+        return [
+          {
+            workspace,
+            description: `change base branch from ${first.baseFallback} to ${first.baseBranch ?? "default"}`,
+          },
+        ];
+      }
+    }
+  }
+
+  return [];
+}
+
 export function buildIntegratePlanNodes(
   assessments: RepoAssessment[],
   mode: IntegrateMode,
   verbose?: boolean,
   graph?: boolean,
+  configActions?: PlannedConfigAction[],
 ): OutputNode[] {
   const nodes: OutputNode[] = [{ kind: "gap" }];
 
@@ -579,6 +632,17 @@ export function buildIntegratePlanNodes(
     rows,
   });
 
+  // Planned config changes (non-repo actions)
+  if (configActions && configActions.length > 0) {
+    nodes.push({ kind: "gap" });
+    for (const action of configActions) {
+      nodes.push({
+        kind: "hint",
+        cell: cell(`  [${action.workspace}] ${action.description}`),
+      });
+    }
+  }
+
   // Wrong branch repos hint
   const wrongBranchCount = assessments.filter((a) => a.wrongBranch && a.outcome === "will-operate").length;
   if (wrongBranchCount > 0) {
@@ -607,8 +671,10 @@ export function formatIntegratePlan(
   mode: IntegrateMode,
   verbose?: boolean,
   graph?: boolean,
+  workspace?: string,
 ): string {
-  const nodes = buildIntegratePlanNodes(assessments, mode, verbose, graph);
+  const configActions = workspace ? computePlannedConfigActions(assessments, workspace) : [];
+  const nodes = buildIntegratePlanNodes(assessments, mode, verbose, graph, configActions);
   const envCols = Number(process.env.COLUMNS);
   const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
   const ctx: RenderContext = { tty: isTTY(), terminalWidth: termCols > 0 ? termCols : undefined };

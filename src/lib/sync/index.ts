@@ -1,6 +1,8 @@
 export {
+  type PlannedConfigAction,
   type RepoAssessment,
   buildIntegratePlanNodes,
+  computePlannedConfigActions,
   describeIntegrateAction,
   formatIntegratePlan,
   integrate,

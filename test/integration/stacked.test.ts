@@ -670,8 +670,9 @@ describe("explicit retarget to non-default branch", () => {
         cwd: join(env.projectDir, "stacked"),
       });
       expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("change base branch from feat/auth to main");
       expect(result.output).toContain("base branch changed from feat/auth to main");
-      expect(result.output).toContain("All repos up to date");
+      expect(result.output).toContain("up to date");
 
       const after = await readFile(join(env.projectDir, "stacked/.arbws/config.json"), "utf-8");
       expect(JSON.parse(after).base).toBeUndefined();
