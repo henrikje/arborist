@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { Command, type Help } from "commander";
+import { Command, Help } from "commander";
 import { registerAttachCommand } from "./commands/attach";
 import { registerBranchCommand } from "./commands/branch";
 import { registerCdCommand } from "./commands/cd";
@@ -41,8 +41,31 @@ const GROUP_DESCRIPTIONS: Record<string, string> = {
   "Execution Commands:": "  Run commands or open tools across workspace repos.",
 };
 
+// Basic help: curated subset shown for bare `arb` (no args)
+const BASIC_HELP_COMMANDS = new Set([
+  "help",
+  "init",
+  "repo",
+  "create",
+  "delete",
+  "list",
+  "status",
+  "push",
+  "pull",
+  "rebase",
+  "merge",
+]);
+const BASIC_GROUP_NAMES: Record<string, string> = {
+  "Setup Commands:": "Getting Started:",
+  "Workspace Commands:": "Workspaces:",
+  "Inspection Commands:": "Workspaces:", // status merges into Workspaces in basic help
+  "Synchronization Commands:": "Synchronization:",
+  "Execution Commands:": "Execution:",
+};
+
 function arbFormatHelp(cmd: Command, helper: Help): string {
   const termWidth = helper.padWidth(cmd, helper);
+  const isBasic = !!(helper as Help & { _isBasicHelp?: boolean })._isBasicHelp && cmd.name() === "arb";
 
   function callFormatItem(term: string, description: string): string {
     return helper.formatItem(term, termWidth, description, helper);
@@ -81,7 +104,7 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
       output = output.concat([helper.boxWrap(helper.styleCommandDescription(commandDescription), helpWidth), ""]);
     }
     // Extra description lines for the root command only
-    if (cmd.name() === "arb") {
+    if (cmd.name() === "arb" && !isBasic) {
       output = output.concat([
         helper.boxWrap(
           "Built on Git worktrees, it creates isolated workspaces so you can work on cross-repo features in parallel.",
@@ -103,7 +126,31 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
     (sub: Command) => sub.helpGroup() || "Commands:",
   );
 
-  if (cmd.name() === "arb") {
+  if (cmd.name() === "arb" && isBasic) {
+    output = output.concat(["These are common arb commands used in various situations:", ""]);
+    // Basic help: collect commands into simplified groups, merging where needed
+    const basicGroups = new Map<string, Command[]>();
+    commandGroups.forEach((commands, group) => {
+      const filtered = commands.filter((c) => BASIC_HELP_COMMANDS.has(c.name()));
+      if (filtered.length === 0) return;
+      const groupName = BASIC_GROUP_NAMES[group] ?? group;
+      const existing = basicGroups.get(groupName);
+      if (existing) {
+        existing.push(...filtered);
+      } else {
+        basicGroups.set(groupName, [...filtered]);
+      }
+    });
+    basicGroups.forEach((commands, groupName) => {
+      const list = commands.map((subcommand) =>
+        callFormatItem(
+          helper.styleSubcommandTerm(helper.subcommandTerm(subcommand)),
+          helper.styleSubcommandDescription(helper.subcommandDescription(subcommand)),
+        ),
+      );
+      output = output.concat([helper.styleTitle(groupName), ...list, ""]);
+    });
+  } else if (cmd.name() === "arb") {
     commandGroups.forEach((commands, group) => {
       if (commands.length === 0) return;
       const list = commands.map((subcommand) =>
@@ -132,32 +179,40 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
     });
   }
 
-  // Help Topics (root command only, before options)
-  if (cmd.name() === "arb") {
-    const topics = allTopics();
-    if (topics.length > 0) {
-      const topicList = topics.map((t) =>
-        callFormatItem(helper.styleSubcommandTerm(t.name), helper.styleSubcommandDescription(t.summary)),
-      );
-      output = output.concat([
-        helper.styleTitle("Help Topics:"),
-        dim("  Run 'arb help <topic>' to read about a topic."),
-        "",
-        ...topicList,
-        "",
-      ]);
+  if (!isBasic) {
+    // Help Topics (root command only, before options)
+    if (cmd.name() === "arb") {
+      const topics = allTopics();
+      if (topics.length > 0) {
+        const topicList = topics.map((t) =>
+          callFormatItem(helper.styleSubcommandTerm(t.name), helper.styleSubcommandDescription(t.summary)),
+        );
+        output = output.concat([
+          helper.styleTitle("Help Topics:"),
+          dim("  Run 'arb help <topic>' to read about a topic."),
+          "",
+          ...topicList,
+          "",
+        ]);
+      }
     }
-  }
 
-  // Global Options
-  const optionList = helper.visibleOptions(cmd).map((option) => {
-    return callFormatItem(
-      helper.styleOptionTerm(helper.optionTerm(option)),
-      helper.styleOptionDescription(helper.optionDescription(option)),
-    );
-  });
-  if (optionList.length > 0) {
-    output = output.concat([helper.styleTitle("Options:"), ...optionList, ""]);
+    // Global Options
+    const optionList = helper.visibleOptions(cmd).map((option) => {
+      return callFormatItem(
+        helper.styleOptionTerm(helper.optionTerm(option)),
+        helper.styleOptionDescription(helper.optionDescription(option)),
+      );
+    });
+    if (optionList.length > 0) {
+      output = output.concat([helper.styleTitle("Options:"), ...optionList, ""]);
+    }
+  } else {
+    // Basic help footer
+    output = output.concat([
+      dim("Run 'arb --help' for more information, including all commands, options, and help topics."),
+      "",
+    ]);
   }
 
   return output.join("\n");
@@ -172,7 +227,14 @@ program
   .option("-C <directory>", "Run as if arb was started in <directory>")
   .option("--debug", "Enable debug output")
   .usage("[options] [command]")
-  .configureHelp({ formatHelp: arbFormatHelp, styleTitle: (str) => bold(str) })
+  .configureHelp({
+    formatHelp: arbFormatHelp,
+    styleTitle: (str) => bold(str),
+    prepareContext(contextOptions) {
+      Help.prototype.prepareContext.call(this, contextOptions);
+      (this as Help & { _isBasicHelp?: boolean })._isBasicHelp = !!contextOptions.error;
+    },
+  })
   .configureOutput({
     outputError: (str) => {
       error(str.replace(/^error: /, "").trimEnd());

@@ -24,40 +24,165 @@ describe("version & help", () => {
     }));
 });
 
-// ── bare arb (shows help) ────────────────────────────────────────
+// ── bare arb (basic help) ────────────────────────────────────────
 
-describe("bare arb (shows help)", () => {
-  test("bare arb shows help with usage and commands", () =>
+describe("bare arb (basic help)", () => {
+  test("shows usage line", () =>
     withBareEnv(async (env) => {
       const result = await arb(env, []);
       expect(result.output).toContain("Usage:");
-      expect(result.output).toContain("Commands:");
+    }));
+
+  test("shows core commands: help, init, repo, create, delete, list, status", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, []);
+      for (const cmd of ["help", "init", "repo", "create", "delete", "list", "status"]) {
+        expect(result.output).toContain(cmd);
+      }
+    }));
+
+  test("shows sync commands: push, pull, rebase, merge", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, []);
+      for (const cmd of ["push", "pull", "rebase", "merge"]) {
+        expect(result.output).toContain(cmd);
+      }
+    }));
+
+  test("omits advanced commands: template, rename, path, cd, attach, detach, branch, log, diff, reset, exec, open", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, []);
+      for (const cmd of ["template", "rename", "attach", "detach", "branch", "log", "diff", "reset", "exec", "open"]) {
+        expect(result.output).not.toContain(`  ${cmd} `);
+      }
+    }));
+
+  test("omits help topics section", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, []);
+      expect(result.output).not.toContain("Help Topics:");
+    }));
+
+  test("omits options section", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, []);
+      expect(result.output).not.toContain("Options:");
+    }));
+
+  test("omits etymology and URL", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, []);
+      expect(result.output).not.toContain("arborist (noun)");
+      expect(result.output).not.toContain("github.com/henrikje/arborist");
+    }));
+
+  test("indicates this is a subset of commands", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, []);
+      expect(result.output).toContain("These are common arb commands");
+    }));
+
+  test("shows simplified group names", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, []);
+      expect(result.output).toContain("Getting Started:");
+      expect(result.output).toContain("Workspaces:");
+      expect(result.output).toContain("Synchronization:");
+      expect(result.output).not.toContain("Setup Commands:");
+      expect(result.output).not.toContain("Workspace Commands:");
+    }));
+
+  test("shows footer pointing to --help", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, []);
+      expect(result.output).toContain("arb --help");
+    }));
+
+  test("writes to stderr (not stdout)", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, []);
+      expect(result.stderr).toContain("Usage:");
+      expect(result.stdout).toBe("");
+    }));
+
+  test("exits with code 1", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, []);
+      expect(result.exitCode).toBe(1);
     }));
 });
 
-// ── help ──────────────────────────────────────────────────────────
+// ── full help (--help, -h, help) ─────────────────────────────────
 
-describe("help", () => {
-  test("arb help shows full usage text", () =>
-    withBareEnv(async (env) => {
-      const result = await arb(env, ["help"]);
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("Usage:");
-      expect(result.output).toContain("repo");
-    }));
-
-  test("arb --help shows usage", () =>
+describe("full help", () => {
+  test("arb --help shows all commands", () =>
     withBareEnv(async (env) => {
       const result = await arb(env, ["--help"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("Usage:");
+      for (const cmd of ["template", "rename", "attach", "detach", "branch", "log", "diff", "reset", "exec", "open"]) {
+        expect(result.output).toContain(cmd);
+      }
     }));
 
-  test("arb -h shows usage", () =>
+  test("arb --help shows help topics", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, ["--help"]);
+      expect(result.output).toContain("Help Topics:");
+      expect(result.output).toContain("where");
+      expect(result.output).toContain("remotes");
+      expect(result.output).toContain("stacked");
+    }));
+
+  test("arb --help shows options", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, ["--help"]);
+      expect(result.output).toContain("Options:");
+      expect(result.output).toContain("--version");
+      expect(result.output).toContain("--debug");
+    }));
+
+  test("arb --help shows etymology and URL", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, ["--help"]);
+      expect(result.output).toContain("arborist (noun)");
+      expect(result.output).toContain("github.com/henrikje/arborist");
+    }));
+
+  test("arb --help uses full group names with descriptions", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, ["--help"]);
+      expect(result.output).toContain("Setup Commands:");
+      expect(result.output).toContain("Workspace Commands:");
+      expect(result.output).toContain("Inspection Commands:");
+      expect(result.output).toContain("Synchronization Commands:");
+      expect(result.output).toContain("Execution Commands:");
+    }));
+
+  test("arb --help writes to stdout", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, ["--help"]);
+      expect(result.stdout).toContain("Usage:");
+    }));
+
+  test("arb -h shows full help", () =>
     withBareEnv(async (env) => {
       const result = await arb(env, ["-h"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("Usage:");
+      expect(result.output).toContain("Help Topics:");
+      expect(result.output).toContain("Options:");
+    }));
+
+  test("arb help shows full help (same as --help)", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, ["help"]);
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Usage:");
+      expect(result.output).toContain("Help Topics:");
+      expect(result.output).toContain("Options:");
+      expect(result.output).toContain("template");
+      expect(result.output).toContain("exec");
     }));
 
   test("arb help where shows filter syntax reference", () =>
