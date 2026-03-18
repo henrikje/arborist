@@ -30,7 +30,7 @@ import {
   error,
   info,
   isTTY,
-  listenForAbortKeypress,
+  listenForAbortSignal,
   scanProgress,
   warn,
 } from "../lib/terminal";
@@ -59,7 +59,7 @@ export function registerListCommand(program: Command): void {
     .command("list")
     .summary("List all workspaces")
     .description(
-      "List all workspaces in the project with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --dirty / -d to show only workspaces with dirty repos, or --where <filter> to filter by status flags (any workspace with at least one matching repo is shown). See 'arb help where' for filter syntax. Use --no-status to skip per-repo status gathering for faster output.\n\nFetches workspace repos by default for fresh remote data (skip with -N/--no-fetch). Press Escape during the fetch to cancel and use stale data. Quiet mode (-q) skips fetching by default for scripting speed.\n\nUse --json for machine-readable output. See 'arb help scripting' for output modes and piping.",
+      "List all workspaces in the project with aggregate status. Shows branch, base, repo count, last commit date, and status for each workspace. The last commit date is the most recent author date across all repos, shown as relative time (e.g. '3 days ago'). The active workspace (the one you're currently inside) is marked with *.\n\nUse --dirty / -d to show only workspaces with dirty repos, or --where <filter> to filter by status flags (any workspace with at least one matching repo is shown). See 'arb help where' for filter syntax. Use --no-status to skip per-repo status gathering for faster output.\n\nFetches workspace repos by default for fresh remote data (skip with -N/--no-fetch). Press Ctrl+C during the fetch to cancel and use stale data. Quiet mode (-q) skips fetching by default for scripting speed.\n\nUse --json for machine-readable output. See 'arb help scripting' for output modes and piping.",
     )
     .option("--fetch", "Fetch workspace repos before listing (default)")
     .option("-N, --no-fetch", "Skip fetching")
@@ -248,7 +248,7 @@ export function registerListCommand(program: Command): void {
             // 3-phase: placeholder + fetching → placeholder + scanning → fresh
             const fetchDirs = repoNames.map((r) => `${ctx.reposDir}/${r}`);
             const remotesMap = await cache.resolveRemotesMap(repoNames, ctx.reposDir);
-            const { signal: abortSignal, cleanup: abortCleanup } = listenForAbortKeypress();
+            const { signal: abortSignal, cleanup: abortCleanup } = listenForAbortSignal();
             const fetchPromise = parallelFetch(fetchDirs, undefined, remotesMap, {
               silent: true,
               signal: abortSignal,
@@ -262,49 +262,52 @@ export function registerListCommand(program: Command): void {
             const placeholder = formatListTable(metadata.rows, true);
 
             try {
-              await runPhasedRender([
-                {
-                  render: () => placeholder + fetchSuffix(fetchDirs.length, { abortable: true }),
-                },
-                {
-                  render: async () => {
-                    if (abortSignal.aborted) {
-                      state.aborted = true;
-                      return placeholder;
-                    }
-                    state.fetchResults = await fetchPromise;
-                    if (abortSignal.aborted) {
-                      state.aborted = true;
-                      return placeholder;
-                    }
-                    cache.invalidateAfterFetch();
-                    return placeholder + dim("Scanning...");
+              await runPhasedRender(
+                [
+                  {
+                    render: () => placeholder + fetchSuffix(fetchDirs.length, { abortable: true }),
                   },
-                },
-                {
-                  render: async () => {
-                    if (state.aborted) return placeholder;
-                    const total = metadata.toScan.length;
-                    let analyzed = 0;
-                    const { rows: statusRows, timedOutCount } = await gatherListStatus(
-                      metadata,
-                      ctx,
-                      whereFilter,
-                      cache,
-                      {
-                        analysisCache: aCache,
-                        silent: true,
-                        ageFilter,
-                        onWorkspace: () => analyzeProgress(++analyzed, total),
-                      },
-                    );
-                    state.timedOutCount = timedOutCount;
-                    clearScanProgress();
-                    return formatListTable(statusRows, true);
+                  {
+                    render: async () => {
+                      if (abortSignal.aborted) {
+                        state.aborted = true;
+                        return placeholder;
+                      }
+                      state.fetchResults = await fetchPromise;
+                      if (abortSignal.aborted) {
+                        state.aborted = true;
+                        return placeholder;
+                      }
+                      cache.invalidateAfterFetch();
+                      return placeholder + dim("Scanning...");
+                    },
                   },
-                  write: (o) => process.stdout.write(o),
-                },
-              ]);
+                  {
+                    render: async () => {
+                      if (state.aborted) return placeholder;
+                      const total = metadata.toScan.length;
+                      let analyzed = 0;
+                      const { rows: statusRows, timedOutCount } = await gatherListStatus(
+                        metadata,
+                        ctx,
+                        whereFilter,
+                        cache,
+                        {
+                          analysisCache: aCache,
+                          silent: true,
+                          ageFilter,
+                          onWorkspace: () => analyzeProgress(++analyzed, total),
+                        },
+                      );
+                      state.timedOutCount = timedOutCount;
+                      clearScanProgress();
+                      return formatListTable(statusRows, true);
+                    },
+                    write: (o) => process.stdout.write(o),
+                  },
+                ],
+                { preserveTypeahead: true },
+              );
             } finally {
               abortCleanup();
             }
@@ -317,29 +320,32 @@ export function registerListCommand(program: Command): void {
             const total = metadata.toScan.length;
             let analyzed = 0;
             let phaseTimedOutCount = 0;
-            await runPhasedRender([
-              { render: () => formatListTable(metadata.rows, true) + dim("Scanning...") },
-              {
-                render: async () => {
-                  const { rows: statusRows, timedOutCount } = await gatherListStatus(
-                    metadata,
-                    ctx,
-                    whereFilter,
-                    cache,
-                    {
-                      analysisCache: aCache,
-                      silent: true,
-                      ageFilter,
-                      onWorkspace: () => analyzeProgress(++analyzed, total),
-                    },
-                  );
-                  phaseTimedOutCount = timedOutCount;
-                  clearScanProgress();
-                  return formatListTable(statusRows, true);
+            await runPhasedRender(
+              [
+                { render: () => formatListTable(metadata.rows, true) + dim("Scanning...") },
+                {
+                  render: async () => {
+                    const { rows: statusRows, timedOutCount } = await gatherListStatus(
+                      metadata,
+                      ctx,
+                      whereFilter,
+                      cache,
+                      {
+                        analysisCache: aCache,
+                        silent: true,
+                        ageFilter,
+                        onWorkspace: () => analyzeProgress(++analyzed, total),
+                      },
+                    );
+                    phaseTimedOutCount = timedOutCount;
+                    clearScanProgress();
+                    return formatListTable(statusRows, true);
+                  },
+                  write: (o) => process.stdout.write(o),
                 },
-                write: (o) => process.stdout.write(o),
-              },
-            ]);
+              ],
+              { preserveTypeahead: true },
+            );
             reportListTimeoutHint(phaseTimedOutCount);
           } else if (hasFilter && metadata.toScan.length > 0) {
             if (shouldFetch) await blockingFetchRepos(ctx, cache, repoNames);

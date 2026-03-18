@@ -28,7 +28,7 @@ import {
   dim,
   error,
   isTTY,
-  listenForAbortKeypress,
+  listenForAbortSignal,
   runWatchLoop,
   scanProgress,
   stderr,
@@ -55,7 +55,7 @@ export function registerStatusCommand(program: Command): void {
     .option("--schema", "Print JSON Schema for this command's --json output and exit")
     .summary("Show workspace status")
     .description(
-      "Show each repo's position relative to the base branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line), enabling composition like: arb status -q --where dirty | arb diff.\n\nUse --dirty to only show repos with uncommitted changes. Use --where <filter> to filter by status flags. See 'arb help where' for filter syntax. Fetches from all remotes by default for fresh data (skip with -N/--no-fetch). Press Escape during the fetch to cancel and use stale data. Quiet mode (-q) skips fetching by default for scripting speed. Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.\n\nUse --watch to enter a live dashboard that auto-refreshes on filesystem changes. Useful in a split terminal while AI agents work. Press f to fetch remote state on demand, q or Escape to quit. Combines with --verbose, --dirty, --where, and [repos...] filtering.\n\nMerged branches show the detected PR number when available (e.g. 'merged (#123), gone'), extracted from merge or squash commit subjects. JSON output includes detectedPr fields.\n\nSee 'arb help stacked' for stacked workspace status flags. See 'arb help scripting' for output modes and piping.",
+      "Show each repo's position relative to the base branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line), enabling composition like: arb status -q --where dirty | arb diff.\n\nUse --dirty to only show repos with uncommitted changes. Use --where <filter> to filter by status flags. See 'arb help where' for filter syntax. Fetches from all remotes by default for fresh data (skip with -N/--no-fetch). Press Ctrl+C during the fetch to cancel and use stale data. Quiet mode (-q) skips fetching by default for scripting speed. Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.\n\nUse --watch to enter a live dashboard that auto-refreshes on filesystem changes. Useful in a split terminal while AI agents work. Press f to fetch remote state on demand, q or Escape to quit. Combines with --verbose, --dirty, --where, and [repos...] filtering.\n\nMerged branches show the detected PR number when available (e.g. 'merged (#123), gone'), extracted from merge or squash commit subjects. JSON output includes detectedPr fields.\n\nSee 'arb help stacked' for stacked workspace status flags. See 'arb help scripting' for output modes and piping.",
     )
     .action(async (repoArgs: string[], options, command) => {
       if (options.schema) {
@@ -170,7 +170,7 @@ async function runStatus(
   const canPhase = shouldFetch && fetchDirs.length > 0 && !options.json && isTTY();
 
   if (canPhase) {
-    const { signal: abortSignal, cleanup: abortCleanup } = listenForAbortKeypress();
+    const { signal: abortSignal, cleanup: abortCleanup } = listenForAbortSignal();
     const fetchPromise = cache
       .resolveRemotesMap(repoNamesForFetch, ctx.reposDir)
       .then((remotesMap) => parallelFetch(fetchDirs, undefined, remotesMap, { silent: true, signal: abortSignal }));
@@ -184,41 +184,44 @@ async function runStatus(
     } = {};
 
     try {
-      await runPhasedRender([
-        {
-          render: async () => {
-            const data = await gatherFiltered();
-            state.staleRepos = data.repos;
-            state.staleTable = await renderStatusTable(data, wsDir, { verbose: options.verbose });
-            return state.staleTable + fetchSuffix(fetchDirs.length, { abortable: true });
+      await runPhasedRender(
+        [
+          {
+            render: async () => {
+              const data = await gatherFiltered();
+              state.staleRepos = data.repos;
+              state.staleTable = await renderStatusTable(data, wsDir, { verbose: options.verbose });
+              return state.staleTable + fetchSuffix(fetchDirs.length, { abortable: true });
+            },
+            write: stderr,
           },
-          write: stderr,
-        },
-        {
-          render: async () => {
-            if (abortSignal.aborted) {
-              state.aborted = true;
-              return state.staleTable as string;
-            }
-            state.fetchResults = await fetchPromise;
-            if (abortSignal.aborted) {
-              state.aborted = true;
-              return state.staleTable as string;
-            }
-            cache.invalidateAfterFetch();
-            // Reuse phase-1 results for repos whose fetch was a no-op
-            const unchanged = getUnchangedRepos(state.fetchResults);
-            const previousResults = new Map<string, RepoStatus>();
-            for (const repo of state.staleRepos ?? []) {
-              if (unchanged.has(repo.name)) previousResults.set(repo.name, repo);
-            }
-            const data = await gatherFiltered(previousResults);
-            state.finalRepos = data.repos;
-            return await renderStatusTable(data, wsDir, { verbose: options.verbose });
+          {
+            render: async () => {
+              if (abortSignal.aborted) {
+                state.aborted = true;
+                return state.staleTable as string;
+              }
+              state.fetchResults = await fetchPromise;
+              if (abortSignal.aborted) {
+                state.aborted = true;
+                return state.staleTable as string;
+              }
+              cache.invalidateAfterFetch();
+              // Reuse phase-1 results for repos whose fetch was a no-op
+              const unchanged = getUnchangedRepos(state.fetchResults);
+              const previousResults = new Map<string, RepoStatus>();
+              for (const repo of state.staleRepos ?? []) {
+                if (unchanged.has(repo.name)) previousResults.set(repo.name, repo);
+              }
+              const data = await gatherFiltered(previousResults);
+              state.finalRepos = data.repos;
+              return await renderStatusTable(data, wsDir, { verbose: options.verbose });
+            },
+            write: (output) => process.stdout.write(output),
           },
-          write: (output) => process.stdout.write(output),
-        },
-      ]);
+        ],
+        { preserveTypeahead: true },
+      );
     } finally {
       abortCleanup();
     }

@@ -181,7 +181,7 @@ export function reportFetchFailures(
 }
 
 export function fetchSuffix(count: number, options?: { abortable?: boolean }): string {
-  const hint = options?.abortable && isTTY() && process.stdin.isTTY ? " <Esc to cancel>" : "";
+  const hint = options?.abortable && isTTY() && process.stdin.isTTY ? " <Ctrl+C to cancel>" : "";
   return dim(`Fetching ${plural(count, "repo")}...${hint}`);
 }
 
