@@ -122,7 +122,14 @@ describe("buildStatusView", () => {
     const nodes = buildStatusView(makeSummary(), defaultCtx());
     const table = nodes[0] as TableNode;
     const remoteNameCol = table.columns.find((c) => c.key === "remoteName");
-    expect(remoteNameCol?.truncate).toEqual({ min: 10 });
+    expect(remoteNameCol?.truncate).toEqual({ min: 13 });
+  });
+
+  test("baseName column has truncate", () => {
+    const nodes = buildStatusView(makeSummary(), defaultCtx());
+    const table = nodes[0] as TableNode;
+    const baseNameCol = table.columns.find((c) => c.key === "baseName");
+    expect(baseNameCol?.truncate).toEqual({ min: 13 });
   });
 
   test("row cells contain correct plain text", () => {
