@@ -7,7 +7,7 @@ import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { LOSE_WORK_FLAGS, type RepoFlags, computeFlags, gatherRepoStatus, wouldLoseWork } from "../lib/status";
-import { confirmOrExit, parallelFetch, reportFetchFailures } from "../lib/sync";
+import { confirmOrExit, parallelFetch, reportFetchFailures, resolveDefaultFetch } from "../lib/sync";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
 import {
   dryRunNotice,
@@ -125,7 +125,7 @@ export function registerDetachCommand(program: Command): void {
         const cache = ctx.cache;
 
         // Phase 1: fetch
-        if (options.fetch !== false) {
+        if (resolveDefaultFetch(options.fetch)) {
           const presentRepos = repos.filter((repo) => existsSync(`${wsDir}/${repo}`));
           if (presentRepos.length > 0) {
             const fetchDirs = presentRepos.map((repo) => `${wsDir}/${repo}`);

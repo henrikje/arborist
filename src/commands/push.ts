@@ -14,6 +14,7 @@ import {
   buildCachedStatusAssess,
   classifyNetworkError,
   confirmOrExit,
+  resolveDefaultFetch,
   runPlanFlow,
 } from "../lib/sync";
 export type { PushAssessment } from "../lib/sync";
@@ -48,7 +49,7 @@ export function registerPushCommand(program: Command): void {
         const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
         const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
 
-        const shouldFetch = options.fetch !== false;
+        const shouldFetch = resolveDefaultFetch(options.fetch);
         const allFetchDirs = workspaceRepoDirs(wsDir);
         const selectedSet = new Set(selectedRepos);
         const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));

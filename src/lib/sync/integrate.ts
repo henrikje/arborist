@@ -30,6 +30,7 @@ import { buildCachedStatusAssess } from "./assess-with-cache";
 import { type IntegrateMode, assessIntegrateRepo } from "./classify-integrate";
 import { VERBOSE_COMMIT_LIMIT } from "./constants";
 import { confirmOrExit, runPlanFlow } from "./mutation-flow";
+import { resolveDefaultFetch } from "./parallel-fetch";
 export type { RepoAssessment } from "./types";
 import type { RepoAssessment } from "./types";
 
@@ -87,7 +88,7 @@ export async function integrate(
   const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
 
   // Phase 2: fetch
-  const shouldFetch = options.fetch !== false;
+  const shouldFetch = resolveDefaultFetch(options.fetch);
   const allFetchDirs = workspaceRepoDirs(wsDir);
   const selectedSet = new Set(selectedRepos);
   const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));

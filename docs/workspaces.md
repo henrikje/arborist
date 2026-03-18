@@ -18,7 +18,7 @@ Shows all workspaces with their branch, repo count, last commit date, and aggreg
 
 The active workspace (the one you're currently inside) is marked with `*`. The LAST COMMIT column shows when work last happened (the most recent commit author date across all repos), helping you gauge workspace staleness.
 
-Fetches all repos by default for fresh remote data (skip with `-N`/`--no-fetch`). Use `--where` (`-w`) to filter workspaces by repo status — only workspaces containing at least one repo matching the filter are shown:
+Fetches all repos by default for fresh remote data (skip with `-N`/`--no-fetch`, or set `ARB_NO_FETCH` globally). Use `--where` (`-w`) to filter workspaces by repo status — only workspaces containing at least one repo matching the filter are shown:
 
 ```bash
 arb list --where at-risk           # workspaces with at-risk repos

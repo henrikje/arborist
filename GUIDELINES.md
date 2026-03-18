@@ -100,7 +100,7 @@ When multiple operations manage the same `.arb/` subsystem (repos, templates), g
 
 **Content commands** (`log`, `diff`) do not fetch by default — stale content is less confusing. `--fetch` opts in.
 
-See `decisions/0045-universal-fetch-flags.md`.
+The `ARB_NO_FETCH` environment variable globally suppresses automatic fetching — equivalent to passing `-N` to every command. Explicit `--fetch` overrides it. `pull` is unaffected (it always fetches). See `decisions/0045-universal-fetch-flags.md` and `decisions/0087-arb-no-fetch-env-var.md`.
 
 ### Network timeouts
 

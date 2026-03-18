@@ -20,7 +20,14 @@ import {
   resolveWhereFilter,
   toJsonVerbose,
 } from "../lib/status";
-import { type FetchResult, fetchSuffix, getUnchangedRepos, parallelFetch, reportFetchFailures } from "../lib/sync";
+import {
+  type FetchResult,
+  fetchSuffix,
+  getUnchangedRepos,
+  parallelFetch,
+  reportFetchFailures,
+  resolveDefaultFetch,
+} from "../lib/sync";
 import {
   type WatchEntry,
   bold,
@@ -162,7 +169,7 @@ async function runStatus(
   }
 
   // Phased rendering: show stale table immediately, refresh after fetch
-  const wantsFetch = options.fetch !== false && !options.quiet;
+  const wantsFetch = resolveDefaultFetch(options.fetch) && !options.quiet;
   const allFetchDirs = wantsFetch ? workspaceRepoDirs(wsDir) : [];
   const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
   const repoNamesForFetch = fetchDirs.map((d) => basename(d));

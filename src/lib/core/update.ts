@@ -133,7 +133,7 @@ export function formatUpdateNotice(current: string, latest: string): string {
 
 function shouldCheck(currentVersion: string): boolean {
   if (currentVersion.startsWith("dev")) return false;
-  if (process.env.ARB_NO_UPDATE_CHECK === "1") return false;
+  if (process.env.ARB_NO_UPDATE_CHECK) return false;
   if (!isTTY()) return false;
   return true;
 }

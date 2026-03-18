@@ -7,7 +7,7 @@ import { GitCache, branchNameError, gitLocal, gitNetwork, networkTimeout, rename
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { cell } from "../lib/render";
-import { confirmOrExit, runPlanFlow } from "../lib/sync";
+import { confirmOrExit, resolveDefaultFetch, runPlanFlow } from "../lib/sync";
 import {
   dryRunNotice,
   error,
@@ -177,7 +177,7 @@ async function runWorkspaceRename(
   }
 
   const fullRemotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
-  const shouldFetch = options.fetch !== false;
+  const shouldFetch = resolveDefaultFetch(options.fetch);
 
   const assess = async (_fetchFailed: string[], _unchangedRepos: Set<string>): Promise<RepoAssessment[]> => {
     return Promise.all(

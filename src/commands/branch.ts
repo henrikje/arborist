@@ -10,7 +10,7 @@ import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { runPhasedRender } from "../lib/render";
 import { type RepoRefs, computeFlags, gatherRepoRefs, gatherWorkspaceSummary } from "../lib/status";
-import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/sync";
+import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures, resolveDefaultFetch } from "../lib/sync";
 import { error, info, isTTY, listenForAbortSignal, shouldColor, stderr } from "../lib/terminal";
 import {
   rejectExplicitBaseRemotePrefix,
@@ -229,7 +229,7 @@ async function runVerboseBranch(
     Promise.all(repoDirs.map((dir) => gatherRepoRefs(dir, ctx.reposDir, base, undefined, cache)));
 
   const repoNamesForFetch = repoDirs.map((d) => basename(d));
-  const shouldFetchVerbose = options.fetch !== false;
+  const shouldFetchVerbose = resolveDefaultFetch(options.fetch);
 
   if (shouldFetchVerbose && !options.json && isTTY()) {
     // Phased rendering: stale → fetch → fresh

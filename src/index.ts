@@ -183,7 +183,7 @@ program
 program.hook("preAction", () => {
   const opts = program.opts();
 
-  if (opts.debug || process.env.ARB_DEBUG === "1") {
+  if (opts.debug || process.env.ARB_DEBUG) {
     enableDebug();
   }
 

@@ -18,6 +18,7 @@ export {
   getUnchangedRepos,
   parallelFetch,
   reportFetchFailures,
+  resolveDefaultFetch,
 } from "./parallel-fetch";
 export {
   type NetworkErrorClass,
