@@ -139,4 +139,30 @@ describe("integrateActionCell", () => {
     expect(c.plain).not.toContain("HEAD");
     expect(c.spans.every((s) => !s.text.includes("HEAD"))).toBe(true);
   });
+
+  test("baseFallback — attention span with not-found text", () => {
+    const c = integrateActionCell(makeDesc({ baseFallback: "big-filter-overview" }));
+    expect(c.plain).toContain("(base big-filter-overview not found)");
+    const fallbackSpan = c.spans.find((s) => s.text.includes("base big-filter-overview not found"));
+    expect(fallbackSpan?.attention).toBe("attention");
+  });
+
+  test("baseFallback not shown when undefined", () => {
+    const c = integrateActionCell(makeDesc());
+    expect(c.plain).not.toContain("not found");
+  });
+
+  test("baseFallback works with retarget-merged", () => {
+    const c = integrateActionCell(
+      makeDesc({ kind: "retarget-merged", replayCount: 2, skipCount: 0, baseFallback: "old-base" }),
+    );
+    expect(c.plain).toContain("(base old-base not found)");
+  });
+
+  test("baseFallback works with retarget-config", () => {
+    const c = integrateActionCell(
+      makeDesc({ kind: "retarget-config", retargetFrom: "feat/old", baseFallback: "old-base" }),
+    );
+    expect(c.plain).toContain("(base old-base not found)");
+  });
 });

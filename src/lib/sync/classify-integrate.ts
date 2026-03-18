@@ -55,6 +55,7 @@ export function classifyRepo(
     shallow: status.identity.shallow,
     wrongBranch: undefined as boolean | undefined,
     needsStash: undefined as boolean | undefined,
+    baseFallback: undefined as string | undefined,
   };
 
   if (fetchFailed.includes(status.name)) {
@@ -135,6 +136,10 @@ export function classifyRepo(
       skipReason: `base branch ${status.base.configuredRef ?? status.base.ref} was merged into default (use --retarget)`,
       skipFlag: "base-merged-into-default",
     };
+  }
+
+  if (status.base.configuredRef != null) {
+    base.baseFallback = status.base.configuredRef;
   }
 
   if (status.base.behind === 0) {

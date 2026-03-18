@@ -9,6 +9,7 @@ import {
   type RepoAssessment,
   describeIntegrateAction,
   formatIntegratePlan,
+  maybeWriteBaseFallbackConfig,
   maybeWriteRetargetConfig,
   resolveRetargetConfigTarget,
 } from "./integrate";
@@ -1162,6 +1163,19 @@ describe("formatIntegratePlan", () => {
     expect(plan).toContain("Incoming from origin/main:");
     expect(plan).toContain("def5678");
   });
+
+  test("shows baseFallback suffix for will-operate", () => {
+    const plan = formatIntegratePlan([makeAssessment({ baseFallback: "big-filter-overview" })], "rebase");
+    expect(plan).toContain("base big-filter-overview not found");
+  });
+
+  test("shows baseFallback suffix for up-to-date", () => {
+    const plan = formatIntegratePlan(
+      [makeAssessment({ outcome: "up-to-date", baseFallback: "big-filter-overview" })],
+      "rebase",
+    );
+    expect(plan).toContain("base big-filter-overview not found");
+  });
 });
 
 describe("resolveRetargetConfigTarget", () => {
@@ -1374,6 +1388,148 @@ describe("maybeWriteRetargetConfig", () => {
     } finally {
       rmSync(wsDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("maybeWriteBaseFallbackConfig", () => {
+  function makeAssessment(overrides: Record<string, unknown> = {}): RepoAssessment {
+    return {
+      repo: "repo-a",
+      repoDir: "/tmp/repo-a",
+      outcome: "will-operate",
+      branch: "feature",
+      behind: 3,
+      ahead: 1,
+      baseRemote: "origin",
+      baseBranch: "main",
+      headSha: "abc1234",
+      shallow: false,
+      ...normalizeIntegrateAssessment(overrides),
+    } as RepoAssessment;
+  }
+
+  test("returns null on dry-run", async () => {
+    const result = await maybeWriteBaseFallbackConfig({
+      dryRun: true,
+      wsDir: "/tmp/fake",
+      branch: "feature",
+      assessments: [makeAssessment({ baseFallback: "old-branch" })],
+    });
+    expect(result).toBeNull();
+  });
+
+  test("returns null when hasConflicts is true", async () => {
+    const result = await maybeWriteBaseFallbackConfig({
+      wsDir: "/tmp/fake",
+      branch: "feature",
+      assessments: [makeAssessment({ baseFallback: "old-branch" })],
+      hasConflicts: true,
+    });
+    expect(result).toBeNull();
+  });
+
+  test("returns null when no baseFallback on any assessment", async () => {
+    const result = await maybeWriteBaseFallbackConfig({
+      wsDir: "/tmp/fake",
+      branch: "feature",
+      assessments: [makeAssessment()],
+    });
+    expect(result).toBeNull();
+  });
+
+  test("returns null when base-merged-into-default skip exists", async () => {
+    const result = await maybeWriteBaseFallbackConfig({
+      wsDir: "/tmp/fake",
+      branch: "feature",
+      assessments: [
+        makeAssessment({ baseFallback: "old-branch" }),
+        makeAssessment({ outcome: "skip", skipReason: "base branch merged", skipFlag: "base-merged-into-default" }),
+      ],
+    });
+    expect(result).toBeNull();
+  });
+
+  test("writes config without base key when baseFallback is present", async () => {
+    const wsDir = mkdtempSync(join(tmpdir(), "arb-fallback-"));
+    try {
+      mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+      const configFile = join(wsDir, ".arbws", "config.json");
+      writeFileSync(configFile, `${JSON.stringify({ branch: "feature", base: "old-branch" }, null, 2)}\n`);
+
+      const result = await maybeWriteBaseFallbackConfig({
+        dryRun: false,
+        wsDir,
+        branch: "feature",
+        assessments: [makeAssessment({ baseFallback: "old-branch" })],
+      });
+
+      expect(result).toEqual({ from: "old-branch", to: "main" });
+      expect(JSON.parse(readFileSync(configFile, "utf-8"))).toEqual({ branch: "feature" });
+    } finally {
+      rmSync(wsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("returns null when all assessments are skips (no non-skip with baseFallback)", async () => {
+    const result = await maybeWriteBaseFallbackConfig({
+      wsDir: "/tmp/fake",
+      branch: "feature",
+      assessments: [makeAssessment({ outcome: "skip", skipReason: "fetch failed", skipFlag: "fetch-failed" })],
+    });
+    expect(result).toBeNull();
+  });
+
+  test("works with up-to-date assessment that has baseFallback", async () => {
+    const wsDir = mkdtempSync(join(tmpdir(), "arb-fallback-uptodate-"));
+    try {
+      mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+      const configFile = join(wsDir, ".arbws", "config.json");
+      writeFileSync(configFile, `${JSON.stringify({ branch: "feature", base: "old-branch" }, null, 2)}\n`);
+
+      const result = await maybeWriteBaseFallbackConfig({
+        dryRun: false,
+        wsDir,
+        branch: "feature",
+        assessments: [makeAssessment({ outcome: "up-to-date", baseFallback: "old-branch" })],
+      });
+
+      expect(result).toEqual({ from: "old-branch", to: "main" });
+      expect(JSON.parse(readFileSync(configFile, "utf-8"))).toEqual({ branch: "feature" });
+    } finally {
+      rmSync(wsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("returns resolved baseBranch as 'to' field", async () => {
+    const wsDir = mkdtempSync(join(tmpdir(), "arb-fallback-custom-"));
+    try {
+      mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+      const configFile = join(wsDir, ".arbws", "config.json");
+      writeFileSync(configFile, `${JSON.stringify({ branch: "feature", base: "old-branch" }, null, 2)}\n`);
+
+      const result = await maybeWriteBaseFallbackConfig({
+        dryRun: false,
+        wsDir,
+        branch: "feature",
+        assessments: [makeAssessment({ baseFallback: "old-branch", baseBranch: "develop" })],
+      });
+
+      expect(result).toEqual({ from: "old-branch", to: "develop" });
+    } finally {
+      rmSync(wsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("returns null when some non-skip repos lack baseFallback (mixed multi-repo)", async () => {
+    const result = await maybeWriteBaseFallbackConfig({
+      wsDir: "/tmp/fake",
+      branch: "feature",
+      assessments: [
+        makeAssessment({ repo: "repo-a", baseFallback: "old-branch" }),
+        makeAssessment({ repo: "repo-b" }), // no baseFallback — base still exists on this repo's remote
+      ],
+    });
+    expect(result).toBeNull();
   });
 });
 
@@ -1602,5 +1758,15 @@ describe("describeIntegrateAction", () => {
   test("matchedCount passes through in diff", () => {
     const desc = describeIntegrateAction(makeAssessment({ matchedCount: 5 }), "rebase");
     expect(desc.diff?.matchedCount).toBe(5);
+  });
+
+  test("passes through baseFallback", () => {
+    const desc = describeIntegrateAction(makeAssessment({ baseFallback: "big-filter-overview" }), "rebase");
+    expect(desc.baseFallback).toBe("big-filter-overview");
+  });
+
+  test("baseFallback is undefined when not set", () => {
+    const desc = describeIntegrateAction(makeAssessment(), "rebase");
+    expect(desc.baseFallback).toBeUndefined();
   });
 });

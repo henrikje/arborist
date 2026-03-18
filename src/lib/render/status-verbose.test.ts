@@ -311,7 +311,7 @@ describe("verboseDetailToNodes", () => {
     expect(secs.some((s) => s.header.plain.includes("Configured base branch missing-branch not found on origin"))).toBe(
       true,
     );
-    expect(secs.some((s) => s.header.plain.includes("Run 'arb rebase --retarget'"))).toBe(true);
+    expect(secs.some((s) => s.header.plain.includes("Run 'arb rebase'"))).toBe(true);
   });
 
   test("ahead of base produces section with commit items", () => {
@@ -671,7 +671,7 @@ describe("formatVerboseDetail — configuredRef not found", () => {
     });
     const output = formatVerboseDetail(repo, undefined);
     expect(output).toContain("Configured base branch old-branch not found on origin");
-    expect(output).toContain("Run 'arb rebase --retarget'");
+    expect(output).toContain("Run 'arb rebase' to rebase onto the default branch");
   });
 
   test("baseMergedIntoDefault set does not show not found message", () => {

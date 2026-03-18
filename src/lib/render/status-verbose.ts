@@ -47,7 +47,7 @@ export function formatVerboseDetail(repo: RepoStatus, verbose: VerboseDetail | u
   if (repo.base?.configuredRef && !repo.base.baseMergedIntoDefault) {
     const remoteSuffix = repo.base.remote ? ` on ${repo.base.remote}` : "";
     let section = `\n${SECTION_INDENT}Configured base branch ${repo.base.configuredRef} not found${remoteSuffix}\n`;
-    section += `${SECTION_INDENT}Run 'arb rebase --retarget' to rebase onto the default branch\n`;
+    section += `${SECTION_INDENT}Run 'arb rebase' to rebase onto the default branch\n`;
     sections.push(section);
   }
 
@@ -212,7 +212,7 @@ export function verboseDetailToNodes(repo: RepoStatus, verbose: VerboseDetail | 
         header: cell(`Configured base branch ${repo.base.configuredRef} not found${remoteSuffix}`),
         items: [],
       },
-      { kind: "section", header: cell("Run 'arb rebase --retarget' to rebase onto the default branch"), items: [] },
+      { kind: "section", header: cell("Run 'arb rebase' to rebase onto the default branch"), items: [] },
     );
   }
 

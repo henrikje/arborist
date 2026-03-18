@@ -14,7 +14,7 @@ import { buildConflictReport, buildStashPopFailureReport } from "../render/confl
 import { type IntegrateActionDesc, integrateActionCell } from "../render/integrate-cells";
 import { formatBranchGraph } from "../render/integrate-graph";
 import type { Cell, OutputNode } from "../render/model";
-import { cell } from "../render/model";
+import { cell, suffix } from "../render/model";
 import { skipCell, upToDateCell } from "../render/plan-format";
 import { type RenderContext, finishSummary, render } from "../render/render";
 import { verboseCommitsToNodes } from "../render/status-verbose";
@@ -203,6 +203,28 @@ export async function integrate(
       inlineResult(workspace, `base branch changed from ${retargetConfigFrom} to ${retargetConfigTarget}`);
       process.stderr.write("\n");
     }
+    if (!wroteRetargetConfig && hasBaseFallback(assessments)) {
+      if (!options.dryRun) {
+        await confirmOrExit({
+          yes: options.yes,
+          message: "All repos up to date. Update stale base branch config?",
+        });
+      }
+      const fallbackResult = await maybeWriteBaseFallbackConfig({
+        dryRun: options.dryRun,
+        wsDir,
+        branch,
+        assessments,
+      });
+      if (fallbackResult) {
+        inlineResult(workspace, `base branch changed from ${fallbackResult.from} to ${fallbackResult.to}`);
+        process.stderr.write("\n");
+      }
+      if (options.dryRun) {
+        dryRunNotice();
+      }
+      return;
+    }
     info(upToDate.length > 0 ? "All repos up to date" : "Nothing to do");
     return;
   }
@@ -321,6 +343,18 @@ export async function integrate(
   if (wroteRetargetConfig && retargetConfigTarget && retargetConfigFrom) {
     inlineResult(workspace, `base branch changed from ${retargetConfigFrom} to ${retargetConfigTarget}`);
   }
+  if (!wroteRetargetConfig) {
+    const fallbackResult = await maybeWriteBaseFallbackConfig({
+      dryRun: options.dryRun,
+      wsDir,
+      branch,
+      assessments,
+      hasConflicts: conflicted.length > 0,
+    });
+    if (fallbackResult) {
+      inlineResult(workspace, `base branch changed from ${fallbackResult.from} to ${fallbackResult.to}`);
+    }
+  }
 
   // Phase 6: summary
   process.stderr.write("\n");
@@ -386,6 +420,38 @@ export async function maybeWriteRetargetConfig(options: {
   return true;
 }
 
+export async function maybeWriteBaseFallbackConfig(options: {
+  dryRun?: boolean;
+  wsDir: string;
+  branch: string;
+  assessments: RepoAssessment[];
+  hasConflicts?: boolean;
+}): Promise<{ from: string; to: string } | null> {
+  if (options.dryRun) return null;
+  if (options.hasConflicts) return null;
+  const { wsDir, branch, assessments } = options;
+
+  // Only proceed if ALL non-skip assessments have baseFallback — in multi-repo workspaces,
+  // if any repo still has the configured base on its remote, don't clear the workspace config.
+  const nonSkip = assessments.filter((a) => a.outcome !== "skip" || isDirtyButUpToDate(a));
+  if (nonSkip.length === 0) return null;
+  const allHaveFallback = nonSkip.every((a) => a.baseFallback != null);
+  if (!allHaveFallback) return null;
+
+  // Don't auto-clear if any repo needs --retarget (base-merged-into-default detected)
+  const hasBaseMergedSkip = assessments.some((a) => a.outcome === "skip" && a.skipFlag === "base-merged-into-default");
+  if (hasBaseMergedSkip) return null;
+
+  const firstFallback = nonSkip.find((a) => a.baseFallback != null);
+  if (!firstFallback?.baseFallback) return null;
+
+  const configFile = `${wsDir}/.arbws/config.json`;
+  const wb = await workspaceBranch(wsDir);
+  const wsBranch = wb?.branch ?? branch;
+  writeWorkspaceConfig(configFile, { branch: wsBranch });
+  return { from: firstFallback.baseFallback, to: firstFallback.baseBranch ?? "default" };
+}
+
 // ── Semantic intermediate for integrate plan ──
 
 function classifyStash(a: RepoAssessment): IntegrateActionDesc["stash"] {
@@ -419,6 +485,7 @@ export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode):
         skipCount: a.retarget.alreadyOnTarget,
         conflictRisk: null,
         stash,
+        baseFallback: a.baseFallback,
         warning: a.retarget.warning,
         headSha: a.headSha,
       };
@@ -432,6 +499,7 @@ export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode):
       skipCount: a.retarget.alreadyOnTarget,
       conflictRisk: null,
       stash,
+      baseFallback: a.baseFallback,
       warning: a.retarget.warning,
       headSha: a.headSha,
     };
@@ -445,8 +513,15 @@ export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode):
     mergeType: mode === "merge" ? (a.ahead === 0 ? "fast-forward" : "three-way") : undefined,
     conflictRisk: classifyConflictRisk(a.conflictPrediction, mode),
     stash,
+    baseFallback: a.baseFallback,
     headSha: a.headSha,
   };
+}
+
+/** Whether ALL non-skip assessments have a baseFallback (stale base config). */
+function hasBaseFallback(assessments: RepoAssessment[]): boolean {
+  const nonSkip = assessments.filter((a) => a.outcome !== "skip" || isDirtyButUpToDate(a));
+  return nonSkip.length > 0 && nonSkip.every((a) => a.baseFallback != null);
 }
 
 /** Dirty-skip that is actually up to date (behind === 0 with a resolved base). */
@@ -468,6 +543,9 @@ export function buildIntegratePlanNodes(
       actionCell = integrateActionCell(describeIntegrateAction(a, mode));
     } else if (a.outcome === "up-to-date" || isDirtyButUpToDate(a)) {
       actionCell = upToDateCell();
+      if (a.baseFallback) {
+        actionCell = suffix(actionCell, ` (base ${a.baseFallback} not found)`, "attention");
+      }
     } else {
       actionCell = skipCell(a.skipReason ?? "", a.skipFlag);
     }
