@@ -10,7 +10,7 @@ export function registerPathCommand(program: Command): void {
     .command("path [name]")
     .summary("Print a path (project root, workspace, or repo)")
     .description(
-      'Print the absolute path to the project root, a workspace, or a repo within a workspace. When run from inside a workspace, names are resolved as repos first (e.g. "arb path backend" prints the backend repo path). Use "workspace/repo" to be explicit.',
+      'Examples:\n\n  arb path                                 Print project root\n  arb path api                             Print repo path (in workspace)\n  arb path PROJ-208/api                    Explicit workspace/repo\n\nPrint the absolute path to the project root, a workspace, or a repo within a workspace. When run from inside a workspace, names are resolved as repos first (e.g. "arb path backend" prints the backend repo path). Use "workspace/repo" to be explicit.',
     )
     .action(
       arbAction(async (ctx, input?: string) => {

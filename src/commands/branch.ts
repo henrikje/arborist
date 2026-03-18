@@ -121,7 +121,9 @@ export function registerBranchCommand(program: Command): void {
   const branch = program
     .command("branch")
     .summary("Inspect and manage the workspace branch")
-    .description("Inspect or manage the workspace branch. When invoked without a subcommand, defaults to 'show'.");
+    .description(
+      "Examples:\n\n  arb branch                               Show workspace branch (default)\n  arb branch show -v                       Per-repo tracking detail\n  arb branch base main                     Set base branch\n\nInspect or manage the workspace branch. When invoked without a subcommand, defaults to 'show'.",
+    );
 
   branch
     .command("show", { isDefault: true })
@@ -133,7 +135,7 @@ export function registerBranchCommand(program: Command): void {
     .option("--schema", "Print JSON Schema for this command's --json output and exit")
     .summary("Show the workspace branch (default)")
     .description(
-      "Show the workspace branch, base branch (if configured), and any per-repo deviations. Use --verbose to show a per-repo table with branch and remote tracking info (fetches by default; use -N to skip). Press Ctrl+C during the fetch to cancel and use stale data. Use --quiet to output just the branch name (useful for scripting). Use --json for machine-readable output.\n\nSee 'arb help scripting' for output modes and piping.",
+      "Examples:\n\n  arb branch show                          Show branch and base\n  arb branch show -v                       Per-repo tracking detail\n  arb branch show -q                       Just the branch name\n\nShow the workspace branch, base branch (if configured), and any per-repo deviations. Use --verbose to show a per-repo table with branch and remote tracking info (fetches by default; use -N to skip). Press Ctrl+C during the fetch to cancel and use stale data. Use --quiet to output just the branch name (useful for scripting). Use --json for machine-readable output.\n\nSee 'arb help scripting' for output modes and piping.",
     )
     .action(async (options, command) => {
       if (options.schema) {
@@ -389,7 +391,7 @@ function registerBranchBaseSubcommand(parent: Command): void {
     .option("-f, --force", "Bypass merged-base safety check")
     .summary("Show, set, or remove the base branch")
     .description(
-      "View, change, or remove the workspace's base branch.\n\nWith no arguments, shows the current base branch. With a branch name, sets the base. With --unset, removes the base so the workspace tracks each repo's default branch.\n\nWhen setting a new base, checks whether the current base was merged into the default branch (squash or regular merge). If so, blocks the config change and guides you toward 'arb rebase --retarget', which rebases safely. Use --force to change the config anyway.\n\nSee 'arb help stacked' for stacked workspace workflows.",
+      "Examples:\n\n  arb branch base                          Show current base\n  arb branch base main                     Set base to main\n  arb branch base --unset                  Track repo default branch\n\nView, change, or remove the workspace's base branch.\n\nWith no arguments, shows the current base branch. With a branch name, sets the base. With --unset, removes the base so the workspace tracks each repo's default branch.\n\nWhen setting a new base, checks whether the current base was merged into the default branch (squash or regular merge). If so, blocks the config change and guides you toward 'arb rebase --retarget', which rebases safely. Use --force to change the config anyway.\n\nSee 'arb help stacked' for stacked workspace workflows.",
     )
     .action(
       arbAction(async (ctx, branchArg: string | undefined, options) => {

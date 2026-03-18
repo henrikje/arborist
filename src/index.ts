@@ -51,11 +51,35 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
   // Usage
   let output = [`${helper.styleTitle("Usage:")} ${helper.styleUsage(helper.commandUsage(cmd))}`, ""];
 
-  // Description
+  // Description (with optional Examples: block)
   const commandDescription = helper.commandDescription(cmd);
   if (commandDescription.length > 0) {
     const helpWidth = helper.helpWidth ?? 80;
-    output = output.concat([helper.boxWrap(helper.styleCommandDescription(commandDescription), helpWidth), ""]);
+    const examplesPrefix = "Examples:\n\n";
+    if (commandDescription.startsWith(examplesPrefix)) {
+      // Split into examples and prose at the first double-newline after the example lines
+      const afterPrefix = commandDescription.slice(examplesPrefix.length);
+      const splitIndex = afterPrefix.indexOf("\n\n");
+      if (splitIndex !== -1) {
+        const exampleLines = afterPrefix.slice(0, splitIndex);
+        const prose = afterPrefix.slice(splitIndex + 2);
+        output = output.concat([helper.styleTitle("Examples:"), exampleLines, ""]);
+        if (prose.length > 0) {
+          const indent = "  ";
+          const wrapped = helper.boxWrap(helper.styleCommandDescription(prose), helpWidth - indent.length);
+          const indented = wrapped
+            .split("\n")
+            .map((l) => indent + l)
+            .join("\n");
+          output = output.concat([helper.styleTitle("Description:"), indented, ""]);
+        }
+      } else {
+        // No prose after examples — just render examples
+        output = output.concat([helper.styleTitle("Examples:"), afterPrefix, ""]);
+      }
+    } else {
+      output = output.concat([helper.boxWrap(helper.styleCommandDescription(commandDescription), helpWidth), ""]);
+    }
     // Extra description lines for the root command only
     if (cmd.name() === "arb") {
       output = output.concat([
@@ -65,6 +89,8 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
         ),
         "",
         dim("arborist (noun) \u02C8\u00E4r-b\u0259-rist \u2014 a specialist in the care and maintenance of trees"),
+        "",
+        dim("https://github.com/henrikje/arborist"),
         "",
       ]);
     }
