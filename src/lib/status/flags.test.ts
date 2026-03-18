@@ -1530,3 +1530,161 @@ describe("flag set alignment", () => {
     }
   });
 });
+
+describe("flag invariants", () => {
+  // ── Branch dimension: isDetached and isWrongBranch are mutually exclusive ──
+
+  test("detached HEAD excludes isWrongBranch", () => {
+    const flags = computeFlags(
+      makeRepo({
+        identity: { worktreeKind: "linked", headMode: { kind: "detached" }, shallow: false },
+      }),
+      "feature",
+    );
+    expect(flags.isDetached).toBe(true);
+    expect(flags.isWrongBranch).toBe(false);
+  });
+
+  test("wrong branch excludes isDetached", () => {
+    const flags = computeFlags(
+      makeRepo({
+        identity: { worktreeKind: "linked", headMode: { kind: "attached", branch: "other" }, shallow: false },
+      }),
+      "feature",
+    );
+    expect(flags.isWrongBranch).toBe(true);
+    expect(flags.isDetached).toBe(false);
+  });
+
+  // ── Share lifecycle dimension: hasNoShare and isGone are mutually exclusive ──
+
+  test("noRef share excludes isGone", () => {
+    const flags = computeFlags(
+      makeRepo({
+        share: { remote: "origin", ref: null, refMode: "noRef" as const, toPush: null, toPull: null },
+      }),
+      "feature",
+    );
+    expect(flags.hasNoShare).toBe(true);
+    expect(flags.isGone).toBe(false);
+  });
+
+  test("gone share excludes hasNoShare", () => {
+    const flags = computeFlags(
+      makeRepo({
+        share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
+      }),
+      "feature",
+    );
+    expect(flags.isGone).toBe(true);
+    expect(flags.hasNoShare).toBe(false);
+  });
+
+  // ── Base position dimension: isDiverged implies isAheadOfBase and isBehindBase ──
+
+  test("diverged implies both isAheadOfBase and isBehindBase", () => {
+    const flags = computeFlags(
+      makeRepo({
+        base: { remote: "origin", ref: "main", configuredRef: null, ahead: 2, behind: 3, baseMergedIntoDefault: null },
+      }),
+      "feature",
+    );
+    expect(flags.isDiverged).toBe(true);
+    expect(flags.isAheadOfBase).toBe(true);
+    expect(flags.isBehindBase).toBe(true);
+  });
+
+  test("ahead-only does not set isDiverged", () => {
+    const flags = computeFlags(
+      makeRepo({
+        base: { remote: "origin", ref: "main", configuredRef: null, ahead: 3, behind: 0, baseMergedIntoDefault: null },
+      }),
+      "feature",
+    );
+    expect(flags.isAheadOfBase).toBe(true);
+    expect(flags.isBehindBase).toBe(false);
+    expect(flags.isDiverged).toBe(false);
+  });
+
+  test("behind-only does not set isDiverged", () => {
+    const flags = computeFlags(
+      makeRepo({
+        base: { remote: "origin", ref: "main", configuredRef: null, ahead: 0, behind: 5, baseMergedIntoDefault: null },
+      }),
+      "feature",
+    );
+    expect(flags.isBehindBase).toBe(true);
+    expect(flags.isAheadOfBase).toBe(false);
+    expect(flags.isDiverged).toBe(false);
+  });
+
+  // ── Local dimension: hasConflict implies isDirty ──
+
+  test("hasConflict implies isDirty", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 0, modified: 0, untracked: 0, conflicts: 3 } }), "feature");
+    expect(flags.hasConflict).toBe(true);
+    expect(flags.isDirty).toBe(true);
+  });
+
+  // ── Share position exclusions: noRef/gone exclude isBehindShare ──
+
+  test("noRef share excludes isBehindShare", () => {
+    const flags = computeFlags(
+      makeRepo({
+        share: { remote: "origin", ref: null, refMode: "noRef" as const, toPush: null, toPull: null },
+      }),
+      "feature",
+    );
+    expect(flags.hasNoShare).toBe(true);
+    expect(flags.isBehindShare).toBe(false);
+  });
+
+  test("gone share excludes isBehindShare", () => {
+    const flags = computeFlags(
+      makeRepo({
+        share: { remote: "origin", ref: null, refMode: "gone", toPush: null, toPull: null },
+      }),
+      "feature",
+    );
+    expect(flags.isGone).toBe(true);
+    expect(flags.isBehindShare).toBe(false);
+  });
+
+  // ── Base lifecycle dimension: isBaseMerged and isBaseMissing are mutually exclusive ──
+
+  test("isBaseMerged excludes isBaseMissing", () => {
+    const flags = computeFlags(
+      makeRepo({
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: "feat/auth",
+          ahead: 0,
+          behind: 0,
+          baseMergedIntoDefault: "merge",
+        },
+      }),
+      "feature",
+    );
+    expect(flags.isBaseMerged).toBe(true);
+    expect(flags.isBaseMissing).toBe(false);
+  });
+
+  test("isBaseMissing excludes isBaseMerged", () => {
+    const flags = computeFlags(
+      makeRepo({
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: "feat/auth",
+          ahead: 0,
+          behind: 0,
+          baseMergedIntoDefault: null,
+        },
+      }),
+      "feature",
+    );
+    expect(flags.isBaseMissing).toBe(true);
+    expect(flags.isBaseMerged).toBe(false);
+  });
+});

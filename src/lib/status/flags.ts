@@ -72,7 +72,7 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
 
   const isBaseMissing = repo.base?.configuredRef != null && repo.base.baseMergedIntoDefault == null;
 
-  return {
+  const flags: RepoFlags = {
     isDirty,
     hasConflict,
     isAheadOfShare,
@@ -91,6 +91,25 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
     isBaseMissing,
     isTimedOut: repo.timedOut === true,
   };
+  assertFlagInvariants(flags);
+  return flags;
+}
+
+/** Verify that flag combinations are internally consistent. Throws on violation. */
+function assertFlagInvariants(flags: RepoFlags): void {
+  const violations: string[] = [];
+  if (flags.isDetached && flags.isWrongBranch) violations.push("isDetached and isWrongBranch are mutually exclusive");
+  if (flags.hasNoShare && flags.isGone) violations.push("hasNoShare and isGone are mutually exclusive");
+  if (flags.isDiverged && (!flags.isAheadOfBase || !flags.isBehindBase))
+    violations.push("isDiverged requires isAheadOfBase and isBehindBase");
+  if (flags.hasConflict && !flags.isDirty) violations.push("hasConflict requires isDirty");
+  if (flags.hasNoShare && flags.isBehindShare) violations.push("hasNoShare excludes isBehindShare");
+  if (flags.isGone && flags.isBehindShare) violations.push("isGone excludes isBehindShare");
+  if (flags.isBaseMerged && flags.isBaseMissing)
+    violations.push("isBaseMerged and isBaseMissing are mutually exclusive");
+  if (violations.length > 0) {
+    throw new Error(`RepoFlags invariant violation: ${violations.join("; ")}`);
+  }
 }
 
 export function wouldLoseWork(flags: RepoFlags): boolean {
