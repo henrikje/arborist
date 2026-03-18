@@ -29,7 +29,7 @@ import {
   workspaceMatchesWhere,
   wouldLoseWork,
 } from "../lib/status";
-import { confirmOrExit, parallelFetch, reportFetchFailures } from "../lib/sync";
+import { confirmOrExit, parallelFetch, reportFetchFailures, resolveDefaultFetch } from "../lib/sync";
 import {
   type TemplateDiff,
   diffTemplates,
@@ -484,7 +484,7 @@ export function registerDeleteCommand(program: Command): void {
 
         // Pre-fetch repos across all candidate workspaces for fresh remote data
         const fetchWorkspaceRepos = async (workspaceNames: string[]) => {
-          if (options.fetch === false) return;
+          if (!resolveDefaultFetch(options.fetch)) return;
           const allRepoNames = new Set<string>();
           for (const ws of workspaceNames) {
             const wsDir = `${ctx.arbRootDir}/${ws}`;

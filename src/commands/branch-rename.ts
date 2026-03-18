@@ -17,7 +17,7 @@ import {
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
 import { EMPTY_CELL, cell, suffix } from "../lib/render";
-import { confirmOrExit, runPlanFlow } from "../lib/sync";
+import { confirmOrExit, resolveDefaultFetch, runPlanFlow } from "../lib/sync";
 import {
   dryRunNotice,
   error,
@@ -364,7 +364,7 @@ async function runRename(
 
   const fetchDirs = workspaceRepoDirs(wsDir);
 
-  const shouldFetch = options.fetch !== false;
+  const shouldFetch = resolveDefaultFetch(options.fetch);
 
   const assess = async (_fetchFailed: string[], _unchangedRepos: Set<string>): Promise<RepoAssessment[]> => {
     return Promise.all(

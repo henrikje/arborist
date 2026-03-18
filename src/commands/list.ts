@@ -22,7 +22,7 @@ import {
   resolveWhereFilter,
   workspaceMatchesWhere,
 } from "../lib/status";
-import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/sync";
+import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures, resolveDefaultFetch } from "../lib/sync";
 import {
   analyzeProgress,
   clearScanProgress,
@@ -114,7 +114,7 @@ export function registerListCommand(program: Command): void {
           const showStatus = options.status !== false;
 
           const repoNames = workspaceRepoNames(metadata);
-          const wantsFetch = options.fetch !== false && !options.quiet;
+          const wantsFetch = resolveDefaultFetch(options.fetch) && !options.quiet;
           const shouldFetch = wantsFetch;
 
           // ── Quiet output path ──

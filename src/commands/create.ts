@@ -6,7 +6,7 @@ import { ArbError, arbAction, readWorkspaceConfig, writeWorkspaceConfig } from "
 import type { RepoRemotes } from "../lib/git";
 import { gitLocal, listRemoteBranches, validateBranchName } from "../lib/git";
 import { render } from "../lib/render";
-import { parallelFetch, reportFetchFailures } from "../lib/sync";
+import { parallelFetch, reportFetchFailures, resolveDefaultFetch } from "../lib/sync";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
 import { bold, cyan, dim, error, info, plural, readNamesFromStdin, shouldColor, success, warn } from "../lib/terminal";
 import {
@@ -227,7 +227,7 @@ export function registerCreateCommand(program: Command): void {
           if (isBareGuidedCreate) {
             // Fetch selected repos so branch list is up-to-date
             remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
-            if (options.fetch !== false) {
+            if (resolveDefaultFetch(options.fetch)) {
               const fetchDirs = repos.map((r) => `${ctx.reposDir}/${r}`);
               const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
               reportFetchFailures(repos, fetchResults);
@@ -397,7 +397,7 @@ export function registerCreateCommand(program: Command): void {
         }
 
         // Fetch repos (skip if interactive branch selector already fetched, or --no-fetch)
-        if (!alreadyFetched && options.fetch !== false) {
+        if (!alreadyFetched && resolveDefaultFetch(options.fetch)) {
           const fetchDirs = repos.map((r) => `${ctx.reposDir}/${r}`);
           const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
           reportFetchFailures(repos, fetchResults);

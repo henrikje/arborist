@@ -11,6 +11,7 @@ import {
   getUnchangedRepos,
   parallelFetch,
   reportFetchFailures,
+  resolveDefaultFetch,
 } from "./parallel-fetch";
 
 export interface PlanFlowOptions<TAssessment> {
@@ -37,7 +38,7 @@ async function assessWithPost<TAssessment>(
 }
 
 export async function runPlanFlow<TAssessment>(options: PlanFlowOptions<TAssessment>): Promise<TAssessment[]> {
-  const shouldFetch = options.shouldFetch !== false;
+  const shouldFetch = resolveDefaultFetch(options.shouldFetch);
   const canPhase = shouldFetch && options.fetchDirs.length > 0 && isTTY();
 
   const emptySet = new Set<string>();

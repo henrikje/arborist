@@ -6,7 +6,7 @@ import type { Cell, OutputNode, Span } from "../lib/render";
 import { cell, createRenderContext, finishSummary, render, skipCell, spans, suffix } from "../lib/render";
 import type { SkipFlag } from "../lib/status";
 import { type RepoStatus, computeFlags, resolveWhereFilter } from "../lib/status";
-import { buildCachedStatusAssess, confirmOrExit, runPlanFlow } from "../lib/sync";
+import { buildCachedStatusAssess, confirmOrExit, resolveDefaultFetch, runPlanFlow } from "../lib/sync";
 import { dryRunNotice, info, inlineResult, inlineStart, plural, shouldColor, warn, yellow } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
@@ -287,7 +287,7 @@ export function registerResetCommand(program: Command): void {
         const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
 
         // Phase 1: fetch
-        const shouldFetch = options.fetch !== false;
+        const shouldFetch = resolveDefaultFetch(options.fetch);
         const allFetchDirs = workspaceRepoDirs(wsDir);
         const allRepos = allFetchDirs.map((d) => basename(d));
         const repos = allRepos.filter((r) => selectedSet.has(r));

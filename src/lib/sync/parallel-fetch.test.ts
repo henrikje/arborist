@@ -1,6 +1,12 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import * as tty from "../terminal/tty";
-import { fetchSuffix, getFetchFailedRepos, getUnchangedRepos, reportFetchFailures } from "./parallel-fetch";
+import {
+  fetchSuffix,
+  getFetchFailedRepos,
+  getUnchangedRepos,
+  reportFetchFailures,
+  resolveDefaultFetch,
+} from "./parallel-fetch";
 
 describe("reportFetchFailures", () => {
   test("returns empty array when all succeed", () => {
@@ -145,5 +151,50 @@ describe("getFetchFailedRepos", () => {
       ["repo-b", { exitCode: 1, output: "error" }],
     ]);
     expect(getFetchFailedRepos(["repo-a", "repo-b", "repo-c"], results)).toEqual(["repo-b", "repo-c"]);
+  });
+});
+
+describe("resolveDefaultFetch", () => {
+  const saved = process.env.ARB_NO_FETCH;
+
+  function setEnv(value: string | undefined): void {
+    if (value === undefined) {
+      // biome-ignore lint/performance/noDelete: process.env requires delete to remove keys
+      delete process.env.ARB_NO_FETCH;
+    } else {
+      process.env.ARB_NO_FETCH = value;
+    }
+  }
+
+  afterEach(() => setEnv(saved));
+
+  test("returns true when no flag and no env var", () => {
+    setEnv(undefined);
+    expect(resolveDefaultFetch(undefined)).toBe(true);
+  });
+
+  test("returns false when ARB_NO_FETCH is set", () => {
+    setEnv("1");
+    expect(resolveDefaultFetch(undefined)).toBe(false);
+  });
+
+  test("accepts any non-empty value for ARB_NO_FETCH", () => {
+    setEnv("true");
+    expect(resolveDefaultFetch(undefined)).toBe(false);
+  });
+
+  test("explicit --fetch overrides ARB_NO_FETCH", () => {
+    setEnv("1");
+    expect(resolveDefaultFetch(true)).toBe(true);
+  });
+
+  test("explicit --no-fetch returns false regardless of env var", () => {
+    setEnv(undefined);
+    expect(resolveDefaultFetch(false)).toBe(false);
+  });
+
+  test("empty string is treated as unset", () => {
+    setEnv("");
+    expect(resolveDefaultFetch(undefined)).toBe(true);
   });
 });

@@ -11,6 +11,12 @@ export interface FetchResult {
   output: string;
 }
 
+/** Resolve whether to auto-fetch: explicit flag wins, then ARB_NO_FETCH env var, then default (fetch). */
+export function resolveDefaultFetch(fetchOption: boolean | undefined): boolean {
+  if (fetchOption !== undefined) return fetchOption;
+  return !process.env.ARB_NO_FETCH;
+}
+
 export async function parallelFetch(
   repoDirs: string[],
   timeout?: number,
