@@ -66,7 +66,7 @@ function buildDetachPlanNodes(assessments: DetachAssessment[]): OutputNode[] {
 
 const DETACH_SKIP_LABELS: Partial<Record<keyof RepoFlags, string>> = {
   isDirty: "uncommitted changes",
-  isUnpushed: "unpushed commits",
+  isAheadOfShare: "unpushed commits",
   hasOperation: "operation in progress",
   isDetached: "detached HEAD",
   isWrongBranch: "wrong branch",

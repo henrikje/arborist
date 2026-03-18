@@ -112,17 +112,17 @@ describe("--where filtering", () => {
       expect(result.output).not.toContain("repo-b");
     }));
 
-  test("arb exec --where dirty+unpushed runs only in repos matching both", () =>
+  test("arb exec --where dirty+ahead-share runs only in repos matching both", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       // repo-a: dirty only
       await write(join(env.projectDir, "my-feature/repo-a/dirty.txt"), "dirty");
-      // repo-b: dirty AND unpushed
+      // repo-b: dirty AND ahead-share
       await write(join(env.projectDir, "my-feature/repo-b/dirty.txt"), "dirty");
       await git(join(env.projectDir, "my-feature/repo-b"), ["add", "-A"]);
       await git(join(env.projectDir, "my-feature/repo-b"), ["commit", "-m", "unpushed"]);
       await write(join(env.projectDir, "my-feature/repo-b/dirty2.txt"), "more");
-      const result = await arb(env, ["exec", "--where", "dirty+unpushed", "pwd"], {
+      const result = await arb(env, ["exec", "--where", "dirty+ahead-share", "pwd"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
@@ -130,12 +130,12 @@ describe("--where filtering", () => {
       expect(result.output).not.toContain("repo-a");
     }));
 
-  test("arb exec --where dirty+unpushed skips repos matching only one term", () =>
+  test("arb exec --where dirty+ahead-share skips repos matching only one term", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
-      // repo-a: dirty only (no unpushed commits)
+      // repo-a: dirty only (no ahead-share commits)
       await write(join(env.projectDir, "my-feature/repo-a/dirty.txt"), "dirty");
-      const result = await arb(env, ["exec", "--where", "dirty+unpushed", "pwd"], {
+      const result = await arb(env, ["exec", "--where", "dirty+ahead-share", "pwd"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);

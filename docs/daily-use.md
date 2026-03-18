@@ -52,7 +52,7 @@ This shows the state of each repo in a compact table with labeled columns:
   local-lib    my-feature     1 day         origin/main  equal              local                           clean
 ```
 
-This view is designed to give you the full picture in one glance — repo name, current branch, when work last happened, how far you've drifted from the base branch, whether the share remote is ahead or behind, and what's uncommitted locally. Yellow highlights things that need attention: unpushed commits, local changes, repos on an unexpected branch (like `repo-c` above).
+This view is designed to give you the full picture in one glance — repo name, current branch, when work last happened, how far you've drifted from the base branch, whether the share remote is ahead or behind, and what's uncommitted locally. Yellow highlights things that need attention: commits ahead of the share remote, local changes, repos on an unexpected branch (like `repo-c` above).
 
 Use `--verbose` (`-v`) to see file-level detail — staged files, modified files, untracked files, and the actual commits that are ahead or behind:
 
@@ -64,13 +64,13 @@ Use `--where` (`-w`) to filter the table to repos matching a condition:
 
 ```bash
 arb status --where dirty              # only repos with uncommitted changes
-arb status --where unpushed           # only repos with commits to push
+arb status --where ahead-share           # only repos with commits to push
 arb status --where behind-base        # only repos that need rebasing
-arb status --where dirty+unpushed     # only repos that are both dirty AND unpushed
+arb status --where dirty+ahead-share     # only repos that are both dirty AND ahead-share
 arb status --where dirty,gone         # dirty OR gone (comma = OR)
 ```
 
-Use `,` for OR (match any term) and `+` for AND (match all terms). `+` binds tighter than `,`: `dirty+unpushed,gone` means (dirty AND unpushed) OR gone. See [Scripting & automation](scripting-automation.md#filtering) for the full list of filter terms and more examples.
+Use `,` for OR (match any term) and `+` for AND (match all terms). `+` binds tighter than `,`: `dirty+ahead-share,gone` means (dirty AND ahead-share) OR gone. See [Scripting & automation](scripting-automation.md#filtering) for the full list of filter terms and more examples.
 
 See `arb status --help` for all options.
 
@@ -117,7 +117,7 @@ arb open code
 # code /home/you/my-project/fix-login/frontend /home/you/my-project/fix-login/backend
 arb open --repo frontend code     # only open specific repos
 arb open --dirty code             # only open repos with uncommitted changes
-arb open --where unpushed code    # only open repos matching a status filter
+arb open --where ahead-share code    # only open repos matching a status filter
 arb open code -n --add            # -n and --add are passed to code
 ```
 

@@ -248,7 +248,7 @@ describe("json-types zod validation", () => {
       repoCount: 3,
       status: null,
       atRiskCount: 1,
-      statusCounts: [{ label: "unpushed", count: 1 }],
+      statusCounts: [{ label: "ahead share", count: 1 }],
       lastCommit: "2025-01-15T10:30:00Z",
     };
     expect(() => ListJsonEntrySchema.parse(entry)).not.toThrow();

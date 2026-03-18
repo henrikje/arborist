@@ -44,11 +44,11 @@ describe("status", () => {
       expect(result.output).toContain("1 behind");
     }));
 
-  test("arb status shows not pushed when branch not on remote", () =>
+  test("arb status shows no branch when branch not on remote", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const result = await arb(env, ["status"], { cwd: join(env.projectDir, "my-feature") });
-      expect(result.output).toContain("not pushed");
+      expect(result.output).toContain("no branch");
     }));
 
   test("arb status shows up to date after push with no new commits", () =>
@@ -235,7 +235,7 @@ describe("status", () => {
       await fetchAllRepos(env);
       const result = await arb(env, ["status"], { cwd: join(env.projectDir, "never-pushed") });
       expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("not pushed");
+      expect(result.output).toContain("no branch");
       expect(result.output).not.toContain("merged");
     }));
 

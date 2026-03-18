@@ -10,6 +10,20 @@ Technical patterns and development conventions for the Arborist codebase.
 
 `status/status.ts` is the single source of truth for repository state. `RepoStatus` is a 5-section model (identity, local, base, share, operation). `RepoFlags` computes independent boolean flags from that model. Named flag sets (`AT_RISK_FLAGS`, `LOSE_WORK_FLAGS`, `STALE_FLAGS`) group flags by concern. Shared functions (`computeFlags`, `isAtRisk`, `wouldLoseWork`) in `status/` derive decisions; display functions (`flagLabels`, `formatStatusCounts`, `buildStatusCountsCell`) live in `render/analysis.ts`.
 
+**Orthogonal status dimensions.** `RepoFlags` fields map to 7 orthogonal dimensions of repo state. Each flag belongs to exactly one dimension, and filters are named to reflect their dimension:
+
+| Dimension | Flags | Filter terms |
+|-----------|-------|-------------|
+| Local | `isDirty`, `hasConflict` | `dirty`, `conflict`, `clean` |
+| Branch | `isWrongBranch`, `isDetached` | `wrong-branch`, `detached` |
+| Base position | `isAheadOfBase`, `isBehindBase`, `isDiverged` | `ahead-base`, `behind-base`, `diverged` |
+| Base lifecycle | `isMerged`, `isBaseMerged`, `isBaseMissing` | `merged`, `base-merged`, `base-missing` |
+| Share lifecycle | `hasNoShare`, `isGone` | `no-share`, `gone` |
+| Share position | `isAheadOfShare`, `isBehindShare` | `ahead-share`, `behind-share` |
+| Infrastructure | `isShallow`, `hasOperation`, `isTimedOut` | `shallow`, `operation`, `timed-out` |
+
+Positional filters use the `<position>-<axis>` pattern (`ahead-share`, `behind-base`) to make axis relationships obvious. Lifecycle and infrastructure filters use standalone names when unambiguous (`gone`, `merged`, `shallow`). Flag names align with filter names: `isBehindBase` → `behind-base`, `isAheadOfShare` → `ahead-share`, etc. When adding a new flag, identify which dimension it belongs to and follow the naming convention of that dimension. See `decisions/0083-orthogonal-filter-dimensions.md`.
+
 **Structured sub-objects in base and share.** The `base` section uses an optional `merge?` sub-object to group merge lifecycle fields (`kind`, `newCommitsAfter?`, `commitHash?`, `detectedPr?`) — present only when a merge is detected. The `share` section uses an optional `outdated?` sub-object (`total`, `rebased`, `replaced`, `squashed`) to consolidate divergence detection results — present only when detection ran. Consumers use `share.outdated?.total ?? 0` instead of manually summing individual fields.
 
 Every command that needs to understand repo state must work from `RepoStatus` and `RepoFlags` — never invent local representations or ad-hoc git queries. When adding a new concept, extend the model in `status.ts` so every consumer benefits:

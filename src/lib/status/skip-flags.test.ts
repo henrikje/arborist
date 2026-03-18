@@ -5,7 +5,7 @@ describe("BENIGN_SKIPS", () => {
   test("contains expected benign flags", () => {
     expect(BENIGN_SKIPS.has("already-merged")).toBe(true);
     expect(BENIGN_SKIPS.has("no-commits")).toBe(true);
-    expect(BENIGN_SKIPS.has("not-pushed")).toBe(true);
+    expect(BENIGN_SKIPS.has("no-share")).toBe(true);
     expect(BENIGN_SKIPS.has("no-base-branch")).toBe(true);
   });
 

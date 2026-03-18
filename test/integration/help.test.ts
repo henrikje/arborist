@@ -67,7 +67,7 @@ describe("help", () => {
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("WHERE FILTER SYNTAX");
       expect(result.output).toContain("dirty");
-      expect(result.output).toContain("unpushed");
+      expect(result.output).toContain("ahead-share");
       expect(result.output).toContain("synced");
       expect(result.output).toContain("EXAMPLES");
     }));

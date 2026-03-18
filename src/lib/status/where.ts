@@ -16,10 +16,12 @@ function hasAnyFlag(flags: RepoFlags, set: Set<keyof RepoFlags>): boolean {
 const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
   // Negative / problem-condition terms
   dirty: (f) => f.isDirty,
-  unpushed: (f) => f.isUnpushed,
-  "not-pushed": (f) => f.isNeverPushed,
-  "behind-share": (f) => f.needsPull,
-  "behind-base": (f) => f.needsRebase,
+  "ahead-share": (f) => f.isAheadOfShare,
+  "no-share": (f) => f.hasNoShare,
+  "behind-share": (f) => f.isBehindShare,
+  "ahead-base": (f) => f.isAheadOfBase,
+  "behind-base": (f) => f.isBehindBase,
+  conflict: (f) => f.hasConflict,
   diverged: (f) => f.isDiverged,
   "wrong-branch": (f) => f.isWrongBranch,
   detached: (f) => f.isDetached,
@@ -34,10 +36,7 @@ const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
   stale: (f) => hasAnyFlag(f, STALE_FLAGS),
   // Positive / healthy-state terms
   clean: (f) => !f.isDirty,
-  pushed: (f) => !f.isUnpushed && !f.isNeverPushed,
-  "synced-base": (f) => !f.needsRebase && !f.isDiverged,
-  "synced-share": (f) => !f.needsPull,
-  synced: (f) => !hasAnyFlag(f, STALE_FLAGS),
+  pushed: (f) => !f.isAheadOfShare && !f.hasNoShare,
   safe: (f) => !isAtRisk(f),
 };
 

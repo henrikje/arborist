@@ -150,7 +150,7 @@ export function assessResetRepo(
 
     const flags = computeFlags(status, branch);
     totalAhead = status.base.ahead ?? 0;
-    unpushedCommits = flags.isUnpushed ? (status.share.toPush ?? totalAhead) : 0;
+    unpushedCommits = flags.isAheadOfShare ? (status.share.toPush ?? totalAhead) : 0;
 
     // Already at base ref with no dirty files
     if (status.base.behind === 0 && totalAhead === 0 && dirtyFiles === 0) {

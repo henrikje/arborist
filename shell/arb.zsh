@@ -68,9 +68,9 @@ arb() {
 
 _arb_where_filter() {
     local -a all_terms=(
-        dirty unpushed not-pushed behind-share behind-base diverged wrong-branch detached
-        operation gone shallow merged base-merged base-missing timed-out at-risk stale
-        clean pushed synced-base synced-share synced safe
+        dirty ahead-share no-share ahead-base behind-share behind-base diverged conflict
+        wrong-branch detached operation gone shallow merged base-merged base-missing timed-out
+        at-risk stale clean pushed safe
     )
     # Parse already-entered terms (split on , and +) to offer remaining ones
     local input="${PREFIX}${SUFFIX}"

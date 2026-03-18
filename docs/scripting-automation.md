@@ -26,25 +26,25 @@ Use `--where` (`-w`) to limit commands to repos matching specific conditions.
 Comma-separated terms use **OR** logic — a repo matches if it satisfies _any_ term:
 
 ```bash
-arb status --where dirty,unpushed       # repos that are dirty OR unpushed
+arb status --where dirty,ahead-share       # repos that are dirty OR ahead-share
 arb list --where stale                  # workspaces with stale repos
 ```
 
 Use `+` for **AND** — a repo must satisfy _all_ terms in the group:
 
 ```bash
-arb exec --where dirty+unpushed git stash   # only repos that are both dirty AND unpushed
+arb exec --where dirty+ahead-share git stash   # only repos that are both dirty AND ahead-share
 arb status --where dirty+behind-base        # dirty repos that also need rebasing
 ```
 
 `+` binds tighter than `,`, so you can mix both:
 
 ```bash
-arb status --where dirty+unpushed,gone      # (dirty AND unpushed) OR gone
+arb status --where dirty+ahead-share,gone      # (dirty AND ahead-share) OR gone
 arb delete --all-safe --where gone          # batch-remove workspaces whose branches are gone
 ```
 
-For workspace-level commands (`list`, `delete`), AND applies per-repo: a workspace matches `dirty+unpushed` only if a _single_ repo is both dirty and unpushed, not if one repo is dirty and a different repo is unpushed.
+For workspace-level commands (`list`, `delete`), AND applies per-repo: a workspace matches `dirty+ahead-share` only if a _single_ repo is both dirty and ahead-share, not if one repo is dirty and a different repo is ahead-share.
 
 `--where` is supported on `status`, `exec`, `open`, `diff`, `log`, `list`, `delete`, `push`, `pull`, `rebase`, `merge`, and `reset`. On `status`, `exec`, `open`, `diff`, `log`, and `list`, the shorthand `--dirty` (`-d`) is equivalent to `--where dirty`.
 
@@ -53,11 +53,13 @@ The full list of filter terms:
 | Term | Matches repos where… |
 |------|----------------------|
 | `dirty` | there are uncommitted changes (staged, modified, untracked, or conflicting files) |
-| `unpushed` | local commits haven't been pushed to the share remote |
-| `not-pushed` | the branch has never been pushed to the share remote |
+| `ahead-share` | local commits haven't been pushed to the share remote |
+| `no-share` | the branch has never been pushed to the share remote |
+| `ahead-base` | local commits ahead of the base branch |
 | `behind-share` | the share remote has commits not yet pulled |
 | `behind-base` | the base branch has moved ahead (repo needs rebase/merge) |
 | `diverged` | the base branch and local branch have diverged (both ahead and behind) |
+| `conflict` | merge conflicts in the working tree |
 | `wrong-branch` | the repo is on a different branch than the workspace expects |
 | `detached` | the repo is in detached HEAD state |
 | `operation` | a git operation is in progress (rebase, merge, cherry-pick, etc.) |
@@ -69,13 +71,10 @@ The full list of filter terms:
 | `at-risk` | the repo has unpushed commits, local changes, or is in a dirty operation state |
 | `stale` | the repo needs pulling, rebasing, or has diverged from base |
 | `clean` | no uncommitted changes (inverse of `dirty`) |
-| `pushed` | all commits pushed and branch exists on the share remote |
-| `synced-base` | up to date with the base branch (not behind-base or diverged) |
-| `synced-share` | up to date with the share remote (not behind-share) |
-| `synced` | up to date with both base and share |
+| `pushed` | branch exists on the share remote and all local commits have been pushed |
 | `safe` | no at-risk flags and not stale — safe to delete |
 
-Prefix any term with `^` to negate it: `^behind-base` matches repos that are _not_ behind the base branch. Negation works with composites too: `^at-risk` matches repos without any at-risk flags.
+Prefix any term with `^` to negate it: `^behind-base` matches repos that are _not_ behind the base branch. Negation works with composites too: `^at-risk` matches repos without any at-risk flags. Use `^behind-base` instead of the removed `synced-base`, `^behind-share` instead of `synced-share`, and `^stale` instead of `synced`.
 
 ## Quiet output
 
@@ -117,7 +116,7 @@ Commands that accept `[repos...]` or `[names...]` also read names from stdin whe
 
 ```bash
 arb status -q --where dirty | arb exec git stash  # stash only dirty repos (exec doesn't read stdin)
-arb status -q --where unpushed | arb diff         # diff only unpushed repos
+arb status -q --where ahead-share | arb diff         # diff only ahead-share repos
 arb list -q --where gone | arb delete -y          # delete gone workspaces
 arb status -q | grep -v legacy | arb rebase -y    # rebase all except "legacy"
 ```

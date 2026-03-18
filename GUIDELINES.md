@@ -132,6 +132,8 @@ When repos are the command's primary target, they are positional arguments (`arb
 
 `--dirty` (`-d`) is a shorthand for `--where dirty`, mutually exclusive with `--where`. Only offered where "dirty" is a natural filter: `status`, `diff`, `log`, `exec`, `open`, `list`. Omitted from sync commands and `delete`.
 
+Filter terms are organized by orthogonal dimension (see ARCHITECTURE.md). Positional terms use the `<position>-<axis>` pattern (`ahead-share`, `behind-base`) so axis relationships are obvious. Filter names describe state, not suggested action — whether a repo "needs rebase" depends on the user's intent; the filter just says `behind-base`. Named positive terms exist only where they provide non-trivial composition (`pushed` = `^ahead-share+^no-share`) or are natural vocabulary (`clean`, `safe`); trivially-derivable positives use `^` negation instead (`^behind-base` rather than a named `synced-base`).
+
 All commands use `resolveWhereFilter()` from `status.ts` for validation. Follow the existing pattern when adding `--where` to a new command.
 
 ### Quiet output and stdin piping

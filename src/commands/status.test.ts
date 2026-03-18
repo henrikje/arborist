@@ -304,7 +304,7 @@ describe("plainRemoteDiff", () => {
     expect(text).toBe("2 to push");
   });
 
-  test("shows not pushed for noRef with no ahead", () => {
+  test("shows no branch for noRef with no ahead", () => {
     const text = plainRemoteDiff(
       makeRepo({
         share: {
@@ -324,7 +324,7 @@ describe("plainRemoteDiff", () => {
         },
       }),
     );
-    expect(text).toBe("not pushed");
+    expect(text).toBe("no branch");
   });
 
   test("shows up to date", () => {

@@ -129,13 +129,13 @@ test("README walkthrough: init → clone → feature → interrupt → rebase �
     expect(existsSync(join(env.projectDir, "fix-login-crash/frontend"))).toBe(true);
 
     // Step 6: arb list shows both workspaces
-    // README: fix-login-crash → "no issues", add-dark-mode → "dirty, unpushed"
+    // README: fix-login-crash → "no issues", add-dark-mode → "dirty, ahead share"
     const listBoth = await arb(env, ["list"]);
     expect(listBoth.exitCode).toBe(0);
     expect(listBoth.output).toContain("add-dark-mode");
     expect(listBoth.output).toContain("fix-login-crash");
     expect(listBoth.output).toContain("no issues");
-    expect(listBoth.output).toContain("dirty, unpushed");
+    expect(listBoth.output).toContain("dirty, ahead share");
 
     // Step 7: commit fix, push, and delete fix-login-crash
     const fixFrontend = join(env.projectDir, "fix-login-crash/frontend");

@@ -17,7 +17,7 @@ describe("validateWhere", () => {
   });
 
   test("returns null for valid comma-separated terms", () => {
-    expect(validateWhere("dirty,gone,unpushed")).toBeNull();
+    expect(validateWhere("dirty,gone,ahead-share")).toBeNull();
   });
 
   test("returns null for at-risk derived term", () => {
@@ -27,7 +27,7 @@ describe("validateWhere", () => {
   test("returns null for all valid terms", () => {
     expect(
       validateWhere(
-        "dirty,unpushed,not-pushed,behind-share,behind-base,diverged,wrong-branch,detached,operation,gone,shallow,merged,base-merged,base-missing,timed-out,at-risk,stale,clean,pushed,synced-base,synced-share,synced,safe",
+        "dirty,ahead-share,no-share,behind-share,behind-base,ahead-base,conflict,diverged,wrong-branch,detached,operation,gone,shallow,merged,base-merged,base-missing,timed-out,at-risk,stale,clean,pushed,safe",
       ),
     ).toBeNull();
   });
@@ -61,11 +61,11 @@ describe("validateWhere", () => {
   });
 
   test("returns null for valid AND expression", () => {
-    expect(validateWhere("dirty+unpushed")).toBeNull();
+    expect(validateWhere("dirty+ahead-share")).toBeNull();
   });
 
   test("returns null for mixed AND/OR expression", () => {
-    expect(validateWhere("dirty+unpushed,gone")).toBeNull();
+    expect(validateWhere("dirty+ahead-share,gone")).toBeNull();
   });
 
   test("returns error for invalid term in AND group", () => {
@@ -74,7 +74,7 @@ describe("validateWhere", () => {
   });
 
   test("returns error for invalid term in mixed AND/OR", () => {
-    const err = validateWhere("dirty+unpushed,invalid");
+    const err = validateWhere("dirty+ahead-share,invalid");
     expect(err).toContain("Unknown filter term: invalid");
   });
 });
@@ -140,12 +140,12 @@ describe("repoMatchesWhere", () => {
       }),
       "feature",
     );
-    expect(repoMatchesWhere(flags, "dirty+unpushed")).toBe(true);
+    expect(repoMatchesWhere(flags, "dirty+ahead-share")).toBe(true);
   });
 
   test("AND fails when only one term true", () => {
     const flags = computeFlags(makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }), "feature");
-    expect(repoMatchesWhere(flags, "dirty+unpushed")).toBe(false);
+    expect(repoMatchesWhere(flags, "dirty+ahead-share")).toBe(false);
   });
 
   test("mixed AND/OR — first AND group matches", () => {
@@ -162,7 +162,7 @@ describe("repoMatchesWhere", () => {
       }),
       "feature",
     );
-    expect(repoMatchesWhere(flags, "dirty+unpushed,gone")).toBe(true);
+    expect(repoMatchesWhere(flags, "dirty+ahead-share,gone")).toBe(true);
   });
 
   test("mixed AND/OR — second OR term matches", () => {
@@ -178,12 +178,12 @@ describe("repoMatchesWhere", () => {
       }),
       "feature",
     );
-    expect(repoMatchesWhere(flags, "dirty+unpushed,gone")).toBe(true);
+    expect(repoMatchesWhere(flags, "dirty+ahead-share,gone")).toBe(true);
   });
 
   test("mixed AND/OR — neither group matches", () => {
     const flags = computeFlags(makeRepo(), "feature");
-    expect(repoMatchesWhere(flags, "dirty+unpushed,gone")).toBe(false);
+    expect(repoMatchesWhere(flags, "dirty+ahead-share,gone")).toBe(false);
   });
 
   test("AND with aggregate term", () => {
@@ -200,13 +200,13 @@ describe("repoMatchesWhere", () => {
       }),
       "feature",
     );
-    expect(repoMatchesWhere(flags, "at-risk+unpushed")).toBe(true);
+    expect(repoMatchesWhere(flags, "at-risk+ahead-share")).toBe(true);
   });
 
   test("matches each raw flag term", () => {
     const cases: [string, Partial<RepoStatus>][] = [
       [
-        "unpushed",
+        "ahead-share",
         {
           share: {
             remote: "origin",
@@ -218,7 +218,7 @@ describe("repoMatchesWhere", () => {
         },
       ],
       [
-        "not-pushed",
+        "no-share",
         {
           share: {
             remote: "origin",
@@ -241,6 +241,20 @@ describe("repoMatchesWhere", () => {
           },
         },
       ],
+      [
+        "ahead-base",
+        {
+          base: {
+            remote: "origin",
+            ref: "main",
+            configuredRef: null,
+            ahead: 3,
+            behind: 0,
+            baseMergedIntoDefault: null,
+          },
+        },
+      ],
+      ["conflict", { local: { staged: 0, modified: 0, untracked: 0, conflicts: 2 } }],
       [
         "behind-base",
         {
@@ -369,7 +383,7 @@ describe("workspaceMatchesWhere", () => {
     expect(workspaceMatchesWhere(repos, "feature", "at-risk")).toBe(false);
   });
 
-  test("AND is per-repo — workspace with dirty repo-a and unpushed repo-b does NOT match dirty+unpushed", () => {
+  test("AND is per-repo — workspace with dirty repo-a and ahead-share repo-b does NOT match dirty+ahead-share", () => {
     const repos = [
       makeRepo({ name: "repo-a", local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }),
       makeRepo({
@@ -383,14 +397,14 @@ describe("workspaceMatchesWhere", () => {
         },
       }),
     ];
-    expect(workspaceMatchesWhere(repos, "feature", "dirty+unpushed")).toBe(false);
+    expect(workspaceMatchesWhere(repos, "feature", "dirty+ahead-share")).toBe(false);
   });
 
   test("AND matches workspace when single repo satisfies all terms", () => {
     const repos = [
       makeRepo({ name: "clean-repo" }),
       makeRepo({
-        name: "dirty-unpushed-repo",
+        name: "dirty-ahead-share-repo",
         local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
         share: {
           remote: "origin",
@@ -401,7 +415,7 @@ describe("workspaceMatchesWhere", () => {
         },
       }),
     ];
-    expect(workspaceMatchesWhere(repos, "feature", "dirty+unpushed")).toBe(true);
+    expect(workspaceMatchesWhere(repos, "feature", "dirty+ahead-share")).toBe(true);
   });
 
   test("matches at-risk across repos when dirty", () => {
@@ -417,7 +431,7 @@ describe("workspaceMatchesWhere", () => {
 });
 
 describe("stale filter", () => {
-  test("matches needsPull", () => {
+  test("matches isBehindShare", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -433,7 +447,7 @@ describe("stale filter", () => {
     expect(repoMatchesWhere(flags, "stale")).toBe(true);
   });
 
-  test("matches needsRebase", () => {
+  test("matches isBehindBase", () => {
     const flags = computeFlags(
       makeRepo({
         base: {
@@ -489,12 +503,12 @@ describe("positive filter terms", () => {
     expect(repoMatchesWhere(flags, "clean")).toBe(false);
   });
 
-  test("pushed matches repo with no unpushed commits", () => {
+  test("pushed matches repo with no ahead-share commits", () => {
     const flags = computeFlags(makeRepo(), "feature");
     expect(repoMatchesWhere(flags, "pushed")).toBe(true);
   });
 
-  test("pushed does not match unpushed repo", () => {
+  test("pushed does not match ahead-share repo", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -550,7 +564,7 @@ describe("positive filter terms", () => {
     expect(repoMatchesWhere(flags, "pushed")).toBe(false);
   });
 
-  test("not-pushed matches never-pushed repo", () => {
+  test("no-share matches never-pushed repo", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -563,72 +577,12 @@ describe("positive filter terms", () => {
       }),
       "feature",
     );
-    expect(repoMatchesWhere(flags, "not-pushed")).toBe(true);
+    expect(repoMatchesWhere(flags, "no-share")).toBe(true);
   });
 
-  test("not-pushed does not match pushed repo", () => {
+  test("no-share does not match pushed repo", () => {
     const flags = computeFlags(makeRepo(), "feature");
-    expect(repoMatchesWhere(flags, "not-pushed")).toBe(false);
-  });
-
-  test("synced-base matches repo with no rebase needed and not diverged", () => {
-    const flags = computeFlags(makeRepo(), "feature");
-    expect(repoMatchesWhere(flags, "synced-base")).toBe(true);
-  });
-
-  test("synced-base does not match repo behind base", () => {
-    const flags = computeFlags(
-      makeRepo({
-        base: {
-          remote: "origin",
-          ref: "main",
-          configuredRef: null,
-          ahead: 0,
-          behind: 2,
-          baseMergedIntoDefault: null,
-        },
-      }),
-      "feature",
-    );
-    expect(repoMatchesWhere(flags, "synced-base")).toBe(false);
-  });
-
-  test("synced-base does not match diverged repo", () => {
-    const flags = computeFlags(
-      makeRepo({
-        base: {
-          remote: "origin",
-          ref: "main",
-          configuredRef: null,
-          ahead: 2,
-          behind: 3,
-          baseMergedIntoDefault: null,
-        },
-      }),
-      "feature",
-    );
-    expect(repoMatchesWhere(flags, "synced-base")).toBe(false);
-  });
-
-  test("synced-share matches repo with no pull needed", () => {
-    const flags = computeFlags(makeRepo(), "feature");
-    expect(repoMatchesWhere(flags, "synced-share")).toBe(true);
-  });
-
-  test("synced-share does not match repo behind share", () => {
-    const flags = computeFlags(
-      makeRepo({
-        share: {
-          remote: "origin",
-          ref: "origin/feature",
-          refMode: "configured",
-          toPush: 0,
-          toPull: 3,
-        },
-      }),
-      "feature",
-    );
-    expect(repoMatchesWhere(flags, "synced-share")).toBe(false);
+    expect(repoMatchesWhere(flags, "no-share")).toBe(false);
   });
 
   test("safe matches repo with no at-risk flags", () => {
@@ -641,7 +595,7 @@ describe("positive filter terms", () => {
     expect(repoMatchesWhere(flags, "safe")).toBe(false);
   });
 
-  test("safe does not match unpushed repo", () => {
+  test("safe does not match ahead-share repo", () => {
     const flags = computeFlags(
       makeRepo({
         share: {
@@ -655,44 +609,6 @@ describe("positive filter terms", () => {
       "feature",
     );
     expect(repoMatchesWhere(flags, "safe")).toBe(false);
-  });
-
-  test("synced matches repo with no stale flags", () => {
-    const flags = computeFlags(makeRepo(), "feature");
-    expect(repoMatchesWhere(flags, "synced")).toBe(true);
-  });
-
-  test("synced does not match repo behind base", () => {
-    const flags = computeFlags(
-      makeRepo({
-        base: {
-          remote: "origin",
-          ref: "main",
-          configuredRef: null,
-          ahead: 0,
-          behind: 2,
-          baseMergedIntoDefault: null,
-        },
-      }),
-      "feature",
-    );
-    expect(repoMatchesWhere(flags, "synced")).toBe(false);
-  });
-
-  test("synced does not match repo behind share", () => {
-    const flags = computeFlags(
-      makeRepo({
-        share: {
-          remote: "origin",
-          ref: "origin/feature",
-          refMode: "configured",
-          toPush: 0,
-          toPull: 3,
-        },
-      }),
-      "feature",
-    );
-    expect(repoMatchesWhere(flags, "synced")).toBe(false);
   });
 
   test("positive terms composable with AND", () => {
@@ -754,14 +670,14 @@ describe("^ negation prefix", () => {
     expect(repoMatchesWhere(flags, "^stale")).toBe(false);
   });
 
-  test("^ composable with AND: ^dirty+^unpushed", () => {
+  test("^ composable with AND: ^dirty+^ahead-share", () => {
     const flags = computeFlags(makeRepo(), "feature");
-    expect(repoMatchesWhere(flags, "^dirty+^unpushed")).toBe(true);
+    expect(repoMatchesWhere(flags, "^dirty+^ahead-share")).toBe(true);
   });
 
   test("^ AND fails when one condition unmet", () => {
     const flags = computeFlags(makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }), "feature");
-    expect(repoMatchesWhere(flags, "^dirty+^unpushed")).toBe(false);
+    expect(repoMatchesWhere(flags, "^dirty+^ahead-share")).toBe(false);
   });
 
   test("^ composable with OR: ^dirty,gone", () => {
@@ -794,8 +710,8 @@ describe("^ negation prefix", () => {
     expect(validateWhere("^at-risk")).toBeNull();
   });
 
-  test("validateWhere accepts ^dirty+^unpushed", () => {
-    expect(validateWhere("^dirty+^unpushed")).toBeNull();
+  test("validateWhere accepts ^dirty+^ahead-share", () => {
+    expect(validateWhere("^dirty+^ahead-share")).toBeNull();
   });
 
   test("validateWhere rejects ^invalid", () => {
@@ -829,25 +745,6 @@ describe("positive / negation equivalence", () => {
     );
     expect(repoMatchesWhere(safeFlags, "^at-risk")).toBe(repoMatchesWhere(safeFlags, "safe"));
     expect(repoMatchesWhere(riskyFlags, "^at-risk")).toBe(repoMatchesWhere(riskyFlags, "safe"));
-  });
-
-  test("^stale behaves same as synced", () => {
-    const syncedFlags = computeFlags(makeRepo(), "feature");
-    const staleFlags = computeFlags(
-      makeRepo({
-        base: {
-          remote: "origin",
-          ref: "main",
-          configuredRef: null,
-          ahead: 0,
-          behind: 2,
-          baseMergedIntoDefault: null,
-        },
-      }),
-      "feature",
-    );
-    expect(repoMatchesWhere(syncedFlags, "^stale")).toBe(repoMatchesWhere(syncedFlags, "synced"));
-    expect(repoMatchesWhere(staleFlags, "^stale")).toBe(repoMatchesWhere(staleFlags, "synced"));
   });
 });
 

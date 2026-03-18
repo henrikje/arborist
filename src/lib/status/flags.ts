@@ -29,29 +29,33 @@ export function isLocalDirty(local: {
 }
 
 export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlags {
-  const localDirty = isLocalDirty(repo.local);
+  const isDirty = isLocalDirty(repo.local);
+  const hasConflict = repo.local.conflicts > 0;
 
   const isDetached = repo.identity.headMode.kind === "detached";
 
   const isGone = repo.share.refMode === "gone";
 
-  const isNeverPushed = repo.share.refMode === "noRef";
+  const hasNoShare = repo.share.refMode === "noRef";
 
-  // isUnpushed: has commits to push to share remote, or never pushed with commits ahead of base
+  // isAheadOfShare: has commits to push to share remote, or never pushed with commits ahead of base
   // Note: "gone" branches are excluded — the remote deleted the branch (typically after PR merge),
-  // so "unpushed" would be misleading. The "gone" flag alone signals the state.
-  let isUnpushed = false;
+  // so "ahead of share" would be misleading. The "gone" flag alone signals the state.
+  let isAheadOfShare = false;
   if (repo.share.toPush !== null && repo.share.toPush > 0) {
-    isUnpushed = true;
-  } else if (isNeverPushed && repo.base !== null && repo.base.ahead > 0) {
-    isUnpushed = true;
+    isAheadOfShare = true;
+  } else if (hasNoShare && repo.base !== null && repo.base.ahead > 0) {
+    isAheadOfShare = true;
   }
 
-  // needsPull: share remote has genuinely new commits (not just outdated/replaced)
-  const needsPull = repo.share.toPull !== null && repo.share.toPull > (repo.share.outdated?.total ?? 0);
+  // isBehindShare: share remote has genuinely new commits (not just outdated/replaced)
+  const isBehindShare = repo.share.toPull !== null && repo.share.toPull > (repo.share.outdated?.total ?? 0);
 
-  // needsRebase: behind base branch
-  const needsRebase = repo.base !== null && repo.base.behind > 0;
+  // isAheadOfBase: has commits ahead of base branch
+  const isAheadOfBase = repo.base !== null && repo.base.ahead > 0;
+
+  // isBehindBase: behind base branch
+  const isBehindBase = repo.base !== null && repo.base.behind > 0;
 
   // isDiverged: both ahead of and behind base branch (non-trivial rebase/merge needed)
   const isDiverged = repo.base !== null && repo.base.ahead > 0 && repo.base.behind > 0;
@@ -69,11 +73,13 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
   const isBaseMissing = repo.base?.configuredRef != null && repo.base.baseMergedIntoDefault == null;
 
   return {
-    isDirty: localDirty,
-    isUnpushed,
-    isNeverPushed,
-    needsPull,
-    needsRebase,
+    isDirty,
+    hasConflict,
+    isAheadOfShare,
+    hasNoShare,
+    isBehindShare,
+    isAheadOfBase,
+    isBehindBase,
     isDiverged,
     isWrongBranch,
     isDetached,
