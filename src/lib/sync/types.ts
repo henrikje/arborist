@@ -56,6 +56,7 @@ interface IntegrateAssessmentBase {
   shallow: boolean;
   conflictPrediction?: ConflictPrediction;
   retarget?: IntegrateRetargetInfo;
+  baseFallback?: string;
   needsStash?: boolean;
   stashPopConflictFiles?: string[];
   verbose?: IntegrateVerboseInfo;

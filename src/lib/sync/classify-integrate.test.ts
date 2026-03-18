@@ -205,6 +205,88 @@ describe("classifyRepo", () => {
     expect(a.behind).toBe(5);
     expect(a.ahead).toBe(2);
   });
+
+  test("sets baseFallback when configuredRef is set and will-operate", () => {
+    const a = classifyRepo(
+      makeRepo({
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: "big-filter-overview",
+          ahead: 2,
+          behind: 5,
+          baseMergedIntoDefault: null,
+        },
+      }),
+      DIR,
+      "feature",
+      [],
+      false,
+      SHA,
+    );
+    expect(a.outcome).toBe("will-operate");
+    expect(a.baseFallback).toBe("big-filter-overview");
+  });
+
+  test("sets baseFallback when configuredRef is set and up-to-date", () => {
+    const a = classifyRepo(
+      makeRepo({
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: "big-filter-overview",
+          ahead: 2,
+          behind: 0,
+          baseMergedIntoDefault: null,
+        },
+      }),
+      DIR,
+      "feature",
+      [],
+      false,
+      SHA,
+    );
+    expect(a.outcome).toBe("up-to-date");
+    expect(a.baseFallback).toBe("big-filter-overview");
+  });
+
+  test("does not set baseFallback when configuredRef is null", () => {
+    const a = classifyRepo(
+      makeRepo({
+        base: { remote: "origin", ref: "main", configuredRef: null, ahead: 2, behind: 5, baseMergedIntoDefault: null },
+      }),
+      DIR,
+      "feature",
+      [],
+      false,
+      SHA,
+    );
+    expect(a.outcome).toBe("will-operate");
+    expect(a.baseFallback).toBeUndefined();
+  });
+
+  test("does not set baseFallback when baseMergedIntoDefault is detected (skip)", () => {
+    const a = classifyRepo(
+      makeRepo({
+        base: {
+          remote: "origin",
+          ref: "feat/old",
+          configuredRef: "feat/old",
+          ahead: 0,
+          behind: 3,
+          baseMergedIntoDefault: "merge",
+        },
+      }),
+      DIR,
+      "feature",
+      [],
+      false,
+      SHA,
+    );
+    expect(a.outcome).toBe("skip");
+    expect(a.skipFlag).toBe("base-merged-into-default");
+    expect(a.baseFallback).toBeUndefined();
+  });
 });
 
 // ── assessIntegrateRepo helpers ──

@@ -12,6 +12,7 @@ export interface IntegrateActionDesc {
   mergeType?: "fast-forward" | "three-way";
   conflictRisk: "will-conflict" | "likely" | "unlikely" | "no-conflict" | null;
   stash: "none" | "autostash" | "pop-conflict-likely" | "pop-conflict-unlikely";
+  baseFallback?: string;
   warning?: string;
   headSha?: string;
 }
@@ -67,6 +68,11 @@ export function integrateActionCell(desc: IntegrateActionDesc): Cell {
     } as const;
     const isAttention = desc.conflictRisk === "will-conflict" || desc.conflictRisk === "likely";
     result = suffix(result, ` (${labels[desc.conflictRisk]})`, isAttention ? "attention" : "default");
+  }
+
+  // Base fallback hint
+  if (desc.baseFallback) {
+    result = suffix(result, ` (base ${desc.baseFallback} not found)`, "attention");
   }
 
   // Retarget warning
