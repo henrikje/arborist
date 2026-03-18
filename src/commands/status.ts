@@ -5,7 +5,7 @@ import { ArbError, type CommandContext, arbAction } from "../lib/core";
 import { gitLocal, localTimeout } from "../lib/git/git";
 import { printSchema } from "../lib/json";
 import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
-import { createRenderContext, render, runPhasedRender } from "../lib/render";
+import { createRenderContext, fitToHeight, render, runPhasedRender } from "../lib/render";
 import { buildStatusView } from "../lib/render";
 import {
   type RepoStatus,
@@ -341,7 +341,7 @@ async function predictConflicts(
 async function renderStatusTable(
   filteredSummary: WorkspaceSummary,
   wsDir: string,
-  options: { verbose?: boolean },
+  options: { verbose?: boolean; maxLines?: number },
 ): Promise<string> {
   const repos = filteredSummary.repos;
 
@@ -392,13 +392,19 @@ async function renderStatusTable(
     verboseData,
   });
 
+  // Fit to terminal height when maxLines is specified (watch mode)
+  const fittedNodes = options.maxLines != null ? fitToHeight(nodes, options.maxLines) : nodes;
+
   // Resolve render context
   const renderCtx = createRenderContext();
 
-  return render(nodes, renderCtx);
+  return render(fittedNodes, renderCtx);
 }
 
 // --- Watch mode ---
+
+/** Number of terminal lines the watch footer occupies (blank line + hint bar). */
+const WATCH_FOOTER_LINES = 2;
 
 /**
  * Build a footer hint bar in Inquirer style: bold key + dim action, dim bullet separators.
@@ -484,7 +490,12 @@ async function runWatchMode(
   );
 
   const renderScreen = async (): Promise<string> => {
-    const table = await renderStatusTable(await gatherFiltered(undefined, false), wsDir, { verbose: options.verbose });
+    const terminalHeight = process.stderr.rows ?? 24;
+    const maxLines = terminalHeight - WATCH_FOOTER_LINES;
+    const table = await renderStatusTable(await gatherFiltered(undefined, false), wsDir, {
+      verbose: options.verbose,
+      maxLines,
+    });
     return table + watchFooter(fetching);
   };
 

@@ -18,6 +18,7 @@ export {
   buildConflictReport,
   buildStashPopFailureReport,
 } from "./conflict-report";
+export { countNodeLines, fitToHeight } from "./height-fit";
 export { type IntegrateActionDesc, integrateActionCell } from "./integrate-cells";
 export { formatBranchGraph } from "./integrate-graph";
 export {
