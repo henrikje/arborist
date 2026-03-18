@@ -47,7 +47,7 @@ import {
   workspaceFilePath,
   workspaceRepoList,
 } from "../lib/templates";
-import { error, info, isTTY, plural, warn, yellow } from "../lib/terminal";
+import { error, info, plural, shouldColor, warn, yellow } from "../lib/terminal";
 import { collectRepo, requireWorkspace, validateRepoNames, workspaceRepoDirs } from "../lib/workspace";
 
 function buildTemplateListNodes(
@@ -294,7 +294,7 @@ export function registerTemplateCommand(program: Command): void {
         const conflicts: TemplateEntry[] = [];
 
         const nodes = buildTemplateListNodes(templates, diffMap, repoWarningDirs, conflicts);
-        const rCtx: RenderContext = { tty: isTTY() };
+        const rCtx: RenderContext = { tty: shouldColor() };
         process.stdout.write(render(nodes, rCtx));
 
         const helperNodes = [
@@ -303,7 +303,7 @@ export function registerTemplateCommand(program: Command): void {
           ...displayRepoDirectoryWarnings([...repoWarningDirs]),
         ];
         if (helperNodes.length > 0) {
-          process.stderr.write(render(helperNodes, { tty: isTTY() }));
+          process.stderr.write(render(helperNodes, { tty: shouldColor() }));
         }
       }),
     );
@@ -588,7 +588,7 @@ async function applyDefaultMode(
     ...displayRepoDirectoryWarnings(repoDirectoryWarnings),
   ];
   if (helperNodes.length > 0) {
-    process.stderr.write(render(helperNodes, { tty: isTTY() }));
+    process.stderr.write(render(helperNodes, { tty: shouldColor() }));
   }
 
   process.stderr.write("\n");
@@ -679,7 +679,7 @@ async function applyForceMode(
     ...displayRepoDirectoryWarnings(repoDirectoryWarnings),
   ];
   if (forceHelperNodes.length > 0) {
-    process.stderr.write(render(forceHelperNodes, { tty: isTTY() }));
+    process.stderr.write(render(forceHelperNodes, { tty: shouldColor() }));
   }
   process.stderr.write("\n");
   const parts: string[] = [];

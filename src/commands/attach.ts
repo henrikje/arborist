@@ -6,7 +6,7 @@ import { parallelFetch, reportFetchFailures } from "../lib/sync";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
 import { error, info, plural, success, warn } from "../lib/terminal";
 import { readNamesFromStdin } from "../lib/terminal";
-import { isTTY } from "../lib/terminal";
+import { shouldColor } from "../lib/terminal";
 import {
   addWorktrees,
   listDefaultRepos,
@@ -94,7 +94,7 @@ export function registerAttachCommand(program: Command): void {
         const wsRepoNames = workspaceRepoDirs(wsDir).map((d) => basename(d));
         const repoTemplates = await applyRepoTemplates(ctx.arbRootDir, wsDir, wsRepoNames, changed, cache);
         const wsTemplates = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir, changed, cache);
-        displayOverlaySummary(wsTemplates, repoTemplates, (nodes) => render(nodes, { tty: isTTY() }));
+        displayOverlaySummary(wsTemplates, repoTemplates, (nodes) => render(nodes, { tty: shouldColor() }));
 
         process.stderr.write("\n");
         if (result.failed.length === 0 && result.skipped.length === 0) {

@@ -1,4 +1,4 @@
-import { isTTY } from "./tty";
+import { isTTY, shouldColor } from "./tty";
 
 const RED = "\x1b[0;31m";
 const GREEN = "\x1b[0;32m";
@@ -9,7 +9,7 @@ const DIM = "\x1b[2m";
 const NC = "\x1b[0m";
 
 function color(code: string, text: string): string {
-  if (!isTTY()) return text;
+  if (!shouldColor()) return text;
   return `${code}${text}${NC}`;
 }
 

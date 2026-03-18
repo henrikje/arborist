@@ -4,7 +4,7 @@ import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
 import { type RenderContext, render } from "../lib/render";
 import { repoHeaderNode } from "../lib/render";
 import { computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
-import { error, isTTY, plural, success } from "../lib/terminal";
+import { error, plural, shouldColor, success } from "../lib/terminal";
 import { collectRepo, requireBranch, requireWorkspace, validateRepoNames, workspaceRepoDirs } from "../lib/workspace";
 
 export function registerExecCommand(program: Command): void {
@@ -84,7 +84,7 @@ export function registerExecCommand(program: Command): void {
           }
         }
 
-        const renderCtx: RenderContext = { tty: isTTY() };
+        const renderCtx: RenderContext = { tty: shouldColor() };
 
         if (options.parallel) {
           const result = await runParallelExec(filteredDirs, args, renderCtx);

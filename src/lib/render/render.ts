@@ -1,5 +1,5 @@
 import { ArbError } from "../core/errors";
-import { isTTY } from "../terminal/tty";
+import { shouldColor } from "../terminal/tty";
 import type {
   Cell,
   GapNode,
@@ -47,7 +47,7 @@ export interface RenderContext {
 export function createRenderContext(): RenderContext {
   const envCols = Number(process.env.COLUMNS);
   const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
-  return { tty: isTTY(), terminalWidth: termCols > 0 ? termCols : undefined };
+  return { tty: shouldColor(), terminalWidth: termCols > 0 ? termCols : undefined };
 }
 
 // ── Cell Rendering ──
@@ -448,7 +448,7 @@ export function finishSummary(parts: string[], hasErrors: boolean): void {
     parts: parts.map((p) => cell(p)),
     hasErrors,
   };
-  process.stderr.write(render([node], { tty: isTTY() }));
+  process.stderr.write(render([node], { tty: shouldColor() }));
   if (hasErrors) {
     throw new ArbError(parts.join(", "));
   }

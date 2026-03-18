@@ -15,7 +15,7 @@ import {
   resolveWhereFilter,
 } from "../lib/status";
 import { parallelFetch, reportFetchFailures } from "../lib/sync";
-import { error, isTTY, plural, stdout, success } from "../lib/terminal";
+import { error, isTTY, plural, shouldColor, stdout, success } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
 interface RepoDiffStat {
@@ -183,7 +183,7 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
   let totalInsertions = 0;
   let totalDeletions = 0;
   let totalUntracked = 0;
-  const ctx: RenderContext = { tty: isTTY() };
+  const ctx: RenderContext = { tty: shouldColor() };
 
   for (let i = 0; i < repos.length; i++) {
     const repo = repos[i];
@@ -240,9 +240,8 @@ async function outputTTY(repos: RepoStatus[], wsDir: string, branch: string, sta
     process.stderr.write(render([repoHeaderNode(repo.name, note || undefined)], ctx));
 
     // Let git render the diff
-    const diffArgs = stat
-      ? ["diff", "-M", "--stat", "--color=always", ...gitArgs]
-      : ["diff", "-M", "--color=always", ...gitArgs];
+    const colorFlag = shouldColor() ? "--color=always" : "--color=never";
+    const diffArgs = stat ? ["diff", "-M", "--stat", colorFlag, ...gitArgs] : ["diff", "-M", colorFlag, ...gitArgs];
     const result = await gitLocal(repoDir, ...diffArgs);
     if (result.exitCode === 0 && result.stdout.trim()) {
       stdout(result.stdout);

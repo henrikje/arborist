@@ -7,7 +7,7 @@ import { cell, createRenderContext, finishSummary, render, skipCell, spans, suff
 import type { SkipFlag } from "../lib/status";
 import { type RepoStatus, computeFlags, resolveWhereFilter } from "../lib/status";
 import { buildCachedStatusAssess, confirmOrExit, runPlanFlow } from "../lib/sync";
-import { dryRunNotice, info, inlineResult, inlineStart, isTTY, plural, warn, yellow } from "../lib/terminal";
+import { dryRunNotice, info, inlineResult, inlineStart, plural, shouldColor, warn, yellow } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
 // ── Assessment ──
@@ -393,7 +393,7 @@ export function registerResetCommand(program: Command): void {
               },
             );
           }
-          const reportCtx = { tty: isTTY() };
+          const reportCtx = { tty: shouldColor() };
           process.stderr.write(render(failureNodes, reportCtx));
         }
 

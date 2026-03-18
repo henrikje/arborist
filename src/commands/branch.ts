@@ -11,7 +11,7 @@ import type { OutputNode } from "../lib/render";
 import { runPhasedRender } from "../lib/render";
 import { type RepoRefs, computeFlags, gatherRepoRefs, gatherWorkspaceSummary } from "../lib/status";
 import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures } from "../lib/sync";
-import { error, info, isTTY, listenForAbortSignal, stderr } from "../lib/terminal";
+import { error, info, isTTY, listenForAbortSignal, shouldColor, stderr } from "../lib/terminal";
 import {
   rejectExplicitBaseRemotePrefix,
   requireWorkspace,
@@ -207,7 +207,7 @@ async function runBranch(
 
   // Default table output
   const nodes = buildBranchSummaryNodes(branch, base, repos);
-  const rCtx: RenderContext = { tty: isTTY() };
+  const rCtx: RenderContext = { tty: shouldColor() };
   process.stdout.write(render(nodes, rCtx));
 }
 
@@ -341,7 +341,7 @@ function buildVerboseRows(repos: RepoRefs[], branch: string): VerboseRow[] {
 
 function formatVerboseOutput(repos: RepoRefs[], branch: string, base: string | null): string {
   const nodes = buildVerboseNodes(repos, branch, base);
-  const rCtx: RenderContext = { tty: isTTY() };
+  const rCtx: RenderContext = { tty: shouldColor() };
   return render(nodes, rCtx);
 }
 

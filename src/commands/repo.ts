@@ -10,7 +10,17 @@ import { type RenderContext, render } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { classifyNetworkError, confirmOrExit, networkErrorHint } from "../lib/sync";
-import { dim, dryRunNotice, error, info, inlineResult, inlineStart, isTTY, plural, success } from "../lib/terminal";
+import {
+  dim,
+  dryRunNotice,
+  error,
+  info,
+  inlineResult,
+  inlineStart,
+  plural,
+  shouldColor,
+  success,
+} from "../lib/terminal";
 import { findRepoUsage, listRepos, selectInteractive } from "../lib/workspace";
 
 function buildRepoListNodes(entries: RepoListJsonEntry[], verbose: boolean): OutputNode[] {
@@ -227,7 +237,7 @@ export function registerRepoCommand(program: Command): void {
         }
 
         const nodes = buildRepoListNodes(entries, options.verbose ?? false);
-        const rCtx: RenderContext = { tty: isTTY() };
+        const rCtx: RenderContext = { tty: shouldColor() };
         process.stdout.write(render(nodes, rCtx));
       })(options, command);
     });
