@@ -98,7 +98,7 @@ export function registerTemplateCommand(program: Command): void {
     .command("template")
     .summary("Manage workspace templates")
     .description(
-      "Manage template files that are automatically seeded into new workspaces. Templates live in .arb/templates/ and are copied into workspaces during 'arb create' and 'arb attach'. Files ending with .arbtemplate are rendered with LiquidJS ({{ workspace.path }}, {% for repo in workspace.repos %}, etc.) and have the extension stripped at the destination. Templates referencing workspace.repos are automatically regenerated when repos are attached or detached. Use subcommands to add, list, diff, and apply templates.\n\nSee 'arb help templates' for variables, scopes, and drift detection.",
+      "Examples:\n\n  arb template                             List templates (default)\n  arb template add .eslintrc.json          Capture a file as a template\n  arb template diff                        Show template drift\n\nManage template files that are automatically seeded into new workspaces. Templates live in .arb/templates/ and are copied into workspaces during 'arb create' and 'arb attach'. Files ending with .arbtemplate are rendered with LiquidJS ({{ workspace.path }}, {% for repo in workspace.repos %}, etc.) and have the extension stripped at the destination. Templates referencing workspace.repos are automatically regenerated when repos are attached or detached. Use subcommands to add, list, diff, and apply templates.\n\nSee 'arb help templates' for variables, scopes, and drift detection.",
     );
 
   // ── template add ─────────────────────────────────────────────────
@@ -110,7 +110,7 @@ export function registerTemplateCommand(program: Command): void {
     .option("-f, --force", "Overwrite existing template")
     .summary("Capture a file or directory as a template")
     .description(
-      "Copy a file or directory from the current workspace into .arb/templates/. If a directory is given, all files within it are added recursively. The scope (workspace or repo) is auto-detected from the source path's location: a file inside a repo directory becomes a repo template, a file elsewhere in the workspace becomes a workspace template. Use --repo or --workspace to override. The path must be inside the workspace unless an explicit scope flag is given. If the template already exists with identical content, succeeds silently. If content differs, use --force to overwrite. If a .arbtemplate version of the file already exists, the add is refused to prevent a conflict; remove the .arbtemplate version first.",
+      "Examples:\n\n  arb template add .eslintrc.json          Auto-detect scope from path\n  arb template add api/.eslintrc.json      Becomes a repo template\n  arb template add docker-compose.yml --workspace --force\n\nCopy a file or directory from the current workspace into .arb/templates/. If a directory is given, all files within it are added recursively. The scope (workspace or repo) is auto-detected from the source path's location: a file inside a repo directory becomes a repo template, a file elsewhere in the workspace becomes a workspace template. Use --repo or --workspace to override. The path must be inside the workspace unless an explicit scope flag is given. If the template already exists with identical content, succeeds silently. If content differs, use --force to overwrite. If a .arbtemplate version of the file already exists, the add is refused to prevent a conflict; remove the .arbtemplate version first.",
     )
     .action(
       arbAction(async (ctx, path: string, options) => {
@@ -260,7 +260,7 @@ export function registerTemplateCommand(program: Command): void {
     .command("list", { isDefault: true })
     .summary("List all defined templates (default)")
     .description(
-      "Show all template files in .arb/templates/ as a columnar table. When run inside a workspace, adds a STATUS column showing drift annotations: template (uses .arbtemplate rendering), conflict (both plain and .arbtemplate exist), modified (workspace copy edited by user), deleted (workspace copy removed), or stale (template source changed since seeding but workspace copy untouched).",
+      "Examples:\n\n  arb template list                        Show all templates with status\n  arb template                             Same as 'arb template list'\n\nShow all template files in .arb/templates/ as a columnar table. When run inside a workspace, adds a STATUS column showing drift annotations: template (uses .arbtemplate rendering), conflict (both plain and .arbtemplate exist), modified (workspace copy edited by user), deleted (workspace copy removed), or stale (template source changed since seeding but workspace copy untouched).",
     )
     .action(
       arbAction(async (ctx) => {
@@ -316,7 +316,7 @@ export function registerTemplateCommand(program: Command): void {
     .option("--workspace", "Filter to workspace templates only")
     .summary("Show template drift (unified diff)")
     .description(
-      "Show content differences between templates and their workspace copies. Generates unified diff output for each drifted file. Exits with code 1 if any drift is found (useful for CI). Use --repo or --workspace to filter scope, and optionally specify a file path to diff only that template.",
+      "Examples:\n\n  arb template diff                        Diff all templates\n  arb template diff .eslintrc.json         Diff a specific template\n\nShow content differences between templates and their workspace copies. Generates unified diff output for each drifted file. Exits with code 1 if any drift is found (useful for CI). Use --repo or --workspace to filter scope, and optionally specify a file path to diff only that template.",
     )
     .action(
       arbAction(async (ctx, file: string | undefined, options) => {
@@ -421,7 +421,7 @@ export function registerTemplateCommand(program: Command): void {
     .option("-f, --force", "Overwrite drifted files (reset to template version)")
     .summary("Re-seed templates into the current workspace")
     .description(
-      "Re-seed template files into the current workspace. By default, only copies files that don't already exist (safe, non-destructive). Use --force to also reset drifted files to their template version. Files with .arbtemplate extension undergo placeholder substitution. Use --repo or --workspace to limit scope, and optionally specify a file path to apply only that template.",
+      "Examples:\n\n  arb template apply                       Seed missing files only\n  arb template apply --force               Also reset drifted files\n\nRe-seed template files into the current workspace. By default, only copies files that don't already exist (safe, non-destructive). Use --force to also reset drifted files to their template version. Files with .arbtemplate extension undergo placeholder substitution. Use --repo or --workspace to limit scope, and optionally specify a file path to apply only that template.",
     )
     .action(
       arbAction(async (ctx, file: string | undefined, options) => {

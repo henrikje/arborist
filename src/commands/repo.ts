@@ -78,7 +78,7 @@ export function registerRepoCommand(program: Command): void {
     .command("repo")
     .summary("Manage canonical repos")
     .description(
-      "Manage the canonical repository clones in .arb/repos/. These permanent clones are never worked in directly — instead, arb creates worktrees that point back to them. Use subcommands to clone new repos, list existing ones, or remove repos that are no longer needed.\n\nSee 'arb help remotes' for remote role resolution.",
+      "Examples:\n\n  arb repo                                 List cloned repos (default)\n  arb repo clone git@github.com:org/api    Clone a new repo\n  arb repo remove api                      Remove a repo\n\nManage the canonical repository clones in .arb/repos/. These permanent clones are never worked in directly — instead, arb creates worktrees that point back to them. Use subcommands to clone new repos, list existing ones, or remove repos that are no longer needed.\n\nSee 'arb help remotes' for remote role resolution.",
     );
 
   // ── repo clone ──────────────────────────────────────────────────
@@ -88,7 +88,7 @@ export function registerRepoCommand(program: Command): void {
     .option("--upstream <url>", "Add an upstream remote (for fork workflows)")
     .summary("Clone a repo into .arb/repos/")
     .description(
-      "Clone a git repository into .arb/repos/<name> as a canonical copy. These permanent clones are never worked in directly — instead, arb creates worktrees that point back to them. The repo name is derived from the URL if not specified.\n\nFor fork workflows, use --upstream to add the canonical repo as an upstream remote. This sets remote.pushDefault so arb knows to push to origin (your fork) and rebase onto upstream.",
+      "Examples:\n\n  arb repo clone git@github.com:org/api\n  arb repo clone git@github.com:org/api backend\n  arb repo clone git@github.com:me/api --upstream git@github.com:org/api\n\nClone a git repository into .arb/repos/<name> as a canonical copy. These permanent clones are never worked in directly — instead, arb creates worktrees that point back to them. The repo name is derived from the URL if not specified.\n\nFor fork workflows, use --upstream to add the canonical repo as an upstream remote. This sets remote.pushDefault so arb knows to push to origin (your fork) and rebase onto upstream.",
     )
     .action(
       arbAction(async (ctx, url: string, nameArg: string | undefined, options) => {
@@ -163,7 +163,7 @@ export function registerRepoCommand(program: Command): void {
     .option("--schema", "Print JSON Schema for this command's --json output and exit")
     .summary("List cloned repos (default)")
     .description(
-      "List all repositories that have been cloned into .arb/repos/. Shows resolved SHARE and BASE remote names for each repo. Use --verbose to include remote URLs alongside names. Use --quiet for plain enumeration (one name per line). Use --json for machine-readable output.",
+      "Examples:\n\n  arb repo list                            List repos with remote roles\n  arb repo list -v                         Include remote URLs\n  arb repo list -q                         One name per line\n\nList all repositories that have been cloned into .arb/repos/. Shows resolved SHARE and BASE remote names for each repo. Use --verbose to include remote URLs alongside names. Use --quiet for plain enumeration (one name per line). Use --json for machine-readable output.",
     )
     .action(async (options, command) => {
       if (options.schema) {
@@ -251,7 +251,7 @@ export function registerRepoCommand(program: Command): void {
     .option("-n, --dry-run", "Show what would be removed without removing")
     .summary("Remove canonical repos from .arb/repos/")
     .description(
-      "Remove one or more canonical repository clones from .arb/repos/ and their associated template files from .arb/templates/repos/. This is the inverse of 'arb repo clone'.\n\nRefuses to remove repos that are attached to a workspace. Run 'arb detach <repo>' or 'arb delete <workspace>' first, then retry. Prompts with a repo picker when run without arguments.",
+      "Examples:\n\n  arb repo remove api                      Remove a single repo\n  arb repo remove api web --yes            Remove multiple, skip prompt\n  arb repo remove --all-repos              Remove all repos\n\nRemove one or more canonical repository clones from .arb/repos/ and their associated template files from .arb/templates/repos/. This is the inverse of 'arb repo clone'.\n\nRefuses to remove repos that are attached to a workspace. Run 'arb detach <repo>' or 'arb delete <workspace>' first, then retry. Prompts with a repo picker when run without arguments.",
     )
     .action(
       arbAction(async (ctx, nameArgs: string[], options) => {
@@ -345,7 +345,7 @@ export function registerRepoCommand(program: Command): void {
     .option("-r, --remove", "Remove repos from defaults")
     .summary("Manage default repo selection")
     .description(
-      "Mark repos as defaults for workspace creation. Default repos are pre-selected in interactive pickers and used as the fallback repo set when no repos are specified in non-interactive mode.\n\nWith no arguments, lists current defaults. With repo names, adds them to defaults. With --remove, removes them from defaults.\n\nStored in .arb/config.json as a JSON array under the 'defaults' key.",
+      "Examples:\n\n  arb repo default                         List current defaults\n  arb repo default api web                 Add repos to defaults\n  arb repo default --remove api            Remove from defaults\n\nMark repos as defaults for workspace creation. Default repos are pre-selected in interactive pickers and used as the fallback repo set when no repos are specified in non-interactive mode.\n\nWith no arguments, lists current defaults. With repo names, adds them to defaults. With --remove, removes them from defaults.\n\nStored in .arb/config.json as a JSON array under the 'defaults' key.",
     )
     .action(
       arbAction(async (ctx, nameArgs: string[], options) => {

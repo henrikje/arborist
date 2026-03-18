@@ -12,7 +12,7 @@ export function registerDumpCommand(program: Command): void {
     .command("dump", { hidden: true })
     .summary("Dump full workspace state for debugging")
     .description(
-      "Collect all arb and git state and print it as JSON. Run this when you encounter a weird workspace state or unexpected sync plan — capture the output, then analyze or share it to diagnose the issue.\n\nOutputs to stdout. Does not fetch, so the dump reflects current local state only.",
+      "Examples:\n\n  arb dump > state.json                    Save state for sharing\n  arb dump | jq '.workspaces[0].repos'     Query with jq\n\nCollect all arb and git state and print it as JSON. Run this when you encounter a weird workspace state or unexpected sync plan — capture the output, then analyze or share it to diagnose the issue.\n\nOutputs to stdout. Does not fetch, so the dump reflects current local state only.",
     )
     .action(
       arbAction(async (ctx) => {

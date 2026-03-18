@@ -10,7 +10,7 @@ export function registerInitCommand(program: Command): void {
     .command("init [path]")
     .summary("Initialize a new project")
     .description(
-      "Create the .arb/ marker directory and scaffolding that arb needs. The current directory (or the given path) becomes the project root — canonical repos go in .arb/repos/, and workspaces are created as top-level directories.",
+      "Examples:\n\n  arb init                                 Initialize in current directory\n  arb init ~/projects/my-platform          Initialize at a specific path\n\nCreate the .arb/ marker directory and scaffolding that arb needs. The current directory (or the given path) becomes the project root — canonical repos go in .arb/repos/, and workspaces are created as top-level directories.",
     )
     .action((path?: string) => {
       let target = path ?? process.cwd();

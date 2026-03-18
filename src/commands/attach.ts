@@ -25,7 +25,7 @@ export function registerAttachCommand(program: Command): void {
     .option("-N, --no-fetch", "Skip pre-fetch")
     .summary("Attach repos to the workspace")
     .description(
-      "Attach one or more repos to the current workspace on the workspace's feature branch. If the workspace has a configured base branch, new branches are created from it. Fetches the selected repos before attaching for fresh remote state (skip with -N/--no-fetch). Automatically seeds files from .arb/templates/repos/ into newly attached repos and regenerates workspace-level templates that reference the repo list (those using {% for repo in workspace.repos %}). Prompts with a repo picker when run without arguments. Use --all-repos to attach all repos not yet in the workspace.",
+      "Examples:\n\n  arb attach api web                       Attach specific repos\n  arb attach --all-repos                   Attach all available repos\n  arb attach                               Interactive picker\n\nAttach one or more repos to the current workspace on the workspace's feature branch. If the workspace has a configured base branch, new branches are created from it. Fetches the selected repos before attaching for fresh remote state (skip with -N/--no-fetch). Automatically seeds files from .arb/templates/repos/ into newly attached repos and regenerates workspace-level templates that reference the repo list (those using {% for repo in workspace.repos %}). Prompts with a repo picker when run without arguments. Use --all-repos to attach all repos not yet in the workspace.",
     )
     .action(
       arbAction(async (ctx, repoArgs: string[], options) => {

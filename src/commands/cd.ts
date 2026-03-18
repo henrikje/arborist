@@ -18,7 +18,7 @@ export function registerCdCommand(program: Command): void {
     .command("cd [name]")
     .summary("Navigate to a workspace or repo directory")
     .description(
-      'Change into a workspace or repo directory. When run from inside a workspace, names are resolved as repos first (e.g. "arb cd backend" navigates to the backend repo). Use "workspace/repo" to be explicit. When run without arguments in a TTY, shows an interactive picker (repos when inside a workspace, workspaces otherwise).\n\nRequires shell integration (installed by install.sh) to change the shell\'s working directory. Without it, the resolved path is printed to stdout.',
+      'Examples:\n\n  arb cd api                               Navigate to repo in workspace\n  arb cd PROJ-208                          Navigate to workspace\n  arb cd PROJ-208/api                      Explicit workspace/repo\n\nChange into a workspace or repo directory. When run from inside a workspace, names are resolved as repos first (e.g. "arb cd backend" navigates to the backend repo). Use "workspace/repo" to be explicit. When run without arguments in a TTY, shows an interactive picker (repos when inside a workspace, workspaces otherwise).\n\nRequires shell integration (installed by install.sh) to change the shell\'s working directory. Without it, the resolved path is printed to stdout.',
     )
     .action(
       arbAction(async (ctx, input?: string) => {
