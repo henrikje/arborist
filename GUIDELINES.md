@@ -102,10 +102,6 @@ When multiple operations manage the same `.arb/` subsystem (repos, templates), g
 
 See `decisions/0045-universal-fetch-flags.md`.
 
-### Fetch TTL
-
-When the default fetch behavior is active (neither `--fetch` nor `--no-fetch` given), Arborist skips the fetch if all repos were successfully fetched within the last 15 seconds. This avoids redundant network round-trips when running commands in quick succession (e.g. `arb status` → `arb push`). Explicit `--fetch` always fetches regardless of TTL. `ARB_FETCH_TTL` (seconds) overrides the default; `0` disables. Per-repo timestamps are stored in `.arb/cache/fetch.json`. See `decisions/0079-fetch-ttl.md`.
-
 ### Network timeouts
 
 All git operations that contact the network (fetch, push, pull, clone) must have a timeout to prevent indefinite hangs. Use `gitNetwork()` from `src/lib/git/git.ts` for individual network calls, or `parallelFetch()` for batch fetches (which uses `gitNetwork()` internally with a shared global deadline). Local git operations use `gitLocal()`, which has its own timeout (default 5s, `ARB_GIT_TIMEOUT` env var) to protect against cloud-synced filesystems blocking on undownloaded files.

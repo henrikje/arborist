@@ -15,7 +15,7 @@ async function arbWithEnv(env: TestEnv, args: string[], opts?: { cwd?: string; e
     cwd: opts?.cwd ?? env.projectDir,
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, NO_COLOR: "1", ARB_FETCH_TTL: "0", ...opts?.env },
+    env: { ...process.env, NO_COLOR: "1", ...opts?.env },
   });
   const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
   const exitCode = await proc.exited;

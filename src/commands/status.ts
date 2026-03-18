@@ -20,18 +20,7 @@ import {
   resolveWhereFilter,
   toJsonVerbose,
 } from "../lib/status";
-import {
-  type FetchResult,
-  allReposFresh,
-  fetchSuffix,
-  fetchTtl,
-  getUnchangedRepos,
-  loadFetchTimestamps,
-  parallelFetch,
-  recordFetchResults,
-  reportFetchFailures,
-  saveFetchTimestamps,
-} from "../lib/sync";
+import { type FetchResult, fetchSuffix, getUnchangedRepos, parallelFetch, reportFetchFailures } from "../lib/sync";
 import {
   type WatchEntry,
   bold,
@@ -173,13 +162,11 @@ async function runStatus(
   }
 
   // Phased rendering: show stale table immediately, refresh after fetch
-  const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
   const wantsFetch = options.fetch !== false && !options.quiet;
   const allFetchDirs = wantsFetch ? workspaceRepoDirs(wsDir) : [];
   const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
   const repoNamesForFetch = fetchDirs.map((d) => basename(d));
-  const shouldFetch =
-    wantsFetch && (options.fetch === true || !allReposFresh(repoNamesForFetch, fetchTimestamps, fetchTtl()));
+  const shouldFetch = wantsFetch;
   const canPhase = shouldFetch && fetchDirs.length > 0 && !options.json && isTTY();
 
   if (canPhase) {
@@ -237,8 +224,6 @@ async function runStatus(
     }
     if (!state.aborted) {
       reportFetchFailures(repoNamesForFetch, state.fetchResults as Map<string, FetchResult>);
-      recordFetchResults(fetchTimestamps, state.fetchResults as Map<string, FetchResult>);
-      saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
     }
     if (state.finalRepos) reportTimeoutHint(state.finalRepos);
     return;
@@ -251,8 +236,6 @@ async function runStatus(
     const results = await parallelFetch(fetchDirs, undefined, remotesMap);
     reportFetchFailures(repos, results);
     cache.invalidateAfterFetch();
-    recordFetchResults(fetchTimestamps, results);
-    saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
   }
 
   const filteredSummary = await gatherFiltered();

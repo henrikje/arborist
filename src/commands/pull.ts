@@ -117,7 +117,6 @@ export function registerPullCommand(program: Command): void {
         };
 
         const assessments = await runPlanFlow({
-          arbRootDir: ctx.arbRootDir,
           fetchDirs,
           reposForFetchReport: repos,
           remotesMap,

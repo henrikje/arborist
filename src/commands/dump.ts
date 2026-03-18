@@ -4,7 +4,6 @@ import type { Command } from "commander";
 import { type CommandContext, arbAction, readWorkspaceConfig } from "../lib/core";
 import { getRemoteNames, getRemoteUrl } from "../lib/git";
 import { AnalysisCache, computeFlags, gatherWorkspaceSummary } from "../lib/status";
-import { fetchTtl, loadFetchTimestamps } from "../lib/sync";
 import { listRepos, listWorkspaces, readGitdirFromWorktree, workspaceRepoDirs } from "../lib/workspace";
 import { ARB_VERSION } from "../version";
 
@@ -382,16 +381,6 @@ async function runDump(ctx: CommandContext): Promise<void> {
     }
   }
 
-  // Fetch cache summary
-  const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
-  const fetchEntries = Object.entries(fetchTimestamps);
-  const fetchCacheSummary = {
-    path: join(ctx.arbRootDir, ".arb", "cache", "fetch.json"),
-    ttlSeconds: fetchTtl(),
-    entryCount: fetchEntries.length,
-    entries: Object.fromEntries(fetchEntries),
-  };
-
   // Analysis cache summary
   const analysisCacheSummary = {
     path: aCache.path,
@@ -423,7 +412,6 @@ async function runDump(ctx: CommandContext): Promise<void> {
     },
     errors: dumpErrors,
     cache: {
-      fetch: fetchCacheSummary,
       analysis: analysisCacheSummary,
     },
     workspaces,

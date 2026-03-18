@@ -6,13 +6,7 @@ import { ArbError, arbAction, readWorkspaceConfig, writeWorkspaceConfig } from "
 import type { RepoRemotes } from "../lib/git";
 import { gitLocal, listRemoteBranches, validateBranchName } from "../lib/git";
 import { render } from "../lib/render";
-import {
-  loadFetchTimestamps,
-  parallelFetch,
-  recordFetchResults,
-  reportFetchFailures,
-  saveFetchTimestamps,
-} from "../lib/sync";
+import { parallelFetch, reportFetchFailures } from "../lib/sync";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
 import { bold, cyan, dim, error, info, isTTY, plural, readNamesFromStdin, success, warn } from "../lib/terminal";
 import {
@@ -222,7 +216,6 @@ export function registerCreateCommand(program: Command): void {
 
         // Hoist cache (needed for branch discovery and addWorktrees)
         const cache = ctx.cache;
-        const fetchTimestamps = loadFetchTimestamps(ctx.arbRootDir);
         let remotesMap: Map<string, RepoRemotes> | undefined;
         let alreadyFetched = false;
 
@@ -237,8 +230,6 @@ export function registerCreateCommand(program: Command): void {
             if (options.fetch !== false) {
               const fetchDirs = repos.map((r) => `${ctx.reposDir}/${r}`);
               const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
-              recordFetchResults(fetchTimestamps, fetchResults);
-              saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
               reportFetchFailures(repos, fetchResults);
               cache.invalidateAfterFetch();
             }
@@ -409,8 +400,6 @@ export function registerCreateCommand(program: Command): void {
         if (!alreadyFetched && options.fetch !== false) {
           const fetchDirs = repos.map((r) => `${ctx.reposDir}/${r}`);
           const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
-          recordFetchResults(fetchTimestamps, fetchResults);
-          saveFetchTimestamps(ctx.arbRootDir, fetchTimestamps);
           reportFetchFailures(repos, fetchResults);
         }
 

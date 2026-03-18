@@ -5,13 +5,6 @@ import { runPhasedRender } from "../render/phased-render";
 import { error, skipConfirmNotice, stderr } from "../terminal/output";
 import { isTTY } from "../terminal/tty";
 import {
-  allReposFresh,
-  fetchTtl,
-  loadFetchTimestamps,
-  recordFetchResults,
-  saveFetchTimestamps,
-} from "./fetch-freshness";
-import {
   type FetchResult,
   fetchSuffix,
   getFetchFailedRepos,
@@ -22,8 +15,6 @@ import {
 
 export interface PlanFlowOptions<TAssessment> {
   shouldFetch?: boolean;
-  forceFetch?: boolean;
-  arbRootDir?: string;
   fetchDirs: string[];
   reposForFetchReport: string[];
   remotesMap: Map<string, RepoRemotes>;
@@ -46,13 +37,7 @@ async function assessWithPost<TAssessment>(
 }
 
 export async function runPlanFlow<TAssessment>(options: PlanFlowOptions<TAssessment>): Promise<TAssessment[]> {
-  const fetchTimestamps = options.arbRootDir ? loadFetchTimestamps(options.arbRootDir) : undefined;
-  const wantsFetch = options.shouldFetch !== false;
-  const shouldFetch =
-    wantsFetch &&
-    (options.forceFetch === true ||
-      !fetchTimestamps ||
-      !allReposFresh(options.reposForFetchReport, fetchTimestamps, fetchTtl()));
+  const shouldFetch = options.shouldFetch !== false;
   const canPhase = shouldFetch && options.fetchDirs.length > 0 && isTTY();
 
   const emptySet = new Set<string>();
@@ -79,10 +64,6 @@ export async function runPlanFlow<TAssessment>(options: PlanFlowOptions<TAssessm
       },
     ]);
     reportFetchFailures(options.reposForFetchReport, state.fetchResults as Map<string, FetchResult>);
-    if (fetchTimestamps && options.arbRootDir) {
-      recordFetchResults(fetchTimestamps, state.fetchResults as Map<string, FetchResult>);
-      saveFetchTimestamps(options.arbRootDir, fetchTimestamps);
-    }
     return state.assessments as TAssessment[];
   }
 
@@ -90,10 +71,6 @@ export async function runPlanFlow<TAssessment>(options: PlanFlowOptions<TAssessm
     const fetchResults = await parallelFetch(options.fetchDirs, undefined, options.remotesMap);
     options.onPostFetch?.();
     const fetchFailed = reportFetchFailures(options.reposForFetchReport, fetchResults);
-    if (fetchTimestamps && options.arbRootDir) {
-      recordFetchResults(fetchTimestamps, fetchResults);
-      saveFetchTimestamps(options.arbRootDir, fetchTimestamps);
-    }
     const assessments = await assessWithPost(options, fetchFailed, emptySet);
     stderr(options.formatPlan(assessments));
     return assessments;
