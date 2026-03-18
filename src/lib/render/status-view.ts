@@ -87,9 +87,9 @@ export function buildStatusView(summary: WorkspaceSummary, ctx: StatusViewContex
     { header: "BRANCH", key: "branch", show: showBranch },
     { header: "", key: "lastCommitNum", group: "LAST COMMIT", align: "right" as const },
     { header: "", key: "lastCommitUnit", group: "LAST COMMIT" },
-    { header: "", key: "baseName", group: "BASE" },
+    { header: "", key: "baseName", group: "BASE", truncate: { min: 13 } },
     { header: "", key: "baseDiff", group: "BASE" },
-    { header: "", key: "remoteName", group: "SHARE", truncate: { min: 10 } },
+    { header: "", key: "remoteName", group: "SHARE", truncate: { min: 13 } },
     { header: "", key: "remoteDiff", group: "SHARE" },
     { header: "LOCAL", key: "local" },
   ];

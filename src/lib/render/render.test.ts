@@ -362,6 +362,77 @@ describe("terminal truncation", () => {
     expect(narrow).toContain("…");
     expect(narrow).not.toContain("origin/very-long-feature-branch-name");
   });
+
+  test("truncates base name column when terminal is narrow", () => {
+    const table: TableNode = {
+      kind: "table",
+      columns: [
+        { header: "NAME", key: "name" },
+        { header: "BASE", key: "base", truncate: { min: 13 } },
+      ],
+      rows: [
+        {
+          cells: {
+            name: cell("repo"),
+            base: cell("origin/feature/very-long-branch-name"),
+          },
+        },
+      ],
+    };
+
+    const wide = render([table], { tty: false, terminalWidth: 200 });
+    expect(wide).toContain("origin/feature/very-long-branch-name");
+
+    const narrow = render([table], { tty: false, terminalWidth: 30 });
+    expect(narrow).toContain("…");
+    expect(narrow).not.toContain("origin/feature/very-long-branch-name");
+  });
+
+  test("origin/master is never truncated even on narrow terminal", () => {
+    const table: TableNode = {
+      kind: "table",
+      columns: [
+        { header: "NAME", key: "name" },
+        { header: "BASE", key: "base", truncate: { min: 13 } },
+      ],
+      rows: [
+        {
+          cells: {
+            name: cell("repo"),
+            base: cell("origin/master"),
+          },
+        },
+      ],
+    };
+
+    const result = render([table], { tty: false, terminalWidth: 30 });
+    expect(result).toContain("origin/master");
+    expect(result).not.toContain("…");
+  });
+
+  test("distributes truncation across multiple truncatable columns", () => {
+    const table: TableNode = {
+      kind: "table",
+      columns: [
+        { header: "NAME", key: "name" },
+        { header: "BASE", key: "base", truncate: { min: 13 } },
+        { header: "SHARE", key: "share", truncate: { min: 13 } },
+      ],
+      rows: [
+        {
+          cells: {
+            name: cell("repo"),
+            base: cell("origin/feature/long-base-branch-name"),
+            share: cell("origin/feature/long-share-branch-name"),
+          },
+        },
+      ],
+    };
+
+    const narrow = render([table], { tty: false, terminalWidth: 50 });
+    expect(narrow).not.toContain("origin/feature/long-base-branch-name");
+    expect(narrow).not.toContain("origin/feature/long-share-branch-name");
+  });
 });
 
 describe("finishSummary", () => {
