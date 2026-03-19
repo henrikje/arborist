@@ -9,6 +9,7 @@ import {
   isSpaceKey,
   isUpKey,
   makeTheme,
+  useEffect,
   useKeypress,
   useMemo,
   usePrefix,
@@ -16,7 +17,12 @@ import {
 } from "@inquirer/core";
 import figures from "@inquirer/figures";
 import { countLines } from "./output";
-import { computePaginationWindow, formatPaginationStatus, resolvePromptPageSize } from "./pagination-status";
+import {
+  MIN_PAGE_SIZE,
+  computePaginationWindow,
+  formatPaginationStatus,
+  resolvePromptPageSize,
+} from "./pagination-status";
 
 export interface CheckboxWithStatusChoice<T> {
   name: string;
@@ -39,7 +45,7 @@ export interface CheckboxWithStatusConfig<T> {
     };
   };
   shortcuts?: { all?: string | null; invert?: string | null };
-  preview?: (selected: T[]) => string;
+  preview?: (selected: T[], maxLines: number) => string;
 }
 
 interface NormalizedChoice<T> {
@@ -123,6 +129,17 @@ const checkboxWithStatusPrompt = createPrompt(<T>(config: CheckboxWithStatusConf
   const prefix = usePrefix({ status, theme });
   const [items, setItems] = useState(normalizeChoices(config.choices));
 
+  // Re-render on terminal resize so layout adapts to new dimensions
+  const [, setResizeTick] = useState(0);
+  useEffect(() => {
+    let tick = 0;
+    const onResize = () => setResizeTick(++tick);
+    process.on("SIGWINCH", onResize);
+    return () => {
+      process.removeListener("SIGWINCH", onResize);
+    };
+  }, []);
+
   const bounds = useMemo(() => ({ first: 0, last: items.length - 1 }), [items]);
   const [active, setActive] = useState(bounds.first);
 
@@ -182,12 +199,26 @@ const checkboxWithStatusPrompt = createPrompt(<T>(config: CheckboxWithStatusConf
   const terminalRows = process.stderr.rows ?? 24;
   const terminalWidth = process.stderr.columns ?? 80;
   const promptLine = [prefix, styledMessage].filter(Boolean).join(" ");
-  const bottomContent = config.preview?.(items.filter(isChecked).map((c) => c.value)) ?? "";
-  const baseReservedRows =
-    countLines(ensureTrailingNewline(promptLine), terminalWidth) +
-    countLines(ensureTrailingNewline(helpLine), terminalWidth) +
-    (errorMsg ? countLines(ensureTrailingNewline(errorMsg), terminalWidth) : 0) +
-    (bottomContent ? countLines(bottomContent, terminalWidth) : 0);
+
+  // Fixed overhead: everything except preview and item list
+  const promptLines = countLines(ensureTrailingNewline(promptLine), terminalWidth);
+  const helpLines = countLines(ensureTrailingNewline(helpLine), terminalWidth);
+  const errorLines = errorMsg ? countLines(ensureTrailingNewline(errorMsg), terminalWidth) : 0;
+  const gapLine = 1; // the " " spacer between page and help
+  const paginationGuess = 1; // assume pagination status will be present
+  const fixedOverhead = promptLines + gapLine + errorLines + helpLines + paginationGuess;
+
+  // Budget for preview: terminal minus overhead minus minimum items
+  const maxPreviewLines = Math.max(0, terminalRows - fixedOverhead - MIN_PAGE_SIZE);
+  const bottomContent =
+    config.preview?.(
+      items.filter(isChecked).map((c) => c.value),
+      maxPreviewLines,
+    ) ?? "";
+
+  // Compute page size from actual preview
+  const previewLines = bottomContent ? countLines(bottomContent, terminalWidth) : 0;
+  const baseReservedRows = promptLines + helpLines + errorLines + previewLines;
 
   let pageSize =
     config.pageSize ??

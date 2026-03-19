@@ -87,6 +87,18 @@ const selectWithStatusPrompt = createPrompt(<T>(config: SelectWithStatusConfig<T
   const [status, setStatus] = useState<"idle" | "done">("idle");
   const prefix = usePrefix({ status, theme });
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>();
+
+  // Re-render on terminal resize so layout adapts to new dimensions
+  const [, setResizeTick] = useState(0);
+  useEffect(() => {
+    let tick = 0;
+    const onResize = () => setResizeTick(++tick);
+    process.on("SIGWINCH", onResize);
+    return () => {
+      process.removeListener("SIGWINCH", onResize);
+    };
+  }, []);
+
   const items = useMemo(() => normalizeChoices(config.choices), [config.choices]);
   const bounds = useMemo(() => ({ first: 0, last: items.length - 1 }), [items]);
   const [active, setActive] = useState(bounds.first);
