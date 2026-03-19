@@ -28,6 +28,7 @@ import {
   clearScanProgress,
   dim,
   error,
+  hintsEnabled,
   info,
   isTTY,
   listenForAbortSignal,
@@ -377,6 +378,7 @@ export function registerListCommand(program: Command): void {
 }
 
 function reportListTimeoutHint(timedOutCount: number): void {
+  if (!hintsEnabled()) return;
   if (timedOutCount === 0) return;
   warn(`  hint: ${timedOutCount} repo(s) timed out (ARB_GIT_TIMEOUT=${localTimeout()})`);
 }

@@ -63,6 +63,11 @@ export function warn(text: string): void {
   process.stderr.write(`${yellow(text)}\n`);
 }
 
+/** Whether hints should be shown. Disabled by the ARB_NO_HINTS environment variable. */
+export function hintsEnabled(): boolean {
+  return !process.env.ARB_NO_HINTS;
+}
+
 export function error(text: string): void {
   process.stderr.write(`${red(text)}\n`);
 }

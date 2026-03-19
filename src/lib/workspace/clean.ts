@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { basename, join } from "node:path";
-import { dim, warn } from "../terminal/output";
+import { dim, hintsEnabled, warn } from "../terminal/output";
 import { listRepos, listWorkspaces, workspaceRepoDirs } from "./repos";
 
 /**
@@ -221,7 +221,7 @@ export function detectSharedWorktreeEntries(wsDir: string, arbRootDir: string): 
     }
   }
 
-  if (removedStaleRepos.length > 0) {
+  if (removedStaleRepos.length > 0 && hintsEnabled()) {
     const repoList = removedStaleRepos.join(" ");
     warn(`  ${dim("hint:")} to re-attach on a new branch: arb branch rename <new-name> && arb attach ${repoList}`);
   }

@@ -1,4 +1,5 @@
 import { ArbError } from "../core/errors";
+import { hintsEnabled } from "../terminal/output";
 import { shouldColor } from "../terminal/tty";
 import type {
   Cell,
@@ -421,6 +422,7 @@ function renderSummaryNode(node: SummaryNode, ctx: RenderContext): string {
 }
 
 function renderHintNode(node: HintNode, ctx: RenderContext): string {
+  if (!hintsEnabled()) return "";
   return `${renderCell(node.cell, ctx)}\n`;
 }
 
