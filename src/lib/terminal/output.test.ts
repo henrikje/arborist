@@ -1,5 +1,18 @@
-import { describe, expect, test } from "bun:test";
-import { bold, countLines, dim, green, red, yellow } from "./output";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import {
+  analyzeDone,
+  analyzeProgress,
+  bold,
+  clearScanProgress,
+  countLines,
+  dim,
+  green,
+  red,
+  scanProgress,
+  warn,
+  yellow,
+} from "./output";
+import * as tty from "./tty";
 
 describe("countLines", () => {
   describe("without terminalWidth (legacy behavior)", () => {
@@ -176,5 +189,176 @@ describe("countLines", () => {
         expect(countLines(input, 10000)).toBe(countLines(input));
       }
     });
+  });
+});
+
+describe("warning buffering during progress", () => {
+  let captured = "";
+  const originalWrite = process.stderr.write;
+  let ttySpy: ReturnType<typeof spyOn>;
+
+  beforeEach(() => {
+    captured = "";
+    process.stderr.write = (chunk: string | Uint8Array) => {
+      captured += typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+      return true;
+    };
+    ttySpy = spyOn(tty, "isTTY").mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    process.stderr.write = originalWrite;
+    ttySpy.mockRestore();
+    // Reset progress state: ensure no leftover buffering between tests
+    analyzeDone(0, "0");
+  });
+
+  test("warn writes immediately when no progress is active", () => {
+    warn("immediate warning");
+    expect(captured).toContain("immediate warning");
+  });
+
+  test("warn is buffered while analyzeProgress is active", () => {
+    analyzeProgress(1, 10);
+    captured = "";
+
+    warn("deferred warning");
+    expect(captured).not.toContain("deferred warning");
+  });
+
+  test("analyzeDone flushes buffered warnings", () => {
+    analyzeProgress(1, 10);
+    warn("deferred warning");
+
+    captured = "";
+    analyzeDone(10, "1.0");
+    expect(captured).toContain("Analyzed 10 workspaces");
+    expect(captured).toContain("deferred warning");
+  });
+
+  test("warnings appear after the analyzeDone summary line", () => {
+    analyzeProgress(1, 10);
+    warn("my warning");
+
+    captured = "";
+    analyzeDone(10, "1.0");
+    const summaryEnd = captured.indexOf("workspaces in 1.0s\n");
+    const warningStart = captured.indexOf("my warning");
+    expect(summaryEnd).toBeGreaterThan(-1);
+    expect(warningStart).toBeGreaterThan(summaryEnd);
+  });
+
+  test("multiple buffered warnings are all flushed", () => {
+    analyzeProgress(1, 10);
+    warn("warning one");
+    warn("warning two");
+    warn("warning three");
+
+    captured = "";
+    analyzeDone(10, "1.0");
+    expect(captured).toContain("warning one");
+    expect(captured).toContain("warning two");
+    expect(captured).toContain("warning three");
+  });
+
+  test("buffered warnings preserve order", () => {
+    analyzeProgress(1, 10);
+    warn("first");
+    warn("second");
+    warn("third");
+
+    captured = "";
+    analyzeDone(10, "1.0");
+    const i1 = captured.indexOf("first");
+    const i2 = captured.indexOf("second");
+    const i3 = captured.indexOf("third");
+    expect(i1).toBeLessThan(i2);
+    expect(i2).toBeLessThan(i3);
+  });
+
+  test("warn resumes immediate output after analyzeDone", () => {
+    analyzeProgress(1, 10);
+    analyzeDone(10, "1.0");
+
+    captured = "";
+    warn("after progress");
+    expect(captured).toContain("after progress");
+  });
+
+  test("scanProgress activates buffering", () => {
+    scanProgress(1, 5);
+    captured = "";
+
+    warn("scan warning");
+    expect(captured).not.toContain("scan warning");
+  });
+
+  test("clearScanProgress flushes buffered warnings", () => {
+    scanProgress(1, 5);
+    warn("scan warning");
+
+    captured = "";
+    clearScanProgress();
+    expect(captured).toContain("scan warning");
+  });
+
+  test("warn resumes immediate output after clearScanProgress", () => {
+    scanProgress(1, 5);
+    clearScanProgress();
+
+    captured = "";
+    warn("after scan");
+    expect(captured).toContain("after scan");
+  });
+
+  test("analyzeProgress clears the line with ANSI escape", () => {
+    analyzeProgress(3, 10);
+    expect(captured).toContain("\r\x1B[2K");
+    expect(captured).toContain("Analyzing workspaces 3/10");
+  });
+
+  test("scanProgress clears the line with ANSI escape", () => {
+    scanProgress(3, 10);
+    expect(captured).toContain("\r\x1B[2K");
+    expect(captured).toContain("Scanning 3/10");
+  });
+
+  test("analyzeProgress is suppressed in non-TTY mode", () => {
+    ttySpy.mockReturnValue(false);
+    analyzeProgress(1, 10);
+    expect(captured).toBe("");
+
+    // warn should still work immediately (not buffered)
+    warn("non-tty warning");
+    expect(captured).toContain("non-tty warning");
+  });
+
+  test("scanProgress is suppressed in non-TTY mode", () => {
+    ttySpy.mockReturnValue(false);
+    scanProgress(1, 5);
+    expect(captured).toBe("");
+
+    warn("non-tty warning");
+    expect(captured).toContain("non-tty warning");
+  });
+
+  test("analyzeDone flushes even when called without prior progress", () => {
+    warn("orphan warning");
+    captured = "";
+    // No analyzeProgress was called — warn went through immediately
+    // analyzeDone should still work cleanly
+    analyzeDone(5, "0.5");
+    expect(captured).toContain("Analyzed 5 workspaces");
+  });
+
+  test("no warnings lost when buffer is empty", () => {
+    analyzeProgress(1, 10);
+    // No warnings buffered
+    captured = "";
+    analyzeDone(10, "1.0");
+    expect(captured).toContain("Analyzed 10 workspaces");
+    // No extra warning lines
+    const lines = captured.split("\n").filter((l) => l.length > 0);
+    expect(lines).toHaveLength(1);
   });
 });

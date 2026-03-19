@@ -9,6 +9,8 @@ export interface WorkspaceBranchResult {
   inferred: boolean;
 }
 
+const warnedDirs = new Set<string>();
+
 export async function workspaceBranch(wsDir: string): Promise<WorkspaceBranchResult | null> {
   const configFile = `${wsDir}/.arbws/config.json`;
 
@@ -25,8 +27,11 @@ export async function workspaceBranch(wsDir: string): Promise<WorkspaceBranchRes
     if (result.exitCode === 0) {
       const branch = result.stdout.trim();
       if (branch) {
-        const wsName = basename(wsDir);
-        warn(`Config missing for ${wsName}, inferred branch '${branch}' from repo`);
+        if (!warnedDirs.has(wsDir)) {
+          warnedDirs.add(wsDir);
+          const wsName = basename(wsDir);
+          warn(`Config missing for ${wsName}, inferred branch '${branch}' from repo`);
+        }
         return { branch, inferred: true };
       }
     }
