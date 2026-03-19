@@ -71,7 +71,7 @@ arb branch base --unset        # remove base (track repo default)
 arb branch base                # show current base
 ```
 
-This only changes the config — it does not rebase or reset. To start fresh from the new base, follow up with `arb reset`. To replay your commits onto the new base, use `arb rebase --retarget` instead.
+This only changes the config — it does not rebase or reset. To start fresh from the new base, follow up with `arb reset`. To replay your commits onto the new base, use `arb retarget` instead.
 
 ## Filtering sync commands
 

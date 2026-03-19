@@ -15,7 +15,7 @@ export function registerOpenCommand(program: Command): void {
     .passThroughOptions()
     .summary("Open repos in an application")
     .description(
-      "Examples:\n\n  arb open code                            Open all repos in VS Code\n  arb open --dirty code -n --add           Open only dirty repos in new window\n\nRun a command with all repo directories as arguments, using absolute paths. Useful for opening repos in an editor, e.g. \"arb open code\". The command must exist in your PATH.\n\nUse --repo <name> to target specific repos (repeatable). Use --dirty to only open repos with local changes, or --where <filter> to filter by status flags. See 'arb help where' for filter syntax. --repo and --where/--dirty can be combined (AND logic).\n\nArb flags must come before the command. Everything after the command name is passed through verbatim.",
+      "Examples:\n\n  arb open code                            Open all repos in VS Code\n  arb open --dirty code -n --add           Open only dirty repos in new window\n\nRun a command with all repo directories as arguments, using absolute paths. Useful for opening repos in an editor, e.g. \"arb open code\". The command must exist in your PATH.\n\nUse --repo <name> to target specific repos (repeatable). Use --dirty to only open repos with local changes, or --where <filter> to filter by status flags. See 'arb help filtering' for filter syntax. --repo and --where/--dirty can be combined (AND logic).\n\nArb flags must come before the command. Everything after the command name is passed through verbatim.",
     )
     .action(
       arbAction(async (ctx, args: string[], options) => {

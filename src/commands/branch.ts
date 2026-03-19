@@ -120,9 +120,9 @@ function buildVerboseNodes(repos: RepoRefs[], branch: string, base: string | nul
 export function registerBranchCommand(program: Command): void {
   const branch = program
     .command("branch")
-    .summary("Inspect and manage the workspace branch")
+    .summary("Show workspace branch, base, and remote tracking")
     .description(
-      "Examples:\n\n  arb branch                               Show workspace branch (default)\n  arb branch show -v                       Per-repo tracking detail\n  arb branch base main                     Set base branch\n\nInspect or manage the workspace branch. When invoked without a subcommand, defaults to 'show'.",
+      "Examples:\n\n  arb branch                               Show workspace branch (default)\n  arb branch show -v                       Per-repo tracking detail\n  arb branch base main                     Set base branch\n\nInspect or manage the workspace branch. When invoked without a subcommand, defaults to 'show'.\n\nUse 'arb branch base' to view, change, or remove the base branch that rebase, merge, and status operate against. To change the base and rebase in one step, use 'arb retarget <branch>'.",
     );
 
   branch
@@ -391,7 +391,7 @@ function registerBranchBaseSubcommand(parent: Command): void {
     .option("-f, --force", "Bypass merged-base safety check")
     .summary("Show, set, or remove the base branch")
     .description(
-      "Examples:\n\n  arb branch base                          Show current base\n  arb branch base main                     Set base to main\n  arb branch base --unset                  Track repo default branch\n\nView, change, or remove the workspace's base branch.\n\nWith no arguments, shows the current base branch. With a branch name, sets the base. With --unset, removes the base so the workspace tracks each repo's default branch.\n\nWhen setting a new base, checks whether the current base was merged into the default branch (squash or regular merge). If so, blocks the config change and guides you toward 'arb rebase --retarget', which rebases safely. Use --force to change the config anyway.\n\nSee 'arb help stacked' for stacked workspace workflows.",
+      "Examples:\n\n  arb branch base                          Show current base\n  arb branch base main                     Set base to main\n  arb branch base --unset                  Track repo default branch\n\nView, change, or remove the workspace's base branch. This is a config-only command — it does not rebase.\n\nWith no arguments, shows the current base branch. With a branch name, sets the base. With --unset, removes the base so the workspace tracks each repo's default branch.\n\nTo change the base and rebase in one step, use 'arb retarget <branch>' instead.\n\nWhen setting a new base, checks whether the current base was merged into the default branch (squash or regular merge). If so, blocks the config change and guides you toward 'arb retarget', which rebases safely. Use --force to change the config anyway.\n\nSee 'arb help stacked' for stacked workspace workflows.",
     )
     .action(
       arbAction(async (ctx, branchArg: string | undefined, options) => {
@@ -453,10 +453,10 @@ function registerBranchBaseSubcommand(parent: Command): void {
           });
           if (hasMergedBase) {
             error(`Base branch ${currentBase} was merged into the default branch.`);
-            error("Use 'arb rebase --retarget' to rebase onto the new base safely.");
+            error("Use 'arb retarget' to rebase onto the new base safely.");
             error("'arb branch base' only changes the config — it does not rebase.");
             error("Use --force to change the config anyway.");
-            throw new ArbError(`Base branch ${currentBase} was merged — use --retarget or --force.`);
+            throw new ArbError(`Base branch ${currentBase} was merged — use 'arb retarget' or --force.`);
           }
         }
 

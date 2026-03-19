@@ -293,11 +293,8 @@ describe("classifyRepo", () => {
 
 function defaultOptions(overrides: Record<string, unknown> = {}) {
   return {
-    retarget: false,
-    retargetExplicit: null as string | null,
     autostash: false,
     includeWrongBranch: false,
-    cache: { getDefaultBranch: async () => "main" },
     mode: "rebase" as const,
     ...overrides,
   };
@@ -307,10 +304,6 @@ function mockDeps(overrides: Record<string, unknown> = {}) {
   return {
     getShortHead: async () => SHA,
     git: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
-    remoteBranchExists: async () => true,
-    branchExistsLocally: async () => false,
-    detectBranchMerged: async () => null,
-    analyzeRetargetReplay: async () => null,
     ...overrides,
   };
 }
@@ -391,7 +384,7 @@ describe("assessIntegrateRepo", () => {
         baseMergedIntoDefault: null,
       },
     });
-    // When boundary rev-parse fails, falls through to explicit retarget (which returns null since retargetExplicit is null)
+    // When boundary rev-parse fails, falls through → returns classified (which is skip/already-merged)
     const a = await assessIntegrateRepo(
       status,
       DIR,
@@ -400,12 +393,11 @@ describe("assessIntegrateRepo", () => {
       defaultOptions({ mode: "rebase" }),
       mockDeps({ git: async () => ({ exitCode: 1, stdout: "", stderr: "" }) }),
     );
-    // Falls through all assess* → returns classified (which is skip/already-merged)
     expect(a.outcome).toBe("skip");
     expect(a.skipFlag).toBe("already-merged");
   });
 
-  test("explicit retarget: old base not found blocks retarget", async () => {
+  test("baseMergedIntoDefault returns skip", async () => {
     const status = makeRepo({
       base: {
         remote: "origin",
@@ -416,122 +408,12 @@ describe("assessIntegrateRepo", () => {
         baseMergedIntoDefault: "merge",
       },
     });
-    const a = await assessIntegrateRepo(
-      status,
-      DIR,
-      "feature",
-      [],
-      defaultOptions({ retarget: true, retargetExplicit: "main" }),
-      mockDeps({
-        remoteBranchExists: async (_: string, branch: string) => branch === "main",
-        branchExistsLocally: async () => false,
-      }),
-    );
+    const a = await assessIntegrateRepo(status, DIR, "feature", [], defaultOptions(), mockDeps());
     expect(a.outcome).toBe("skip");
-    expect(a.skipFlag).toBe("retarget-base-not-found");
-    expect(a.retarget?.blocked).toBe(true);
+    expect(a.skipFlag).toBe("base-merged-into-default");
   });
 
-  test("explicit retarget: already on target (behind=0) returns up-to-date", async () => {
-    const status = makeRepo({
-      base: {
-        remote: "origin",
-        ref: "main",
-        configuredRef: null,
-        ahead: 2,
-        behind: 0,
-        baseMergedIntoDefault: "merge",
-      },
-    });
-    const a = await assessIntegrateRepo(
-      status,
-      DIR,
-      "feature",
-      [],
-      defaultOptions({ retarget: true, retargetExplicit: "main" }),
-      mockDeps(),
-    );
-    expect(a.outcome).toBe("up-to-date");
-    expect(a.baseBranch).toBe("main");
-    expect(a.retarget?.to).toBe("main");
-  });
-
-  test("explicit retarget: full retarget with replay analysis", async () => {
-    const status = makeRepo({
-      base: {
-        remote: "origin",
-        ref: "feat/old",
-        configuredRef: "feat/old",
-        ahead: 3,
-        behind: 5,
-        baseMergedIntoDefault: "merge",
-      },
-    });
-    const a = await assessIntegrateRepo(
-      status,
-      DIR,
-      "feature",
-      [],
-      defaultOptions({ retarget: true, retargetExplicit: "main" }),
-      mockDeps({
-        analyzeRetargetReplay: async () => ({ toReplay: 2, alreadyOnTarget: 1, totalLocal: 3 }),
-      }),
-    );
-    expect(a.outcome).toBe("will-operate");
-    expect(a.baseBranch).toBe("main");
-    expect(a.retarget?.from).toBe("feat/old");
-    expect(a.retarget?.to).toBe("main");
-    expect(a.retarget?.replayCount).toBe(2);
-    expect(a.retarget?.alreadyOnTarget).toBe(1);
-  });
-
-  test("explicit retarget: warns when old base may not be merged", async () => {
-    const status = makeRepo({
-      base: {
-        remote: "origin",
-        ref: "feat/old",
-        configuredRef: null,
-        ahead: 3,
-        behind: 5,
-        baseMergedIntoDefault: "merge",
-      },
-    });
-    const a = await assessIntegrateRepo(
-      status,
-      DIR,
-      "feature",
-      [],
-      defaultOptions({ retarget: true, retargetExplicit: "main" }),
-      mockDeps({ detectBranchMerged: async () => null }),
-    );
-    expect(a.retarget?.warning).toContain("may not be merged");
-  });
-
-  test("explicit retarget skipped when configuredRef set and baseMergedIntoDefault is null", async () => {
-    const status = makeRepo({
-      base: {
-        remote: "origin",
-        ref: "feat/stacked",
-        configuredRef: "feat/stacked",
-        ahead: 1,
-        behind: 2,
-        baseMergedIntoDefault: null,
-      },
-    });
-    const a = await assessIntegrateRepo(
-      status,
-      DIR,
-      "feature",
-      [],
-      defaultOptions({ retarget: true, retargetExplicit: "main" }),
-      mockDeps(),
-    );
-    // Should return classified without retarget (will-operate, not retargeted)
-    expect(a.outcome).toBe("will-operate");
-    expect(a.retarget).toBeUndefined();
-  });
-
-  test("auto-retarget: contiguous replay plan with alreadyOnTarget>0 and toReplay=0 → up-to-date", async () => {
+  test("contiguous replay plan with alreadyOnTarget>0 and toReplay=0 returns up-to-date", async () => {
     const status = makeRepo({
       base: {
         remote: "origin",
@@ -548,7 +430,7 @@ describe("assessIntegrateRepo", () => {
     expect(a.behind).toBe(0);
   });
 
-  test("auto-retarget: contiguous replay plan with toReplay>0 → will-operate with retarget", async () => {
+  test("contiguous replay plan with toReplay>0 returns will-operate with branch-merged retarget", async () => {
     const status = makeRepo({
       base: {
         remote: "origin",
@@ -565,129 +447,5 @@ describe("assessIntegrateRepo", () => {
     expect(a.retarget?.replayCount).toBe(2);
     expect(a.retarget?.alreadyOnTarget).toBe(3);
     expect(a.retarget?.reason).toBe("branch-merged");
-  });
-
-  test("auto-retarget: baseMergedIntoDefault triggers retarget when retarget=true", async () => {
-    const status = makeRepo({
-      base: {
-        remote: "origin",
-        ref: "feat/old",
-        configuredRef: "feat/old",
-        ahead: 1,
-        behind: 2,
-        baseMergedIntoDefault: "merge",
-      },
-    });
-    const a = await assessIntegrateRepo(
-      status,
-      DIR,
-      "feature",
-      [],
-      defaultOptions({ retarget: true }),
-      mockDeps({
-        remoteBranchExists: async () => true,
-        analyzeRetargetReplay: async () => ({ toReplay: 1, alreadyOnTarget: 0, totalLocal: 1 }),
-      }),
-    );
-    expect(a.outcome).toBe("will-operate");
-    expect(a.baseBranch).toBe("main");
-    expect(a.retarget?.from).toBe("feat/old");
-    expect(a.retarget?.to).toBe("main");
-  });
-
-  test("auto-retarget: retarget=false returns classified unchanged", async () => {
-    const status = makeRepo({
-      base: {
-        remote: "origin",
-        ref: "feat/old",
-        configuredRef: null,
-        ahead: 1,
-        behind: 2,
-        baseMergedIntoDefault: "merge",
-      },
-    });
-    const a = await assessIntegrateRepo(status, DIR, "feature", [], defaultOptions({ retarget: false }), mockDeps());
-    // baseMergedIntoDefault skip, retarget not applied
-    expect(a.outcome).toBe("skip");
-    expect(a.skipFlag).toBe("base-merged-into-default");
-  });
-
-  test("reports missing explicit retarget target as a blocked skip", async () => {
-    const status = makeRepo({
-      base: {
-        remote: "origin",
-        ref: "feat/old",
-        configuredRef: null,
-        ahead: 1,
-        behind: 2,
-        baseMergedIntoDefault: "merge",
-      },
-    });
-    const a = await assessIntegrateRepo(
-      status,
-      DIR,
-      "feature",
-      [],
-      defaultOptions({ retarget: true, retargetExplicit: "main" }),
-      mockDeps({ remoteBranchExists: async () => false }),
-    );
-    expect(a.outcome).toBe("skip");
-    expect(a.skipFlag).toBe("retarget-target-not-found");
-    expect(a.retarget?.blocked).toBe(true);
-  });
-
-  test("reports auto-retarget failure when the default branch cannot be resolved", async () => {
-    const status = makeRepo({
-      base: {
-        remote: "origin",
-        ref: "feat/old",
-        configuredRef: null,
-        ahead: 1,
-        behind: 2,
-        baseMergedIntoDefault: "merge",
-      },
-    });
-    const a = await assessIntegrateRepo(
-      status,
-      DIR,
-      "feature",
-      [],
-      defaultOptions({ retarget: true, cache: { getDefaultBranch: async () => null } }),
-      mockDeps(),
-    );
-    expect(a.outcome).toBe("skip");
-    expect(a.skipFlag).toBe("retarget-no-default");
-  });
-
-  test("auto-retarget: squash-merged base already on default → up-to-date", async () => {
-    const status = makeRepo({
-      base: {
-        remote: "origin",
-        ref: "feat/old",
-        configuredRef: "feat/old",
-        ahead: 1,
-        behind: 2,
-        baseMergedIntoDefault: "squash",
-      },
-    });
-    const a = await assessIntegrateRepo(
-      status,
-      DIR,
-      "feature",
-      [],
-      defaultOptions({ retarget: true }),
-      mockDeps({
-        // merge-base --is-ancestor defaultRef HEAD → exit 0 (already on default)
-        git: async (_: string, ...args: string[]) => {
-          if (args[0] === "merge-base") return { exitCode: 0, stdout: "", stderr: "" };
-          return { exitCode: 1, stdout: "", stderr: "" };
-        },
-      }),
-    );
-    expect(a.outcome).toBe("up-to-date");
-    expect(a.baseBranch).toBe("main");
-    expect(a.retarget?.from).toBe("feat/old");
-    expect(a.retarget?.to).toBe("main");
-    expect(a.retarget?.reason).toBe("base-merged");
   });
 });

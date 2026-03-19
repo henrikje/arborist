@@ -11,7 +11,7 @@ export function registerHelpCommand(program: Command): void {
     .command("help [command-or-topic]")
     .summary("Display help for a command or topic")
     .description(
-      "Examples:\n\n  arb help status                          Show help for a command\n  arb help where                           Show filter syntax reference\n\nDisplay help for a command or topic.",
+      "Examples:\n\n  arb help status                          Show help for a command\n  arb help filtering                       Show filter syntax reference\n\nDisplay help for a command or topic.",
     )
     .helpOption(false)
     .action((arg?: string) => {

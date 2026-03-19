@@ -10,8 +10,6 @@ import {
   describeIntegrateAction,
   formatIntegratePlan,
   maybeWriteBaseFallbackConfig,
-  maybeWriteRetargetConfig,
-  resolveRetargetConfigTarget,
 } from "./integrate";
 
 const DIR = "/tmp/test-repo";
@@ -445,7 +443,7 @@ describe("classifyRepo", () => {
     );
     expect(a.outcome).toBe("skip");
     expect(a.skipReason).toContain("base branch feat/auth was merged into default");
-    expect(a.skipReason).toContain("--retarget");
+    expect(a.skipReason).toContain("arb retarget");
     expect(a.skipFlag).toBe("base-merged-into-default");
   });
 
@@ -639,14 +637,6 @@ describe("formatIntegratePlan", () => {
     expect(plan).toContain("no conflict");
   });
 
-  test("shows retarget display", () => {
-    const plan = formatIntegratePlan(
-      [makeAssessment({ retargetFrom: "feat/old", retargetTo: "main", baseBranch: "main" })],
-      "rebase",
-    );
-    expect(plan).toContain("rebase onto origin/main from feat/old (retarget)");
-  });
-
   test("shows branch-merged replay display with already-merged count", () => {
     const plan = formatIntegratePlan(
       [
@@ -682,64 +672,6 @@ describe("formatIntegratePlan", () => {
       "rebase",
     );
     expect(plan).toContain("rebase onto origin/main (merged) — rebase 3 new commits, skip 8 already merged");
-  });
-
-  test("shows retarget warning", () => {
-    const plan = formatIntegratePlan(
-      [
-        makeAssessment({
-          retargetFrom: "feat/old",
-          retargetTo: "main",
-          baseBranch: "main",
-          retargetWarning: "base branch feat/old may not be merged",
-        }),
-      ],
-      "rebase",
-    );
-    expect(plan).toContain("base branch feat/old may not be merged");
-  });
-
-  test("shows retarget with autostash hint", () => {
-    const plan = formatIntegratePlan(
-      [makeAssessment({ retargetFrom: "feat/old", retargetTo: "main", baseBranch: "main", needsStash: true })],
-      "rebase",
-    );
-    expect(plan).toContain("(retarget)");
-    expect(plan).toContain("(autostash)");
-  });
-
-  test("shows retarget with stash pop conflict likely", () => {
-    const plan = formatIntegratePlan(
-      [
-        makeAssessment({
-          retargetFrom: "feat/old",
-          retargetTo: "main",
-          baseBranch: "main",
-          needsStash: true,
-          stashPopConflictFiles: ["file.ts"],
-        }),
-      ],
-      "rebase",
-    );
-    expect(plan).toContain("(retarget)");
-    expect(plan).toContain("stash pop conflict likely");
-  });
-
-  test("shows retarget with stash pop conflict unlikely", () => {
-    const plan = formatIntegratePlan(
-      [
-        makeAssessment({
-          retargetFrom: "feat/old",
-          retargetTo: "main",
-          baseBranch: "main",
-          needsStash: true,
-          stashPopConflictFiles: [],
-        }),
-      ],
-      "rebase",
-    );
-    expect(plan).toContain("(retarget)");
-    expect(plan).toContain("stash pop conflict unlikely");
   });
 
   test("shows autostash hint", () => {
@@ -1021,87 +953,6 @@ describe("formatIntegratePlan", () => {
     expect(plan).not.toContain("files changed");
   });
 
-  test("shows retarget replay breakdown when alreadyOnTarget > 0", () => {
-    const plan = formatIntegratePlan(
-      [
-        makeAssessment({
-          retargetFrom: "feat/old",
-          retargetTo: "main",
-          baseBranch: "main",
-          retargetReplayCount: 2,
-          retargetAlreadyOnTarget: 3,
-        }),
-      ],
-      "rebase",
-    );
-    expect(plan).toContain("5 local, 3 already on target, 2 to rebase");
-  });
-
-  test("shows simplified retarget replay when alreadyOnTarget is 0", () => {
-    const plan = formatIntegratePlan(
-      [
-        makeAssessment({
-          retargetFrom: "feat/old",
-          retargetTo: "main",
-          baseBranch: "main",
-          retargetReplayCount: 4,
-          retargetAlreadyOnTarget: 0,
-        }),
-      ],
-      "rebase",
-    );
-    expect(plan).toContain("4 to rebase");
-    expect(plan).not.toContain("already on target");
-  });
-
-  test("shows no replay info when retarget replay fields are undefined", () => {
-    const plan = formatIntegratePlan(
-      [makeAssessment({ retargetFrom: "feat/old", retargetTo: "main", baseBranch: "main" })],
-      "rebase",
-    );
-    expect(plan).not.toContain("to rebase");
-    expect(plan).not.toContain("already on target");
-  });
-
-  test("retarget graph shows replay breakdown when enriched", () => {
-    const plan = formatIntegratePlan(
-      [
-        makeAssessment({
-          retargetFrom: "feat/old",
-          retargetTo: "main",
-          baseBranch: "main",
-          mergeBaseSha: "xyz7890",
-          retargetReplayCount: 2,
-          retargetAlreadyOnTarget: 3,
-        }),
-      ],
-      "rebase",
-      false,
-      true,
-    );
-    expect(plan).toContain("5 local, 3 already on target, 2 to rebase");
-  });
-
-  test("retarget repos get retarget-style graph", () => {
-    const plan = formatIntegratePlan(
-      [
-        makeAssessment({
-          retargetFrom: "feat/old",
-          retargetTo: "main",
-          baseBranch: "main",
-          mergeBaseSha: "xyz7890",
-        }),
-      ],
-      "rebase",
-      false,
-      true,
-    );
-    expect(plan).toContain("--x--");
-    expect(plan).toContain("feat/old");
-    expect(plan).toContain("old base, merged");
-    expect(plan).toContain("new base");
-  });
-
   // ── Header & alignment tests ────────────────────────────────
 
   test("includes REPO and ACTION column headers", () => {
@@ -1175,219 +1026,6 @@ describe("formatIntegratePlan", () => {
       "rebase",
     );
     expect(plan).toContain("base big-filter-overview not found");
-  });
-});
-
-describe("resolveRetargetConfigTarget", () => {
-  function makeAssessment(overrides: Record<string, unknown> = {}): RepoAssessment {
-    return {
-      repo: "repo-a",
-      repoDir: "/tmp/repo-a",
-      outcome: "will-operate",
-      branch: "feature",
-      behind: 3,
-      ahead: 1,
-      baseRemote: "origin",
-      baseBranch: "main",
-      headSha: "abc1234",
-      shallow: false,
-      ...normalizeIntegrateAssessment(overrides),
-    } as RepoAssessment;
-  }
-
-  test("returns null when no config retarget assessments exist", () => {
-    const target = resolveRetargetConfigTarget([makeAssessment(), makeAssessment({ retargetReason: "branch-merged" })]);
-    expect(target).toBeNull();
-  });
-
-  test("returns target when up-to-date retarget assessment exists", () => {
-    const target = resolveRetargetConfigTarget([
-      makeAssessment({
-        outcome: "up-to-date",
-        retargetFrom: "feat/old",
-        retargetTo: "main",
-        retargetReason: "base-merged",
-      }),
-    ]);
-    expect(target).toBe("main");
-  });
-
-  test("ignores branch-merged replay retarget assessments", () => {
-    const target = resolveRetargetConfigTarget([
-      makeAssessment({
-        retargetFrom: "abc1234",
-        retargetTo: "main",
-        retargetReason: "branch-merged",
-      }),
-      makeAssessment({
-        outcome: "up-to-date",
-        retargetFrom: "feat/old",
-        retargetTo: "feat/A",
-        retargetReason: "base-merged",
-      }),
-    ]);
-    expect(target).toBe("feat/A");
-  });
-
-  test("throws when retarget targets disagree", () => {
-    expect(() =>
-      resolveRetargetConfigTarget([
-        makeAssessment({ retargetFrom: "feat/old", retargetTo: "main", retargetReason: "base-merged" }),
-        makeAssessment({
-          repo: "repo-b",
-          retargetFrom: "feat/old",
-          retargetTo: "release/1.0",
-          retargetReason: "base-merged",
-        }),
-      ]),
-    ).toThrow("Cannot retarget: repos disagree on target base (main, release/1.0).");
-  });
-});
-
-describe("maybeWriteRetargetConfig", () => {
-  function makeAssessment(overrides: Record<string, unknown> = {}): RepoAssessment {
-    return {
-      repo: "repo-a",
-      repoDir: "/tmp/repo-a",
-      outcome: "up-to-date",
-      branch: "feature",
-      behind: 0,
-      ahead: 2,
-      baseRemote: "origin",
-      baseBranch: "main",
-      headSha: "abc1234",
-      shallow: false,
-      retarget: { from: "feat/old", to: "main", reason: "base-merged" },
-      ...normalizeIntegrateAssessment(overrides),
-    } as RepoAssessment;
-  }
-
-  test("does not write config on dry-run (no-op retarget path)", async () => {
-    const wsDir = mkdtempSync(join(tmpdir(), "arb-retarget-dryrun-"));
-    try {
-      mkdirSync(join(wsDir, ".arbws"), { recursive: true });
-      const configFile = join(wsDir, ".arbws", "config.json");
-      writeFileSync(configFile, `${JSON.stringify({ branch: "feature", base: "feat/old" }, null, 2)}\n`);
-
-      const wrote = await maybeWriteRetargetConfig({
-        dryRun: true,
-        wsDir,
-        branch: "feature",
-        assessments: [makeAssessment()],
-        retargetConfigTarget: "main",
-        cache: { getDefaultBranch: async () => "main" },
-      });
-
-      expect(wrote).toBe(false);
-      expect(readFileSync(configFile, "utf-8")).toBe(
-        `${JSON.stringify({ branch: "feature", base: "feat/old" }, null, 2)}\n`,
-      );
-    } finally {
-      rmSync(wsDir, { recursive: true, force: true });
-    }
-  });
-
-  test("writes config when not dry-run", async () => {
-    const wsDir = mkdtempSync(join(tmpdir(), "arb-retarget-write-"));
-    try {
-      mkdirSync(join(wsDir, ".arbws"), { recursive: true });
-      const configFile = join(wsDir, ".arbws", "config.json");
-      writeFileSync(configFile, `${JSON.stringify({ branch: "feature", base: "feat/old" }, null, 2)}\n`);
-
-      const wrote = await maybeWriteRetargetConfig({
-        dryRun: false,
-        wsDir,
-        branch: "feature",
-        assessments: [makeAssessment()],
-        retargetConfigTarget: "main",
-        cache: { getDefaultBranch: async () => "main" },
-      });
-
-      expect(wrote).toBe(true);
-      expect(JSON.parse(readFileSync(configFile, "utf-8"))).toEqual({ branch: "feature" });
-    } finally {
-      rmSync(wsDir, { recursive: true, force: true });
-    }
-  });
-
-  test("returns false when retargetConfigTarget is null", async () => {
-    const wrote = await maybeWriteRetargetConfig({
-      wsDir: "/tmp/fake",
-      branch: "feature",
-      assessments: [makeAssessment()],
-      retargetConfigTarget: null,
-      cache: { getDefaultBranch: async () => "main" },
-    });
-    expect(wrote).toBe(false);
-  });
-
-  test("returns false when no matching assessment found", async () => {
-    const wrote = await maybeWriteRetargetConfig({
-      wsDir: "/tmp/fake",
-      branch: "feature",
-      assessments: [makeAssessment({ retargetTo: "other-branch", retargetReason: "base-merged" })],
-      retargetConfigTarget: "main",
-      cache: { getDefaultBranch: async () => "main" },
-    });
-    expect(wrote).toBe(false);
-  });
-
-  test("returns false when hasConflicts is true", async () => {
-    const wrote = await maybeWriteRetargetConfig({
-      wsDir: "/tmp/fake",
-      branch: "feature",
-      assessments: [makeAssessment()],
-      retargetConfigTarget: "main",
-      cache: { getDefaultBranch: async () => "main" },
-      hasConflicts: true,
-    });
-    expect(wrote).toBe(false);
-  });
-
-  test("writes config WITH base key when retarget target differs from default", async () => {
-    const wsDir = mkdtempSync(join(tmpdir(), "arb-retarget-nondefault-"));
-    try {
-      mkdirSync(join(wsDir, ".arbws"), { recursive: true });
-      const configFile = join(wsDir, ".arbws", "config.json");
-      writeFileSync(configFile, `${JSON.stringify({ branch: "feature", base: "feat/old" }, null, 2)}\n`);
-
-      const wrote = await maybeWriteRetargetConfig({
-        dryRun: false,
-        wsDir,
-        branch: "feature",
-        assessments: [makeAssessment({ retargetTo: "release/v2" })],
-        retargetConfigTarget: "release/v2",
-        cache: { getDefaultBranch: async () => "main" },
-      });
-
-      expect(wrote).toBe(true);
-      expect(JSON.parse(readFileSync(configFile, "utf-8"))).toEqual({ branch: "feature", base: "release/v2" });
-    } finally {
-      rmSync(wsDir, { recursive: true, force: true });
-    }
-  });
-
-  test("writes config WITHOUT base key when retarget target matches repo default branch", async () => {
-    const wsDir = mkdtempSync(join(tmpdir(), "arb-retarget-default-"));
-    try {
-      mkdirSync(join(wsDir, ".arbws"), { recursive: true });
-      const configFile = join(wsDir, ".arbws", "config.json");
-      writeFileSync(configFile, `${JSON.stringify({ branch: "feature", base: "feat/old" }, null, 2)}\n`);
-
-      const wrote = await maybeWriteRetargetConfig({
-        dryRun: false,
-        wsDir,
-        branch: "feature",
-        assessments: [makeAssessment()],
-        retargetConfigTarget: "main",
-        cache: { getDefaultBranch: async () => "main" },
-      });
-
-      expect(wrote).toBe(true);
-      expect(JSON.parse(readFileSync(configFile, "utf-8"))).toEqual({ branch: "feature" });
-    } finally {
-      rmSync(wsDir, { recursive: true, force: true });
-    }
   });
 });
 
@@ -1735,24 +1373,6 @@ describe("describeIntegrateAction", () => {
       "rebase",
     );
     expect(desc.replayCount).toBe(5);
-  });
-
-  test("retarget-config", () => {
-    const desc = describeIntegrateAction(
-      makeAssessment({
-        retargetFrom: "feat/old",
-        retargetTo: "main",
-        retargetReplayCount: 4,
-        retargetAlreadyOnTarget: 2,
-        retargetWarning: "base branch feat/old may not be merged",
-      }),
-      "rebase",
-    );
-    expect(desc.kind).toBe("retarget-config");
-    expect(desc.retargetFrom).toBe("feat/old");
-    expect(desc.replayCount).toBe(4);
-    expect(desc.skipCount).toBe(2);
-    expect(desc.warning).toBe("base branch feat/old may not be merged");
   });
 
   test("matchedCount passes through in diff", () => {

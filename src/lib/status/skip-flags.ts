@@ -21,7 +21,8 @@ export type SkipFlag =
   | "no-base-remote"
   | "retarget-target-not-found"
   | "retarget-base-not-found"
-  | "retarget-no-default";
+  | "retarget-no-default"
+  | "retarget-same-base";
 
 export const BENIGN_SKIPS: ReadonlySet<SkipFlag> = new Set([
   "already-merged",

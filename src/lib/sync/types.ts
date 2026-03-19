@@ -201,3 +201,45 @@ export type PushAssessment =
   | PushWillPushAssessment
   | PushWillForcePushAssessment
   | PushWillForcePushOutdatedAssessment;
+
+// ── Retarget types ──────────────────────────────────────────────
+
+interface RetargetAssessmentBase {
+  repo: string;
+  repoDir: string;
+  branch: string;
+  targetBranch: string;
+  baseRemote: string;
+  oldBase: string;
+  headSha: string;
+  shallow: boolean;
+  replayCount?: number;
+  alreadyOnTarget?: number;
+  baseMerged: boolean;
+  warning?: string;
+  conflictPrediction?: ConflictPrediction;
+  needsStash?: boolean;
+  stashPopConflictFiles?: string[];
+  wrongBranch?: boolean;
+  verbose?: IntegrateVerboseInfo;
+}
+
+export interface RetargetSkipAssessment extends RetargetAssessmentBase {
+  outcome: "skip";
+  skipReason: string;
+  skipFlag: SkipFlag;
+}
+
+export interface RetargetUpToDateAssessment extends RetargetAssessmentBase {
+  outcome: "up-to-date";
+  skipReason?: never;
+  skipFlag?: never;
+}
+
+export interface RetargetWillRetargetAssessment extends RetargetAssessmentBase {
+  outcome: "will-retarget";
+  skipReason?: never;
+  skipFlag?: never;
+}
+
+export type RetargetAssessment = RetargetSkipAssessment | RetargetUpToDateAssessment | RetargetWillRetargetAssessment;

@@ -2,8 +2,8 @@ import { bold, dim } from "../terminal";
 import type { HelpTopic } from "./types";
 
 export const whereFilterTopic: HelpTopic = {
-  name: "where",
-  summary: "Filter syntax for --where",
+  name: "filtering",
+  summary: "Filter syntax for --where and --dirty",
   render() {
     const out = (text: string) => process.stdout.write(`${text}\n`);
 
