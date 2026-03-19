@@ -190,6 +190,7 @@ _arb() {
                 'attach:Attach repos to the workspace'
                 'detach:Detach repos from the workspace'
                 'status:Show workspace status'
+                'watch:Live workspace dashboard with sync commands'
                 'branch:Inspect and manage the workspace branch'
                 'pull:Pull the feature branch from the share remote'
                 'push:Push the feature branch to the share remote'
@@ -388,11 +389,14 @@ _arb() {
                         '(-N --fetch --no-fetch)--fetch[Fetch before showing status (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching]' \
                         '(-v --verbose -q --quiet --schema)'{-v,--verbose}'[Show file-level detail]' \
-                        '(-q --quiet --json -v --verbose --schema --watch)'{-q,--quiet}'[Output one repo name per line]' \
-                        '(--watch --json -q --quiet --schema)--watch[Continuously refresh status on filesystem changes]' \
-                        '(--json -q --quiet --schema --watch)--json[Output structured JSON]' \
+                        '(-q --quiet --json -v --verbose --schema)'{-q,--quiet}'[Output one repo name per line]' \
+                        '(--json -q --quiet --schema)--json[Output structured JSON]' \
                         '(--schema --json -q --quiet -v --verbose)--schema[Print JSON Schema for --json output]' \
                         '*:repo:($ws_repo_names)'
+                    ;;
+                watch)
+                    _arguments \
+                        '(-v --verbose)'{-v,--verbose}'[Show file-level detail]'
                     ;;
                 branch)
                     shift words; (( CURRENT-- ))

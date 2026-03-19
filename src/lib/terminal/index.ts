@@ -1,6 +1,6 @@
 export type { AbortSignalHandle } from "./abort-signal";
 export { enterAlternateScreen, leaveAlternateScreen } from "./alternate-screen";
-export type { WatchEntry, WatchLoopCallbacks, WatchLoopOptions } from "./watch-loop";
+export type { WatchCommand, WatchEntry, WatchLoopCallbacks, WatchLoopOptions } from "./watch-loop";
 export { runWatchLoop } from "./watch-loop";
 export { checkboxWithPreview } from "./checkbox-with-preview";
 export { checkboxWithStatus } from "./checkbox-with-status";

@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict, predictRebaseConflictCommits, predictStashPopConflict } from "../lib/analysis";
-import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
+import { ArbError, type CommandContext, arbAction, readWorkspaceConfig } from "../lib/core";
 import { getCommitsBetweenFull, getDiffShortstat, gitLocal, gitNetwork, networkTimeout } from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
 import { createRenderContext, finishSummary, render } from "../lib/render";
@@ -53,244 +53,255 @@ export function registerPullCommand(program: Command): void {
           error("Cannot use both --rebase and --merge");
           throw new ArbError("Cannot use both --rebase and --merge");
         }
-
-        const where = resolveWhereFilter(options);
-        const flagMode: "rebase" | "merge" | undefined = options.rebase
-          ? "rebase"
-          : options.merge
-            ? "merge"
-            : undefined;
-        const { wsDir, workspace } = requireWorkspace(ctx);
-        const branch = await requireBranch(wsDir, workspace);
-
-        const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
-        const selectedSet = new Set(selectedRepos);
-        const cache = ctx.cache;
-        const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
-        const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
-
-        // Phase 1: fetch
-        const allFetchDirs = workspaceRepoDirs(wsDir);
-        const allRepos = allFetchDirs.map((d) => basename(d));
-        const repos = allRepos.filter((r) => selectedSet.has(r));
-        const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
-        const autostash = options.autostash === true;
-
-        // Phase 2: assess
-        const assess = buildCachedStatusAssess<PullAssessment>({
-          repos,
-          wsDir,
-          reposDir: ctx.reposDir,
-          branch,
-          configBase,
-          remotesMap,
-          cache,
-          analysisCache: ctx.analysisCache,
-          where,
-          classify: async ({ repoDir, status, fetchFailed }) => {
-            const headSha = status.headSha ?? "";
-            const pullMode = flagMode ?? (await detectPullMode(repoDir, branch));
-            return assessPullRepo(
-              status,
-              repoDir,
-              branch,
-              fetchFailed,
-              pullMode,
-              autostash,
-              headSha,
-              options.includeWrongBranch,
-            );
-          },
-        });
-
-        const postAssess = async (nextAssessments: PullAssessment[]) => {
-          let assessments = await reviveRebasedSkipsForSafeReset(nextAssessments, remotesMap);
-          assessments = await resolvePullStrategies(assessments, remotesMap);
-          if (options.reset) {
-            assessments = resetRebasedSkips(assessments, remotesMap);
-          }
-          assessments = await predictPullConflicts(assessments, remotesMap);
-          if (options.verbose) {
-            assessments = await gatherPullVerboseCommits(assessments, remotesMap);
-          }
-          return assessments;
-        };
-
-        const assessments = await runPlanFlow({
-          shouldFetch: true, // pull always fetches — ARB_NO_FETCH does not apply (GUIDELINES.md)
-          fetchDirs,
-          reposForFetchReport: repos,
-          remotesMap,
-          assess,
-          postAssess,
-          formatPlan: (nextAssessments) => formatPullPlan(nextAssessments, remotesMap, options.verbose),
-          onPostFetch: () => cache.invalidateAfterFetch(),
-        });
-
-        const willPull = assessments.filter((a) => a.outcome === "will-pull");
-        const upToDate = assessments.filter((a) => a.outcome === "up-to-date");
-        const skipped = assessments.filter((a) => a.outcome === "skip");
-
-        if (willPull.length === 0) {
-          info(upToDate.length > 0 ? "All repos up to date" : "Nothing to do");
-          return;
-        }
-
-        if (options.dryRun) {
-          dryRunNotice();
-          return;
-        }
-
-        // Phase 3: confirm
-        await confirmOrExit({
-          yes: options.yes,
-          message: `Pull ${plural(willPull.length, "repo")}?`,
-        });
-
-        process.stderr.write("\n");
-
-        // Phase 4: execute
-        let pullOk = 0;
-        const pullTimeout = networkTimeout("ARB_PULL_TIMEOUT", 120);
-        const conflicted: { assessment: PullAssessment; stdout: string; stderr: string }[] = [];
-        const failed: PullFailure[] = [];
-        const stashPopFailed: PullAssessment[] = [];
-
-        for (const a of willPull) {
-          const strategy = a.pullStrategy ?? (a.pullMode === "rebase" ? "rebase-pull" : "merge-pull");
-          inlineStart(a.repo, `pulling (${pullStrategyLabel(strategy)})`);
-          const pullRemote = remotesMap.get(a.repo)?.share;
-          if (!pullRemote) continue;
-
-          if (strategy === "rebase-pull") {
-            // Rebase mode: pass --autostash to git pull --rebase when needed
-            const pullArgs = a.needsStash
-              ? ["pull", "--rebase", "--autostash", pullRemote, a.branch]
-              : ["pull", "--rebase", pullRemote, a.branch];
-            const pullResult = await gitNetwork(a.repoDir, pullTimeout, pullArgs);
-            if (pullResult.exitCode === 0) {
-              inlineResult(a.repo, `pulled ${plural(a.behind, "commit")} (${a.pullMode})`);
-              pullOk++;
-            } else {
-              if (isConflictResult(pullResult.stdout, pullResult.stderr)) {
-                inlineResult(a.repo, yellow("conflict"));
-                conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
-              } else {
-                inlineResult(a.repo, yellow("failed"));
-                failed.push({
-                  assessment: a,
-                  exitCode: pullResult.exitCode,
-                  stdout: pullResult.stdout,
-                  stderr: pullResult.stderr,
-                  action: "pull --rebase",
-                });
-              }
-            }
-          } else if (strategy === "safe-reset" || strategy === "forced-reset") {
-            // Reset to remote tip. Safe-reset: auto-detected, no data loss. Forced-reset: user override via --force.
-            if (a.needsStash) {
-              await gitLocal(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
-            }
-            const target = a.safeReset?.target ?? `${pullRemote}/${a.branch}`;
-            const resetLabel = strategy === "forced-reset" ? "forced reset" : "safe reset";
-            const resetResult = await gitLocal(a.repoDir, "reset", "--hard", target);
-            if (resetResult.exitCode === 0) {
-              let stashPopOk = true;
-              if (a.needsStash) {
-                const popResult = await gitLocal(a.repoDir, "stash", "pop");
-                if (popResult.exitCode !== 0) {
-                  stashPopOk = false;
-                  stashPopFailed.push(a);
-                }
-              }
-              let doneMsg = `${resetLabel} to ${target}`;
-              if (!stashPopOk) {
-                doneMsg += ` ${yellow("(stash pop failed)")}`;
-              }
-              inlineResult(a.repo, doneMsg);
-              pullOk++;
-            } else {
-              inlineResult(a.repo, yellow("failed"));
-              failed.push({
-                assessment: a,
-                exitCode: resetResult.exitCode,
-                stdout: resetResult.stdout,
-                stderr: resetResult.stderr,
-                action: `reset --hard ${target}`,
-              });
-            }
-          } else {
-            // Merge mode: manual stash cycle when needed
-            if (a.needsStash) {
-              await gitLocal(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
-            }
-            const pullResult = await gitNetwork(a.repoDir, pullTimeout, ["pull", "--no-rebase", pullRemote, a.branch]);
-            if (pullResult.exitCode === 0) {
-              let stashPopOk = true;
-              if (a.needsStash) {
-                const popResult = await gitLocal(a.repoDir, "stash", "pop");
-                if (popResult.exitCode !== 0) {
-                  stashPopOk = false;
-                  stashPopFailed.push(a);
-                }
-              }
-              let doneMsg = `pulled ${plural(a.behind, "commit")} (${a.pullMode})`;
-              if (!stashPopOk) {
-                doneMsg += ` ${yellow("(stash pop failed)")}`;
-              }
-              inlineResult(a.repo, doneMsg);
-              pullOk++;
-            } else {
-              // Do NOT pop stash if pull conflicted
-              if (isConflictResult(pullResult.stdout, pullResult.stderr)) {
-                inlineResult(a.repo, yellow("conflict"));
-                conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
-              } else {
-                inlineResult(a.repo, yellow("failed"));
-                failed.push({
-                  assessment: a,
-                  exitCode: pullResult.exitCode,
-                  stdout: pullResult.stdout,
-                  stderr: pullResult.stderr,
-                  action: "pull --no-rebase",
-                });
-              }
-            }
-          }
-        }
-
-        // Consolidated conflict report
-        const conflictNodes = buildConflictReport(
-          conflicted.map((c) => ({
-            repo: c.assessment.repo,
-            stdout: c.stdout,
-            stderr: c.stderr,
-            subcommand: c.assessment.pullMode === "rebase" ? ("rebase" as const) : ("merge" as const),
-          })),
-        );
-
-        // Consolidated non-conflict failure report
-        const failureNodes = buildPullFailureReport(failed);
-
-        // Stash pop failure report
-        const stashNodes = buildStashPopFailureReport(stashPopFailed, "Pull");
-
-        const reportCtx = { tty: shouldColor() };
-        if (conflictNodes.length > 0) process.stderr.write(render(conflictNodes, reportCtx));
-        if (failureNodes.length > 0) process.stderr.write(render(failureNodes, reportCtx));
-        if (stashNodes.length > 0) process.stderr.write(render(stashNodes, reportCtx));
-
-        // Phase 5: summary
-        process.stderr.write("\n");
-        const parts = [`Pulled ${plural(pullOk, "repo")}`];
-        if (conflicted.length > 0) parts.push(`${conflicted.length} conflicted`);
-        if (failed.length > 0) parts.push(`${failed.length} failed`);
-        if (stashPopFailed.length > 0) parts.push(`${stashPopFailed.length} stash pop failed`);
-        if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
-        if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
-        finishSummary(parts, conflicted.length > 0 || failed.length > 0 || stashPopFailed.length > 0);
+        const { wsDir } = requireWorkspace(ctx);
+        const repoNames = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
+        await runPull(ctx, repoNames, options);
       }),
     );
+}
+
+export async function runPull(
+  ctx: CommandContext,
+  repoNames: string[],
+  options: {
+    rebase?: boolean;
+    merge?: boolean;
+    reset?: boolean;
+    yes?: boolean;
+    dryRun?: boolean;
+    autostash?: boolean;
+    includeWrongBranch?: boolean;
+    verbose?: boolean;
+    where?: string;
+  },
+): Promise<void> {
+  const where = resolveWhereFilter(options);
+  const flagMode: "rebase" | "merge" | undefined = options.rebase ? "rebase" : options.merge ? "merge" : undefined;
+  const { wsDir, workspace } = requireWorkspace(ctx);
+  const branch = await requireBranch(wsDir, workspace);
+
+  const selectedRepos = repoNames;
+  const selectedSet = new Set(selectedRepos);
+  const cache = ctx.cache;
+  const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
+  const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
+
+  // Phase 1: fetch
+  const allFetchDirs = workspaceRepoDirs(wsDir);
+  const allRepos = allFetchDirs.map((d) => basename(d));
+  const repos = allRepos.filter((r) => selectedSet.has(r));
+  const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
+  const autostash = options.autostash === true;
+
+  // Phase 2: assess
+  const assess = buildCachedStatusAssess<PullAssessment>({
+    repos,
+    wsDir,
+    reposDir: ctx.reposDir,
+    branch,
+    configBase,
+    remotesMap,
+    cache,
+    analysisCache: ctx.analysisCache,
+    where,
+    classify: async ({ repoDir, status, fetchFailed }) => {
+      const headSha = status.headSha ?? "";
+      const pullMode = flagMode ?? (await detectPullMode(repoDir, branch));
+      return assessPullRepo(
+        status,
+        repoDir,
+        branch,
+        fetchFailed,
+        pullMode,
+        autostash,
+        headSha,
+        options.includeWrongBranch,
+      );
+    },
+  });
+
+  const postAssess = async (nextAssessments: PullAssessment[]) => {
+    let assessments = await reviveRebasedSkipsForSafeReset(nextAssessments, remotesMap);
+    assessments = await resolvePullStrategies(assessments, remotesMap);
+    if (options.reset) {
+      assessments = resetRebasedSkips(assessments, remotesMap);
+    }
+    assessments = await predictPullConflicts(assessments, remotesMap);
+    if (options.verbose) {
+      assessments = await gatherPullVerboseCommits(assessments, remotesMap);
+    }
+    return assessments;
+  };
+
+  const assessments = await runPlanFlow({
+    shouldFetch: true, // pull always fetches — ARB_NO_FETCH does not apply (GUIDELINES.md)
+    fetchDirs,
+    reposForFetchReport: repos,
+    remotesMap,
+    assess,
+    postAssess,
+    formatPlan: (nextAssessments) => formatPullPlan(nextAssessments, remotesMap, options.verbose),
+    onPostFetch: () => cache.invalidateAfterFetch(),
+  });
+
+  const willPull = assessments.filter((a) => a.outcome === "will-pull");
+  const upToDate = assessments.filter((a) => a.outcome === "up-to-date");
+  const skipped = assessments.filter((a) => a.outcome === "skip");
+
+  if (willPull.length === 0) {
+    info(upToDate.length > 0 ? "All repos up to date" : "Nothing to do");
+    return;
+  }
+
+  if (options.dryRun) {
+    dryRunNotice();
+    return;
+  }
+
+  // Phase 3: confirm
+  await confirmOrExit({
+    yes: options.yes,
+    message: `Pull ${plural(willPull.length, "repo")}?`,
+  });
+
+  process.stderr.write("\n");
+
+  // Phase 4: execute
+  let pullOk = 0;
+  const pullTimeout = networkTimeout("ARB_PULL_TIMEOUT", 120);
+  const conflicted: { assessment: PullAssessment; stdout: string; stderr: string }[] = [];
+  const failed: PullFailure[] = [];
+  const stashPopFailed: PullAssessment[] = [];
+
+  for (const a of willPull) {
+    const strategy = a.pullStrategy ?? (a.pullMode === "rebase" ? "rebase-pull" : "merge-pull");
+    inlineStart(a.repo, `pulling (${pullStrategyLabel(strategy)})`);
+    const pullRemote = remotesMap.get(a.repo)?.share;
+    if (!pullRemote) continue;
+
+    if (strategy === "rebase-pull") {
+      const pullArgs = a.needsStash
+        ? ["pull", "--rebase", "--autostash", pullRemote, a.branch]
+        : ["pull", "--rebase", pullRemote, a.branch];
+      const pullResult = await gitNetwork(a.repoDir, pullTimeout, pullArgs);
+      if (pullResult.exitCode === 0) {
+        inlineResult(a.repo, `pulled ${plural(a.behind, "commit")} (${a.pullMode})`);
+        pullOk++;
+      } else {
+        if (isConflictResult(pullResult.stdout, pullResult.stderr)) {
+          inlineResult(a.repo, yellow("conflict"));
+          conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
+        } else {
+          inlineResult(a.repo, yellow("failed"));
+          failed.push({
+            assessment: a,
+            exitCode: pullResult.exitCode,
+            stdout: pullResult.stdout,
+            stderr: pullResult.stderr,
+            action: "pull --rebase",
+          });
+        }
+      }
+    } else if (strategy === "safe-reset" || strategy === "forced-reset") {
+      if (a.needsStash) {
+        await gitLocal(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
+      }
+      const target = a.safeReset?.target ?? `${pullRemote}/${a.branch}`;
+      const resetLabel = strategy === "forced-reset" ? "forced reset" : "safe reset";
+      const resetResult = await gitLocal(a.repoDir, "reset", "--hard", target);
+      if (resetResult.exitCode === 0) {
+        let stashPopOk = true;
+        if (a.needsStash) {
+          const popResult = await gitLocal(a.repoDir, "stash", "pop");
+          if (popResult.exitCode !== 0) {
+            stashPopOk = false;
+            stashPopFailed.push(a);
+          }
+        }
+        let doneMsg = `${resetLabel} to ${target}`;
+        if (!stashPopOk) {
+          doneMsg += ` ${yellow("(stash pop failed)")}`;
+        }
+        inlineResult(a.repo, doneMsg);
+        pullOk++;
+      } else {
+        inlineResult(a.repo, yellow("failed"));
+        failed.push({
+          assessment: a,
+          exitCode: resetResult.exitCode,
+          stdout: resetResult.stdout,
+          stderr: resetResult.stderr,
+          action: `reset --hard ${target}`,
+        });
+      }
+    } else {
+      if (a.needsStash) {
+        await gitLocal(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
+      }
+      const pullResult = await gitNetwork(a.repoDir, pullTimeout, ["pull", "--no-rebase", pullRemote, a.branch]);
+      if (pullResult.exitCode === 0) {
+        let stashPopOk = true;
+        if (a.needsStash) {
+          const popResult = await gitLocal(a.repoDir, "stash", "pop");
+          if (popResult.exitCode !== 0) {
+            stashPopOk = false;
+            stashPopFailed.push(a);
+          }
+        }
+        let doneMsg = `pulled ${plural(a.behind, "commit")} (${a.pullMode})`;
+        if (!stashPopOk) {
+          doneMsg += ` ${yellow("(stash pop failed)")}`;
+        }
+        inlineResult(a.repo, doneMsg);
+        pullOk++;
+      } else {
+        if (isConflictResult(pullResult.stdout, pullResult.stderr)) {
+          inlineResult(a.repo, yellow("conflict"));
+          conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
+        } else {
+          inlineResult(a.repo, yellow("failed"));
+          failed.push({
+            assessment: a,
+            exitCode: pullResult.exitCode,
+            stdout: pullResult.stdout,
+            stderr: pullResult.stderr,
+            action: "pull --no-rebase",
+          });
+        }
+      }
+    }
+  }
+
+  // Consolidated conflict report
+  const conflictNodes = buildConflictReport(
+    conflicted.map((c) => ({
+      repo: c.assessment.repo,
+      stdout: c.stdout,
+      stderr: c.stderr,
+      subcommand: c.assessment.pullMode === "rebase" ? ("rebase" as const) : ("merge" as const),
+    })),
+  );
+
+  // Consolidated non-conflict failure report
+  const failureNodes = buildPullFailureReport(failed);
+
+  // Stash pop failure report
+  const stashNodes = buildStashPopFailureReport(stashPopFailed, "Pull");
+
+  const reportCtx = { tty: shouldColor() };
+  if (conflictNodes.length > 0) process.stderr.write(render(conflictNodes, reportCtx));
+  if (failureNodes.length > 0) process.stderr.write(render(failureNodes, reportCtx));
+  if (stashNodes.length > 0) process.stderr.write(render(stashNodes, reportCtx));
+
+  // Phase 5: summary
+  process.stderr.write("\n");
+  const parts = [`Pulled ${plural(pullOk, "repo")}`];
+  if (conflicted.length > 0) parts.push(`${conflicted.length} conflicted`);
+  if (failed.length > 0) parts.push(`${failed.length} failed`);
+  if (stashPopFailed.length > 0) parts.push(`${stashPopFailed.length} stash pop failed`);
+  if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
+  if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
+  finishSummary(parts, conflicted.length > 0 || failed.length > 0 || stashPopFailed.length > 0);
 }
 
 export function assessPullRepo(

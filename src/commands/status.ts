@@ -1,8 +1,8 @@
-import { basename, dirname, resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict } from "../lib/analysis";
 import { ArbError, type CommandContext, arbAction, readWorkspaceConfig } from "../lib/core";
-import { gitLocal, localTimeout } from "../lib/git/git";
+import { localTimeout } from "../lib/git/git";
 import { printSchema } from "../lib/json";
 import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
 import { createRenderContext, fitToHeight, render, runPhasedRender } from "../lib/render";
@@ -29,25 +29,16 @@ import {
   resolveDefaultFetch,
 } from "../lib/sync";
 import {
-  type WatchEntry,
-  bold,
   clearScanProgress,
-  dim,
   error,
   hintsEnabled,
   isTTY,
   listenForAbortSignal,
-  runWatchLoop,
   scanProgress,
   stderr,
   warn,
 } from "../lib/terminal";
-import {
-  readGitdirFromWorktree,
-  requireWorkspace,
-  resolveReposFromArgsOrStdin,
-  workspaceRepoDirs,
-} from "../lib/workspace";
+import { requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
 export function registerStatusCommand(program: Command): void {
   program
@@ -58,12 +49,11 @@ export function registerStatusCommand(program: Command): void {
     .option("-N, --no-fetch", "Skip fetching")
     .option("-v, --verbose", "Show file-level detail for each repo")
     .option("-q, --quiet", "Output one repo name per line")
-    .option("--watch", "Continuously refresh status on filesystem changes")
     .option("--json", "Output structured JSON (combine with --verbose for commit and file detail)")
     .option("--schema", "Print JSON Schema for this command's --json output and exit")
     .summary("Show workspace status")
     .description(
-      "Examples:\n\n  arb status                               Show all repos\n  arb status --dirty                       Only repos with local changes\n  arb status api web --verbose             File-level detail for specific repos\n\nShow each repo's position relative to the base branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line), enabling composition like: arb status -q --where dirty | arb diff.\n\nUse --dirty to only show repos with uncommitted changes. Use --where <filter> to filter by status flags. See 'arb help filtering' for filter syntax. Fetches from all remotes by default for fresh data (skip with -N/--no-fetch). Press Ctrl+C during the fetch to cancel and use stale data. Quiet mode (-q) skips fetching by default for scripting speed. Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.\n\nUse --watch to enter a live dashboard that auto-refreshes on filesystem changes. Useful in a split terminal while AI agents work. Press f to fetch remote state on demand, q or Escape to quit. Combines with --verbose, --dirty, --where, and [repos...] filtering.\n\nMerged branches show the detected PR number when available (e.g. 'merged (#123), gone'), extracted from merge or squash commit subjects. JSON output includes detectedPr fields.\n\nSee 'arb help stacked' for stacked workspace status flags. See 'arb help scripting' for output modes and piping.",
+      "Examples:\n\n  arb status                               Show all repos\n  arb status --dirty                       Only repos with local changes\n  arb status api web --verbose             File-level detail for specific repos\n\nShow each repo's position relative to the base branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line), enabling composition like: arb status -q --where dirty | arb diff.\n\nUse --dirty to only show repos with uncommitted changes. Use --where <filter> to filter by status flags. See 'arb help filtering' for filter syntax. Fetches from all remotes by default for fresh data (skip with -N/--no-fetch). Press Ctrl+C during the fetch to cancel and use stale data. Quiet mode (-q) skips fetching by default for scripting speed. Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.\n\nFor a live dashboard with sync commands, use 'arb watch'.\n\nMerged branches show the detected PR number when available (e.g. 'merged (#123), gone'), extracted from merge or squash commit subjects. JSON output includes detectedPr fields.\n\nSee 'arb help stacked' for stacked workspace status flags. See 'arb help scripting' for output modes and piping.",
     )
     .action(async (repoArgs: string[], options, command) => {
       if (options.schema) {
@@ -90,7 +80,6 @@ async function runStatus(
     fetch?: boolean;
     verbose?: boolean;
     quiet?: boolean;
-    watch?: boolean;
     json?: boolean;
   },
 ): Promise<void> {
@@ -108,22 +97,6 @@ async function runStatus(
     error("Cannot combine --quiet with --verbose.");
     throw new ArbError("Cannot combine --quiet with --verbose.");
   }
-  if (options.watch && options.json) {
-    error("Cannot combine --watch with --json.");
-    throw new ArbError("Cannot combine --watch with --json.");
-  }
-  if (options.watch && options.quiet) {
-    error("Cannot combine --watch with --quiet.");
-    throw new ArbError("Cannot combine --watch with --quiet.");
-  }
-  if (options.watch && options.fetch === true) {
-    error("Cannot combine --watch with --fetch. Press f during watch mode to fetch on demand.");
-    throw new ArbError("Cannot combine --watch with --fetch.");
-  }
-  if (options.watch && (!isTTY() || !process.stdin.isTTY)) {
-    error("--watch requires a terminal (TTY). Watch mode cannot run in pipes or non-interactive sessions.");
-    throw new ArbError("--watch requires a terminal.");
-  }
 
   // Resolve repo selection: positional args > stdin > all
   const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
@@ -131,24 +104,17 @@ async function runStatus(
 
   // Shared gather helper: scan + filter.
   // When previousResults is provided, repos in that map are reused instead of re-scanned.
-  // showProgress controls whether scan progress is written to stderr (disabled in watch mode
-  // to avoid flickering on the alternate screen).
-  const gatherFiltered = async (
-    previousResults?: Map<string, RepoStatus>,
-    showProgress = true,
-  ): Promise<WorkspaceSummary> => {
+  const gatherFiltered = async (previousResults?: Map<string, RepoStatus>): Promise<WorkspaceSummary> => {
     const summary = await gatherWorkspaceSummary(
       wsDir,
       ctx.reposDir,
-      showProgress
-        ? (scanned, total) => {
-            scanProgress(scanned, total);
-          }
-        : undefined,
+      (scanned, total) => {
+        scanProgress(scanned, total);
+      },
       cache,
       { previousResults, analysisCache: aCache },
     );
-    if (showProgress) clearScanProgress();
+    clearScanProgress();
 
     let repos = summary.repos.filter((r) => selectedSet.has(r.name));
     if (where) {
@@ -160,14 +126,6 @@ async function runStatus(
     const aggregates = computeSummaryAggregates(repos, summary.branch);
     return { ...summary, repos, total: repos.length, ...aggregates };
   };
-
-  // Watch mode: live dashboard with filesystem watching
-  if (options.watch) {
-    await runWatchMode(ctx, wsDir, selectedRepos, gatherFiltered, {
-      verbose: options.verbose,
-    });
-    return;
-  }
 
   // Phased rendering: show stale table immediately, refresh after fetch
   const wantsFetch = resolveDefaultFetch(options.fetch) && !options.quiet;
@@ -416,128 +374,7 @@ async function renderStatusTable(
     verboseData,
   });
 
-  // Fit to terminal height when maxLines is specified (watch mode)
   const fittedNodes = options.maxLines != null ? fitToHeight(nodes, options.maxLines) : nodes;
-
-  // Resolve render context
   const renderCtx = createRenderContext();
-
   return render(fittedNodes, renderCtx);
-}
-
-// --- Watch mode ---
-
-/** Number of terminal lines the watch footer occupies (blank line + hint bar). */
-const WATCH_FOOTER_LINES = 2;
-
-/**
- * Build a footer hint bar in Inquirer style: bold key + dim action, dim bullet separators.
- */
-function watchFooter(fetching: boolean): string {
-  const bullet = dim(" \u2022 ");
-  const fetchHint = fetching ? dim("Fetching...") : `${bold("f")} ${dim("fetch")}`;
-  const quitHint = `${bold("q")} ${dim("quit")}`;
-  return `\n  ${fetchHint}${bullet}${quitHint}\n`;
-}
-
-/**
- * Build a gitignore-aware filter for a worktree directory.
- * Runs `git ls-files --others --ignored --exclude-standard --directory` once at setup
- * and returns a function that checks if a filename starts with any ignored directory prefix.
- */
-async function buildIgnoreFilter(repoDir: string): Promise<((filename: string) => boolean) | undefined> {
-  const result = await gitLocal(repoDir, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory");
-  if (result.exitCode !== 0) return undefined;
-
-  const ignoredDirs = result.stdout
-    .split("\n")
-    .filter((line) => line.endsWith("/"))
-    .map((line) => line.slice(0, -1)); // remove trailing slash for prefix matching
-
-  if (ignoredDirs.length === 0) return undefined;
-
-  return (filename: string): boolean => {
-    for (const dir of ignoredDirs) {
-      if (filename === dir || filename.startsWith(`${dir}/`)) return true;
-    }
-    return false;
-  };
-}
-
-/**
- * Resolve the canonical .git/ directory for a linked worktree.
- * Reads the .git file to find the worktree entry dir, then goes two levels up
- * to reach the canonical .git/ directory.
- */
-function resolveCanonicalGitDir(repoDir: string): string | null {
-  const gitdirPath = readGitdirFromWorktree(repoDir);
-  if (!gitdirPath) return null;
-  // gitdirPath is like: .../arb/repos/<repo>/.git/worktrees/<name>
-  // Go two levels up to get .../arb/repos/<repo>/.git/
-  return dirname(dirname(gitdirPath));
-}
-
-async function runWatchMode(
-  ctx: CommandContext,
-  wsDir: string,
-  selectedRepos: string[],
-  gatherFiltered: (previousResults?: Map<string, RepoStatus>, showProgress?: boolean) => Promise<WorkspaceSummary>,
-  options: { verbose?: boolean },
-): Promise<void> {
-  const cache = ctx.cache;
-  let fetching = false;
-
-  // Build watch entries: worktree dirs (with gitignore filter) + canonical .git/ dirs
-  const watchEntries: WatchEntry[] = [];
-
-  await Promise.all(
-    selectedRepos.map(async (repoName) => {
-      const repoDir = `${wsDir}/${repoName}`;
-
-      // Watch worktree directory with gitignore filter
-      const ignoreFilter = await buildIgnoreFilter(repoDir);
-      watchEntries.push({
-        path: repoDir,
-        shouldIgnore: ignoreFilter,
-      });
-
-      // Watch canonical .git/ directory, ignoring transient lock files that git
-      // creates during read operations (e.g. git status touches index.lock).
-      const canonicalGitDir = resolveCanonicalGitDir(repoDir);
-      if (canonicalGitDir) {
-        watchEntries.push({
-          path: canonicalGitDir,
-          shouldIgnore: (filename) => filename.endsWith(".lock"),
-        });
-      }
-    }),
-  );
-
-  const renderScreen = async (): Promise<string> => {
-    const terminalHeight = process.stderr.rows ?? 24;
-    const maxLines = terminalHeight - WATCH_FOOTER_LINES;
-    const table = await renderStatusTable(await gatherFiltered(undefined, false), wsDir, {
-      verbose: options.verbose,
-      maxLines,
-    });
-    return table + watchFooter(fetching);
-  };
-
-  const fetchDirs = selectedRepos.map((name) => `${wsDir}/${name}`);
-
-  await runWatchLoop({
-    render: renderScreen,
-    watchers: watchEntries,
-    onFetch: async () => {
-      fetching = true;
-      try {
-        const repoNames = selectedRepos;
-        const remotesMap = await cache.resolveRemotesMap(repoNames, ctx.reposDir);
-        await parallelFetch(fetchDirs, undefined, remotesMap, { silent: true });
-        cache.invalidateAfterFetch();
-      } finally {
-        fetching = false;
-      }
-    },
-  });
 }

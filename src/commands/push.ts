@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict } from "../lib/analysis";
-import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
+import { ArbError, type CommandContext, arbAction, readWorkspaceConfig } from "../lib/core";
 import { getCommitsBetweenFull, gitNetwork, networkTimeout } from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
 import { createRenderContext, finishSummary, render } from "../lib/render";
@@ -40,132 +40,150 @@ export function registerPushCommand(program: Command): void {
     )
     .action(
       arbAction(async (ctx, repoArgs: string[], options) => {
-        const { wsDir, workspace } = requireWorkspace(ctx);
-        const branch = await requireBranch(wsDir, workspace);
-        const where = resolveWhereFilter(options);
-
-        const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
-        const cache = ctx.cache;
-        const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
-        const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
-
-        const shouldFetch = resolveDefaultFetch(options.fetch);
-        const allFetchDirs = workspaceRepoDirs(wsDir);
-        const selectedSet = new Set(selectedRepos);
-        const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
-        const allRepos = fetchDirs.map((d) => basename(d));
-
-        const assessWithCache = buildCachedStatusAssess<PushAssessment>({
-          repos: selectedRepos,
-          wsDir,
-          reposDir: ctx.reposDir,
-          branch,
-          configBase,
-          remotesMap,
-          cache,
-          analysisCache: ctx.analysisCache,
-          where,
-          classify: async ({ repoDir, status }) => {
-            const headSha = status.headSha ?? "";
-            return assessPushRepo(status, repoDir, branch, headSha, {
-              force: options.force,
-              includeMerged: options.includeMerged,
-              includeWrongBranch: options.includeWrongBranch,
-            });
-          },
-        });
-        const assess = async (fetchFailed: string[], unchangedRepos: Set<string>) =>
-          applyForcePushPolicy(await assessWithCache(fetchFailed, unchangedRepos), options.force === true);
-
-        const postAssess = async (nextAssessments: PushAssessment[]) => {
-          await predictPushBaseConflicts(nextAssessments, remotesMap);
-          if (options.verbose) return gatherPushVerboseCommits(nextAssessments, remotesMap);
-          return nextAssessments;
-        };
-
-        const assessments = await runPlanFlow({
-          shouldFetch,
-          fetchDirs,
-          reposForFetchReport: allRepos,
-          remotesMap,
-          assess,
-          postAssess,
-          formatPlan: (nextAssessments) => formatPushPlan(nextAssessments, remotesMap, options.verbose),
-          onPostFetch: () => cache.invalidateAfterFetch(),
-        });
-
-        const willPush = assessments.filter(
-          (a) =>
-            a.outcome === "will-push" || a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated",
-        );
-        const upToDate = assessments.filter((a) => a.outcome === "up-to-date");
-        const skipped = assessments.filter((a) => a.outcome === "skip");
-
-        if (willPush.length === 0) {
-          info(upToDate.length > 0 ? "All repos up to date" : "Nothing to do");
-          return;
-        }
-
-        if (options.dryRun) {
-          dryRunNotice();
-          return;
-        }
-
-        // Phase 3: confirm
-        await confirmOrExit({
-          yes: options.yes,
-          message: `Push ${plural(willPush.length, "repo")}?`,
-        });
-
-        process.stderr.write("\n");
-
-        // Phase 4: execute
-        let pushOk = 0;
-        const pushTimeout = networkTimeout("ARB_PUSH_TIMEOUT", 120);
-
-        for (const a of willPush) {
-          inlineStart(a.repo, "pushing");
-          const pushArgs =
-            a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated"
-              ? ["push", "-u", "--force-with-lease", a.shareRemote, a.branch]
-              : ["push", "-u", a.shareRemote, a.branch];
-          const pushResult = await gitNetwork(a.repoDir, pushTimeout, pushArgs);
-          if (pushResult.exitCode === 0) {
-            inlineResult(a.repo, `pushed ${plural(a.ahead, "commit")}`);
-            pushOk++;
-          } else {
-            inlineResult(a.repo, red("failed"));
-            process.stderr.write("\n");
-            const errText = pushResult.stderr.trim();
-            if (errText) {
-              for (const line of errText.split("\n")) {
-                process.stderr.write(`  ${line}\n`);
-              }
-            }
-            const errorClass = classifyNetworkError(errText);
-            const recoveryHint =
-              pushResult.exitCode === 124
-                ? "Check your network connection, then re-run 'arb push' to continue. Adjust timeout with ARB_PUSH_TIMEOUT."
-                : errorClass === "offline"
-                  ? "Check your network connection, then re-run 'arb push' to continue."
-                  : errorClass === "auth"
-                    ? "Check your credentials or token, then re-run 'arb push' to continue."
-                    : errorClass === "not-found"
-                      ? "Verify the remote URL is correct, then re-run 'arb push' to continue."
-                      : "To resolve, check the error above, then re-run 'arb push' to continue.";
-            process.stderr.write(`\n  ${recoveryHint}\n`);
-            throw new ArbError(`Push failed for ${a.repo}`);
-          }
-        }
-
-        // Phase 5: summary
-        process.stderr.write("\n");
-        const parts = [`Pushed ${plural(pushOk, "repo")}`];
-        if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
-        if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
-        finishSummary(parts, false);
+        const { wsDir } = requireWorkspace(ctx);
+        const repoNames = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
+        await runPush(ctx, repoNames, options);
       }),
     );
+}
+
+export async function runPush(
+  ctx: CommandContext,
+  repoNames: string[],
+  options: {
+    force?: boolean;
+    includeMerged?: boolean;
+    includeWrongBranch?: boolean;
+    fetch?: boolean;
+    yes?: boolean;
+    dryRun?: boolean;
+    verbose?: boolean;
+    where?: string;
+  },
+): Promise<void> {
+  const { wsDir, workspace } = requireWorkspace(ctx);
+  const branch = await requireBranch(wsDir, workspace);
+  const where = resolveWhereFilter(options);
+
+  const selectedRepos = repoNames;
+  const cache = ctx.cache;
+  const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
+  const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
+
+  const shouldFetch = resolveDefaultFetch(options.fetch);
+  const allFetchDirs = workspaceRepoDirs(wsDir);
+  const selectedSet = new Set(selectedRepos);
+  const fetchDirs = allFetchDirs.filter((dir) => selectedSet.has(basename(dir)));
+  const allRepos = fetchDirs.map((d) => basename(d));
+
+  const assessWithCache = buildCachedStatusAssess<PushAssessment>({
+    repos: selectedRepos,
+    wsDir,
+    reposDir: ctx.reposDir,
+    branch,
+    configBase,
+    remotesMap,
+    cache,
+    analysisCache: ctx.analysisCache,
+    where,
+    classify: async ({ repoDir, status }) => {
+      const headSha = status.headSha ?? "";
+      return assessPushRepo(status, repoDir, branch, headSha, {
+        force: options.force,
+        includeMerged: options.includeMerged,
+        includeWrongBranch: options.includeWrongBranch,
+      });
+    },
+  });
+  const assess = async (fetchFailed: string[], unchangedRepos: Set<string>) =>
+    applyForcePushPolicy(await assessWithCache(fetchFailed, unchangedRepos), options.force === true);
+
+  const postAssess = async (nextAssessments: PushAssessment[]) => {
+    await predictPushBaseConflicts(nextAssessments, remotesMap);
+    if (options.verbose) return gatherPushVerboseCommits(nextAssessments, remotesMap);
+    return nextAssessments;
+  };
+
+  const assessments = await runPlanFlow({
+    shouldFetch,
+    fetchDirs,
+    reposForFetchReport: allRepos,
+    remotesMap,
+    assess,
+    postAssess,
+    formatPlan: (nextAssessments) => formatPushPlan(nextAssessments, remotesMap, options.verbose),
+    onPostFetch: () => cache.invalidateAfterFetch(),
+  });
+
+  const willPush = assessments.filter(
+    (a) => a.outcome === "will-push" || a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated",
+  );
+  const upToDate = assessments.filter((a) => a.outcome === "up-to-date");
+  const skipped = assessments.filter((a) => a.outcome === "skip");
+
+  if (willPush.length === 0) {
+    info(upToDate.length > 0 ? "All repos up to date" : "Nothing to do");
+    return;
+  }
+
+  if (options.dryRun) {
+    dryRunNotice();
+    return;
+  }
+
+  // Phase 3: confirm
+  await confirmOrExit({
+    yes: options.yes,
+    message: `Push ${plural(willPush.length, "repo")}?`,
+  });
+
+  process.stderr.write("\n");
+
+  // Phase 4: execute
+  let pushOk = 0;
+  const pushTimeout = networkTimeout("ARB_PUSH_TIMEOUT", 120);
+
+  for (const a of willPush) {
+    inlineStart(a.repo, "pushing");
+    const pushArgs =
+      a.outcome === "will-force-push" || a.outcome === "will-force-push-outdated"
+        ? ["push", "-u", "--force-with-lease", a.shareRemote, a.branch]
+        : ["push", "-u", a.shareRemote, a.branch];
+    const pushResult = await gitNetwork(a.repoDir, pushTimeout, pushArgs);
+    if (pushResult.exitCode === 0) {
+      inlineResult(a.repo, `pushed ${plural(a.ahead, "commit")}`);
+      pushOk++;
+    } else {
+      inlineResult(a.repo, red("failed"));
+      process.stderr.write("\n");
+      const errText = pushResult.stderr.trim();
+      if (errText) {
+        for (const line of errText.split("\n")) {
+          process.stderr.write(`  ${line}\n`);
+        }
+      }
+      const errorClass = classifyNetworkError(errText);
+      const recoveryHint =
+        pushResult.exitCode === 124
+          ? "Check your network connection, then re-run 'arb push' to continue. Adjust timeout with ARB_PUSH_TIMEOUT."
+          : errorClass === "offline"
+            ? "Check your network connection, then re-run 'arb push' to continue."
+            : errorClass === "auth"
+              ? "Check your credentials or token, then re-run 'arb push' to continue."
+              : errorClass === "not-found"
+                ? "Verify the remote URL is correct, then re-run 'arb push' to continue."
+                : "To resolve, check the error above, then re-run 'arb push' to continue.";
+      process.stderr.write(`\n  ${recoveryHint}\n`);
+      throw new ArbError(`Push failed for ${a.repo}`);
+    }
+  }
+
+  // Phase 5: summary
+  process.stderr.write("\n");
+  const parts = [`Pushed ${plural(pushOk, "repo")}`];
+  if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
+  if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
+  finishSummary(parts, false);
 }
 
 export function formatPushPlan(
