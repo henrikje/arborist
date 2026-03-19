@@ -511,10 +511,18 @@ __arb_complete_rebase() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --retarget --autostash --include-wrong-branch -w --where" -- "$cur"))
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --autostash --include-wrong-branch -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
+}
+
+__arb_complete_retarget() {
+    local base_dir="$1" cur="$2"
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch -y --yes -n --dry-run -v --verbose -g --graph --autostash --include-wrong-branch -h --help" -- "$cur"))
+        return
+    fi
 }
 
 __arb_complete_merge() {
@@ -640,8 +648,8 @@ __arb_complete_template() {
 
 __arb_complete_help() {
     local base_dir="$1" cur="$2"
-    local topics="where remotes stacked templates scripting"
-    local commands="init repo create delete rename list path cd attach detach status branch pull push rebase merge reset log diff exec open template"
+    local topics="filtering remotes stacked templates scripting"
+    local commands="init repo create delete rename list path cd attach detach status branch pull push rebase retarget merge reset log diff exec open template"
     COMPREPLY=($(compgen -W "$topics $commands" -- "$cur"))
 }
 
@@ -667,7 +675,7 @@ _arb() {
 
     # Completing the subcommand itself
     if ((COMP_CWORD <= cmd_pos)); then
-        local commands="init repo create delete rename list path cd attach detach status branch pull push rebase merge reset log diff exec open template help"
+        local commands="init repo create delete rename list path cd attach detach status branch pull push rebase retarget merge reset log diff exec open template help"
         # Also complete global flags
         if [[ "$cur" == -* ]]; then
             COMPREPLY=($(compgen -W "-C -h --help --version --debug" -- "$cur"))
@@ -695,6 +703,7 @@ _arb() {
         pull)     __arb_complete_pull "$base_dir" "$cur" ;;
         push)     __arb_complete_push "$base_dir" "$cur" ;;
         rebase)   __arb_complete_rebase "$base_dir" "$cur" ;;
+        retarget) __arb_complete_retarget "$base_dir" "$cur" ;;
         merge)    __arb_complete_merge "$base_dir" "$cur" ;;
         reset)    __arb_complete_reset "$base_dir" "$cur" ;;
         log)      __arb_complete_log "$base_dir" "$cur" ;;

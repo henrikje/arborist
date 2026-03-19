@@ -194,6 +194,7 @@ _arb() {
                 'pull:Pull the feature branch from the share remote'
                 'push:Push the feature branch to the share remote'
                 'rebase:Rebase feature branches onto the base branch'
+                'retarget:Change the base branch and rebase onto it'
                 'merge:Merge the base branch into feature branches'
                 'reset:Reset all repos to the share branch (or base if not pushed)'
                 'log:Show feature branch commits across repos'
@@ -494,11 +495,23 @@ _arb() {
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \
                         '(-g --graph)'{-g,--graph}'[Show branch divergence graph in the plan]' \
-                        '--retarget=-[Retarget repos whose base has been merged; optionally specify branch]::branch:' \
                         '--autostash[Stash uncommitted changes before rebase, re-apply after]' \
                         '--include-wrong-branch[Include repos on a different branch than the workspace]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($ws_repo_names)'
+                    ;;
+                retarget)
+                    _arguments \
+                        '(-N --fetch --no-fetch)--fetch[Fetch before retarget (default)]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before retarget]' \
+                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \
+                        '(-g --graph)'{-g,--graph}'[Show branch divergence graph in the plan]' \
+                        '--autostash[Stash uncommitted changes before retarget, re-apply after]' \
+                        '--include-wrong-branch[Include repos on a different branch than the workspace]' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '1:branch:'
                     ;;
                 merge)
                     _arguments \
@@ -548,7 +561,7 @@ _arb() {
                     ;;
                 help)
                     local -a help_completions=(
-                        'where:Filter syntax for --where'
+                        'filtering:Filter syntax for --where and --dirty'
                         'remotes:Fork workflows and remote roles'
                         'stacked:Stacked workspaces (branching off features)'
                         'templates:Template system quick reference'
@@ -568,6 +581,7 @@ _arb() {
                         'pull:Pull the feature branch from the share remote'
                         'push:Push the feature branch to the share remote'
                         'rebase:Rebase feature branches onto the base branch'
+                        'retarget:Change the base branch and rebase onto it'
                         'merge:Merge the base branch into feature branches'
                         'reset:Reset all repos to the share branch (or base if not pushed)'
                         'log:Show feature branch commits across repos'

@@ -1,6 +1,4 @@
-import { detectBranchMerged } from "../analysis/merge-detection";
-import { analyzeRetargetReplay } from "../analysis/replay-analysis";
-import { branchExistsLocally, getShortHead, gitLocal, remoteBranchExists } from "../git/git";
+import { getShortHead, gitLocal } from "../git/git";
 import { computeFlags } from "../status/flags";
 import type { SkipFlag } from "../status/skip-flags";
 import type { RepoStatus } from "../status/types";
@@ -9,26 +7,14 @@ import type { RepoAssessment } from "./types";
 export type IntegrateMode = "rebase" | "merge";
 
 interface IntegrateClassifierDependencies {
-  analyzeRetargetReplay: typeof analyzeRetargetReplay;
-  branchExistsLocally: typeof branchExistsLocally;
-  detectBranchMerged: typeof detectBranchMerged;
   getShortHead: typeof getShortHead;
   git: typeof gitLocal;
-  remoteBranchExists: typeof remoteBranchExists;
 }
 
 const defaultDependencies: IntegrateClassifierDependencies = {
-  analyzeRetargetReplay,
-  branchExistsLocally,
-  detectBranchMerged,
   getShortHead,
   git: gitLocal,
-  remoteBranchExists,
 };
-
-interface DefaultBranchResolver {
-  getDefaultBranch(repoDir: string, remote: string): Promise<string | null>;
-}
 
 function withoutSkipFields<T extends { skipReason?: string; skipFlag?: SkipFlag }>(assessment: T) {
   const { skipReason: _skipReason, skipFlag: _skipFlag, ...next } = assessment;
@@ -133,7 +119,7 @@ export function classifyRepo(
     return {
       ...base,
       outcome: "skip",
-      skipReason: `base branch ${status.base.configuredRef ?? status.base.ref} was merged into default (use --retarget)`,
+      skipReason: `base branch ${status.base.configuredRef ?? status.base.ref} was merged into default (use 'arb retarget')`,
       skipFlag: "base-merged-into-default",
     };
   }
@@ -161,11 +147,8 @@ export async function assessIntegrateRepo(
   branch: string,
   fetchFailed: string[],
   options: {
-    retarget: boolean;
-    retargetExplicit: string | null;
     autostash: boolean;
     includeWrongBranch: boolean;
-    cache: DefaultBranchResolver;
     mode: IntegrateMode;
   },
   dependencies: Partial<IntegrateClassifierDependencies> = {},
@@ -185,7 +168,7 @@ export async function assessIntegrateRepo(
   const isMergedNewWork =
     classified.skipFlag === "already-merged" && base?.merge?.newCommitsAfter != null && base.merge.newCommitsAfter > 0;
 
-  if (classified.outcome === "skip" && classified.skipFlag !== "base-merged-into-default" && !isMergedNewWork) {
+  if (classified.outcome === "skip" && !isMergedNewWork) {
     return classified;
   }
 
@@ -199,26 +182,42 @@ export async function assessIntegrateRepo(
   });
   if (mergedNewWorkAssessment) return mergedNewWorkAssessment;
 
-  const explicitRetargetAssessment = await assessExplicitRetarget({
-    classified,
-    base,
-    repoDir,
-    retargetExplicit: options.retargetExplicit,
-    deps,
-  });
-  if (explicitRetargetAssessment) return explicitRetargetAssessment;
-
-  const autoRetargetAssessment = await assessAutoRetarget({
-    classified,
-    base,
-    repoDir,
-    retarget: options.retarget,
-    retargetExplicit: options.retargetExplicit,
-    cache: options.cache,
-    mode: options.mode,
-    deps,
-  });
-  if (autoRetargetAssessment) return autoRetargetAssessment;
+  // Auto-replay-plan optimization: when the base branch has squash-merged some of
+  // the feature branch's commits, detect contiguous replay plans and use --onto
+  // to skip already-merged commits during a normal rebase.
+  if (
+    options.mode === "rebase" &&
+    classified.outcome === "will-operate" &&
+    base?.replayPlan?.contiguous &&
+    !(base.replayPlan.mergedPrefix && base.merge == null)
+  ) {
+    const replayPlan = base.replayPlan;
+    if (replayPlan.alreadyOnTarget > 0 && replayPlan.toReplay === 0) {
+      return {
+        ...withoutSkipFields(classified),
+        outcome: "up-to-date",
+        baseBranch: base.ref,
+        behind: 0,
+        ahead: base.ahead,
+      };
+    }
+    if (replayPlan.alreadyOnTarget > 0 && replayPlan.toReplay > 0) {
+      return {
+        ...withoutSkipFields(classified),
+        outcome: "will-operate",
+        baseBranch: base.ref,
+        behind: base.behind,
+        ahead: replayPlan.toReplay,
+        retarget: {
+          from: `HEAD~${replayPlan.toReplay}`,
+          to: base.ref,
+          replayCount: replayPlan.toReplay,
+          alreadyOnTarget: replayPlan.alreadyOnTarget,
+          reason: "branch-merged",
+        },
+      };
+    }
+  }
 
   return classified;
 }
@@ -270,192 +269,5 @@ async function assessMergedNewWork(input: {
       alreadyOnTarget: Math.max(0, base.ahead - replayCount),
       reason: "branch-merged",
     },
-  };
-}
-
-async function assessExplicitRetarget(input: {
-  classified: RepoAssessment;
-  base: RepoStatus["base"];
-  repoDir: string;
-  retargetExplicit: string | null;
-  deps: IntegrateClassifierDependencies;
-}): Promise<RepoAssessment | null> {
-  const { classified, base, repoDir, retargetExplicit, deps } = input;
-  if (!retargetExplicit) return null;
-
-  if (base && base.configuredRef !== null && base.baseMergedIntoDefault == null) {
-    return classified;
-  }
-
-  const baseRemote = classified.baseRemote;
-  const targetExists = await deps.remoteBranchExists(repoDir, retargetExplicit, baseRemote);
-  if (!targetExists) {
-    return {
-      ...classified,
-      outcome: "skip",
-      skipReason: `target branch ${retargetExplicit} not found on ${baseRemote}`,
-      skipFlag: "retarget-target-not-found",
-      retarget: { blocked: true },
-    };
-  }
-
-  const oldBaseName = base?.configuredRef ?? base?.ref ?? "";
-  const oldBaseRemoteExists = await deps.remoteBranchExists(repoDir, oldBaseName, baseRemote);
-  const oldBaseLocalExists = !oldBaseRemoteExists ? await deps.branchExistsLocally(repoDir, oldBaseName) : false;
-  if (!oldBaseRemoteExists && !oldBaseLocalExists) {
-    return {
-      ...classified,
-      outcome: "skip",
-      skipReason: `base branch ${oldBaseName} not found — cannot determine rebase boundary`,
-      skipFlag: "retarget-base-not-found",
-      retarget: { blocked: true },
-    };
-  }
-
-  const targetRef = `${baseRemote}/${retargetExplicit}`;
-  const oldBaseRef = oldBaseRemoteExists ? `${baseRemote}/${oldBaseName}` : oldBaseName;
-  let retargetWarning: string | undefined;
-  const mergeDetection = await deps.detectBranchMerged(repoDir, targetRef, 200, oldBaseRef);
-  if (mergeDetection === null) {
-    retargetWarning = `base branch ${oldBaseName} may not be merged`;
-  }
-
-  if (base?.ref === retargetExplicit && base?.behind === 0) {
-    return {
-      ...withoutSkipFields(classified),
-      outcome: "up-to-date",
-      baseBranch: retargetExplicit,
-      retarget: {
-        from: oldBaseName,
-        to: retargetExplicit,
-        warning: retargetWarning,
-        reason: "base-merged",
-      },
-      behind: base.behind,
-      ahead: base.ahead,
-    };
-  }
-
-  const replayAnalysis = await deps.analyzeRetargetReplay(repoDir, oldBaseRef, targetRef);
-  return {
-    ...withoutSkipFields(classified),
-    outcome: "will-operate",
-    baseBranch: retargetExplicit,
-    retarget: {
-      from: oldBaseName,
-      to: retargetExplicit,
-      warning: retargetWarning,
-      reason: "base-merged",
-      ...(replayAnalysis && {
-        replayCount: replayAnalysis.toReplay,
-        alreadyOnTarget: replayAnalysis.alreadyOnTarget,
-      }),
-    },
-    behind: base?.behind ?? 0,
-    ahead: base?.ahead ?? 0,
-  };
-}
-
-async function assessAutoRetarget(input: {
-  classified: RepoAssessment;
-  base: RepoStatus["base"];
-  repoDir: string;
-  retarget: boolean;
-  retargetExplicit: string | null;
-  cache: DefaultBranchResolver;
-  mode: IntegrateMode;
-  deps: IntegrateClassifierDependencies;
-}): Promise<RepoAssessment | null> {
-  const { classified, base, repoDir, retarget, retargetExplicit, cache, mode, deps } = input;
-
-  if (
-    mode === "rebase" &&
-    retargetExplicit === null &&
-    classified.outcome === "will-operate" &&
-    base?.replayPlan?.contiguous &&
-    !(base.replayPlan.mergedPrefix && base.merge == null)
-  ) {
-    const replayPlan = base.replayPlan;
-    if (replayPlan.alreadyOnTarget > 0 && replayPlan.toReplay === 0) {
-      return {
-        ...withoutSkipFields(classified),
-        outcome: "up-to-date",
-        baseBranch: base.ref,
-        behind: 0,
-        ahead: base.ahead,
-      };
-    }
-    if (replayPlan.alreadyOnTarget > 0 && replayPlan.toReplay > 0) {
-      return {
-        ...withoutSkipFields(classified),
-        outcome: "will-operate",
-        baseBranch: base.ref,
-        behind: base.behind,
-        ahead: replayPlan.toReplay,
-        retarget: {
-          from: `HEAD~${replayPlan.toReplay}`,
-          to: base.ref,
-          replayCount: replayPlan.toReplay,
-          alreadyOnTarget: replayPlan.alreadyOnTarget,
-          reason: "branch-merged",
-        },
-      };
-    }
-  }
-
-  if (base?.baseMergedIntoDefault == null) return null;
-  if (!retarget) return classified;
-
-  const baseRemote = classified.baseRemote;
-  const trueDefault = await cache.getDefaultBranch(repoDir, baseRemote);
-  if (!trueDefault) {
-    return {
-      ...classified,
-      outcome: "skip",
-      skipReason: "cannot resolve default branch for retarget",
-      skipFlag: "retarget-no-default",
-    };
-  }
-
-  const oldBaseNameForReplay = base.configuredRef ?? base.ref;
-  if (base.baseMergedIntoDefault === "squash") {
-    const defaultRef = `${baseRemote}/${trueDefault}`;
-    const alreadyOnDefault = await deps.git(repoDir, "merge-base", "--is-ancestor", defaultRef, "HEAD");
-    if (alreadyOnDefault.exitCode === 0) {
-      return {
-        ...withoutSkipFields(classified),
-        outcome: "up-to-date",
-        baseBranch: trueDefault,
-        retarget: {
-          from: oldBaseNameForReplay,
-          to: trueDefault,
-          reason: "base-merged",
-        },
-        behind: base.behind,
-        ahead: base.ahead,
-      };
-    }
-  }
-
-  const oldBaseRemoteRefExists = await deps.remoteBranchExists(repoDir, oldBaseNameForReplay, baseRemote);
-  const oldBaseRefForReplay = oldBaseRemoteRefExists ? `${baseRemote}/${oldBaseNameForReplay}` : oldBaseNameForReplay;
-  const newBaseRefForReplay = `${baseRemote}/${trueDefault}`;
-  const replayAnalysis = await deps.analyzeRetargetReplay(repoDir, oldBaseRefForReplay, newBaseRefForReplay);
-
-  return {
-    ...withoutSkipFields(classified),
-    outcome: "will-operate",
-    baseBranch: trueDefault,
-    retarget: {
-      from: base.configuredRef ?? base.ref,
-      to: trueDefault,
-      reason: "base-merged",
-      ...(replayAnalysis && {
-        replayCount: replayAnalysis.toReplay,
-        alreadyOnTarget: replayAnalysis.alreadyOnTarget,
-      }),
-    },
-    behind: base.behind,
-    ahead: base.ahead,
   };
 }

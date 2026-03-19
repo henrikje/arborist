@@ -7,7 +7,6 @@ import {
 } from "../analysis/conflict-prediction";
 import type { CommandContext } from "../core/command-action";
 import { readWorkspaceConfig, writeWorkspaceConfig } from "../core/config";
-import { ArbError } from "../core/errors";
 import { getCommitsBetweenFull, getDiffShortstat, getMergeBase, gitLocal } from "../git/git";
 import type { GitCache } from "../git/git-cache";
 import { buildConflictReport, buildStashPopFailureReport } from "../render/conflict-report";
@@ -18,11 +17,9 @@ import { cell, suffix } from "../render/model";
 import { skipCell, upToDateCell } from "../render/plan-format";
 import { type RenderContext, finishSummary, render } from "../render/render";
 import { verboseCommitsToNodes } from "../render/status-verbose";
-import { RETARGET_EXEMPT_SKIPS } from "../status/skip-flags";
 import { resolveWhereFilter } from "../status/where";
-import { dryRunNotice, error, info, inlineResult, inlineStart, plural, yellow } from "../terminal/output";
+import { dryRunNotice, info, inlineResult, inlineStart, plural, yellow } from "../terminal/output";
 import { shouldColor } from "../terminal/tty";
-import { rejectExplicitBaseRemotePrefix, resolveWorkspaceBaseResolution } from "../workspace/base";
 import { workspaceBranch } from "../workspace/branch";
 import { requireBranch, requireWorkspace } from "../workspace/context";
 import { resolveRepoSelection, workspaceRepoDirs } from "../workspace/repos";
@@ -41,7 +38,6 @@ export async function integrate(
     fetch?: boolean;
     yes?: boolean;
     dryRun?: boolean;
-    retarget?: string | boolean;
     autostash?: boolean;
     includeWrongBranch?: boolean;
     verbose?: boolean;
@@ -52,34 +48,12 @@ export async function integrate(
 ): Promise<void> {
   const verb = mode === "rebase" ? "Rebase" : "Merge";
   const verbed = mode === "rebase" ? "Rebased" : "Merged";
-  const retargetExplicit = typeof options.retarget === "string" && mode === "rebase" ? options.retarget : null;
-  const retarget = (options.retarget === true || retargetExplicit !== null) && mode === "rebase";
 
   // Phase 1: context & repo selection
   const { wsDir, workspace } = requireWorkspace(ctx);
   const branch = await requireBranch(wsDir, workspace);
   const cache = ctx.cache;
   const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
-  const workspaceBaseResolution = retargetExplicit
-    ? await resolveWorkspaceBaseResolution(wsDir, ctx.reposDir, cache)
-    : null;
-  const normalizedRetargetExplicit =
-    retargetExplicit && workspaceBaseResolution
-      ? rejectExplicitBaseRemotePrefix(retargetExplicit, workspaceBaseResolution)
-      : retargetExplicit;
-
-  if (normalizedRetargetExplicit) {
-    if (normalizedRetargetExplicit === branch) {
-      error(`Cannot retarget to ${normalizedRetargetExplicit} — that is the current feature branch.`);
-      throw new ArbError(`Cannot retarget to ${normalizedRetargetExplicit} — that is the current feature branch.`);
-    }
-    if (normalizedRetargetExplicit === configBase) {
-      error(`Cannot retarget to ${normalizedRetargetExplicit} — that is already the configured base branch.`);
-      throw new ArbError(
-        `Cannot retarget to ${normalizedRetargetExplicit} — that is already the configured base branch.`,
-      );
-    }
-  }
 
   const selectedRepos = resolveRepoSelection(wsDir, repoArgs);
   const where = resolveWhereFilter(options);
@@ -107,25 +81,11 @@ export async function integrate(
     analysisCache: ctx.analysisCache,
     where,
     classify: ({ repoDir, status, fetchFailed }) => {
-      const repoPath = `${ctx.reposDir}/${basename(repoDir)}`;
-      return assessIntegrateRepo(
-        status,
-        repoDir,
-        branch,
-        fetchFailed,
-        {
-          retarget,
-          retargetExplicit: normalizedRetargetExplicit,
-          autostash,
-          includeWrongBranch,
-          cache,
-          mode,
-        },
-        {
-          remoteBranchExists: (_dir, b, r) => cache.remoteBranchExists(repoPath, b, r),
-          branchExistsLocally: (_dir, b) => cache.branchExistsLocally(repoPath, b),
-        },
-      );
+      return assessIntegrateRepo(status, repoDir, branch, fetchFailed, {
+        autostash,
+        includeWrongBranch,
+        mode,
+      });
     },
   });
 
@@ -152,62 +112,14 @@ export async function integrate(
     onPostFetch: () => cache.invalidateAfterFetch(),
   });
 
-  // All-or-nothing check: when retarget is active, skipped repos block the entire retarget
-  // (except repos with no base branch or where the retarget target simply doesn't exist on their remote)
-  if (retarget) {
-    const hasRetargetWork = assessments.some((a) => a.retarget?.to || a.retarget?.blocked);
-    if (hasRetargetWork) {
-      const blockedRepos = assessments.filter(
-        (a) => a.outcome === "skip" && (a.skipFlag == null || !RETARGET_EXEMPT_SKIPS.has(a.skipFlag)),
-      );
-      if (blockedRepos.length > 0) {
-        error("Cannot retarget: some repos are blocked. Fix these issues and retry:");
-        for (const a of blockedRepos) {
-          process.stderr.write(`  ${a.repo} — ${a.skipReason}\n`);
-        }
-        throw new ArbError("Cannot retarget: some repos are blocked.");
-      }
-      // Ensure at least one repo can actually retarget
-      const hasActualRetargetWork = assessments.some((a) => a.retarget?.to);
-      if (!hasActualRetargetWork) {
-        const notFoundRepos = assessments.filter((a) => a.skipFlag === "retarget-target-not-found");
-        error("Cannot retarget: target branch not found on any repo.");
-        for (const a of notFoundRepos) {
-          process.stderr.write(`  ${a.repo} — ${a.skipReason}\n`);
-        }
-        throw new ArbError("Cannot retarget: target branch not found on any repo.");
-      }
-    }
-  }
-  const retargetConfigTarget = retarget ? resolveRetargetConfigTarget(assessments) : null;
-  const retargetConfigFrom = retargetConfigTarget
-    ? (assessments.find((a) => a.retarget?.to === retargetConfigTarget && a.retarget?.reason !== "branch-merged")
-        ?.retarget?.from ?? null)
-    : null;
-
   // Phase 4: confirm
   const willOperate = assessments.filter((a) => a.outcome === "will-operate");
   const upToDate = assessments.filter((a) => a.outcome === "up-to-date" || isDirtyButUpToDate(a));
   const skipped = assessments.filter((a) => a.outcome === "skip" && !isDirtyButUpToDate(a));
 
   if (willOperate.length === 0) {
-    // Retarget config (explicit --retarget)
-    const wroteRetargetConfig = await maybeWriteRetargetConfig({
-      dryRun: options.dryRun,
-      wsDir,
-      branch,
-      assessments,
-      retargetConfigTarget,
-      cache,
-    });
-    if (wroteRetargetConfig && retargetConfigTarget && retargetConfigFrom) {
-      inlineResult(workspace, `base branch changed from ${retargetConfigFrom} to ${retargetConfigTarget}`);
-      process.stderr.write("\n");
-      return;
-    }
-
     // Stale base fallback (needs confirmation — plan already shows the change)
-    if (!wroteRetargetConfig && hasBaseFallback(assessments)) {
+    if (hasBaseFallback(assessments)) {
       if (options.dryRun) {
         dryRunNotice();
         return;
@@ -255,19 +167,14 @@ export async function integrate(
 
     let result: { exitCode: number; stdout: string; stderr: string };
     if (a.retarget?.from) {
-      const repoPath = `${ctx.reposDir}/${a.repo}`;
-      const remoteRefExists = await cache.remoteBranchExists(repoPath, a.retarget.from, a.baseRemote);
-      const oldBaseRef = remoteRefExists ? `${a.baseRemote}/${a.retarget.from}` : a.retarget.from;
+      // Branch-merged replay: use --onto to skip already-merged commits
       const n = a.retarget.replayCount ?? a.ahead;
-      const progressMsg =
-        a.retarget.reason === "branch-merged"
-          ? `rebasing ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`
-          : `rebasing ${a.branch} onto ${ref} from ${a.retarget.from} (retarget)`;
+      const progressMsg = `rebasing ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`;
       inlineStart(a.repo, progressMsg);
-      const retargetArgs = ["rebase"];
-      if (a.needsStash) retargetArgs.push("--autostash");
-      retargetArgs.push("--onto", ref, oldBaseRef);
-      result = await gitLocal(a.repoDir, ...retargetArgs);
+      const rebaseArgs = ["rebase"];
+      if (a.needsStash) rebaseArgs.push("--autostash");
+      rebaseArgs.push("--onto", ref, a.retarget.from);
+      result = await gitLocal(a.repoDir, ...rebaseArgs);
     } else if (mode === "rebase") {
       const progressMsg = `rebasing ${a.branch} onto ${ref}`;
       inlineStart(a.repo, progressMsg);
@@ -296,11 +203,9 @@ export async function integrate(
         }
       }
       let doneMsg: string;
-      if (a.retarget?.from && a.retarget.reason === "branch-merged") {
+      if (a.retarget?.from) {
         const n = a.retarget.replayCount ?? a.ahead;
         doneMsg = `rebased ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`;
-      } else if (a.retarget?.from) {
-        doneMsg = `rebased ${a.branch} onto ${ref} from ${a.retarget.from} (retarget)`;
       } else {
         doneMsg = mode === "rebase" ? `rebased ${a.branch} onto ${ref}` : `merged ${ref} into ${a.branch}`;
       }
@@ -335,94 +240,27 @@ export async function integrate(
   if (conflictNodes.length > 0) process.stderr.write(render(conflictNodes, reportCtx));
   if (stashNodes.length > 0) process.stderr.write(render(stashNodes, reportCtx));
 
-  // Update config after successful retarget (skip branch-merged replays — base doesn't change)
-  const wroteRetargetConfig = await maybeWriteRetargetConfig({
+  // Update config after stale base fallback
+  const fallbackResult = await maybeWriteBaseFallbackConfig({
     dryRun: options.dryRun,
     wsDir,
     branch,
     assessments,
-    retargetConfigTarget,
-    cache,
     hasConflicts: conflicted.length > 0,
   });
-  if (wroteRetargetConfig && retargetConfigTarget && retargetConfigFrom) {
-    inlineResult(workspace, `base branch changed from ${retargetConfigFrom} to ${retargetConfigTarget}`);
-  }
-  if (!wroteRetargetConfig) {
-    const fallbackResult = await maybeWriteBaseFallbackConfig({
-      dryRun: options.dryRun,
-      wsDir,
-      branch,
-      assessments,
-      hasConflicts: conflicted.length > 0,
-    });
-    if (fallbackResult) {
-      inlineResult(workspace, `base branch changed from ${fallbackResult.from} to ${fallbackResult.to}`);
-    }
+  if (fallbackResult) {
+    inlineResult(workspace, `base branch changed from ${fallbackResult.from} to ${fallbackResult.to}`);
   }
 
   // Phase 6: summary
   process.stderr.write("\n");
-  const retargetedCount = willOperate.filter(
-    (a) => a.retarget?.from && !conflicted.some((c) => c.assessment === a),
-  ).length;
-  const normalCount = succeeded - retargetedCount;
   const parts: string[] = [];
-  if (retargetedCount > 0) parts.push(`Retargeted ${plural(retargetedCount, "repo")}`);
-  if (normalCount > 0 || retargetedCount === 0) parts.push(`${verbed} ${plural(normalCount, "repo")}`);
+  parts.push(`${verbed} ${plural(succeeded, "repo")}`);
   if (conflicted.length > 0) parts.push(`${conflicted.length} conflicted`);
   if (stashPopFailed.length > 0) parts.push(`${stashPopFailed.length} stash pop failed`);
   if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
   if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
   finishSummary(parts, conflicted.length > 0 || stashPopFailed.length > 0);
-}
-
-export function resolveRetargetConfigTarget(assessments: RepoAssessment[]): string | null {
-  const retargetTargets = [
-    ...new Set(
-      assessments
-        .filter((a) => a.retarget?.to && a.retarget.reason !== "branch-merged")
-        .map((a) => a.retarget?.to as string),
-    ),
-  ];
-  if (retargetTargets.length === 0) return null;
-  if (retargetTargets.length > 1) {
-    const targets = retargetTargets.sort().join(", ");
-    throw new ArbError(`Cannot retarget: repos disagree on target base (${targets}).`);
-  }
-  return retargetTargets[0] ?? null;
-}
-
-export async function maybeWriteRetargetConfig(options: {
-  dryRun?: boolean;
-  wsDir: string;
-  branch: string;
-  assessments: RepoAssessment[];
-  retargetConfigTarget: string | null;
-  cache: Pick<GitCache, "getDefaultBranch">;
-  hasConflicts?: boolean;
-}): Promise<boolean> {
-  if (options.dryRun) return false;
-  if (options.hasConflicts) return false;
-  if (!options.retargetConfigTarget) return false;
-  const { wsDir, branch, assessments, retargetConfigTarget, cache } = options;
-  const firstRetarget = assessments.find(
-    (a) => a.retarget?.to === retargetConfigTarget && a.retarget.reason !== "branch-merged",
-  );
-  if (!firstRetarget) return false;
-  const configFile = `${wsDir}/.arbws/config.json`;
-  const wb = await workspaceBranch(wsDir);
-  const wsBranch = wb?.branch ?? branch;
-  // Resolve the repo's default branch to check if retargetTo matches
-  // If retargeting to the default branch, remove the base key
-  // If retargeting to a non-default branch, set it as the new base
-  const repoDefault = await cache.getDefaultBranch(firstRetarget.repoDir, firstRetarget.baseRemote);
-  if (repoDefault && retargetConfigTarget !== repoDefault) {
-    writeWorkspaceConfig(configFile, { branch: wsBranch, base: retargetConfigTarget });
-  } else {
-    writeWorkspaceConfig(configFile, { branch: wsBranch });
-  }
-  return true;
 }
 
 export async function maybeWriteBaseFallbackConfig(options: {
@@ -443,7 +281,7 @@ export async function maybeWriteBaseFallbackConfig(options: {
   const allHaveFallback = nonSkip.every((a) => a.baseFallback != null);
   if (!allHaveFallback) return null;
 
-  // Don't auto-clear if any repo needs --retarget (base-merged-into-default detected)
+  // Don't auto-clear if any repo needs retarget (base-merged-into-default detected)
   const hasBaseMergedSkip = assessments.some((a) => a.outcome === "skip" && a.skipFlag === "base-merged-into-default");
   if (hasBaseMergedSkip) return null;
 
@@ -480,27 +318,12 @@ export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode):
   const baseRef = `${a.baseRemote}/${a.baseBranch}`;
   const stash = classifyStash(a);
 
-  if (a.retarget?.from) {
-    if (a.retarget.reason === "branch-merged") {
-      return {
-        kind: "retarget-merged",
-        baseRef,
-        branch: a.branch,
-        replayCount: a.retarget.replayCount ?? a.ahead,
-        skipCount: a.retarget.alreadyOnTarget,
-        conflictRisk: null,
-        stash,
-        baseFallback: a.baseFallback,
-        warning: a.retarget.warning,
-        headSha: a.headSha,
-      };
-    }
+  if (a.retarget?.from && a.retarget.reason === "branch-merged") {
     return {
-      kind: "retarget-config",
+      kind: "retarget-merged",
       baseRef,
       branch: a.branch,
-      retargetFrom: a.retarget.from,
-      replayCount: a.retarget.replayCount,
+      replayCount: a.retarget.replayCount ?? a.ahead,
       skipCount: a.retarget.alreadyOnTarget,
       conflictRisk: null,
       stash,
@@ -541,23 +364,6 @@ export interface PlannedConfigAction {
 
 /** Derive planned workspace config changes from assessments (for plan display). */
 export function computePlannedConfigActions(assessments: RepoAssessment[], workspace: string): PlannedConfigAction[] {
-  // Retarget config change (takes priority — mutually exclusive with fallback)
-  const retargetTargets = [
-    ...new Set(
-      assessments
-        .filter((a) => a.retarget?.to && a.retarget.reason !== "branch-merged")
-        .map((a) => a.retarget?.to as string),
-    ),
-  ];
-  if (retargetTargets.length === 1) {
-    const target = retargetTargets[0];
-    const from = assessments.find((a) => a.retarget?.to === target && a.retarget?.reason !== "branch-merged")?.retarget
-      ?.from;
-    if (from && target) {
-      return [{ workspace, description: `change base branch from ${from} to ${target}` }];
-    }
-  }
-
   // Stale base fallback
   if (hasBaseFallback(assessments)) {
     const hasBaseMergedSkip = assessments.some(
@@ -686,6 +492,7 @@ async function predictIntegrateConflicts(assessments: RepoAssessment[], mode: In
       .filter((a) => a.outcome === "will-operate")
       .map(async (a) => {
         const ref = `${a.baseRemote}/${a.baseBranch}`;
+        // Skip conflict prediction for branch-merged replay (--onto semantics don't match merge-tree)
         if (!a.retarget?.from && a.ahead > 0 && a.behind > 0) {
           const prediction = await predictMergeConflict(a.repoDir, ref);
           a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";

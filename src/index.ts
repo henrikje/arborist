@@ -23,6 +23,7 @@ import { registerRebaseCommand } from "./commands/rebase";
 import { registerRenameCommand } from "./commands/rename";
 import { registerRepoCommand } from "./commands/repo";
 import { registerResetCommand } from "./commands/reset";
+import { registerRetargetCommand } from "./commands/retarget";
 import { registerStatusCommand } from "./commands/status";
 import { registerTemplateCommand } from "./commands/template";
 import { ArbAbort, ArbError, checkForUpdate } from "./lib/core";
@@ -54,11 +55,12 @@ const BASIC_HELP_COMMANDS = new Set([
   "pull",
   "rebase",
   "merge",
+  "retarget",
 ]);
 const BASIC_GROUP_NAMES: Record<string, string> = {
   "Setup Commands:": "Getting Started:",
   "Workspace Commands:": "Workspaces:",
-  "Inspection Commands:": "Workspaces:", // status merges into Workspaces in basic help
+  "Inspection Commands:": "Inspection:",
   "Synchronization Commands:": "Synchronization:",
   "Execution Commands:": "Execution:",
 };
@@ -209,8 +211,12 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
     }
   } else {
     // Basic help footer
+    const topicNames = allTopics()
+      .map((t) => t.name)
+      .join(", ");
     output = output.concat([
-      dim("Run 'arb --help' for more information, including all commands, options, and help topics."),
+      dim(`Help topics: ${topicNames}`),
+      dim("Run 'arb help <topic>' for details. Run 'arb --help' for all commands and options."),
       "",
     ]);
   }
@@ -302,6 +308,7 @@ registerPullCommand(program);
 registerPushCommand(program);
 registerRebaseCommand(program);
 registerMergeCommand(program);
+registerRetargetCommand(program);
 registerResetCommand(program);
 
 // ── Execution Commands ──────────────────────────────────────────

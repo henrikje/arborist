@@ -8,8 +8,9 @@ export {
   integrate,
 } from "./integrate";
 export { assessIntegrateRepo, classifyRepo, type IntegrateMode } from "./classify-integrate";
+export { assessRetargetRepo } from "./classify-retarget";
 export { buildCachedStatusAssess } from "./assess-with-cache";
-export type { PullAssessment, PushAssessment } from "./types";
+export type { PullAssessment, PushAssessment, RetargetAssessment } from "./types";
 export { type PlanFlowOptions, confirmOrExit, runPlanFlow } from "./mutation-flow";
 export {
   type FetchResult,

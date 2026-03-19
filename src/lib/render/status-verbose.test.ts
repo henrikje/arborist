@@ -293,7 +293,7 @@ describe("verboseDetailToNodes", () => {
     expect(secs.some((s) => s.header.plain.includes("Base branch feature-base has been merged into default"))).toBe(
       true,
     );
-    expect(secs.some((s) => s.header.plain.includes("Run 'arb rebase --retarget'"))).toBe(true);
+    expect(secs.some((s) => s.header.plain.includes("Run 'arb retarget'"))).toBe(true);
   });
 
   test("configured base not found shows two header-only sections", () => {

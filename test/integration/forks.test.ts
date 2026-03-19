@@ -149,17 +149,6 @@ describe("fork workflow (multiple remotes)", () => {
       expect(result.output).toContain("Base branch set to origin/main");
     }));
 
-  test("fork: rebase --retarget treats other remote prefixes literally", () =>
-    withEnv(async (env) => {
-      await setupForkRepo(env, "repo-a");
-      await arb(env, ["create", "fork-base", "repo-a"]);
-      const wsDir = join(env.projectDir, "fork-base");
-
-      const result = await arb(env, ["rebase", "--retarget", "origin/main"], { cwd: wsDir });
-      expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("target branch origin/main not found on upstream");
-    }));
-
   test("fork: remove --delete-remote deletes from share remote", () =>
     withEnv(async (env) => {
       await setupForkRepo(env, "repo-a");

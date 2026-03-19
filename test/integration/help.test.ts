@@ -185,9 +185,9 @@ describe("full help", () => {
       expect(result.output).toContain("exec");
     }));
 
-  test("arb help where shows filter syntax reference", () =>
+  test("arb help filtering shows filter syntax reference", () =>
     withBareEnv(async (env) => {
-      const result = await arb(env, ["help", "where"]);
+      const result = await arb(env, ["help", "filtering"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("WHERE FILTER SYNTAX");
       expect(result.output).toContain("dirty");
@@ -201,7 +201,7 @@ describe("full help", () => {
       const result = await arb(env, ["help", "status"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("arb status");
-      expect(result.output).toContain("arb help where");
+      expect(result.output).toContain("arb help filtering");
     }));
 
   test("arb delete --help shows newer-than option", () =>

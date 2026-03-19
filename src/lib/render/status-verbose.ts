@@ -39,7 +39,7 @@ export function formatVerboseDetail(repo: RepoStatus, verbose: VerboseDetail | u
     const strategy = repo.base.baseMergedIntoDefault === "squash" ? "squash" : "merge";
     const baseName = repo.base.configuredRef ?? repo.base.ref;
     sections.push(
-      `\n${SECTION_INDENT}Base branch ${baseName} has been merged into default (${strategy})\n${SECTION_INDENT}Run 'arb rebase --retarget' to rebase onto the default branch\n`,
+      `\n${SECTION_INDENT}Base branch ${baseName} has been merged into default (${strategy})\n${SECTION_INDENT}Run 'arb retarget' to rebase onto the default branch\n`,
     );
   }
 
@@ -198,7 +198,7 @@ export function verboseDetailToNodes(repo: RepoStatus, verbose: VerboseDetail | 
         header: cell(`Base branch ${baseName} has been merged into default (${strategy})`),
         items: [],
       },
-      { kind: "section", header: cell("Run 'arb rebase --retarget' to rebase onto the default branch"), items: [] },
+      { kind: "section", header: cell("Run 'arb retarget' to rebase onto the default branch"), items: [] },
     );
   }
 

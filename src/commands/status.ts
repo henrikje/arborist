@@ -1,7 +1,7 @@
 import { basename, dirname, resolve } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict } from "../lib/analysis";
-import { ArbError, type CommandContext, arbAction } from "../lib/core";
+import { ArbError, type CommandContext, arbAction, readWorkspaceConfig } from "../lib/core";
 import { gitLocal, localTimeout } from "../lib/git/git";
 import { printSchema } from "../lib/json";
 import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
@@ -34,6 +34,7 @@ import {
   clearScanProgress,
   dim,
   error,
+  hintsEnabled,
   isTTY,
   listenForAbortSignal,
   runWatchLoop,
@@ -62,7 +63,7 @@ export function registerStatusCommand(program: Command): void {
     .option("--schema", "Print JSON Schema for this command's --json output and exit")
     .summary("Show workspace status")
     .description(
-      "Examples:\n\n  arb status                               Show all repos\n  arb status --dirty                       Only repos with local changes\n  arb status api web --verbose             File-level detail for specific repos\n\nShow each repo's position relative to the base branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line), enabling composition like: arb status -q --where dirty | arb diff.\n\nUse --dirty to only show repos with uncommitted changes. Use --where <filter> to filter by status flags. See 'arb help where' for filter syntax. Fetches from all remotes by default for fresh data (skip with -N/--no-fetch). Press Ctrl+C during the fetch to cancel and use stale data. Quiet mode (-q) skips fetching by default for scripting speed. Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.\n\nUse --watch to enter a live dashboard that auto-refreshes on filesystem changes. Useful in a split terminal while AI agents work. Press f to fetch remote state on demand, q or Escape to quit. Combines with --verbose, --dirty, --where, and [repos...] filtering.\n\nMerged branches show the detected PR number when available (e.g. 'merged (#123), gone'), extracted from merge or squash commit subjects. JSON output includes detectedPr fields.\n\nSee 'arb help stacked' for stacked workspace status flags. See 'arb help scripting' for output modes and piping.",
+      "Examples:\n\n  arb status                               Show all repos\n  arb status --dirty                       Only repos with local changes\n  arb status api web --verbose             File-level detail for specific repos\n\nShow each repo's position relative to the base branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line), enabling composition like: arb status -q --where dirty | arb diff.\n\nUse --dirty to only show repos with uncommitted changes. Use --where <filter> to filter by status flags. See 'arb help filtering' for filter syntax. Fetches from all remotes by default for fresh data (skip with -N/--no-fetch). Press Ctrl+C during the fetch to cancel and use stale data. Quiet mode (-q) skips fetching by default for scripting speed. Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.\n\nUse --watch to enter a live dashboard that auto-refreshes on filesystem changes. Useful in a split terminal while AI agents work. Press f to fetch remote state on demand, q or Escape to quit. Combines with --verbose, --dirty, --where, and [repos...] filtering.\n\nMerged branches show the detected PR number when available (e.g. 'merged (#123), gone'), extracted from merge or squash commit subjects. JSON output includes detectedPr fields.\n\nSee 'arb help stacked' for stacked workspace status flags. See 'arb help scripting' for output modes and piping.",
     )
     .action(async (repoArgs: string[], options, command) => {
       if (options.schema) {
@@ -187,7 +188,7 @@ async function runStatus(
       aborted?: boolean;
       staleTable?: string;
       staleRepos?: RepoStatus[];
-      finalRepos?: RepoStatus[];
+      finalSummary?: WorkspaceSummary;
     } = {};
 
     try {
@@ -221,7 +222,7 @@ async function runStatus(
                 if (unchanged.has(repo.name)) previousResults.set(repo.name, repo);
               }
               const data = await gatherFiltered(previousResults);
-              state.finalRepos = data.repos;
+              state.finalSummary = data;
               return await renderStatusTable(data, wsDir, { verbose: options.verbose });
             },
             write: (output) => process.stdout.write(output),
@@ -235,7 +236,10 @@ async function runStatus(
     if (!state.aborted) {
       reportFetchFailures(repoNamesForFetch, state.fetchResults as Map<string, FetchResult>);
     }
-    if (state.finalRepos) reportTimeoutHint(state.finalRepos);
+    if (state.finalSummary) {
+      reportTimeoutHint(state.finalSummary.repos);
+      reportWorkspaceHints(state.finalSummary, wsDir);
+    }
     return;
   }
 
@@ -292,12 +296,39 @@ async function runStatus(
   const tableOutput = await renderStatusTable(filteredSummary, wsDir, { verbose: options.verbose });
   process.stdout.write(tableOutput);
   reportTimeoutHint(filteredSummary.repos);
+  reportWorkspaceHints(filteredSummary, wsDir);
 }
 
 function reportTimeoutHint(repos: RepoStatus[]): void {
+  if (!hintsEnabled()) return;
   const count = repos.filter((r) => r.timedOut).length;
   if (count === 0) return;
   warn(`  hint: ${count} repo(s) timed out (ARB_GIT_TIMEOUT=${localTimeout()})`);
+}
+
+function reportWorkspaceHints(summary: WorkspaceSummary, wsDir: string): void {
+  if (!hintsEnabled()) return;
+  if (summary.repos.length === 0) return;
+
+  const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
+
+  // Hint 1: base branch was merged
+  const baseMergedRepos = summary.repos.filter((r) => r.base?.baseMergedIntoDefault != null);
+  if (baseMergedRepos.length > 0) {
+    const baseName = baseMergedRepos[0]?.base?.configuredRef ?? baseMergedRepos[0]?.base?.ref ?? "base";
+    warn(`  hint: base branch ${baseName} was merged — run 'arb retarget' to rebase onto the default branch`);
+    return; // Don't stack multiple hints
+  }
+
+  // Hint 2: configured base branch not found
+  const baseMissingRepos = summary.repos.filter(
+    (r) => r.base?.configuredRef != null && r.base.baseMergedIntoDefault == null,
+  );
+  if (baseMissingRepos.length > 0 && configBase) {
+    warn(
+      `  hint: configured base branch '${configBase}' not found — run 'arb branch base --unset' to track the default, or 'arb branch base <branch>' to set a new base`,
+    );
+  }
 }
 
 async function predictConflicts(
