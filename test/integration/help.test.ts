@@ -49,10 +49,16 @@ describe("bare arb (basic help)", () => {
       }
     }));
 
-  test("omits advanced commands: template, rename, path, cd, attach, detach, branch, log, diff, reset, exec, open", () =>
+  test("shows exec command", () =>
     withBareEnv(async (env) => {
       const result = await arb(env, []);
-      for (const cmd of ["template", "rename", "attach", "detach", "branch", "log", "diff", "reset", "exec", "open"]) {
+      expect(result.output).toContain("exec");
+    }));
+
+  test("omits advanced commands: template, rename, path, cd, attach, detach, branch, log, diff, reset, open", () =>
+    withBareEnv(async (env) => {
+      const result = await arb(env, []);
+      for (const cmd of ["template", "rename", "attach", "detach", "branch", "log", "diff", "reset", "open"]) {
         expect(result.output).not.toContain(`  ${cmd} `);
       }
     }));
@@ -88,6 +94,7 @@ describe("bare arb (basic help)", () => {
       expect(result.output).toContain("Getting Started:");
       expect(result.output).toContain("Workspaces:");
       expect(result.output).toContain("Synchronization:");
+      expect(result.output).toContain("Execution:");
       expect(result.output).not.toContain("Setup Commands:");
       expect(result.output).not.toContain("Workspace Commands:");
     }));

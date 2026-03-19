@@ -76,7 +76,7 @@ function buildRepoListNodes(entries: RepoListJsonEntry[], verbose: boolean): Out
 export function registerRepoCommand(program: Command): void {
   const repo = program
     .command("repo")
-    .summary("Manage canonical repos")
+    .summary("Clone and manage project repos")
     .description(
       "Examples:\n\n  arb repo                                 List cloned repos (default)\n  arb repo clone git@github.com:org/api    Clone a new repo\n  arb repo remove api                      Remove a repo\n\nManage the canonical repository clones in .arb/repos/. These permanent clones are never worked in directly — instead, arb creates worktrees that point back to them. Use subcommands to clone new repos, list existing ones, or remove repos that are no longer needed.\n\nSee 'arb help remotes' for remote role resolution.",
     );
