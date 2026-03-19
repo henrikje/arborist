@@ -1,7 +1,9 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as git from "../git/git";
+import * as output from "../terminal/output";
 import { workspaceBranch } from "./branch";
 
 let tmpDir: string;
@@ -85,5 +87,39 @@ describe("workspaceBranch", () => {
 
     const result = await workspaceBranch(wsDir);
     expect(result).toBeNull();
+  });
+
+  test("emits 'Config missing' warning only once for repeated calls on the same workspace", async () => {
+    const wsDir = join(tmpDir, "dedup-ws");
+    mkdirSync(join(wsDir, ".arbws"), { recursive: true });
+
+    // Create a fake repo dir with a .git marker (so workspaceRepoDirs finds it)
+    const repoDir = join(wsDir, "repo-a");
+    mkdirSync(join(repoDir, ".git"), { recursive: true });
+
+    // Mock gitLocal to return a branch without spawning a real git process
+    const gitSpy = spyOn(git, "gitLocal").mockResolvedValue({ exitCode: 0, stdout: "my-feature\n", stderr: "" });
+    const warnSpy = spyOn(output, "warn");
+
+    try {
+      const r1 = await workspaceBranch(wsDir);
+      expect(r1).not.toBeNull();
+      expect(r1?.branch).toBe("my-feature");
+      expect(r1?.inferred).toBe(true);
+
+      const r2 = await workspaceBranch(wsDir);
+      expect(r2).not.toBeNull();
+      expect(r2?.branch).toBe("my-feature");
+      expect(r2?.inferred).toBe(true);
+
+      // Warning should have been called exactly once
+      const configMissingCalls = warnSpy.mock.calls.filter(
+        (args) => typeof args[0] === "string" && args[0].includes("Config missing"),
+      );
+      expect(configMissingCalls).toHaveLength(1);
+    } finally {
+      gitSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
   });
 });
