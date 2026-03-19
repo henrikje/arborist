@@ -27,10 +27,10 @@ export function registerWatchCommand(program: Command): void {
     .option("-v, --verbose", "Show file-level detail for each repo")
     .summary("Live workspace dashboard with sync commands")
     .description(
-      "Examples:\n\n  arb watch                                Live dashboard for the workspace\n  arb watch --verbose                      Include file-level detail\n\nLaunches an interactive live dashboard that auto-refreshes on filesystem changes. The dashboard shows workspace status and provides keyboard shortcuts for common sync operations.\n\nKeys:\n  f  fetch all remotes\n  r  rebase onto base branch\n  m  merge base branch\n  l  pull from share remote\n  p  push to share remote\n  q  quit (also Escape)\n\nSync commands (r, m, p, u) temporarily leave the dashboard to run the full interactive flow (fetch, plan, confirm, execute). After the command completes, press any key to return to the dashboard.\n\nRequires a terminal (TTY). Use --verbose for file-level detail in the status display.",
+      "Examples:\n\n  arb watch                                Live dashboard for the workspace\n  arb watch --verbose                      Include file-level detail\n\nLaunches an interactive live dashboard that auto-refreshes on filesystem changes. The dashboard shows workspace status and provides keyboard shortcuts for common sync operations.\n\nKeys:\n  f  fetch all remotes\n  v  toggle verbose mode\n  r  rebase onto base branch\n  m  merge base branch\n  l  pull from share remote\n  p  push to share remote\n  q  quit (also Escape)\n\nSync commands (r, m, p, u) temporarily leave the dashboard to run the full interactive flow (fetch, plan, confirm, execute). After the command completes, press any key to return to the dashboard.\n\nRequires a terminal (TTY). Use --verbose for file-level detail in the status display.",
     )
     .action(
-      arbAction(async (ctx, _repoArgs: string[], options) => {
+      arbAction(async (ctx, options) => {
         if (!isTTY() || !process.stdin.isTTY) {
           error("arb watch requires a terminal (TTY). Watch mode cannot run in pipes or non-interactive sessions.");
           throw new ArbError("arb watch requires a terminal.");

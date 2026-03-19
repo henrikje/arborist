@@ -304,15 +304,23 @@ arb template add .env
 
 Templates let you capture files and have them seeded into every new workspace. Common uses include `.env` files, IDE settings, and AI agent config. Templates live in `.arb/templates/` and are version-controllable. See [Template examples](docs/templates.md#examples) for ready-to-use starting points.
 
-### Discover more with `--help`
+### Live dashboard
 
 ```bash
-arb --help              # list all commands
-arb create --help       # detailed usage for a specific command
-arb help where          # additional information on special topics
+arb watch
 ```
 
-Every command supports `--help`. If you're unsure what flags are available or how a command works, `--help` is the fastest way to find out.
+A live status dashboard that auto-refreshes on filesystem changes. Press `r` to rebase, `m` to merge, `l` to pull, `p` to push — each runs the full interactive flow (plan, confirm, execute) without leaving the dashboard. Press `f` to fetch, `v` to toggle verbose mode. Ideal for a split terminal while AI agents or tests work in the background.
+
+```
+  my-project • feature-branch • status
+
+  REPO     LAST COMMIT    BASE                            SHARE                    LOCAL
+  api      1 minute       origin/main  2 ahead            origin/feat  1 to push   clean
+  shared   3 minutes      origin/main  2 ahead, 3 behind  origin/feat  up to date  1 change
+
+  f fetch • v verbose • r rebase • m merge • l pull • p push • q quit
+```
 
 ## Advanced use cases
 
