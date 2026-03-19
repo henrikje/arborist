@@ -9,7 +9,7 @@ export function registerHelpCommand(program: Command): void {
 
   program
     .command("help [command-or-topic]")
-    .summary("Display help for a command or topic")
+    .summary("Show help for a command or topic")
     .description(
       "Examples:\n\n  arb help status                          Show help for a command\n  arb help filtering                       Show filter syntax reference\n\nDisplay help for a command or topic.",
     )

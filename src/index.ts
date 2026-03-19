@@ -38,7 +38,7 @@ import { ARB_VERSION } from "./version";
 const GROUP_DESCRIPTIONS: Record<string, string> = {
   "Setup Commands:": "  Set up the project and clone repos.",
   "Workspace Commands:": "  Create and manage workspaces.",
-  "Inspection Commands:": "  Inspect workspace branch state across repositories.",
+  "Inspection Commands:": "  Inspect branch state, sync status, and changes across repos.",
   "Synchronization Commands:": "  Synchronize workspace branches with remotes and base branches.",
   "Execution Commands:": "  Run commands or open tools across workspace repos.",
 };
@@ -57,6 +57,7 @@ const BASIC_HELP_COMMANDS = new Set([
   "rebase",
   "merge",
   "retarget",
+  "exec",
 ]);
 const BASIC_GROUP_NAMES: Record<string, string> = {
   "Setup Commands:": "Getting Started:",
@@ -212,12 +213,8 @@ function arbFormatHelp(cmd: Command, helper: Help): string {
     }
   } else {
     // Basic help footer
-    const topicNames = allTopics()
-      .map((t) => t.name)
-      .join(", ");
     output = output.concat([
-      dim(`Help topics: ${topicNames}`),
-      dim("Run 'arb help <topic>' for details. Run 'arb --help' for all commands and options."),
+      dim("Run 'arb --help' for more information, including all commands, options, and help topics."),
       "",
     ]);
   }

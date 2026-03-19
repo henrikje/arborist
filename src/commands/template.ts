@@ -96,7 +96,7 @@ function buildTemplateListNodes(
 export function registerTemplateCommand(program: Command): void {
   const template = program
     .command("template")
-    .summary("Manage workspace templates")
+    .summary("Manage files automatically seeded into new workspaces")
     .description(
       "Examples:\n\n  arb template                             List templates (default)\n  arb template add .eslintrc.json          Capture a file as a template\n  arb template diff                        Show template drift\n\nManage template files that are automatically seeded into new workspaces. Templates live in .arb/templates/ and are copied into workspaces during 'arb create' and 'arb attach'. Files ending with .arbtemplate are rendered with LiquidJS ({{ workspace.path }}, {% for repo in workspace.repos %}, etc.) and have the extension stripped at the destination. Templates referencing workspace.repos are automatically regenerated when repos are attached or detached. Use subcommands to add, list, diff, and apply templates.\n\nSee 'arb help templates' for variables, scopes, and drift detection.",
     );

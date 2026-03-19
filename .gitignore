@@ -6,3 +6,4 @@ dist/
 /.*.bun-build
 .stryker-tmp/
 reports/
+.DS_Store
