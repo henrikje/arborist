@@ -34,6 +34,10 @@ Each command has a clear, single purpose. Avoid adding flags or modes that expan
 
 Arborist uses marker directories (`.arb/`, `.arbws/`), filesystem scanning, and git's own metadata instead of databases, registries, or config files. If something can be discovered from the directory tree or inferred from git state, Arborist does not store it. This makes state inspectable, debuggable, and impossible to corrupt through arb bugs alone. Prefer convention over configuration.
 
+### One workspace, one branch
+
+A workspace has exactly one shared branch and one optional base branch. All repos work on the same feature branch; the base branch is the workspace's integration target. Per-repo default branches and remotes can differ — they are discovered at runtime — but the feature branch and base are workspace-level concerns. This invariant enables wrong-branch detection, consistent sync operations, and workspace identity. Base branches follow the same workspace-level model: one configured base, resolved against remote refs rather than local branches, because remote refs change only on explicit fetch — local branch refs change implicitly when other workspaces commit, violating the visibility principle. See `decisions/0089-branch-model-flexibility-analysis.md`.
+
 ### Minimal, semantic CLI
 
 A command earns its place when it encapsulates domain knowledge (multi-repo coordination, fork workflows), provides safety gates (refuses risky operations, detects at-risk state), or renders data that isn't directly comparable. A command that wraps `rm`, `ls`, or `cp` on a plain-text file does not earn its place — the filesystem already provides that interface.
