@@ -321,6 +321,18 @@ describe("render hint", () => {
     const result = render([{ kind: "hint", cell: cell("Run 'arb rebase'", "muted") }], NO_TTY);
     expect(result).toBe("Run 'arb rebase'\n");
   });
+
+  test("ARB_NO_HINTS suppresses hint nodes", () => {
+    const prev = process.env.ARB_NO_HINTS;
+    try {
+      process.env.ARB_NO_HINTS = "1";
+      const result = render([{ kind: "hint", cell: cell("Run 'arb rebase'", "muted") }], NO_TTY);
+      expect(result).toBe("");
+    } finally {
+      if (prev === undefined) process.env.ARB_NO_HINTS = undefined;
+      else process.env.ARB_NO_HINTS = prev;
+    }
+  });
 });
 
 describe("render multiple nodes", () => {

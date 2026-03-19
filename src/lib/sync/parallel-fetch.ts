@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import { gitLocal, gitNetwork, networkTimeout } from "../git/git";
 import type { RepoRemotes } from "../git/remotes";
-import { dim, plural, warn } from "../terminal/output";
+import { dim, hintsEnabled, plural, warn } from "../terminal/output";
 import { isTTY } from "../terminal/tty";
 import { classifyNetworkError, isNetworkError, networkErrorHint } from "./network-errors";
 
@@ -179,7 +179,7 @@ export function reportFetchFailures(
     }
   }
 
-  if (allOffline && failed.length > 1) {
+  if (allOffline && failed.length > 1 && hintsEnabled()) {
     warn("  hint: all repos failed to fetch \u2014 you may be offline. Use -N/--no-fetch to skip fetching.");
   }
 

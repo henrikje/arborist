@@ -19,6 +19,7 @@ export {
   dryRunNotice,
   error,
   green,
+  hintsEnabled,
   info,
   inlineResult,
   inlineStart,
