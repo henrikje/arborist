@@ -1,7 +1,7 @@
 import { dim } from "./output";
 
 const DEFAULT_TERMINAL_ROWS = 24;
-const MIN_PAGE_SIZE = 5;
+export const MIN_PAGE_SIZE = 5;
 
 export interface PaginationWindow {
   start: number;

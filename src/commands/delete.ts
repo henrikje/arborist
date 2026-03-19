@@ -12,7 +12,7 @@ import {
 } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, gitLocal, gitNetwork, networkTimeout } from "../lib/git";
-import { type RenderContext, render } from "../lib/render";
+import { type RenderContext, fitToHeight, render } from "../lib/render";
 import { EMPTY_CELL, cell } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
 import { enrichMergedLabel, formatStatusCounts } from "../lib/render";
@@ -40,6 +40,7 @@ import {
   analyzeDone,
   analyzeProgress,
   checkboxWithPreview,
+  countLines,
   dim,
   dryRunNotice,
   error,
@@ -156,22 +157,33 @@ function buildDeletePreview(
   assessments: WorkspaceAssessment[],
   selectedIndices: number[],
   forceAtRisk: boolean,
+  maxLines: number,
 ): string {
   const selected = selectedIndices.map((i) => assessments[i] as WorkspaceAssessment);
   if (selected.length === 0) return "";
 
   const rCtx: RenderContext = { tty: true };
-  const nodes = buildDeleteInfoNodes(selected);
-  let out = nodes.length > 0 ? `\n${render(nodes, rCtx)}` : "";
+  let nodes = buildDeleteInfoNodes(selected);
 
-  // At-risk refusal warning
+  // Refusal warning (critical safety message — prioritized over section items)
   const atRiskWorkspaces = selected.filter((a) => a.hasAtRisk);
-  if (atRiskWorkspaces.length > 0 && !forceAtRisk) {
-    out += red(
-      `Refusing to delete: ${plural(atRiskWorkspaces.length, "workspace")} ${atRiskWorkspaces.length === 1 ? "has" : "have"} work that would be lost. Use --force to override.`,
-    );
-    out += "\n";
+  const hasRefusal = atRiskWorkspaces.length > 0 && !forceAtRisk;
+  const refusalText = hasRefusal
+    ? `${red(`Refusing to delete: ${plural(atRiskWorkspaces.length, "workspace")} ${atRiskWorkspaces.length === 1 ? "has" : "have"} work that would be lost. Use --force to override.`)}\n`
+    : "";
+  const refusalLines = refusalText ? countLines(refusalText, process.stderr.columns ?? 80) : 0;
+  const leadingGap = nodes.length > 0 ? 1 : 0; // the \n before rendered nodes
+
+  // Fit info nodes into remaining budget
+  const nodesBudget = Math.max(0, maxLines - refusalLines - leadingGap);
+  if (nodes.length > 0 && nodesBudget > 0) {
+    nodes = fitToHeight(nodes, nodesBudget);
+  } else if (nodesBudget <= 0) {
+    nodes = [];
   }
+
+  let out = nodes.length > 0 ? `\n${render(nodes, rCtx)}` : "";
+  out += refusalText;
 
   return out;
 }
@@ -212,7 +224,8 @@ async function selectFromAssessments(
       message: header,
       choices,
       loop: false,
-      preview: (selectedIndices: number[]) => buildDeletePreview(assessments, selectedIndices, forceAtRisk),
+      preview: (selectedIndices: number[], maxLines: number) =>
+        buildDeletePreview(assessments, selectedIndices, forceAtRisk, maxLines),
       theme: {
         prefix: { idle: "", done: "" },
         style: {

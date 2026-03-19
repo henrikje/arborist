@@ -7,7 +7,7 @@ import {
 export type CheckboxWithPreviewChoice<T> = CheckboxWithStatusChoice<T>;
 
 export interface CheckboxWithPreviewConfig<T> extends CheckboxWithStatusConfig<T> {
-  preview: (selected: T[]) => string;
+  preview: (selected: T[], maxLines: number) => string;
 }
 
 export const checkboxWithPreview: <T>(
