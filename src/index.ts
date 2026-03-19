@@ -26,6 +26,7 @@ import { registerResetCommand } from "./commands/reset";
 import { registerRetargetCommand } from "./commands/retarget";
 import { registerStatusCommand } from "./commands/status";
 import { registerTemplateCommand } from "./commands/template";
+import { registerWatchCommand } from "./commands/watch";
 import { ArbAbort, ArbError, checkForUpdate } from "./lib/core";
 import { killActiveGitProcesses } from "./lib/git";
 import { allTopics } from "./lib/help";
@@ -298,6 +299,7 @@ registerDetachCommand(program);
 // ── Inspection Commands ─────────────────────────────────────────
 program.commandsGroup("Inspection Commands:");
 registerStatusCommand(program);
+registerWatchCommand(program);
 registerBranchCommand(program);
 registerLogCommand(program);
 registerDiffCommand(program);
