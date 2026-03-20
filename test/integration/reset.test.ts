@@ -622,4 +622,40 @@ describe("reset", () => {
       expect(result.exitCode).toBe(0);
       expect(result.output).not.toContain("permanently lost");
     }));
+
+  test("--hard warns about dirty files only", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Add dirty files (no commits)
+      await write(join(repoA, "dirty.txt"), "dirty");
+      await git(repoA, ["add", "dirty.txt"]);
+
+      const result = await arb(env, ["reset", "--hard", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("1 dirty file");
+      expect(result.output).toContain("permanently lost");
+      expect(result.output).not.toContain("unpushed commit");
+    }));
+
+  test("--hard combines unpushed commits and dirty files in one warning", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Add a local commit (unpushed)
+      await write(join(repoA, "local.txt"), "local");
+      await git(repoA, ["add", "local.txt"]);
+      await git(repoA, ["commit", "-m", "local commit"]);
+
+      // Add dirty files (staged, no commit)
+      await write(join(repoA, "dirty.txt"), "dirty");
+      await git(repoA, ["add", "dirty.txt"]);
+
+      const result = await arb(env, ["reset", "--hard", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("1 unpushed commit and 1 dirty file");
+      expect(result.output).toContain("permanently lost");
+    }));
 });
