@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.111.0](https://github.com/henrikje/arborist/compare/v0.110.0...v0.111.0) (2026-03-20)
+
+
+### Features
+
+* **cache:** harmonize date storage to ISO 8601 with consistent field name ([66e4070](https://github.com/henrikje/arborist/commit/66e40701554731f5aac441fb0689a1f2a880d98c))
+* **fetch:** add ARB_NO_FETCH environment variable to suppress automatic fetching ([6994b86](https://github.com/henrikje/arborist/commit/6994b86688fc1fdeeacf541b4bbfab5c703bbed4))
+* **filter:** add staged, modified, and untracked filter terms ([9739d9b](https://github.com/henrikje/arborist/commit/9739d9bb6f2b89ef70468f1465856d812acce6d6))
+* **filter:** restructure filters around orthogonal status dimensions ([adc93d8](https://github.com/henrikje/arborist/commit/adc93d8f68b746467c60ad152dece0e5b75f69b7))
+* **git:** add local timeout to prevent cloud-sync hangs ([d165e96](https://github.com/henrikje/arborist/commit/d165e96147a390f303dbd1b07683bbb160d6c769))
+* **help:** add examples to all commands and documentation URL ([8403391](https://github.com/henrikje/arborist/commit/8403391debd252cdedf718b8f021277a0ffc5c78))
+* **help:** improve command summaries and add exec to basic help ([a827f9d](https://github.com/henrikje/arborist/commit/a827f9d847e7b65cf7af06ff8ce367ce8da04232))
+* **help:** show basic help for bare arb, full help for --help ([27361bf](https://github.com/henrikje/arborist/commit/27361bf04cdafdffdbe1f259e74b9e763b9bb93a))
+* **rebase:** show non-repo config changes in plan display ([c291e7a](https://github.com/henrikje/arborist/commit/c291e7a32dfcbd87de7aaf24e5f57582770181fd))
+* **render:** add ARB_NO_HINTS to suppress all hint output ([e6370cb](https://github.com/henrikje/arborist/commit/e6370cbfd9ab0b96f8ed06b3921b3739fa702aca))
+* **render:** respect NO_COLOR and TERM=dumb for color output ([a93b895](https://github.com/henrikje/arborist/commit/a93b89554b69244bd9d35842f15c3c47ea4b8f59))
+* **reset:** add --soft, --mixed, --hard mode flags ([277d52a](https://github.com/henrikje/arborist/commit/277d52a642581a93d672fdd09c48180147291ab8))
+* **retarget:** add standalone retarget command and improve discoverability ([39da7c5](https://github.com/henrikje/arborist/commit/39da7c5fb47a9ad31d35aa4a027f901a341cc3b9))
+* **status:** add --watch mode for live filesystem-driven dashboard ([6d8c602](https://github.com/henrikje/arborist/commit/6d8c6020e1b6129f8b6fd27ad215b085e4fb8e35))
+* **status:** add fetch TTL to skip redundant fetches ([2cf2956](https://github.com/henrikje/arborist/commit/2cf29561e89b6d647ba7c2b31e83c32761e9ab45))
+* **status:** add persistent analysis cache ([8170633](https://github.com/henrikje/arborist/commit/817063324ce17cbc74c093db9d4797b89cf484a8))
+* **status:** make watch mode terminal height aware ([e38e340](https://github.com/henrikje/arborist/commit/e38e3409c411f8f777457545459f97b42ea751ca))
+* **status:** preserve typeahead during background fetch ([ba7bf88](https://github.com/henrikje/arborist/commit/ba7bf88d6bf6ce14022ac8339323056bf7288aa0))
+* **status:** truncate long base branch names on narrow terminals ([bc8e8f9](https://github.com/henrikje/arborist/commit/bc8e8f9bfba6aa8eb71b3684d31300062f01b6a6))
+* **watch:** add arb watch command as interactive workspace dashboard ([a6ecff3](https://github.com/henrikje/arborist/commit/a6ecff3e2c04c0df00bfd1512913a6abc487f559))
+
+
+### Bug Fixes
+
+* **branch:** handle case-insensitive filesystem collisions and renames ([ac3065e](https://github.com/henrikje/arborist/commit/ac3065eb706cdcca7bd82c47dbd7e3b774e7610c))
+* **cache:** use PID-unique temp paths to prevent concurrent write conflicts ([d6d2920](https://github.com/henrikje/arborist/commit/d6d2920e330c61e9e0ab41acf232e8221c742ab5))
+* **filter:** exclude never-pushed repos from `pushed` filter ([f8d00f7](https://github.com/henrikje/arborist/commit/f8d00f75b2614580d2214aaf337b4eaf245d4096))
+* **main:** race update check at exit to prevent post-command hang ([c007cbc](https://github.com/henrikje/arborist/commit/c007cbc2ccfa90827494b7c508ec06861d7e515d))
+* **main:** remove -v short alias from --version to resolve verbose ambiguity ([a33d1f8](https://github.com/henrikje/arborist/commit/a33d1f8110531e4fcd31027b70470aaae0229ef0))
+* **main:** remove dev-build guard from update check ([8dd36c2](https://github.com/henrikje/arborist/commit/8dd36c23735eff6730c594cdfec081c605502c98))
+* **rebase:** auto-update stale base config after fallback rebase ([5d6a173](https://github.com/henrikje/arborist/commit/5d6a173b06238755dece95c588af793052687e11))
+* **render:** buffer warnings during progress to prevent interleaved output ([5d5bb20](https://github.com/henrikje/arborist/commit/5d5bb2037090d08987cb3a1a0b63d32949d506c3))
+* **render:** constrain interactive preview height to terminal bounds ([dd2f557](https://github.com/henrikje/arborist/commit/dd2f5571b121682034fa37ae78178319936cb8cf))
+* warn about dirty files in --hard reset, combine with unpushed commit warning ([4cfa065](https://github.com/henrikje/arborist/commit/4cfa065d087f8bf273dc8d96d6d12e33912833c6))
+* **watch:** fix --verbose flag parsing and update README ([c2dafec](https://github.com/henrikje/arborist/commit/c2dafecd9f27c0d070f0ead604b8c0c1c7677cd9))
+
+
+### Performance Improvements
+
+* **analysis:** cache base-branch patch-id maps in GitCache ([dfe14ea](https://github.com/henrikje/arborist/commit/dfe14eaaa2efe5e8c331dbca9fb7d4cd10d20e0c))
+* **git:** added more repeated calls to gitcache ([4043373](https://github.com/henrikje/arborist/commit/4043373501510b2b93476cc913b2d72bfec2700b))
+
+
+### Reverts
+
+* **sync:** drop fetch TTL — always fetch when default fetch is active ([47a6102](https://github.com/henrikje/arborist/commit/47a610222be47c58a6826fbfe9b89923b92adb71))
+
 ## [0.110.0](https://github.com/henrikje/arborist/compare/v0.109.0...v0.110.0) (2026-03-16)
 
 This release improves safety, clarity, and day-to-day workflow efficiency across branch and workspace management. It adds stronger guardrails around risky operations, clearer status and error feedback, and quality-of-life improvements like parallel execution and better visibility into repository state.
