@@ -27,7 +27,7 @@ describe("validateWhere", () => {
   test("returns null for all valid terms", () => {
     expect(
       validateWhere(
-        "dirty,ahead-share,no-share,behind-share,behind-base,ahead-base,conflict,diverged,wrong-branch,detached,operation,gone,shallow,merged,base-merged,base-missing,timed-out,at-risk,stale,clean,pushed,safe",
+        "dirty,staged,modified,untracked,ahead-share,no-share,behind-share,behind-base,ahead-base,conflict,diverged,wrong-branch,detached,operation,gone,shallow,merged,base-merged,base-missing,timed-out,at-risk,stale,clean,pushed,safe",
       ),
     ).toBeNull();
   });
@@ -254,6 +254,9 @@ describe("repoMatchesWhere", () => {
           },
         },
       ],
+      ["staged", { local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }],
+      ["modified", { local: { staged: 0, modified: 1, untracked: 0, conflicts: 0 } }],
+      ["untracked", { local: { staged: 0, modified: 0, untracked: 1, conflicts: 0 } }],
       ["conflict", { local: { staged: 0, modified: 0, untracked: 0, conflicts: 2 } }],
       [
         "behind-base",
@@ -349,6 +352,45 @@ describe("repoMatchesWhere", () => {
       const flags = computeFlags(makeRepo(overrides), "feature");
       expect(repoMatchesWhere(flags, term)).toBe(true);
     }
+  });
+});
+
+describe("local sub-filters", () => {
+  test("staged does not match repo with only modified files", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 0, modified: 1, untracked: 0, conflicts: 0 } }), "feature");
+    expect(repoMatchesWhere(flags, "staged")).toBe(false);
+  });
+
+  test("staged does not match repo with only untracked files", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 0, modified: 0, untracked: 1, conflicts: 0 } }), "feature");
+    expect(repoMatchesWhere(flags, "staged")).toBe(false);
+  });
+
+  test("modified does not match repo with only staged files", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }), "feature");
+    expect(repoMatchesWhere(flags, "modified")).toBe(false);
+  });
+
+  test("untracked does not match repo with only modified files", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 0, modified: 1, untracked: 0, conflicts: 0 } }), "feature");
+    expect(repoMatchesWhere(flags, "untracked")).toBe(false);
+  });
+
+  test("staged+^modified matches repo with clean staging area", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }), "feature");
+    expect(repoMatchesWhere(flags, "staged+^modified")).toBe(true);
+  });
+
+  test("staged+^modified does not match repo with both staged and modified", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 1, modified: 1, untracked: 0, conflicts: 0 } }), "feature");
+    expect(repoMatchesWhere(flags, "staged+^modified")).toBe(false);
+  });
+
+  test("none of staged, modified, untracked match clean repo", () => {
+    const flags = computeFlags(makeRepo(), "feature");
+    expect(repoMatchesWhere(flags, "staged")).toBe(false);
+    expect(repoMatchesWhere(flags, "modified")).toBe(false);
+    expect(repoMatchesWhere(flags, "untracked")).toBe(false);
   });
 });
 

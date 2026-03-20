@@ -74,6 +74,9 @@ export interface RepoStatus extends RepoRefs {
 export interface RepoFlags {
   isDirty: boolean;
   hasConflict: boolean;
+  hasStaged: boolean;
+  hasModified: boolean;
+  hasUntracked: boolean;
   isAheadOfShare: boolean;
   hasNoShare: boolean;
   isBehindShare: boolean;

@@ -10,6 +10,9 @@ describe("computeFlags", () => {
     expect(flags).toEqual({
       isDirty: false,
       hasConflict: false,
+      hasStaged: false,
+      hasModified: false,
+      hasUntracked: false,
       isAheadOfShare: false,
       hasNoShare: false,
       isBehindShare: false,
@@ -56,6 +59,36 @@ describe("computeFlags", () => {
   test("not hasConflict when no conflicts", () => {
     const flags = computeFlags(makeRepo({ local: { staged: 1, modified: 1, untracked: 1, conflicts: 0 } }), "feature");
     expect(flags.hasConflict).toBe(false);
+  });
+
+  test("hasStaged when local has staged files", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }), "feature");
+    expect(flags.hasStaged).toBe(true);
+  });
+
+  test("not hasStaged when only modified files", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 0, modified: 1, untracked: 0, conflicts: 0 } }), "feature");
+    expect(flags.hasStaged).toBe(false);
+  });
+
+  test("hasModified when local has modified files", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 0, modified: 1, untracked: 0, conflicts: 0 } }), "feature");
+    expect(flags.hasModified).toBe(true);
+  });
+
+  test("not hasModified when only staged files", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }), "feature");
+    expect(flags.hasModified).toBe(false);
+  });
+
+  test("hasUntracked when local has untracked files", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 0, modified: 0, untracked: 1, conflicts: 0 } }), "feature");
+    expect(flags.hasUntracked).toBe(true);
+  });
+
+  test("not hasUntracked when only staged files", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }), "feature");
+    expect(flags.hasUntracked).toBe(false);
   });
 
   test("isAheadOfBase when base.ahead > 0", () => {
@@ -1618,11 +1651,29 @@ describe("flag invariants", () => {
     expect(flags.isDiverged).toBe(false);
   });
 
-  // ── Local dimension: hasConflict implies isDirty ──
+  // ── Local dimension: sub-flags imply isDirty ──
 
   test("hasConflict implies isDirty", () => {
     const flags = computeFlags(makeRepo({ local: { staged: 0, modified: 0, untracked: 0, conflicts: 3 } }), "feature");
     expect(flags.hasConflict).toBe(true);
+    expect(flags.isDirty).toBe(true);
+  });
+
+  test("hasStaged implies isDirty", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 2, modified: 0, untracked: 0, conflicts: 0 } }), "feature");
+    expect(flags.hasStaged).toBe(true);
+    expect(flags.isDirty).toBe(true);
+  });
+
+  test("hasModified implies isDirty", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 0, modified: 3, untracked: 0, conflicts: 0 } }), "feature");
+    expect(flags.hasModified).toBe(true);
+    expect(flags.isDirty).toBe(true);
+  });
+
+  test("hasUntracked implies isDirty", () => {
+    const flags = computeFlags(makeRepo({ local: { staged: 0, modified: 0, untracked: 1, conflicts: 0 } }), "feature");
+    expect(flags.hasUntracked).toBe(true);
     expect(flags.isDirty).toBe(true);
   });
 

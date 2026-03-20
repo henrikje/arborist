@@ -14,7 +14,7 @@ Technical patterns and development conventions for the Arborist codebase.
 
 | Dimension | Flags | Filter terms |
 |-----------|-------|-------------|
-| Local | `isDirty`, `hasConflict` | `dirty`, `conflict`, `clean` |
+| Local | `isDirty`, `hasConflict`, `hasStaged`, `hasModified`, `hasUntracked` | `dirty`, `conflict`, `staged`, `modified`, `untracked`, `clean` |
 | Branch | `isWrongBranch`, `isDetached` | `wrong-branch`, `detached` |
 | Base position | `isAheadOfBase`, `isBehindBase`, `isDiverged` | `ahead-base`, `behind-base`, `diverged` |
 | Base lifecycle | `isMerged`, `isBaseMerged`, `isBaseMissing` | `merged`, `base-merged`, `base-missing` |

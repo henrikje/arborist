@@ -137,7 +137,7 @@ __arb_workspace_repo_names() {
 }
 
 __arb_where_filters() {
-    printf '%s\n' dirty ahead-share no-share ahead-base behind-share behind-base diverged conflict wrong-branch detached operation gone shallow merged base-merged base-missing timed-out at-risk stale clean pushed safe
+    printf '%s\n' dirty staged modified untracked ahead-share no-share ahead-base behind-share behind-base diverged conflict wrong-branch detached operation gone shallow merged base-merged base-missing timed-out at-risk stale clean pushed safe
 }
 
 __arb_template_names() {
