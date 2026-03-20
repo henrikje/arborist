@@ -1,14 +1,26 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { arbAction, readWorkspaceConfig } from "../lib/core";
+import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
 import { getShortHead, gitLocal } from "../lib/git";
 import type { Cell, OutputNode, Span } from "../lib/render";
 import { cell, createRenderContext, finishSummary, render, skipCell, spans, suffix } from "../lib/render";
 import type { SkipFlag } from "../lib/status";
 import { type RepoStatus, computeFlags, resolveWhereFilter } from "../lib/status";
 import { buildCachedStatusAssess, confirmOrExit, resolveDefaultFetch, runPlanFlow } from "../lib/sync";
-import { dryRunNotice, info, inlineResult, inlineStart, plural, shouldColor, warn, yellow } from "../lib/terminal";
+import {
+  dryRunNotice,
+  error,
+  info,
+  inlineResult,
+  inlineStart,
+  plural,
+  shouldColor,
+  warn,
+  yellow,
+} from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
+
+export type ResetMode = "soft" | "mixed" | "hard";
 
 // ── Assessment ──
 
@@ -198,23 +210,45 @@ function commitLossSpans(totalAhead: number, unpushed: number): Span[] {
   ];
 }
 
-function resetActionCell(a: ResetAssessment): Cell {
-  const commitSpans = commitLossSpans(a.totalAhead, a.unpushedCommits);
-  const hasDirty = a.dirtyFiles > 0;
-  const hasCommits = commitSpans.length > 0;
+function commitPreserveSpans(totalAhead: number, resetMode: "soft" | "mixed"): Span[] {
+  if (totalAhead === 0) return [];
+  const verb = resetMode === "soft" ? "become staged" : "become unstaged";
+  return [{ text: `${plural(totalAhead, "commit")} ${verb}`, attention: "default" }];
+}
 
-  if (!hasDirty && !hasCommits) {
+function resetActionCell(a: ResetAssessment, resetMode: ResetMode): Cell {
+  if (resetMode === "hard") {
+    const commitSpans = commitLossSpans(a.totalAhead, a.unpushedCommits);
+    const hasDirty = a.dirtyFiles > 0;
+    const hasCommits = commitSpans.length > 0;
+
+    if (!hasDirty && !hasCommits) {
+      let result = cell(`reset to ${a.target}`);
+      if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
+      return result;
+    }
+
+    const allSpans: Span[] = [{ text: `reset to ${a.target} — discard `, attention: "default" }];
+    if (hasDirty) {
+      allSpans.push({ text: plural(a.dirtyFiles, "dirty file"), attention: "default" });
+      if (hasCommits) allSpans.push({ text: ", ", attention: "default" });
+    }
+    allSpans.push(...commitSpans);
+
+    let result = spans(...allSpans);
+    if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
+    return result;
+  }
+
+  // soft / mixed — nothing is lost
+  const commitSpans = commitPreserveSpans(a.totalAhead, resetMode);
+  if (commitSpans.length === 0) {
     let result = cell(`reset to ${a.target}`);
     if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
     return result;
   }
 
-  const allSpans: Span[] = [{ text: `reset to ${a.target} — discard `, attention: "default" }];
-  if (hasDirty) {
-    allSpans.push({ text: plural(a.dirtyFiles, "dirty file"), attention: "default" });
-    if (hasCommits) allSpans.push({ text: ", ", attention: "default" });
-  }
-  allSpans.push(...commitSpans);
+  const allSpans: Span[] = [{ text: `reset to ${a.target} — `, attention: "default" }, ...commitSpans];
 
   let result = spans(...allSpans);
   if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
@@ -225,13 +259,13 @@ function alreadyCleanCell(target: string): Cell {
   return cell(`already at ${target}`);
 }
 
-export function buildResetPlanNodes(assessments: ResetAssessment[]): OutputNode[] {
+export function buildResetPlanNodes(assessments: ResetAssessment[], resetMode: ResetMode): OutputNode[] {
   const nodes: OutputNode[] = [{ kind: "gap" }];
 
   const rows = assessments.map((a) => {
     let actionCell: Cell;
     if (a.outcome === "will-reset") {
-      actionCell = resetActionCell(a);
+      actionCell = resetActionCell(a, resetMode);
     } else if (a.outcome === "already-clean") {
       actionCell = alreadyCleanCell(a.target);
     } else {
@@ -253,8 +287,8 @@ export function buildResetPlanNodes(assessments: ResetAssessment[]): OutputNode[
   return nodes;
 }
 
-export function formatResetPlan(assessments: ResetAssessment[]): string {
-  const nodes = buildResetPlanNodes(assessments);
+export function formatResetPlan(assessments: ResetAssessment[], resetMode: ResetMode): string {
+  const nodes = buildResetPlanNodes(assessments, resetMode);
   const ctx = createRenderContext();
   return render(nodes, ctx);
 }
@@ -267,15 +301,25 @@ export function registerResetCommand(program: Command): void {
     .option("--fetch", "Fetch from all remotes before reset (default)")
     .option("-N, --no-fetch", "Skip fetching before reset")
     .option("--base", "Always reset to the base branch, even when a remote share branch exists")
+    .option("--soft", "Move HEAD only; commits become staged changes")
+    .option("--mixed", "Move HEAD and reset index; changes become unstaged (default)")
+    .option("--hard", "Move HEAD, reset index and working tree; discards all local changes")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("-n, --dry-run", "Show what would happen without executing")
     .option("-w, --where <filter>", "Only reset repos matching status filter (comma = OR, + = AND, ^ = negate)")
     .summary("Reset repos to the remote branch (or base if not pushed)")
     .description(
-      "Examples:\n\n  arb reset                                Reset all repos to remote HEAD\n  arb reset api                            Reset a specific repo\n  arb reset --base                         Reset to base branch instead\n\nReset all repos (or only the named repos) to the remote share branch HEAD, discarding local commits and staged/unstaged changes. When no remote share branch exists (never pushed), falls back to the base branch. Resolves the correct remote and branch per repo automatically. Untracked files are preserved (no git clean). Shows a plan with what will be lost (dirty files, unpushed commits) and asks for confirmation before proceeding.\n\nRepos whose branch has already been merged (or squash-merged) into base are skipped when the reset target is the base branch. Repos whose configured base branch was merged into the default branch are also skipped (use 'arb retarget' to update the base first).\n\nUse --base to always reset to the base branch, even when a remote share branch exists.\n\nTo change the base branch, use 'arb branch base <branch>'.\n\nUse --where to filter repos by status flags. See 'arb help filtering' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
+      "Examples:\n\n  arb reset                                Reset all repos to remote HEAD\n  arb reset api                            Reset a specific repo\n  arb reset --base                         Reset to base branch instead\n  arb reset --hard                         Reset and discard all local changes\n\nReset all repos (or only the named repos) to the remote share branch HEAD. When no remote share branch exists (never pushed), falls back to the base branch. Resolves the correct remote and branch per repo automatically. Untracked files are preserved (no git clean). Shows a plan and asks for confirmation before proceeding.\n\nThe reset mode controls what is preserved. With --mixed (default), the index is reset but the working tree is preserved — commits become unstaged changes. With --soft, only HEAD moves — commits become staged changes and the working tree is untouched. With --hard, the index and working tree are both reset — all local changes are permanently lost. This mirrors git reset --soft/--mixed/--hard.\n\nRepos whose branch has already been merged (or squash-merged) into base are skipped when the reset target is the base branch. Repos whose configured base branch was merged into the default branch are also skipped (use 'arb retarget' to update the base first).\n\nUse --base to always reset to the base branch, even when a remote share branch exists.\n\nTo change the base branch, use 'arb branch base <branch>'.\n\nUse --where to filter repos by status flags. See 'arb help filtering' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
     )
     .action(
       arbAction(async (ctx, repoArgs: string[], options) => {
+        const modeFlags = [options.soft, options.mixed, options.hard].filter(Boolean);
+        if (modeFlags.length > 1) {
+          error("Cannot combine --soft, --mixed, and --hard");
+          throw new ArbError("Cannot combine --soft, --mixed, and --hard");
+        }
+        const resetMode: ResetMode = options.soft ? "soft" : options.hard ? "hard" : "mixed";
+
         const where = resolveWhereFilter(options);
         const { wsDir, workspace } = requireWorkspace(ctx);
         const branch = await requireBranch(wsDir, workspace);
@@ -317,7 +361,7 @@ export function registerResetCommand(program: Command): void {
           reposForFetchReport: repos,
           remotesMap,
           assess,
-          formatPlan: (nextAssessments) => formatResetPlan(nextAssessments),
+          formatPlan: (nextAssessments) => formatResetPlan(nextAssessments, resetMode),
           onPostFetch: () => cache.invalidateAfterFetch(),
         });
 
@@ -330,13 +374,15 @@ export function registerResetCommand(program: Command): void {
           return;
         }
 
-        // Warn about unpushed commits
-        const withUnpushed = willReset.filter((a) => a.unpushedCommits > 0);
-        if (withUnpushed.length > 0) {
-          const totalUnpushed = withUnpushed.reduce((sum, a) => sum + a.unpushedCommits, 0);
-          warn(
-            `Warning: ${plural(totalUnpushed, "unpushed commit")} in ${plural(withUnpushed.length, "repo")} will be permanently lost`,
-          );
+        // Warn about unpushed commits (only for --hard, since soft/mixed preserve them as working tree changes)
+        if (resetMode === "hard") {
+          const withUnpushed = willReset.filter((a) => a.unpushedCommits > 0);
+          if (withUnpushed.length > 0) {
+            const totalUnpushed = withUnpushed.reduce((sum, a) => sum + a.unpushedCommits, 0);
+            warn(
+              `Warning: ${plural(totalUnpushed, "unpushed commit")} in ${plural(withUnpushed.length, "repo")} will be permanently lost`,
+            );
+          }
         }
 
         if (options.dryRun) {
@@ -358,7 +404,7 @@ export function registerResetCommand(program: Command): void {
 
         for (const a of willReset) {
           inlineStart(a.repo, `resetting to ${a.target}`);
-          const result = await gitLocal(a.repoDir, "reset", "--hard", a.target);
+          const result = await gitLocal(a.repoDir, "reset", `--${resetMode}`, a.target);
           if (result.exitCode === 0) {
             inlineResult(a.repo, `reset to ${a.target}`);
             resetOk++;

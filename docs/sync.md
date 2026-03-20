@@ -47,13 +47,25 @@ Arb relies on tracking config to detect merged branches, so prefer `arb push` ov
 
 ## Starting fresh: reset
 
-Discard all local changes and reset every repo to the remote share branch (or the base branch if never pushed):
+Reset every repo to the remote share branch (or the base branch if never pushed):
 
 ```bash
 arb reset
 ```
 
-This resolves the correct remote and branch per repo automatically. When a remote share branch exists (the feature branch has been pushed), it resets to that. When no remote branch exists, it falls back to the base branch. Untracked files are preserved. The plan shows what will be lost (dirty files, unpushed commits) and warns prominently when unpushed commits are at risk.
+This resolves the correct remote and branch per repo automatically. When a remote share branch exists (the feature branch has been pushed), it resets to that. When no remote branch exists, it falls back to the base branch. Untracked files are preserved. The plan shows what will change and asks for confirmation before proceeding.
+
+By default (`--mixed`), HEAD and the index are reset but the working tree is preserved — commits become unstaged changes. To keep commits as staged changes instead:
+
+```bash
+arb reset --soft
+```
+
+To discard all local changes (index and working tree):
+
+```bash
+arb reset --hard
+```
 
 To always reset to the base branch (e.g. `origin/main`), even when a remote share branch exists:
 

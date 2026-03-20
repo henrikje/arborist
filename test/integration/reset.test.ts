@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { arb, git, setupForkRepo, withEnv, write } from "./helpers/env";
 
 describe("reset", () => {
-  test("basic reset discards local commits and dirty files", () =>
+  test("--hard reset discards local commits and dirty files", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
 
@@ -19,7 +19,7 @@ describe("reset", () => {
       await write(join(repoB, "dirty.txt"), "dirty");
       await git(repoB, ["add", "dirty.txt"]);
 
-      const result = await arb(env, ["reset", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      const result = await arb(env, ["reset", "--hard", "--yes"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("Reset 2 repos");
 
@@ -61,7 +61,7 @@ describe("reset", () => {
       expect(result.output).toContain("already at origin/main");
     }));
 
-  test("warns about unpushed commits", () =>
+  test("--hard warns about unpushed commits", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const repoA = join(env.projectDir, "my-feature/repo-a");
@@ -72,13 +72,13 @@ describe("reset", () => {
       await git(repoA, ["add", "extra.txt"]);
       await git(repoA, ["commit", "-m", "unpushed work"]);
 
-      const result = await arb(env, ["reset", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      const result = await arb(env, ["reset", "--hard", "--yes"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("unpushed commit");
       expect(result.output).toContain("permanently lost");
     }));
 
-  test("plan shows pushed commits as recoverable when using --base", () =>
+  test("--hard plan shows pushed commits as recoverable when using --base", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const repoA = join(env.projectDir, "my-feature/repo-a");
@@ -89,8 +89,10 @@ describe("reset", () => {
       await git(repoA, ["commit", "-m", "pushed work"]);
       await git(repoA, ["push", "-u", "origin", "my-feature"]);
 
-      // With --base, reset targets origin/main, so the pushed commit shows as recoverable
-      const result = await arb(env, ["reset", "--base", "--dry-run"], { cwd: join(env.projectDir, "my-feature") });
+      // With --base --hard, reset targets origin/main, so the pushed commit shows as recoverable
+      const result = await arb(env, ["reset", "--base", "--hard", "--dry-run"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
       expect(result.exitCode).toBe(0);
       // Should show commit count with (pushed) annotation
       expect(result.output).toContain("1 commit (pushed)");
@@ -282,7 +284,7 @@ describe("reset", () => {
       expect(result.output).toContain("origin/main");
     }));
 
-  test("reset to share with dirty files", () =>
+  test("--hard reset to share with dirty files", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const repoA = join(env.projectDir, "my-feature/repo-a");
@@ -297,14 +299,14 @@ describe("reset", () => {
       await write(join(repoA, "dirty.txt"), "dirty");
       await git(repoA, ["add", "dirty.txt"]);
 
-      const result = await arb(env, ["reset", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      const result = await arb(env, ["reset", "--hard", "--yes"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("reset to origin/my-feature");
       expect(result.output).toContain("dirty file");
       expect(result.output).toContain("Reset 1 repo");
     }));
 
-  test("reset to share warns about unpushed commits", () =>
+  test("--hard reset to share warns about unpushed commits", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const repoA = join(env.projectDir, "my-feature/repo-a");
@@ -320,7 +322,7 @@ describe("reset", () => {
       await git(repoA, ["add", "unpushed.txt"]);
       await git(repoA, ["commit", "-m", "unpushed work"]);
 
-      const result = await arb(env, ["reset", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      const result = await arb(env, ["reset", "--hard", "--yes"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("unpushed commit");
       expect(result.output).toContain("permanently lost");
@@ -491,5 +493,133 @@ describe("reset", () => {
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("reset to origin/my-feature");
       expect(result.output).toContain("Reset 1 repo");
+    }));
+
+  // ── Reset mode tests ──
+
+  test("default mode is --mixed: preserves working tree", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Add a local commit
+      await write(join(repoA, "local.txt"), "local change");
+      await git(repoA, ["add", "local.txt"]);
+      await git(repoA, ["commit", "-m", "local commit"]);
+
+      const result = await arb(env, ["reset", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Reset 1 repo");
+
+      // HEAD should have moved — commit not in log
+      const log = await git(repoA, ["log", "--oneline", "-1"]);
+      expect(log).not.toContain("local commit");
+
+      // Working tree should still have the file (unstaged)
+      const status = await git(repoA, ["status", "--porcelain"]);
+      expect(status).toContain("local.txt");
+    }));
+
+  test("--soft preserves commits as staged changes", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Add a local commit
+      await write(join(repoA, "local.txt"), "local change");
+      await git(repoA, ["add", "local.txt"]);
+      await git(repoA, ["commit", "-m", "local commit"]);
+
+      const result = await arb(env, ["reset", "--soft", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Reset 1 repo");
+
+      // HEAD should have moved — commit not in log
+      const log = await git(repoA, ["log", "--oneline", "-1"]);
+      expect(log).not.toContain("local commit");
+
+      // Changes should be staged (in the index)
+      const status = await git(repoA, ["status", "--porcelain"]);
+      expect(status).toContain("A  local.txt");
+    }));
+
+  test("--mixed preserves commits as unstaged changes", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Add a local commit
+      await write(join(repoA, "local.txt"), "local change");
+      await git(repoA, ["add", "local.txt"]);
+      await git(repoA, ["commit", "-m", "local commit"]);
+
+      const result = await arb(env, ["reset", "--mixed", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Reset 1 repo");
+
+      // HEAD should have moved — commit not in log
+      const log = await git(repoA, ["log", "--oneline", "-1"]);
+      expect(log).not.toContain("local commit");
+
+      // Changes should be in working tree but not staged
+      const status = await git(repoA, ["status", "--porcelain"]);
+      // Untracked file (was new in the commit, now untracked after mixed reset)
+      expect(status).toContain("local.txt");
+      expect(status).not.toContain("A  local.txt");
+    }));
+
+  test("mutual exclusion of mode flags", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+
+      const result = await arb(env, ["reset", "--soft", "--hard"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toContain("Cannot combine --soft, --mixed, and --hard");
+    }));
+
+  test("--soft plan shows non-destructive language", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      await write(join(repoA, "local.txt"), "local");
+      await git(repoA, ["add", "local.txt"]);
+      await git(repoA, ["commit", "-m", "local commit"]);
+
+      const result = await arb(env, ["reset", "--soft", "--dry-run"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("become staged");
+      expect(result.output).not.toContain("discard");
+    }));
+
+  test("--mixed plan shows non-destructive language", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      await write(join(repoA, "local.txt"), "local");
+      await git(repoA, ["add", "local.txt"]);
+      await git(repoA, ["commit", "-m", "local commit"]);
+
+      const result = await arb(env, ["reset", "--mixed", "--dry-run"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("become unstaged");
+      expect(result.output).not.toContain("discard");
+    }));
+
+  test("--soft does not warn about permanently lost commits", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Push then add more local commits
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+      await write(join(repoA, "extra.txt"), "extra");
+      await git(repoA, ["add", "extra.txt"]);
+      await git(repoA, ["commit", "-m", "unpushed work"]);
+
+      const result = await arb(env, ["reset", "--soft", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).not.toContain("permanently lost");
     }));
 });

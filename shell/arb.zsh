@@ -535,6 +535,9 @@ _arb() {
                         '(-N --fetch --no-fetch)--fetch[Fetch before reset (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before reset]' \
                         '--base[Always reset to the base branch]' \
+                        '(--soft --mixed --hard)--soft[Move HEAD only; commits become staged changes]' \
+                        '(--soft --mixed --hard)--mixed[Move HEAD and reset index; changes become unstaged (default)]' \
+                        '(--soft --mixed --hard)--hard[Move HEAD, reset index and working tree; discards all local changes]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
