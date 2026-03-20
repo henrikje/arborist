@@ -544,15 +544,15 @@ hint "     cd $PLAYGROUND_DIR"
 hint "     ./merge-branch.sh feat/auth main"
 hint "     cd feat-auth-ui"
 hint "     arb status --fetch               # base merged into default!"
-hint "     arb rebase --retarget --yes     # rebases onto main, clears base"
-hint "     arb status                      # now tracks main directly"
+hint "     arb retarget --yes               # rebases onto main, clears base"
+hint "     arb status                       # now tracks main directly"
 printf "\n" >&2
 
 hint "  3. Then collapse the whole stack:"
 hint "     cd $PLAYGROUND_DIR"
 hint "     ./merge-branch.sh feat/auth-ui main"
 hint "     cd feat-auth-tests"
-hint "     arb rebase --retarget --yes"
+hint "     arb retarget --yes"
 hint "     arb status                      # now tracks main"
 printf "\n" >&2
 
@@ -561,5 +561,5 @@ hint "     (reset the playground first: re-run this script)"
 hint "     cd $PLAYGROUND_DIR"
 hint "     ./merge-branch.sh feat/auth main squash"
 hint "     cd feat-auth-ui"
-hint "     arb rebase --retarget --yes"
+hint "     arb retarget --yes"
 printf "\n" >&2
