@@ -16,6 +16,9 @@ function hasAnyFlag(flags: RepoFlags, set: Set<keyof RepoFlags>): boolean {
 const FILTER_TERMS: Record<string, (f: RepoFlags) => boolean> = {
   // Negative / problem-condition terms
   dirty: (f) => f.isDirty,
+  staged: (f) => f.hasStaged,
+  modified: (f) => f.hasModified,
+  untracked: (f) => f.hasUntracked,
   "ahead-share": (f) => f.isAheadOfShare,
   "no-share": (f) => f.hasNoShare,
   "behind-share": (f) => f.isBehindShare,

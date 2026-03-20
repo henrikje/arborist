@@ -31,6 +31,9 @@ export function isLocalDirty(local: {
 export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlags {
   const isDirty = isLocalDirty(repo.local);
   const hasConflict = repo.local.conflicts > 0;
+  const hasStaged = repo.local.staged > 0;
+  const hasModified = repo.local.modified > 0;
+  const hasUntracked = repo.local.untracked > 0;
 
   const isDetached = repo.identity.headMode.kind === "detached";
 
@@ -75,6 +78,9 @@ export function computeFlags(repo: RepoStatus, expectedBranch: string): RepoFlag
   const flags: RepoFlags = {
     isDirty,
     hasConflict,
+    hasStaged,
+    hasModified,
+    hasUntracked,
     isAheadOfShare,
     hasNoShare,
     isBehindShare,
@@ -103,6 +109,9 @@ function assertFlagInvariants(flags: RepoFlags): void {
   if (flags.isDiverged && (!flags.isAheadOfBase || !flags.isBehindBase))
     violations.push("isDiverged requires isAheadOfBase and isBehindBase");
   if (flags.hasConflict && !flags.isDirty) violations.push("hasConflict requires isDirty");
+  if (flags.hasStaged && !flags.isDirty) violations.push("hasStaged requires isDirty");
+  if (flags.hasModified && !flags.isDirty) violations.push("hasModified requires isDirty");
+  if (flags.hasUntracked && !flags.isDirty) violations.push("hasUntracked requires isDirty");
   if (flags.hasNoShare && flags.isBehindShare) violations.push("hasNoShare excludes isBehindShare");
   if (flags.isGone && flags.isBehindShare) violations.push("isGone excludes isBehindShare");
   if (flags.isBaseMerged && flags.isBaseMissing)

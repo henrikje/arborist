@@ -53,6 +53,9 @@ The full list of filter terms:
 | Term | Matches repos where… |
 |------|----------------------|
 | `dirty` | there are uncommitted changes (staged, modified, untracked, or conflicting files) |
+| `staged` | files are staged for commit (subset of `dirty`) |
+| `modified` | tracked files have unstaged changes (subset of `dirty`) |
+| `untracked` | untracked files are present (subset of `dirty`) |
 | `ahead-share` | local commits haven't been pushed to the share remote |
 | `no-share` | the branch has never been pushed to the share remote |
 | `ahead-base` | local commits ahead of the base branch |
@@ -108,6 +111,7 @@ Output is buffered per repo and printed in consistent alphabetical order. Stdin 
 ```bash
 arb exec -p --dirty npm test      # test only dirty repos, in parallel
 arb exec -p --repo api --repo web -- npm test
+arb exec --where staged git commit -m "msg"  # commit only in repos with staged files
 ```
 
 ## Stdin piping

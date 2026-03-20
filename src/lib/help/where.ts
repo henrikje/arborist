@@ -25,6 +25,9 @@ export const whereFilterTopic: HelpTopic = {
     out("");
     out(dim("  Problem / status flags:"));
     out("    dirty          Uncommitted changes (staged, modified, or untracked files)");
+    out("    staged         Files staged for commit (subset of dirty)");
+    out("    modified       Tracked files with unstaged changes (subset of dirty)");
+    out("    untracked      Untracked files present (subset of dirty)");
     out("    ahead-share    Local commits ahead of the share remote");
     out("    no-share       No share branch exists on the remote");
     out("    behind-share   Share remote has commits not yet pulled");
@@ -57,6 +60,7 @@ export const whereFilterTopic: HelpTopic = {
     out(`  ${dim("arb status --where dirty,ahead-share")}  Dirty OR ahead-share`);
     out(`  ${dim("arb status --where dirty+ahead-share")}  Dirty AND ahead-share`);
     out(`  ${dim("arb exec --where dirty git stash")}      Stash in all dirty repos`);
+    out(`  ${dim("arb exec --where staged git commit -m msg")}  Commit in repos with staged files`);
     out(`  ${dim("arb delete --where gone")}               Delete all gone workspaces`);
     out(`  ${dim("arb list --where stale")}                List workspaces with any stale repo`);
     out(`  ${dim("arb push --where ^behind-base")}          Push only repos already rebased`);
