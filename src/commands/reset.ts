@@ -374,14 +374,16 @@ export function registerResetCommand(program: Command): void {
           return;
         }
 
-        // Warn about unpushed commits (only for --hard, since soft/mixed preserve them as working tree changes)
+        // Warn about data loss (only for --hard, since soft/mixed preserve changes as working tree state)
         if (resetMode === "hard") {
-          const withUnpushed = willReset.filter((a) => a.unpushedCommits > 0);
-          if (withUnpushed.length > 0) {
-            const totalUnpushed = withUnpushed.reduce((sum, a) => sum + a.unpushedCommits, 0);
-            warn(
-              `Warning: ${plural(totalUnpushed, "unpushed commit")} in ${plural(withUnpushed.length, "repo")} will be permanently lost`,
-            );
+          const totalUnpushed = willReset.reduce((sum, a) => sum + a.unpushedCommits, 0);
+          const totalDirty = willReset.reduce((sum, a) => sum + a.dirtyFiles, 0);
+          const affectedRepos = willReset.filter((a) => a.unpushedCommits > 0 || a.dirtyFiles > 0).length;
+          if (totalUnpushed > 0 || totalDirty > 0) {
+            const parts: string[] = [];
+            if (totalUnpushed > 0) parts.push(plural(totalUnpushed, "unpushed commit"));
+            if (totalDirty > 0) parts.push(plural(totalDirty, "dirty file"));
+            warn(`Warning: ${parts.join(" and ")} in ${plural(affectedRepos, "repo")} will be permanently lost`);
           }
         }
 
