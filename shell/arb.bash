@@ -555,7 +555,7 @@ __arb_complete_reset() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--fetch -N --no-fetch --base -y --yes -n --dry-run -w --where" -- "$cur"))
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch --base --soft --mixed --hard -y --yes -n --dry-run -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
