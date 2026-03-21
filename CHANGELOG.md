@@ -2,6 +2,7 @@
 
 ## [0.111.0](https://github.com/henrikje/arborist/compare/v0.110.0...v0.111.0) (2026-03-20)
 
+Introduces persistent analysis caching and improved Git caching for significantly faster status operations, alongside a new interactive watch dashboard for live workspace visibility. Adds a standalone retarget command and broader UX improvements across filtering, help, and command behavior.
 
 ### Features
 
