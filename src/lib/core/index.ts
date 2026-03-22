@@ -25,6 +25,8 @@ export {
   type OperationRecord,
   type RepoOperationState,
   assertNoInProgressOperation,
+  buildOperationRecord,
+  captureRepoState,
   classifyContinueRepo,
   deleteOperationRecord,
   readOperationRecord,

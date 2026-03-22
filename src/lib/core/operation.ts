@@ -2,7 +2,7 @@ import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { z } from "zod";
 import { detectOperation, gitLocal, parseGitStatus } from "../git/git";
 import { error } from "../terminal/output";
-import { WorkspaceConfigSchema } from "./config";
+import { type WorkspaceConfig, WorkspaceConfigSchema } from "./config";
 import { ArbError } from "./errors";
 import { atomicWriteFileSync } from "./fs";
 
@@ -93,6 +93,36 @@ export function writeOperationRecord(wsDir: string, record: OperationRecord): vo
   }
   const filePath = operationFilePath(wsDir);
   atomicWriteFileSync(filePath, `${JSON.stringify(result.data, null, 2)}\n`);
+}
+
+// ── Build helpers ──
+
+export async function captureRepoState(repoDir: string, repoName: string): Promise<RepoOperationState> {
+  const headResult = await gitLocal(repoDir, "rev-parse", "HEAD");
+  const preHead = headResult.stdout.trim();
+  if (!preHead) throw new ArbError(`Cannot capture HEAD for ${repoName}`);
+  const stashResult = await gitLocal(repoDir, "stash", "create");
+  return {
+    preHead,
+    stashSha: stashResult.stdout.trim() || null,
+    status: "skipped",
+  };
+}
+
+export function buildOperationRecord(
+  commandFields: { command: string } & Record<string, unknown>,
+  repos: Record<string, RepoOperationState>,
+  configBefore?: WorkspaceConfig,
+  configAfter?: WorkspaceConfig,
+): OperationRecord {
+  return {
+    ...commandFields,
+    startedAt: new Date().toISOString(),
+    status: "in-progress" as const,
+    repos,
+    ...(configBefore && { configBefore }),
+    ...(configAfter && { configAfter }),
+  } as OperationRecord;
 }
 
 // ── Delete ──
