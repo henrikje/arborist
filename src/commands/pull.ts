@@ -1,8 +1,26 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict, predictRebaseConflictCommits, predictStashPopConflict } from "../lib/analysis";
-import { ArbError, type CommandContext, arbAction, readWorkspaceConfig } from "../lib/core";
-import { getCommitsBetweenFull, getDiffShortstat, gitLocal, gitNetwork, networkTimeout } from "../lib/git";
+import {
+  ArbError,
+  type CommandContext,
+  type OperationRecord,
+  type RepoOperationState,
+  arbAction,
+  assertNoInProgressOperation,
+  classifyContinueRepo,
+  readOperationRecord,
+  readWorkspaceConfig,
+  writeOperationRecord,
+} from "../lib/core";
+import {
+  detectOperation,
+  getCommitsBetweenFull,
+  getDiffShortstat,
+  gitLocal,
+  gitNetwork,
+  networkTimeout,
+} from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
 import { createRenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -78,6 +96,15 @@ export async function runPull(
   const where = resolveWhereFilter(options);
   const flagMode: "rebase" | "merge" | undefined = options.rebase ? "rebase" : options.merge ? "merge" : undefined;
   const { wsDir, workspace } = requireWorkspace(ctx);
+
+  // Operation gate + continue detection
+  assertNoInProgressOperation(wsDir, "pull");
+  const existingRecord = readOperationRecord(wsDir);
+  if (existingRecord?.command === "pull" && existingRecord.status === "in-progress") {
+    await runPullContinue(existingRecord, wsDir, options);
+    return;
+  }
+
   const branch = await requireBranch(wsDir, workspace);
 
   const selectedRepos = repoNames;
@@ -166,12 +193,48 @@ export async function runPull(
 
   process.stderr.write("\n");
 
-  // Phase 4: execute
+  // Phase 4: capture state and write operation record
+  const repoStates: Record<string, RepoOperationState> = {};
+  for (const a of willPull) {
+    const headResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+    const stashResult = await gitLocal(a.repoDir, "stash", "create");
+    repoStates[a.repo] = {
+      preHead: headResult.stdout.trim(),
+      stashSha: stashResult.stdout.trim() || null,
+      status: "skipped",
+    };
+  }
+
+  const record: OperationRecord = {
+    command: "pull",
+    startedAt: new Date().toISOString(),
+    status: "in-progress",
+    repos: repoStates,
+  };
+  writeOperationRecord(wsDir, record);
+
+  // Phase 5: execute
   let pullOk = 0;
   const pullTimeout = networkTimeout("ARB_PULL_TIMEOUT", 120);
   const conflicted: { assessment: PullAssessment; stdout: string; stderr: string }[] = [];
   const failed: PullFailure[] = [];
   const stashPopFailed: PullAssessment[] = [];
+
+  const markCompleted = async (repo: string) => {
+    const postHead = await gitLocal(willPull.find((a) => a.repo === repo)?.repoDir ?? "", "rev-parse", "HEAD");
+    const existing = record.repos[repo];
+    if (existing) {
+      record.repos[repo] = { ...existing, status: "completed", postHead: postHead.stdout.trim() };
+    }
+    writeOperationRecord(wsDir, record);
+  };
+  const markConflicting = (repo: string) => {
+    const existing = record.repos[repo];
+    if (existing) {
+      record.repos[repo] = { ...existing, status: "conflicting" };
+    }
+    writeOperationRecord(wsDir, record);
+  };
 
   for (const a of willPull) {
     const strategy = a.pullStrategy ?? (a.pullMode === "rebase" ? "rebase-pull" : "merge-pull");
@@ -185,10 +248,12 @@ export async function runPull(
         : ["pull", "--rebase", pullRemote, a.branch];
       const pullResult = await gitNetwork(a.repoDir, pullTimeout, pullArgs);
       if (pullResult.exitCode === 0) {
+        await markCompleted(a.repo);
         inlineResult(a.repo, `pulled ${plural(a.behind, "commit")} (${a.pullMode})`);
         pullOk++;
       } else {
         if (isConflictResult(pullResult.stdout, pullResult.stderr)) {
+          markConflicting(a.repo);
           inlineResult(a.repo, yellow("conflict"));
           conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
         } else {
@@ -218,6 +283,7 @@ export async function runPull(
             stashPopFailed.push(a);
           }
         }
+        await markCompleted(a.repo);
         let doneMsg = `${resetLabel} to ${target}`;
         if (!stashPopOk) {
           doneMsg += ` ${yellow("(stash pop failed)")}`;
@@ -225,6 +291,7 @@ export async function runPull(
         inlineResult(a.repo, doneMsg);
         pullOk++;
       } else {
+        markConflicting(a.repo);
         inlineResult(a.repo, yellow("failed"));
         failed.push({
           assessment: a,
@@ -248,6 +315,7 @@ export async function runPull(
             stashPopFailed.push(a);
           }
         }
+        await markCompleted(a.repo);
         let doneMsg = `pulled ${plural(a.behind, "commit")} (${a.pullMode})`;
         if (!stashPopOk) {
           doneMsg += ` ${yellow("(stash pop failed)")}`;
@@ -256,9 +324,11 @@ export async function runPull(
         pullOk++;
       } else {
         if (isConflictResult(pullResult.stdout, pullResult.stderr)) {
+          markConflicting(a.repo);
           inlineResult(a.repo, yellow("conflict"));
           conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
         } else {
+          markConflicting(a.repo);
           inlineResult(a.repo, yellow("failed"));
           failed.push({
             assessment: a,
@@ -293,7 +363,15 @@ export async function runPull(
   if (failureNodes.length > 0) process.stderr.write(render(failureNodes, reportCtx));
   if (stashNodes.length > 0) process.stderr.write(render(stashNodes, reportCtx));
 
-  // Phase 5: summary
+  // Finalize operation record
+  if (conflicted.length === 0 && failed.length === 0) {
+    record.status = "completed";
+    writeOperationRecord(wsDir, record);
+  } else {
+    info("Run 'arb pull' to continue or 'arb undo' to roll back");
+  }
+
+  // Phase 6: summary
   process.stderr.write("\n");
   const parts = [`Pulled ${plural(pullOk, "repo")}`];
   if (conflicted.length > 0) parts.push(`${conflicted.length} conflicted`);
@@ -302,6 +380,169 @@ export async function runPull(
   if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
   if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
   finishSummary(parts, conflicted.length > 0 || failed.length > 0 || stashPopFailed.length > 0);
+}
+
+// ── Continue flow ──
+
+async function runPullContinue(
+  record: OperationRecord & { command: "pull" },
+  wsDir: string,
+  options: { yes?: boolean; dryRun?: boolean },
+): Promise<void> {
+  const repoDirs = workspaceRepoDirs(wsDir);
+  const repoDirMap = new Map(repoDirs.map((d) => [basename(d), d]));
+
+  const classifications: {
+    repo: string;
+    repoDir: string;
+    classification: Awaited<ReturnType<typeof classifyContinueRepo>>;
+  }[] = [];
+  for (const [repoName, state] of Object.entries(record.repos)) {
+    const repoDir = repoDirMap.get(repoName);
+    if (!repoDir) {
+      classifications.push({ repo: repoName, repoDir: "", classification: { action: "skip" } });
+      continue;
+    }
+    const classification = await classifyContinueRepo(repoDir, state);
+    classifications.push({ repo: repoName, repoDir, classification });
+  }
+
+  const stillConflicting = classifications.filter((c) => c.classification.action === "still-conflicting");
+  const willContinue = classifications.filter((c) => c.classification.action === "will-continue");
+
+  // Update record for manually-resolved repos
+  for (const c of classifications) {
+    if (c.classification.action === "manually-continued") {
+      const existing = record.repos[c.repo];
+      if (existing) {
+        record.repos[c.repo] = { ...existing, status: "completed", postHead: c.classification.postHead };
+      }
+    } else if (c.classification.action === "manually-aborted") {
+      const existing = record.repos[c.repo];
+      if (existing) {
+        record.repos[c.repo] = { ...existing, status: "skipped" };
+      }
+    }
+  }
+
+  if (stillConflicting.length > 0 && willContinue.length === 0) {
+    writeOperationRecord(wsDir, record);
+    for (const c of stillConflicting) {
+      info(`${c.repo}: conflicts not yet resolved`);
+    }
+    info("Resolve conflicts, then run 'arb pull' to continue or 'arb undo' to roll back");
+    throw new ArbError("Conflicts not yet resolved");
+  }
+
+  // Build continue plan display
+  const planNodes: OutputNode[] = [
+    { kind: "gap" },
+    { kind: "message", level: "default", text: "Continuing pull" },
+    { kind: "gap" },
+  ];
+
+  const rows = classifications
+    .filter((c) => c.classification.action !== "skip")
+    .map((c) => {
+      let actionCell: Cell;
+      switch (c.classification.action) {
+        case "will-continue":
+          actionCell = cell("continue pull");
+          break;
+        case "still-conflicting":
+          actionCell = cell("conflicts not resolved", "attention");
+          break;
+        case "manually-continued":
+          actionCell = cell("already resolved", "muted");
+          break;
+        case "manually-aborted":
+          actionCell = cell("manually aborted", "muted");
+          break;
+        case "already-done":
+          actionCell = cell("already done", "muted");
+          break;
+        default:
+          actionCell = cell("skip", "muted");
+      }
+      return { cells: { repo: cell(c.repo), action: actionCell } };
+    });
+
+  planNodes.push({
+    kind: "table",
+    columns: [
+      { header: "REPO", key: "repo" },
+      { header: "ACTION", key: "action" },
+    ],
+    rows,
+  });
+  planNodes.push({ kind: "gap" });
+
+  const rCtx = { tty: shouldColor() };
+  process.stderr.write(render(planNodes, rCtx));
+
+  if (options.dryRun) {
+    dryRunNotice();
+    return;
+  }
+
+  const actionable = willContinue.length + stillConflicting.length;
+  if (actionable === 0) {
+    record.status = "completed";
+    writeOperationRecord(wsDir, record);
+    process.stderr.write("\n");
+    finishSummary(["Pull completed"], false);
+    return;
+  }
+
+  await confirmOrExit({
+    yes: options.yes,
+    message: `Continue pull in ${plural(willContinue.length, "repo")}?`,
+  });
+
+  process.stderr.write("\n");
+
+  let succeeded = 0;
+  const newConflicts: string[] = [];
+
+  for (const c of willContinue) {
+    inlineStart(c.repo, "continuing pull");
+    // Detect per-repo operation type (rebase or merge)
+    const op = await detectOperation(c.repoDir);
+    const continueCmd = op === "merge" ? "merge" : "rebase";
+    const result = await gitLocal(c.repoDir, continueCmd, "--continue");
+    if (result.exitCode === 0) {
+      const postHeadResult = await gitLocal(c.repoDir, "rev-parse", "HEAD");
+      const existing = record.repos[c.repo];
+      if (existing) {
+        record.repos[c.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+      }
+      writeOperationRecord(wsDir, record);
+      inlineResult(c.repo, "pull continued");
+      succeeded++;
+    } else {
+      inlineResult(c.repo, yellow("conflict"));
+      newConflicts.push(c.repo);
+    }
+  }
+
+  const allCompleted = Object.values(record.repos).every((s) => s.status === "completed" || s.status === "skipped");
+
+  if (allCompleted) {
+    record.status = "completed";
+    writeOperationRecord(wsDir, record);
+  } else {
+    writeOperationRecord(wsDir, record);
+    if (newConflicts.length > 0 || stillConflicting.length > 0) {
+      info("Run 'arb pull' to continue or 'arb undo' to roll back");
+    }
+  }
+
+  process.stderr.write("\n");
+  const parts: string[] = [];
+  if (succeeded > 0) parts.push(`Continued ${plural(succeeded, "repo")}`);
+  if (stillConflicting.length > 0) parts.push(`${stillConflicting.length} still conflicting`);
+  if (newConflicts.length > 0) parts.push(`${newConflicts.length} new conflict`);
+  finishSummary(parts, stillConflicting.length > 0 || newConflicts.length > 0);
 }
 
 export function assessPullRepo(
