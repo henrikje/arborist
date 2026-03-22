@@ -406,7 +406,7 @@ __arb_complete_rename() {
         return  # branch name, no completion
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--branch --base --continue --abort -r --delete-remote --fetch -N --no-fetch --dry-run -y --yes --include-in-progress" -- "$cur"))
+        COMPREPLY=($(compgen -W "--branch --base -r --delete-remote --fetch -N --no-fetch --dry-run -y --yes --include-in-progress" -- "$cur"))
         return
     fi
 }
@@ -424,7 +424,7 @@ __arb_complete_branch() {
     done
 
     local show_opts="-q --quiet -v --verbose --fetch -N --no-fetch --json --schema"
-    local rename_opts="--continue --abort -r --delete-remote --fetch -N --no-fetch --dry-run -y --yes --include-in-progress"
+    local rename_opts="-r --delete-remote --fetch -N --no-fetch --dry-run -y --yes --include-in-progress"
     local base_opts="--unset -f --force"
 
     if ((COMP_CWORD == sub_pos)); then
@@ -657,7 +657,7 @@ __arb_complete_template() {
 __arb_complete_help() {
     local base_dir="$1" cur="$2"
     local topics="filtering remotes stacked templates scripting"
-    local commands="init repo create delete rename list path cd attach detach status watch branch pull push rebase retarget merge reset log diff exec open template"
+    local commands="init repo create delete rename list path cd attach detach status watch branch pull push rebase retarget merge reset undo log diff exec open template"
     COMPREPLY=($(compgen -W "$topics $commands" -- "$cur"))
 }
 
@@ -715,6 +715,7 @@ _arb() {
         retarget) __arb_complete_retarget "$base_dir" "$cur" ;;
         merge)    __arb_complete_merge "$base_dir" "$cur" ;;
         reset)    __arb_complete_reset "$base_dir" "$cur" ;;
+        undo)     COMPREPLY=($(compgen -W "-y --yes -n --dry-run" -- "$cur")) ;;
         log)      __arb_complete_log "$base_dir" "$cur" ;;
         diff)     __arb_complete_diff "$base_dir" "$cur" ;;
         exec)     __arb_complete_exec "$base_dir" "$cur" ;;

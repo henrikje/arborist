@@ -1,0 +1,287 @@
+import { basename } from "node:path";
+import type { Command } from "commander";
+import {
+  ArbError,
+  type OperationRecord,
+  arbAction,
+  deleteOperationRecord,
+  readOperationRecord,
+  writeWorkspaceConfig,
+} from "../lib/core";
+import { gitLocal } from "../lib/git";
+import { type RenderContext, finishSummary, render } from "../lib/render";
+import type { Cell, OutputNode } from "../lib/render";
+import { cell } from "../lib/render";
+import { confirmOrExit } from "../lib/sync";
+import { dryRunNotice, error, info, inlineResult, inlineStart, plural, shouldColor } from "../lib/terminal";
+import { requireWorkspace, workspaceRepoDirs } from "../lib/workspace";
+
+// ── Per-repo undo classification ──
+
+type UndoAction = "needs-undo" | "needs-abort" | "already-at-target" | "no-action" | "skip" | "drifted";
+
+interface RepoUndoAssessment {
+  repo: string;
+  repoDir: string;
+  action: UndoAction;
+  detail?: string;
+}
+
+// ── Undo logic per command type ──
+
+async function assessBranchRenameUndo(
+  record: OperationRecord & { command: "branch-rename" },
+  wsDir: string,
+): Promise<RepoUndoAssessment[]> {
+  const repoDirs = workspaceRepoDirs(wsDir);
+  const repoDirMap = new Map(repoDirs.map((d) => [basename(d), d]));
+
+  const assessments: RepoUndoAssessment[] = [];
+
+  for (const [repoName, state] of Object.entries(record.repos)) {
+    const repoDir = repoDirMap.get(repoName);
+    if (!repoDir) {
+      assessments.push({ repo: repoName, repoDir: "", action: "skip", detail: "repo not in workspace" });
+      continue;
+    }
+
+    if (state.status === "skipped") {
+      assessments.push({ repo: repoName, repoDir, action: "skip" });
+      continue;
+    }
+
+    if (state.status === "conflicting") {
+      // Rename didn't complete — nothing to reverse
+      assessments.push({ repo: repoName, repoDir, action: "no-action", detail: "rename did not complete" });
+      continue;
+    }
+
+    // status === "completed" — check current state
+    const headResult = await gitLocal(repoDir, "symbolic-ref", "--short", "HEAD");
+    const currentBranch = headResult.exitCode === 0 ? headResult.stdout.trim() : null;
+
+    if (currentBranch === record.newBranch) {
+      // Check for drift (user made commits after rename)
+      const currentHead = await gitLocal(repoDir, "rev-parse", "HEAD");
+      const currentSha = currentHead.stdout.trim();
+      if (currentSha !== state.preHead) {
+        assessments.push({
+          repo: repoName,
+          repoDir,
+          action: "drifted",
+          detail: `HEAD moved from ${state.preHead.slice(0, 7)} to ${currentSha.slice(0, 7)}`,
+        });
+        continue;
+      }
+      assessments.push({
+        repo: repoName,
+        repoDir,
+        action: "needs-undo",
+        detail: `rename ${record.newBranch} back to ${record.oldBranch}`,
+      });
+    } else if (currentBranch === record.oldBranch) {
+      assessments.push({ repo: repoName, repoDir, action: "already-at-target" });
+    } else {
+      assessments.push({
+        repo: repoName,
+        repoDir,
+        action: "drifted",
+        detail: `on branch ${currentBranch ?? "unknown"}, expected ${record.newBranch}`,
+      });
+    }
+  }
+
+  return assessments;
+}
+
+async function executeBranchRenameUndo(
+  record: OperationRecord & { command: "branch-rename" },
+  assessments: RepoUndoAssessment[],
+  wsDir: string,
+  configFile: string,
+): Promise<void> {
+  let undone = 0;
+  const failures: string[] = [];
+
+  for (const a of assessments) {
+    if (a.action !== "needs-undo") continue;
+
+    inlineStart(a.repo, "reverting");
+    const result = await gitLocal(a.repoDir, "branch", "-m", record.newBranch, record.oldBranch);
+    if (result.exitCode === 0) {
+      // Clear stale tracking
+      await gitLocal(a.repoDir, "config", "--unset", `branch.${record.oldBranch}.remote`);
+      await gitLocal(a.repoDir, "config", "--unset", `branch.${record.oldBranch}.merge`);
+      inlineResult(a.repo, `reverted to ${record.oldBranch}`);
+      undone++;
+    } else {
+      inlineResult(a.repo, "failed to revert");
+      failures.push(a.repo);
+    }
+  }
+
+  if (failures.length > 0) {
+    process.stderr.write("\n");
+    error(`Failed to revert ${plural(failures.length, "repo")}: ${failures.join(", ")}`);
+    throw new ArbError(`Failed to revert ${plural(failures.length, "repo")}: ${failures.join(", ")}`);
+  }
+
+  // Restore config
+  if (record.configBefore) {
+    writeWorkspaceConfig(configFile, record.configBefore);
+  }
+
+  // Clean up operation record
+  deleteOperationRecord(wsDir);
+
+  process.stderr.write("\n");
+  finishSummary([`Undone ${plural(undone, "repo")}`], false);
+}
+
+// ── Shared undo infrastructure ──
+
+async function assessUndo(record: OperationRecord, wsDir: string): Promise<RepoUndoAssessment[]> {
+  switch (record.command) {
+    case "branch-rename":
+      return assessBranchRenameUndo(record, wsDir);
+    default: {
+      const msg = `Undo is not yet supported for '${record.command}' operations`;
+      error(msg);
+      throw new ArbError(msg);
+    }
+  }
+}
+
+function formatUndoPlan(record: OperationRecord, assessments: RepoUndoAssessment[]): string {
+  const commandLabel = record.command === "branch-rename" ? "branch rename" : record.command;
+
+  const nodes: OutputNode[] = [
+    { kind: "gap" },
+    { kind: "message", level: "default", text: `Undo ${commandLabel} from ${formatTime(record.startedAt)}` },
+    { kind: "gap" },
+  ];
+
+  const rows = assessments
+    .filter((a) => a.action !== "skip")
+    .map((a) => {
+      let actionCell: Cell;
+      switch (a.action) {
+        case "needs-undo":
+          actionCell = cell(a.detail ?? "undo");
+          break;
+        case "needs-abort":
+          actionCell = cell(a.detail ?? "abort in-progress operation");
+          break;
+        case "already-at-target":
+          actionCell = cell("already at original state", "muted");
+          break;
+        case "no-action":
+          actionCell = cell(a.detail ?? "no action needed", "muted");
+          break;
+        case "drifted":
+          actionCell = cell(`drifted — ${a.detail}`, "danger");
+          break;
+        default:
+          actionCell = cell("unknown");
+      }
+      return { cells: { repo: cell(a.repo), action: actionCell } };
+    });
+
+  nodes.push({
+    kind: "table",
+    columns: [
+      { header: "REPO", key: "repo" },
+      { header: "ACTION", key: "action" },
+    ],
+    rows,
+  });
+
+  nodes.push({ kind: "gap" });
+
+  const rCtx: RenderContext = { tty: shouldColor() };
+  return render(nodes, rCtx);
+}
+
+function formatTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
+// ── Command registration ──
+
+export function registerUndoCommand(program: Command): void {
+  program
+    .command("undo")
+    .option("-y, --yes", "Skip confirmation prompt")
+    .option("-n, --dry-run", "Show what would happen without executing")
+    .summary("Undo the last workspace operation")
+    .description(
+      "Reverses the most recent workspace operation (branch rename, retarget, rebase, merge, or pull). Reads the operation record from .arbws/operation.json, shows what will be undone, and asks for confirmation.\n\nFor branch renames: reverses the git branch -m and restores the workspace config.\nFor sync operations (rebase, merge, retarget): resets repos to their pre-operation HEAD and aborts any in-progress git operations.\n\nIf any repo has drifted (HEAD moved since the operation), undo is refused with an explanation. Use --yes to skip the confirmation prompt.",
+    )
+    .action(
+      arbAction(async (ctx, options: { yes?: boolean; dryRun?: boolean }) => {
+        const { wsDir } = requireWorkspace(ctx);
+
+        const record = readOperationRecord(wsDir);
+        if (!record) {
+          const msg = "Nothing to undo";
+          error(msg);
+          throw new ArbError(msg);
+        }
+
+        const assessments = await assessUndo(record, wsDir);
+
+        // Check for drift
+        const drifted = assessments.filter((a) => a.action === "drifted");
+        if (drifted.length > 0) {
+          process.stderr.write(formatUndoPlan(record, assessments));
+          const msg = `Cannot undo — ${plural(drifted.length, "repo")} drifted since the operation`;
+          error(msg);
+          throw new ArbError(msg);
+        }
+
+        const actionable = assessments.filter((a) => a.action === "needs-undo" || a.action === "needs-abort");
+        if (actionable.length === 0) {
+          // Nothing to undo but record exists — clean up
+          deleteOperationRecord(wsDir);
+          const configFile = `${wsDir}/.arbws/config.json`;
+          if (record.configBefore) {
+            writeWorkspaceConfig(configFile, record.configBefore);
+          }
+          info("Nothing to undo — operation record cleaned up");
+          return;
+        }
+
+        process.stderr.write(formatUndoPlan(record, assessments));
+
+        if (options.dryRun) {
+          dryRunNotice();
+          return;
+        }
+
+        await confirmOrExit({
+          yes: options.yes,
+          message: `Undo ${record.command} in ${plural(actionable.length, "repo")}?`,
+        });
+
+        process.stderr.write("\n");
+
+        const configFile = `${wsDir}/.arbws/config.json`;
+
+        switch (record.command) {
+          case "branch-rename":
+            await executeBranchRenameUndo(record, assessments, wsDir, configFile);
+            break;
+          default: {
+            const msg = `Undo is not yet supported for '${record.command}' operations`;
+            error(msg);
+            throw new ArbError(msg);
+          }
+        }
+      }),
+    );
+}

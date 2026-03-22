@@ -20,3 +20,11 @@ export {
 export type { ArbContext } from "./types";
 export { type UpdateCheckResult, checkForUpdate } from "./update";
 export { atomicWriteFileSync } from "./fs";
+export {
+  type OperationRecord,
+  type RepoOperationState,
+  assertNoInProgressOperation,
+  deleteOperationRecord,
+  readOperationRecord,
+  writeOperationRecord,
+} from "./operation";

@@ -26,6 +26,7 @@ import { registerResetCommand } from "./commands/reset";
 import { registerRetargetCommand } from "./commands/retarget";
 import { registerStatusCommand } from "./commands/status";
 import { registerTemplateCommand } from "./commands/template";
+import { registerUndoCommand } from "./commands/undo";
 import { registerWatchCommand } from "./commands/watch";
 import { ArbAbort, ArbError, checkForUpdate } from "./lib/core";
 import { killActiveGitProcesses } from "./lib/git";
@@ -310,6 +311,7 @@ registerRebaseCommand(program);
 registerMergeCommand(program);
 registerRetargetCommand(program);
 registerResetCommand(program);
+registerUndoCommand(program);
 
 // ── Execution Commands ──────────────────────────────────────────
 program.commandsGroup("Execution Commands:");

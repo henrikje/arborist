@@ -2,7 +2,13 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict } from "../lib/analysis";
 import { predictStashPopConflict } from "../lib/analysis/conflict-prediction";
-import { ArbError, arbAction, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
+import {
+  ArbError,
+  arbAction,
+  assertNoInProgressOperation,
+  readWorkspaceConfig,
+  writeWorkspaceConfig,
+} from "../lib/core";
 import { getCommitsBetweenFull, gitLocal } from "../lib/git";
 import { finishSummary, render } from "../lib/render";
 import type { RenderContext } from "../lib/render";
@@ -45,6 +51,7 @@ export function registerRetargetCommand(program: Command): void {
     .action(
       arbAction(async (ctx, branchArg: string | undefined, options) => {
         const { wsDir, workspace } = requireWorkspace(ctx);
+        assertNoInProgressOperation(wsDir, "retarget");
         const branch = await requireBranch(wsDir, workspace);
         const configFile = `${wsDir}/.arbws/config.json`;
         const configBase = readWorkspaceConfig(configFile)?.base ?? null;
