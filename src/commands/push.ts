@@ -1,7 +1,13 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict } from "../lib/analysis";
-import { ArbError, type CommandContext, arbAction, readWorkspaceConfig } from "../lib/core";
+import {
+  ArbError,
+  type CommandContext,
+  arbAction,
+  assertNoInProgressOperation,
+  readWorkspaceConfig,
+} from "../lib/core";
 import { getCommitsBetweenFull, gitNetwork, networkTimeout } from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
 import { createRenderContext, finishSummary, render } from "../lib/render";
@@ -41,6 +47,7 @@ export function registerPushCommand(program: Command): void {
     .action(
       arbAction(async (ctx, repoArgs: string[], options) => {
         const { wsDir } = requireWorkspace(ctx);
+        assertNoInProgressOperation(wsDir, "push");
         const repoNames = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
         await runPush(ctx, repoNames, options);
       }),
