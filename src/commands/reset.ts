@@ -1,6 +1,15 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
-import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
+import {
+  ArbError,
+  type OperationRecord,
+  type RepoOperationState,
+  arbAction,
+  assertNoInProgressOperation,
+  captureRepoState,
+  readWorkspaceConfig,
+  writeOperationRecord,
+} from "../lib/core";
 import { getCommitsBetweenFull, getShortHead, gitLocal } from "../lib/git";
 import type { Cell, OutputNode, Span } from "../lib/render";
 import {
@@ -388,6 +397,7 @@ export function registerResetCommand(program: Command): void {
 
         const where = resolveWhereFilter(options);
         const { wsDir, workspace } = requireWorkspace(ctx);
+        assertNoInProgressOperation(wsDir, "reset");
         const branch = await requireBranch(wsDir, workspace);
 
         const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
@@ -473,7 +483,16 @@ export function registerResetCommand(program: Command): void {
 
         process.stderr.write("\n");
 
-        // Phase 4: execute
+        // Phase 4: capture state and write operation record
+        const repoStates: Record<string, RepoOperationState> = {};
+        for (const a of willReset) {
+          repoStates[a.repo] = await captureRepoState(a.repoDir, a.repo);
+        }
+
+        const record = buildOperationRecord({ command: "reset" }, repoStates);
+        writeOperationRecord(wsDir, record);
+
+        // Phase 5: execute
         let resetOk = 0;
         const failed: { assessment: ResetAssessment; stderr: string }[] = [];
 
@@ -481,9 +500,20 @@ export function registerResetCommand(program: Command): void {
           inlineStart(a.repo, `resetting to ${a.target}`);
           const result = await gitLocal(a.repoDir, "reset", `--${resetMode}`, a.target);
           if (result.exitCode === 0) {
+            const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+            const existing = record.repos[a.repo];
+            if (existing) {
+              record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+            }
+            writeOperationRecord(wsDir, record);
             inlineResult(a.repo, `reset to ${a.target}`);
             resetOk++;
           } else {
+            const existing = record.repos[a.repo];
+            if (existing) {
+              record.repos[a.repo] = { ...existing, status: "conflicting" };
+            }
+            writeOperationRecord(wsDir, record);
             inlineResult(a.repo, yellow("failed"));
             failed.push({ assessment: a, stderr: result.stderr });
           }
@@ -518,7 +548,15 @@ export function registerResetCommand(program: Command): void {
           process.stderr.write(render(failureNodes, reportCtx));
         }
 
-        // Phase 5: summary
+        // Finalize operation record
+        if (failed.length === 0) {
+          record.status = "completed";
+          writeOperationRecord(wsDir, record);
+        } else {
+          info("Run 'arb undo' to roll back");
+        }
+
+        // Phase 6: summary
         process.stderr.write("\n");
         const parts: string[] = [];
         parts.push(`Reset ${plural(resetOk, "repo")}`);
