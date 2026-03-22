@@ -13,7 +13,7 @@ import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
 import { cell } from "../lib/render";
 import { confirmOrExit } from "../lib/sync";
-import { dryRunNotice, error, info, inlineResult, inlineStart, plural, shouldColor } from "../lib/terminal";
+import { dryRunNotice, error, info, inlineResult, inlineStart, plural, shouldColor, warn } from "../lib/terminal";
 import { requireWorkspace, workspaceRepoDirs } from "../lib/workspace";
 
 // ── Per-repo undo classification ──
@@ -45,7 +45,7 @@ async function assessBranchRenameUndo(
       continue;
     }
 
-    if (state.status === "skipped") {
+    if (state.status === "skipped" || state.status === "pending") {
       assessments.push({ repo: repoName, repoDir, action: "skip" });
       continue;
     }
@@ -141,7 +141,7 @@ async function assessSyncUndo(record: OperationRecord, wsDir: string): Promise<R
       continue;
     }
 
-    if (state.status === "skipped") {
+    if (state.status === "skipped" || state.status === "pending") {
       assessments.push({ repo: repoName, repoDir, action: "skip" });
       continue;
     }
@@ -344,19 +344,34 @@ export function registerUndoCommand(program: Command): void {
     .command("undo")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("-n, --dry-run", "Show what would happen without executing")
+    .option("-f, --force", "Delete a corrupted operation record without attempting to undo")
     .summary("Undo the last workspace operation")
     .description(
-      "Reverses the most recent workspace operation (branch rename, retarget, rebase, merge, or pull). Reads the operation record from .arbws/operation.json, shows what will be undone, and asks for confirmation.\n\nFor branch renames: reverses the git branch -m and restores the workspace config.\nFor sync operations (rebase, merge, retarget): resets repos to their pre-operation HEAD and aborts any in-progress git operations.\n\nIf any repo has drifted (HEAD moved since the operation), undo is refused with an explanation. Use --yes to skip the confirmation prompt.",
+      "Reverses the most recent workspace operation (branch rename, retarget, rebase, merge, or pull). Reads the operation record from .arbws/operation.json, shows what will be undone, and asks for confirmation.\n\nFor branch renames: reverses the git branch -m and restores the workspace config.\nFor sync operations (rebase, merge, retarget): resets repos to their pre-operation HEAD and aborts any in-progress git operations.\n\nIf any repo has drifted (HEAD moved since the operation), undo is refused with an explanation. Use --yes to skip the confirmation prompt.\n\nUse --force to delete a corrupted operation record without attempting to undo. This is an escape hatch when the record is unreadable.",
     )
     .action(
-      arbAction(async (ctx, options: { yes?: boolean; dryRun?: boolean }) => {
+      arbAction(async (ctx, options: { yes?: boolean; dryRun?: boolean; force?: boolean }) => {
         const { wsDir } = requireWorkspace(ctx);
+
+        // --force: delete corrupted record without reading it
+        if (options.force) {
+          deleteOperationRecord(wsDir);
+          info("Operation record cleared");
+          return;
+        }
 
         const record = readOperationRecord(wsDir);
         if (!record) {
           const msg = "Nothing to undo";
           error(msg);
           throw new ArbError(msg);
+        }
+
+        // Warn if operation is older than 7 days (stash GC risk)
+        const ageMs = Date.now() - new Date(record.startedAt).getTime();
+        const hasStash = Object.values(record.repos).some((r) => r.stashSha);
+        if (ageMs > 7 * 24 * 60 * 60 * 1000 && hasStash) {
+          warn("This operation is older than 7 days — stashed changes may have been garbage collected by git");
         }
 
         const assessments = await assessUndo(record, wsDir);
@@ -416,19 +431,21 @@ export function registerUndoCommand(program: Command): void {
           }
         }
 
-        // Shared tail: error handling, config restore, record cleanup, summary
+        // Shared tail: always restore config (even on partial failure).
+        // Config should reflect the pre-operation state regardless of which repos succeeded.
+        const configFile = `${wsDir}/.arbws/config.json`;
+        if (record.configBefore) {
+          writeWorkspaceConfig(configFile, record.configBefore);
+        }
+
         if (result.failures.length > 0) {
+          // Don't delete record — user can re-run undo after fixing the failed repos
           process.stderr.write("\n");
           error(`Failed to undo ${plural(result.failures.length, "repo")}: ${result.failures.join(", ")}`);
           throw new ArbError(`Failed to undo ${plural(result.failures.length, "repo")}: ${result.failures.join(", ")}`);
         }
 
-        const configFile = `${wsDir}/.arbws/config.json`;
-        if (record.configBefore) {
-          writeWorkspaceConfig(configFile, record.configBefore);
-        }
         deleteOperationRecord(wsDir);
-
         process.stderr.write("\n");
         finishSummary([`Undone ${plural(result.undone, "repo")}`], false);
       }),

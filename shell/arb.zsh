@@ -546,7 +546,8 @@ _arb() {
                 undo)
                     _arguments \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
-                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]'
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '(-f --force)'{-f,--force}'[Delete corrupted operation record without undo]'
                     ;;
                 log)
                     _arguments \
