@@ -27,6 +27,7 @@ export function buildConflictReport(entries: ConflictEntry[]): OutputNode[] {
           cell(`cd ${e.repo}`),
           cell(`# fix conflicts, then: git ${e.subcommand} --continue`),
           cell(`# or to undo: git ${e.subcommand} --abort`),
+          cell(`# or from workspace root: arb ${e.subcommand}  /  arb undo`, "muted"),
         ],
       },
     );

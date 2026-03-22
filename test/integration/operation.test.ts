@@ -378,3 +378,74 @@ describe("arb undo", () => {
       expect(config.branch).toBe("my-feature");
     }));
 });
+
+// ── status banner ────────────────────────────────────────────────
+
+describe("status operation banner", () => {
+  test("arb status shows operation banner during in-progress branch rename", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const ws = join(env.projectDir, "my-feature");
+      const repoA = join(ws, "repo-a");
+
+      // Cause partial rename failure
+      await git(repoA, ["branch", "feat/new-name"]);
+      await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--no-fetch"], { cwd: ws });
+
+      // Status should show banner
+      const result = await arb(env, ["status", "--no-fetch"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("branch-rename in progress");
+      expect(result.output).toContain("arb undo");
+    }));
+
+  test("arb status shows no banner when no operation in progress", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const ws = join(env.projectDir, "my-feature");
+
+      const result = await arb(env, ["status", "--no-fetch"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).not.toContain("in progress");
+    }));
+
+  test("arb status shows no banner after completed operation", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const ws = join(env.projectDir, "my-feature");
+
+      // Successful rename → completed record
+      await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--no-fetch"], { cwd: ws });
+
+      const result = await arb(env, ["status", "--no-fetch"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).not.toContain("in progress");
+    }));
+});
+
+// ── conflict report ──────────────────────────────────────────────
+
+describe("conflict report mentions arb undo", () => {
+  test("rebase conflict report includes arb undo guidance", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+      const mainRepo = join(env.projectDir, ".arb/repos/repo-a");
+
+      await write(join(wt, "conflict.txt"), "feature version");
+      await git(wt, ["add", "conflict.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+
+      await git(mainRepo, ["checkout", "main"]);
+      await write(join(mainRepo, "conflict.txt"), "main version");
+      await git(mainRepo, ["add", "conflict.txt"]);
+      await git(mainRepo, ["commit", "-m", "main"]);
+      await git(mainRepo, ["push", "origin", "main"]);
+      await git(mainRepo, ["checkout", "--detach"]);
+
+      const result = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("arb undo");
+    }));
+});
