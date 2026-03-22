@@ -52,6 +52,7 @@ const BASIC_HELP_COMMANDS = new Set([
   "delete",
   "list",
   "status",
+  "watch",
   "push",
   "pull",
   "rebase",
