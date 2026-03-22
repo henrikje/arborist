@@ -7,7 +7,6 @@ import {
   type RepoOperationState,
   arbAction,
   assertNoInProgressOperation,
-  buildOperationRecord,
   captureRepoState,
   readOperationRecord,
   readWorkspaceConfig,
@@ -258,12 +257,16 @@ async function runWorkspaceRename(
 
   const configBefore = readWorkspaceConfig(configFile) ?? { branch: oldBranch };
   const configAfter = { branch: newBranch, ...(configBase && { base: configBase }) };
-  const record = buildOperationRecord(
-    { command: "rename", oldName: workspace, newName: newWorkspaceName },
-    repoStates,
+  const record: OperationRecord = {
+    command: "rename",
+    startedAt: new Date().toISOString(),
+    status: "in-progress",
+    repos: repoStates,
+    oldName: workspace,
+    newName: newWorkspaceName,
     configBefore,
     configAfter,
-  );
+  };
   writeOperationRecord(wsDir, record);
 
   // Rename branches if needed

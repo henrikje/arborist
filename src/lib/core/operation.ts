@@ -2,17 +2,25 @@ import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { z } from "zod";
 import { detectOperation, gitLocal, parseGitStatus } from "../git/git";
 import { error } from "../terminal/output";
-import { type WorkspaceConfig, WorkspaceConfigSchema } from "./config";
+import { WorkspaceConfigSchema } from "./config";
 import { ArbError } from "./errors";
 import { atomicWriteFileSync } from "./fs";
 
 // ── Schemas ──
+
+const TrackingSchema = z
+  .object({
+    remote: z.string().optional(),
+    merge: z.string().optional(),
+  })
+  .optional();
 
 const RepoOperationStateSchema = z.object({
   preHead: z.string(),
   postHead: z.string().optional(),
   stashSha: z.string().nullable().optional(),
   status: z.enum(["completed", "conflicting", "skipped", "pending"]),
+  tracking: TrackingSchema,
 });
 
 const OperationBaseSchema = z.object({
@@ -111,22 +119,6 @@ export async function captureRepoState(repoDir: string, repoName: string): Promi
   };
 }
 
-export function buildOperationRecord(
-  commandFields: { command: string } & Record<string, unknown>,
-  repos: Record<string, RepoOperationState>,
-  configBefore?: WorkspaceConfig,
-  configAfter?: WorkspaceConfig,
-): OperationRecord {
-  return {
-    ...commandFields,
-    startedAt: new Date().toISOString(),
-    status: "in-progress" as const,
-    repos,
-    ...(configBefore && { configBefore }),
-    ...(configAfter && { configAfter }),
-  } as OperationRecord;
-}
-
 // ── Delete ──
 
 export function deleteOperationRecord(wsDir: string): void {
@@ -161,7 +153,8 @@ export type ContinueClassification =
   | { action: "manually-continued"; postHead: string }
   | { action: "already-done" }
   | { action: "skip" }
-  | { action: "needs-execute" };
+  | { action: "needs-execute" }
+  | { action: "unexpected-operation"; operation: string };
 
 export async function classifyContinueRepo(
   repoDir: string,
@@ -177,6 +170,10 @@ export async function classifyContinueRepo(
     const status = await parseGitStatus(repoDir);
     if (status.conflicts > 0) return { action: "still-conflicting" };
     return { action: "will-continue" };
+  }
+  if (op !== null) {
+    // User started a different git operation (cherry-pick, revert, bisect, am)
+    return { action: "unexpected-operation", operation: op };
   }
 
   // No git operation in progress — user resolved or aborted manually
