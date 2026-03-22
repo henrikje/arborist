@@ -39,6 +39,7 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
   for (const [repoName, state] of Object.entries(record.repos)) {
     const repoDir = repoDirMap.get(repoName);
     if (!repoDir) {
+      info(`${repoName}: skipped (no longer in workspace)`);
       classifications.push({ repo: repoName, repoDir: "", classification: { action: "skip" } });
       continue;
     }
@@ -48,6 +49,7 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
 
   const stillConflicting = classifications.filter((c) => c.classification.action === "still-conflicting");
   const willContinue = classifications.filter((c) => c.classification.action === "will-continue");
+  const needsExecute = classifications.filter((c) => c.classification.action === "needs-execute");
 
   // Step 2: Update record for manually-resolved repos
   for (const c of classifications) {
@@ -64,7 +66,14 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
     }
   }
 
-  // Step 3: Early exit if only still-conflicting (nothing actionable)
+  // Step 3: Warn about repos that were never started (crash recovery)
+  if (needsExecute.length > 0) {
+    for (const c of needsExecute) {
+      info(`${c.repo}: was not started — run 'arb undo' then re-run 'arb ${mode}' to include it`);
+    }
+  }
+
+  // Step 3b: Early exit if only still-conflicting (nothing actionable)
   if (stillConflicting.length > 0 && willContinue.length === 0) {
     writeOperationRecord(wsDir, record);
     for (const c of stillConflicting) {
@@ -100,6 +109,9 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
           break;
         case "already-done":
           actionCell = cell("already done", "muted");
+          break;
+        case "needs-execute":
+          actionCell = cell("not started — undo and re-run to include", "attention");
           break;
         default:
           actionCell = cell("skip", "muted");

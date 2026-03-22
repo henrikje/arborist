@@ -408,7 +408,7 @@ async function runRename(
     const headResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
     const preHead = headResult.stdout.trim();
     if (!preHead) throw new ArbError(`Cannot capture HEAD for ${a.repo}`);
-    repoStates[a.repo] = { preHead, status: "skipped" };
+    repoStates[a.repo] = { preHead, status: "pending" };
   }
 
   const record: OperationRecord = {

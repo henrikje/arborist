@@ -12,7 +12,7 @@ const RepoOperationStateSchema = z.object({
   preHead: z.string(),
   postHead: z.string().optional(),
   stashSha: z.string().nullable().optional(),
-  status: z.enum(["completed", "conflicting", "skipped"]),
+  status: z.enum(["completed", "conflicting", "skipped", "pending"]),
 });
 
 const OperationBaseSchema = z.object({
@@ -69,6 +69,7 @@ export function readOperationRecord(wsDir: string): OperationRecord | null {
   } catch {
     const msg = `Failed to parse operation record: ${filePath}`;
     error(msg);
+    error("Run 'arb undo --force' to clear the corrupted record, or delete the file manually");
     throw new ArbError(msg);
   }
 
@@ -77,6 +78,7 @@ export function readOperationRecord(wsDir: string): OperationRecord | null {
     const issues = result.error.issues.map((i) => `${i.path.join(".")} ${i.message}`.trim()).join("; ");
     const msg = `Invalid operation record ${filePath}: ${issues}`;
     error(msg);
+    error("Run 'arb undo --force' to clear the corrupted record, or delete the file manually");
     throw new ArbError(msg);
   }
 
@@ -105,7 +107,7 @@ export async function captureRepoState(repoDir: string, repoName: string): Promi
   return {
     preHead,
     stashSha: stashResult.stdout.trim() || null,
-    status: "skipped",
+    status: "pending",
   };
 }
 
@@ -158,7 +160,8 @@ export type ContinueClassification =
   | { action: "manually-aborted" }
   | { action: "manually-continued"; postHead: string }
   | { action: "already-done" }
-  | { action: "skip" };
+  | { action: "skip" }
+  | { action: "needs-execute" };
 
 export async function classifyContinueRepo(
   repoDir: string,
@@ -166,6 +169,7 @@ export async function classifyContinueRepo(
 ): Promise<ContinueClassification> {
   if (state.status === "completed") return { action: "already-done" };
   if (state.status === "skipped") return { action: "skip" };
+  if (state.status === "pending") return { action: "needs-execute" };
 
   // status === "conflicting"
   const op = await detectOperation(repoDir);
