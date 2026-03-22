@@ -261,11 +261,11 @@ async function assessUndo(record: OperationRecord, wsDir: string): Promise<RepoU
     case "merge":
     case "pull":
     case "reset":
+    case "rename":
       return assessSyncUndo(record, wsDir);
     default: {
-      const msg = `Undo is not yet supported for '${record.command}' operations`;
-      error(msg);
-      throw new ArbError(msg);
+      const _exhaustive: never = record;
+      throw new ArbError("Undo is not yet supported for this operation");
     }
   }
 }
@@ -399,12 +399,12 @@ export function registerUndoCommand(program: Command): void {
           case "merge":
           case "pull":
           case "reset":
+          case "rename":
             result = await executeSyncUndo(record, assessments);
             break;
           default: {
-            const msg = `Undo is not yet supported for '${record.command}' operations`;
-            error(msg);
-            throw new ArbError(msg);
+            const _exhaustive: never = record;
+            throw new ArbError("Undo is not yet supported for this operation");
           }
         }
 

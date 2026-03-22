@@ -196,17 +196,15 @@ async function runDump(ctx: CommandContext): Promise<void> {
 
       let branch: string | null = null;
       let base: string | null = null;
-      let branchRenameFrom: string | null = null;
       try {
         const config = readWorkspaceConfig(configFile);
         branch = config?.branch ?? null;
         base = config?.base ?? null;
-        branchRenameFrom = config?.branch_rename_from ?? null;
       } catch (err) {
         dumpErrors.push(`workspace ${ws} config: ${errMsg(err)}`);
       }
 
-      return { branch, base, branchRenameFrom, repos };
+      return { branch, base, repos };
     }),
   );
 

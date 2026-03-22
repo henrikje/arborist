@@ -38,8 +38,6 @@ describe("config", () => {
       const full: WorkspaceConfig = {
         branch: "new-name",
         base: "main",
-        branch_rename_from: "old-name",
-        workspace_rename_to: "new-ws",
       };
       writeFileSync(configFile, `${JSON.stringify(full, null, 2)}\n`);
       const config = readWorkspaceConfig(configFile);
@@ -51,8 +49,6 @@ describe("config", () => {
       const config = readWorkspaceConfig(configFile);
       expect(config).toEqual({ branch: "my-branch" });
       expect(config?.base).toBeUndefined();
-      expect(config?.branch_rename_from).toBeUndefined();
-      expect(config?.workspace_rename_to).toBeUndefined();
     });
 
     test("throws on invalid JSON content", () => {
@@ -85,12 +81,10 @@ describe("config", () => {
       expect(config?.base).toBe("feat/auth");
     });
 
-    test("writes all migration fields", () => {
+    test("writes all fields", () => {
       const full: WorkspaceConfig = {
         branch: "new-name",
         base: "main",
-        branch_rename_from: "old-name",
-        workspace_rename_to: "new-ws",
       };
       writeWorkspaceConfig(configFile, full);
       expect(readWorkspaceConfig(configFile)).toEqual(full);
@@ -100,8 +94,6 @@ describe("config", () => {
       writeWorkspaceConfig(configFile, { branch: "my-branch" });
       const content = readFileSync(configFile, "utf-8");
       expect(content).not.toContain("base");
-      expect(content).not.toContain("branch_rename_from");
-      expect(content).not.toContain("workspace_rename_to");
     });
   });
 
@@ -154,16 +146,11 @@ describe("config", () => {
     });
 
     test("migrates workspace INI with migration state", () => {
-      writeFileSync(
-        configFile,
-        "branch = new-name\nbase = main\nbranch_rename_from = old-name\nworkspace_rename_to = new-ws\n",
-      );
+      writeFileSync(configFile, "branch = new-name\nbase = main\n");
       const config = readWorkspaceConfig(configFile);
       expect(config).toEqual({
         branch: "new-name",
         base: "main",
-        branch_rename_from: "old-name",
-        workspace_rename_to: "new-ws",
       });
     });
 
