@@ -449,3 +449,50 @@ describe("conflict report mentions arb undo", () => {
       expect(result.output).toContain("arb undo");
     }));
 });
+
+// ── push gate ────────────────────────────────────────────────────
+
+describe("push gate", () => {
+  test("arb push is blocked during in-progress branch rename", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const ws = join(env.projectDir, "my-feature");
+      const repoA = join(ws, "repo-a");
+
+      // Cause partial rename failure to leave operation in-progress
+      await git(repoA, ["branch", "feat/new-name"]);
+      await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--no-fetch"], { cwd: ws });
+
+      // Push should be blocked
+      const result = await arb(env, ["push", "--yes", "--no-fetch"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("in progress");
+      expect(result.output).toContain("arb undo");
+    }));
+
+  test("arb push is blocked during in-progress rebase", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+      const mainRepo = join(env.projectDir, ".arb/repos/repo-a");
+
+      await write(join(wt, "conflict.txt"), "feature");
+      await git(wt, ["add", "conflict.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+
+      await git(mainRepo, ["checkout", "main"]);
+      await write(join(mainRepo, "conflict.txt"), "main");
+      await git(mainRepo, ["add", "conflict.txt"]);
+      await git(mainRepo, ["commit", "-m", "main"]);
+      await git(mainRepo, ["push", "origin", "main"]);
+      await git(mainRepo, ["checkout", "--detach"]);
+
+      await arb(env, ["rebase", "--yes"], { cwd: ws });
+
+      // Push should be blocked
+      const result = await arb(env, ["push", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("rebase in progress");
+    }));
+});
