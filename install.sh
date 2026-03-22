@@ -12,6 +12,8 @@ warn()    { printf "${YELLOW}%s${NC}\n" "$*"; }
 error()   { printf "${RED}%s${NC}\n" "$*" >&2; }
 
 REPO="henrikje/arborist"
+_arb_tmpfiles=()
+trap 'rm -f "${_arb_tmpfiles[@]}"' EXIT
 BIN_DIR="$HOME/.local/bin"
 SHARE_DIR="$HOME/.local/share/arb"
 
@@ -194,6 +196,10 @@ fi
 
 mkdir -p "$BIN_DIR"
 
+# Remove before copying so the new binary gets a fresh inode. Overwriting
+# in-place (same inode) can leave stale macOS code-signing caches that
+# cause the binary to hang on launch.
+rm -f "$BIN_DIR/arb"
 cp "$BINARY_SRC" "$BIN_DIR/arb"
 chmod +x "$BIN_DIR/arb"
 log "Installed arb to $BIN_DIR/arb"
@@ -227,20 +233,37 @@ __arb_configure_rc() {
         done
     fi
 
-    # Add Arborist block if not already present
+    # Remove existing Arborist block if present (will be re-added at end)
+    # Uses positional removal: only strips lines immediately following the
+    # marker that match our known content. User-added lines elsewhere in
+    # the file that happen to contain the same text are left untouched.
     if [[ -f "$rc_file" ]] && grep -qF "$ARB_MARKER" "$rc_file"; then
-        warn "Arborist block already present in $rc_name, skipping"
-    else
-        local ARB_BLOCK="$ARB_MARKER"
-        ARB_BLOCK="$ARB_BLOCK"$'\n'"$PATH_LINE"
-        ARB_BLOCK="$ARB_BLOCK"$'\n'"$SOURCE_LINE"
-
-        if [[ -f "$rc_file" ]] && [[ "$(tail -c 2 "$rc_file")" != "" ]]; then
-            printf '\n' >> "$rc_file"
-        fi
-        printf '%s\n' "$ARB_BLOCK" >> "$rc_file"
-        log "Added Arborist block to $rc_name"
+        local tmp_file
+        tmp_file="$(mktemp)"; _arb_tmpfiles+=("$tmp_file")
+        awk -v marker="$ARB_MARKER" \
+            -v path_line='export PATH="$HOME/.local/bin:$PATH"' \
+            -v src_zsh='source "$HOME/.local/share/arb/arb.zsh"' \
+            -v src_bash='source "$HOME/.local/share/arb/arb.bash"' \
+            '
+            $0 == marker { skip = 1; next }
+            skip && ($0 == path_line || $0 == src_zsh || $0 == src_bash) { next }
+            { skip = 0; print }
+            ' "$rc_file" > "$tmp_file"
+        cat "$tmp_file" > "$rc_file"
+        rm -f "$tmp_file"
     fi
+
+    # Always add Arborist block at end of file — ensures PATH prepend
+    # happens after any brew shellenv or other PATH modifications.
+    local ARB_BLOCK="$ARB_MARKER"
+    ARB_BLOCK="$ARB_BLOCK"$'\n'"$PATH_LINE"
+    ARB_BLOCK="$ARB_BLOCK"$'\n'"$SOURCE_LINE"
+
+    if [[ -f "$rc_file" ]] && [[ "$(tail -c 2 "$rc_file")" != "" ]]; then
+        printf '\n' >> "$rc_file"
+    fi
+    printf '%s\n' "$ARB_BLOCK" >> "$rc_file"
+    log "Added Arborist block to $rc_name"
 }
 
 case "$USER_SHELL" in
