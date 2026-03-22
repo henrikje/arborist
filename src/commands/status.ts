@@ -1,7 +1,7 @@
 import { basename, resolve } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict } from "../lib/analysis";
-import { ArbError, type CommandContext, arbAction, readWorkspaceConfig } from "../lib/core";
+import { ArbError, type CommandContext, arbAction, readOperationRecord, readWorkspaceConfig } from "../lib/core";
 import { localTimeout } from "../lib/git/git";
 import { printSchema } from "../lib/json";
 import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
@@ -381,6 +381,29 @@ async function renderStatusTable(
     currentRepo,
     verboseData,
   });
+
+  // Operation banner (prepended before everything else)
+  const record = readOperationRecord(wsDir);
+  if (record?.status === "in-progress") {
+    const repoEntries = Object.values(record.repos);
+    const completed = repoEntries.filter((r) => r.status === "completed").length;
+    const conflicting = repoEntries.filter((r) => r.status === "conflicting").length;
+    const commandLabel = record.command === "branch-rename" ? "arb branch rename" : `arb ${record.command}`;
+
+    const counts: string[] = [];
+    if (completed > 0) counts.push(`${completed} completed`);
+    if (conflicting > 0) counts.push(`${conflicting} conflicting`);
+    const countStr = counts.length > 0 ? ` (${counts.join(", ")})` : "";
+
+    nodes.unshift(
+      {
+        kind: "message",
+        level: "attention",
+        text: `${record.command} in progress${countStr} — run '${commandLabel}' to continue or 'arb undo' to roll back`,
+      },
+      { kind: "gap" },
+    );
+  }
 
   // Prepend header with ref parenthetical when ref columns are hidden
   const renderCtx = createRenderContext();
