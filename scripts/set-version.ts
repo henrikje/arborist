@@ -3,6 +3,8 @@ import { $ } from "bun";
 const sha = (await $`git rev-parse --short HEAD`.text()).trim();
 const dirty = (await $`git status --porcelain`.text()).trim().length > 0;
 
+const buildTime = new Date().toISOString();
+
 let fullVersion: string;
 
 try {
@@ -15,6 +17,8 @@ try {
 } catch {
   fullVersion = dirty ? `dev.${sha}.dirty` : `dev.${sha}`;
 }
+
+fullVersion = `${fullVersion}.${buildTime}`;
 
 await Bun.write(
   "src/version.ts",

@@ -11,6 +11,8 @@ success() { printf "${GREEN}%s${NC}\n" "$*"; }
 warn()    { printf "${YELLOW}%s${NC}\n" "$*"; }
 error()   { printf "${RED}%s${NC}\n" "$*" >&2; }
 
+_arb_tmpfiles=()
+trap 'rm -f "${_arb_tmpfiles[@]}"' EXIT
 BIN_DIR="$HOME/.local/bin"
 SHARE_DIR="$HOME/.local/share/arb"
 ARB_MARKER="# Added by Arborist"
@@ -76,15 +78,21 @@ __arb_clean_rc() {
         return
     fi
 
+    # Positional removal: only strips lines immediately following the
+    # marker that match our known content. User-added lines elsewhere
+    # in the file that happen to contain the same text are left untouched.
     local tmp_file
-    tmp_file="$(mktemp)"
+    tmp_file="$(mktemp)"; _arb_tmpfiles+=("$tmp_file")
 
-    < "$rc_file" \
-        grep -vF "$ARB_MARKER" \
-        | grep -vF 'export PATH="$HOME/.local/bin:$PATH"' \
-        | grep -vF 'source "$HOME/.local/share/arb/arb.zsh"' \
-        | grep -vF 'source "$HOME/.local/share/arb/arb.bash"' \
-        > "$tmp_file" || true
+    awk -v marker="$ARB_MARKER" \
+        -v path_line='export PATH="$HOME/.local/bin:$PATH"' \
+        -v src_zsh='source "$HOME/.local/share/arb/arb.zsh"' \
+        -v src_bash='source "$HOME/.local/share/arb/arb.bash"' \
+        '
+        $0 == marker { skip = 1; next }
+        skip && ($0 == path_line || $0 == src_zsh || $0 == src_bash) { next }
+        { skip = 0; print }
+        ' "$rc_file" > "$tmp_file"
 
     cat "$tmp_file" > "$rc_file"
     rm -f "$tmp_file"
