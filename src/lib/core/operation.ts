@@ -86,8 +86,13 @@ export function readOperationRecord(wsDir: string): OperationRecord | null {
 // ── Write ──
 
 export function writeOperationRecord(wsDir: string, record: OperationRecord): void {
+  const result = OperationRecordSchema.safeParse(record);
+  if (!result.success) {
+    const issues = result.error.issues.map((i) => `${i.path.join(".")} ${i.message}`.trim()).join("; ");
+    throw new ArbError(`Invalid operation record: ${issues}`);
+  }
   const filePath = operationFilePath(wsDir);
-  atomicWriteFileSync(filePath, `${JSON.stringify(record, null, 2)}\n`);
+  atomicWriteFileSync(filePath, `${JSON.stringify(result.data, null, 2)}\n`);
 }
 
 // ── Delete ──

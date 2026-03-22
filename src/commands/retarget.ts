@@ -233,9 +233,11 @@ export function registerRetargetCommand(program: Command): void {
         const repoStates: Record<string, RepoOperationState> = {};
         for (const a of willRetarget) {
           const headResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+          const preHead = headResult.stdout.trim();
+          if (!preHead) throw new ArbError(`Cannot capture HEAD for ${a.repo}`);
           const stashResult = await gitLocal(a.repoDir, "stash", "create");
           repoStates[a.repo] = {
-            preHead: headResult.stdout.trim(),
+            preHead,
             stashSha: stashResult.stdout.trim() || null,
             status: "skipped",
           };
