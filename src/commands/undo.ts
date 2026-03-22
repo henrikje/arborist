@@ -94,12 +94,15 @@ async function assessBranchRenameUndo(
   return assessments;
 }
 
+interface UndoResult {
+  undone: number;
+  failures: string[];
+}
+
 async function executeBranchRenameUndo(
   record: OperationRecord & { command: "branch-rename" },
   assessments: RepoUndoAssessment[],
-  wsDir: string,
-  configFile: string,
-): Promise<void> {
+): Promise<UndoResult> {
   let undone = 0;
   const failures: string[] = [];
 
@@ -120,22 +123,7 @@ async function executeBranchRenameUndo(
     }
   }
 
-  if (failures.length > 0) {
-    process.stderr.write("\n");
-    error(`Failed to revert ${plural(failures.length, "repo")}: ${failures.join(", ")}`);
-    throw new ArbError(`Failed to revert ${plural(failures.length, "repo")}: ${failures.join(", ")}`);
-  }
-
-  // Restore config
-  if (record.configBefore) {
-    writeWorkspaceConfig(configFile, record.configBefore);
-  }
-
-  // Clean up operation record
-  deleteOperationRecord(wsDir);
-
-  process.stderr.write("\n");
-  finishSummary([`Undone ${plural(undone, "repo")}`], false);
+  return { undone, failures };
 }
 
 // ── Sync undo (retarget, rebase, merge) ──
@@ -212,12 +200,7 @@ async function assessSyncUndo(record: OperationRecord, wsDir: string): Promise<R
   return assessments;
 }
 
-async function executeSyncUndo(
-  record: OperationRecord,
-  assessments: RepoUndoAssessment[],
-  wsDir: string,
-  configFile: string,
-): Promise<void> {
+async function executeSyncUndo(record: OperationRecord, assessments: RepoUndoAssessment[]): Promise<UndoResult> {
   let undone = 0;
   const failures: string[] = [];
 
@@ -264,22 +247,7 @@ async function executeSyncUndo(
     }
   }
 
-  if (failures.length > 0) {
-    process.stderr.write("\n");
-    error(`Failed to undo ${plural(failures.length, "repo")}: ${failures.join(", ")}`);
-    throw new ArbError(`Failed to undo ${plural(failures.length, "repo")}: ${failures.join(", ")}`);
-  }
-
-  // Restore config
-  if (record.configBefore) {
-    writeWorkspaceConfig(configFile, record.configBefore);
-  }
-
-  // Clean up operation record
-  deleteOperationRecord(wsDir);
-
-  process.stderr.write("\n");
-  finishSummary([`Undone ${plural(undone, "repo")}`], false);
+  return { undone, failures };
 }
 
 // ── Shared undo infrastructure ──
@@ -419,17 +387,17 @@ export function registerUndoCommand(program: Command): void {
 
         process.stderr.write("\n");
 
-        const configFile = `${wsDir}/.arbws/config.json`;
-
+        // Execute command-specific undo
+        let result: UndoResult;
         switch (record.command) {
           case "branch-rename":
-            await executeBranchRenameUndo(record, assessments, wsDir, configFile);
+            result = await executeBranchRenameUndo(record, assessments);
             break;
           case "retarget":
           case "rebase":
           case "merge":
           case "pull":
-            await executeSyncUndo(record, assessments, wsDir, configFile);
+            result = await executeSyncUndo(record, assessments);
             break;
           default: {
             const msg = `Undo is not yet supported for '${record.command}' operations`;
@@ -437,6 +405,22 @@ export function registerUndoCommand(program: Command): void {
             throw new ArbError(msg);
           }
         }
+
+        // Shared tail: error handling, config restore, record cleanup, summary
+        if (result.failures.length > 0) {
+          process.stderr.write("\n");
+          error(`Failed to undo ${plural(result.failures.length, "repo")}: ${result.failures.join(", ")}`);
+          throw new ArbError(`Failed to undo ${plural(result.failures.length, "repo")}: ${result.failures.join(", ")}`);
+        }
+
+        const configFile = `${wsDir}/.arbws/config.json`;
+        if (record.configBefore) {
+          writeWorkspaceConfig(configFile, record.configBefore);
+        }
+        deleteOperationRecord(wsDir);
+
+        process.stderr.write("\n");
+        finishSummary([`Undone ${plural(result.undone, "repo")}`], false);
       }),
     );
 }
