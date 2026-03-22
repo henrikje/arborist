@@ -21,9 +21,11 @@ export type { ArbContext } from "./types";
 export { type UpdateCheckResult, checkForUpdate } from "./update";
 export { atomicWriteFileSync } from "./fs";
 export {
+  type ContinueClassification,
   type OperationRecord,
   type RepoOperationState,
   assertNoInProgressOperation,
+  classifyContinueRepo,
   deleteOperationRecord,
   readOperationRecord,
   writeOperationRecord,

@@ -7,7 +7,14 @@ import {
 } from "../analysis/conflict-prediction";
 import type { CommandContext } from "../core/command-action";
 import { readWorkspaceConfig, writeWorkspaceConfig } from "../core/config";
-import { assertNoInProgressOperation } from "../core/operation";
+import { ArbError } from "../core/errors";
+import type { OperationRecord, RepoOperationState } from "../core/operation";
+import {
+  assertNoInProgressOperation,
+  classifyContinueRepo,
+  readOperationRecord,
+  writeOperationRecord,
+} from "../core/operation";
 import { getCommitsBetweenFull, getDiffShortstat, getMergeBase, gitLocal } from "../git/git";
 import type { GitCache } from "../git/git-cache";
 import { buildConflictReport, buildStashPopFailureReport } from "../render/conflict-report";
@@ -50,9 +57,15 @@ export async function integrate(
   const verb = mode === "rebase" ? "Rebase" : "Merge";
   const verbed = mode === "rebase" ? "Rebased" : "Merged";
 
-  // Phase 0: operation gate
+  // Phase 0: operation gate + continue detection
   const { wsDir, workspace } = requireWorkspace(ctx);
   assertNoInProgressOperation(wsDir, mode);
+
+  const existingRecord = readOperationRecord(wsDir);
+  if (existingRecord?.command === mode && existingRecord.status === "in-progress") {
+    await runIntegrateContinue(existingRecord, wsDir, workspace, mode, options);
+    return;
+  }
 
   // Phase 1: context & repo selection
   const branch = await requireBranch(wsDir, workspace);
@@ -162,7 +175,27 @@ export async function integrate(
 
   process.stderr.write("\n");
 
-  // Phase 5: execute sequentially
+  // Phase 5: capture state and write operation record
+  const repoStates: Record<string, RepoOperationState> = {};
+  for (const a of willOperate) {
+    const headResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+    const stashResult = await gitLocal(a.repoDir, "stash", "create");
+    repoStates[a.repo] = {
+      preHead: headResult.stdout.trim(),
+      stashSha: stashResult.stdout.trim() || null,
+      status: "skipped",
+    };
+  }
+
+  const record: OperationRecord = {
+    command: mode,
+    startedAt: new Date().toISOString(),
+    status: "in-progress",
+    repos: repoStates,
+  };
+  writeOperationRecord(wsDir, record);
+
+  // Phase 6: execute sequentially
   let succeeded = 0;
   const conflicted: { assessment: RepoAssessment; stdout: string; stderr: string }[] = [];
   const stashPopFailed: RepoAssessment[] = [];
@@ -216,11 +249,24 @@ export async function integrate(
       if (!stashPopOk) {
         doneMsg += ` ${yellow("(stash pop failed)")}`;
       }
+      const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+      const existing = record.repos[a.repo];
+      if (existing) {
+        record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+      }
+      writeOperationRecord(wsDir, record);
+
       inlineResult(a.repo, doneMsg);
       succeeded++;
     } else {
       // For rebase mode, git rebase --autostash handles stash internally.
       // For merge mode with stash, do NOT pop if merge conflicted.
+      const existing = record.repos[a.repo];
+      if (existing) {
+        record.repos[a.repo] = { ...existing, status: "conflicting" };
+      }
+      writeOperationRecord(wsDir, record);
+
       inlineResult(a.repo, yellow("conflict"));
       conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
     }
@@ -244,6 +290,14 @@ export async function integrate(
   if (conflictNodes.length > 0) process.stderr.write(render(conflictNodes, reportCtx));
   if (stashNodes.length > 0) process.stderr.write(render(stashNodes, reportCtx));
 
+  // Finalize operation record
+  if (conflicted.length === 0) {
+    record.status = "completed";
+    writeOperationRecord(wsDir, record);
+  } else {
+    info(`Run 'arb ${mode}' to continue or 'arb undo' to roll back`);
+  }
+
   // Update config after stale base fallback
   const fallbackResult = await maybeWriteBaseFallbackConfig({
     dryRun: options.dryRun,
@@ -265,6 +319,175 @@ export async function integrate(
   if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
   if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
   finishSummary(parts, conflicted.length > 0 || stashPopFailed.length > 0);
+}
+
+// ── Continue flow ──
+
+async function runIntegrateContinue(
+  record: OperationRecord,
+  wsDir: string,
+  _workspace: string,
+  mode: IntegrateMode,
+  options: { yes?: boolean; dryRun?: boolean },
+): Promise<void> {
+  const verb = mode === "rebase" ? "Rebase" : "Merge";
+  const verbed = mode === "rebase" ? "rebased" : "merged";
+  const repoDirs = workspaceRepoDirs(wsDir);
+  const repoDirMap = new Map(repoDirs.map((d) => [basename(d), d]));
+
+  // Classify each repo
+  const classifications: {
+    repo: string;
+    repoDir: string;
+    classification: Awaited<ReturnType<typeof classifyContinueRepo>>;
+  }[] = [];
+  for (const [repoName, state] of Object.entries(record.repos)) {
+    const repoDir = repoDirMap.get(repoName);
+    if (!repoDir) {
+      classifications.push({ repo: repoName, repoDir: "", classification: { action: "skip" } });
+      continue;
+    }
+    const classification = await classifyContinueRepo(repoDir, state);
+    classifications.push({ repo: repoName, repoDir, classification });
+  }
+
+  const stillConflicting = classifications.filter((c) => c.classification.action === "still-conflicting");
+  const willContinue = classifications.filter((c) => c.classification.action === "will-continue");
+
+  // Update record for manually-resolved repos
+  for (const c of classifications) {
+    if (c.classification.action === "manually-continued") {
+      const existing = record.repos[c.repo];
+      if (existing) {
+        record.repos[c.repo] = { ...existing, status: "completed", postHead: c.classification.postHead };
+      }
+    } else if (c.classification.action === "manually-aborted") {
+      const existing = record.repos[c.repo];
+      if (existing) {
+        record.repos[c.repo] = { ...existing, status: "skipped" };
+      }
+    }
+  }
+
+  if (stillConflicting.length > 0 && willContinue.length === 0) {
+    writeOperationRecord(wsDir, record);
+    for (const c of stillConflicting) {
+      info(`${c.repo}: conflicts not yet resolved`);
+    }
+    info(`Resolve conflicts, then run 'arb ${mode}' to continue or 'arb undo' to roll back`);
+    throw new ArbError("Conflicts not yet resolved");
+  }
+
+  // Build continue plan display
+  const planNodes: OutputNode[] = [
+    { kind: "gap" },
+    { kind: "message", level: "default", text: `Continuing ${mode}` },
+    { kind: "gap" },
+  ];
+
+  const rows = classifications
+    .filter((c) => c.classification.action !== "skip")
+    .map((c) => {
+      let actionCell: Cell;
+      switch (c.classification.action) {
+        case "will-continue":
+          actionCell = cell(`continue ${mode}`);
+          break;
+        case "still-conflicting":
+          actionCell = cell("conflicts not resolved", "attention");
+          break;
+        case "manually-continued":
+          actionCell = cell("already resolved", "muted");
+          break;
+        case "manually-aborted":
+          actionCell = cell("manually aborted", "muted");
+          break;
+        case "already-done":
+          actionCell = cell("already done", "muted");
+          break;
+        default:
+          actionCell = cell("skip", "muted");
+      }
+      return { cells: { repo: cell(c.repo), action: actionCell } };
+    });
+
+  planNodes.push({
+    kind: "table",
+    columns: [
+      { header: "REPO", key: "repo" },
+      { header: "ACTION", key: "action" },
+    ],
+    rows,
+  });
+  planNodes.push({ kind: "gap" });
+
+  const rCtx = { tty: shouldColor() };
+  process.stderr.write(render(planNodes, rCtx));
+
+  if (options.dryRun) {
+    dryRunNotice();
+    return;
+  }
+
+  const actionable = willContinue.length + stillConflicting.length;
+  if (actionable === 0) {
+    // All repos already resolved — finalize
+    record.status = "completed";
+    writeOperationRecord(wsDir, record);
+    process.stderr.write("\n");
+    finishSummary([`${verb} completed`], false);
+    return;
+  }
+
+  await confirmOrExit({
+    yes: options.yes,
+    message: `Continue ${mode} in ${plural(willContinue.length, "repo")}?`,
+  });
+
+  process.stderr.write("\n");
+
+  // Execute continues
+  let succeeded = 0;
+  const newConflicts: string[] = [];
+  const abortCmd = mode === "merge" ? "merge" : "rebase";
+
+  for (const c of willContinue) {
+    inlineStart(c.repo, `continuing ${mode}`);
+    const result = await gitLocal(c.repoDir, abortCmd, "--continue");
+    if (result.exitCode === 0) {
+      const postHeadResult = await gitLocal(c.repoDir, "rev-parse", "HEAD");
+      const existing = record.repos[c.repo];
+      if (existing) {
+        record.repos[c.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+      }
+      writeOperationRecord(wsDir, record);
+      inlineResult(c.repo, `${verbed} continued`);
+      succeeded++;
+    } else {
+      inlineResult(c.repo, yellow("conflict"));
+      newConflicts.push(c.repo);
+    }
+  }
+
+  // Check if all repos are now completed
+  const allCompleted = Object.values(record.repos).every((s) => s.status === "completed" || s.status === "skipped");
+
+  if (allCompleted) {
+    record.status = "completed";
+    writeOperationRecord(wsDir, record);
+  } else {
+    writeOperationRecord(wsDir, record);
+    if (newConflicts.length > 0 || stillConflicting.length > 0) {
+      info(`Run 'arb ${mode}' to continue or 'arb undo' to roll back`);
+    }
+  }
+
+  process.stderr.write("\n");
+  const parts: string[] = [];
+  if (succeeded > 0) parts.push(`Continued ${plural(succeeded, "repo")}`);
+  if (stillConflicting.length > 0) parts.push(`${stillConflicting.length} still conflicting`);
+  if (newConflicts.length > 0) parts.push(`${newConflicts.length} new conflict`);
+  finishSummary(parts, stillConflicting.length > 0 || newConflicts.length > 0);
 }
 
 export async function maybeWriteBaseFallbackConfig(options: {
