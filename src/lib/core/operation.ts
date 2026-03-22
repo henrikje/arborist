@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { z } from "zod";
+import { detectOperation, gitLocal, parseGitStatus } from "../git/git";
 import { error } from "../terminal/output";
 import { WorkspaceConfigSchema } from "./config";
 import { ArbError } from "./errors";
@@ -112,4 +113,36 @@ export function assertNoInProgressOperation(wsDir: string, currentCommand: strin
   const msg = `${record.command} in progress — run '${commandLabel}' to continue or 'arb undo' to roll back`;
   error(msg);
   throw new ArbError(msg);
+}
+
+// ── Continue reconciliation ──
+
+export type ContinueClassification =
+  | { action: "still-conflicting" }
+  | { action: "will-continue" }
+  | { action: "manually-aborted" }
+  | { action: "manually-continued"; postHead: string }
+  | { action: "already-done" }
+  | { action: "skip" };
+
+export async function classifyContinueRepo(
+  repoDir: string,
+  state: RepoOperationState,
+): Promise<ContinueClassification> {
+  if (state.status === "completed") return { action: "already-done" };
+  if (state.status === "skipped") return { action: "skip" };
+
+  // status === "conflicting"
+  const op = await detectOperation(repoDir);
+  if (op === "rebase" || op === "merge") {
+    const status = await parseGitStatus(repoDir);
+    if (status.conflicts > 0) return { action: "still-conflicting" };
+    return { action: "will-continue" };
+  }
+
+  // No git operation in progress — user resolved or aborted manually
+  const headResult = await gitLocal(repoDir, "rev-parse", "HEAD");
+  const currentHead = headResult.stdout.trim();
+  if (currentHead === state.preHead) return { action: "manually-aborted" };
+  return { action: "manually-continued", postHead: currentHead };
 }

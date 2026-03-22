@@ -4,16 +4,18 @@ import { predictMergeConflict } from "../lib/analysis";
 import { predictStashPopConflict } from "../lib/analysis/conflict-prediction";
 import {
   ArbError,
+  type ContinueClassification,
   type OperationRecord,
   type RepoOperationState,
   arbAction,
   assertNoInProgressOperation,
+  classifyContinueRepo,
   readOperationRecord,
   readWorkspaceConfig,
   writeOperationRecord,
   writeWorkspaceConfig,
 } from "../lib/core";
-import { detectOperation, getCommitsBetweenFull, gitLocal, parseGitStatus } from "../lib/git";
+import { getCommitsBetweenFull, gitLocal } from "../lib/git";
 import { finishSummary, render } from "../lib/render";
 import type { RenderContext } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -341,33 +343,6 @@ export function registerRetargetCommand(program: Command): void {
 }
 
 // ── Continue flow ──
-
-type ContinueClassification =
-  | { action: "still-conflicting" }
-  | { action: "will-continue" }
-  | { action: "manually-aborted" }
-  | { action: "manually-continued"; postHead: string }
-  | { action: "already-done" }
-  | { action: "skip" };
-
-async function classifyContinueRepo(repoDir: string, state: RepoOperationState): Promise<ContinueClassification> {
-  if (state.status === "completed") return { action: "already-done" };
-  if (state.status === "skipped") return { action: "skip" };
-
-  // status === "conflicting"
-  const op = await detectOperation(repoDir);
-  if (op === "rebase") {
-    const status = await parseGitStatus(repoDir);
-    if (status.conflicts > 0) return { action: "still-conflicting" };
-    return { action: "will-continue" };
-  }
-
-  // No git operation in progress — user resolved or aborted manually
-  const headResult = await gitLocal(repoDir, "rev-parse", "HEAD");
-  const currentHead = headResult.stdout.trim();
-  if (currentHead === state.preHead) return { action: "manually-aborted" };
-  return { action: "manually-continued", postHead: currentHead };
-}
 
 async function runRetargetContinue(
   record: OperationRecord & { command: "retarget" },
