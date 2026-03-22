@@ -66,7 +66,14 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
     }
   }
 
-  // Step 3: Warn about repos that were never started (crash recovery)
+  // Step 3: Warn about repos with unexpected git operations
+  for (const c of classifications) {
+    if (c.classification.action === "unexpected-operation") {
+      info(`${c.repo}: has a ${c.classification.operation} in progress (not from this operation) — resolve it first`);
+    }
+  }
+
+  // Step 3a: Warn about repos that were never started (crash recovery)
   if (needsExecute.length > 0) {
     for (const c of needsExecute) {
       info(`${c.repo}: was not started — run 'arb undo' then re-run 'arb ${mode}' to include it`);
@@ -112,6 +119,9 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
           break;
         case "needs-execute":
           actionCell = cell("not started — undo and re-run to include", "attention");
+          break;
+        case "unexpected-operation":
+          actionCell = cell(`${c.classification.operation} in progress (not from this operation)`, "danger");
           break;
         default:
           actionCell = cell("skip", "muted");

@@ -112,9 +112,18 @@ async function executeBranchRenameUndo(
     inlineStart(a.repo, "reverting");
     const result = await gitLocal(a.repoDir, "branch", "-m", record.newBranch, record.oldBranch);
     if (result.exitCode === 0) {
-      // Clear stale tracking
-      await gitLocal(a.repoDir, "config", "--unset", `branch.${record.oldBranch}.remote`);
-      await gitLocal(a.repoDir, "config", "--unset", `branch.${record.oldBranch}.merge`);
+      // Restore tracking config if it was captured, otherwise clear stale tracking
+      const state = record.repos[a.repo];
+      if (state?.tracking?.remote) {
+        await gitLocal(a.repoDir, "config", `branch.${record.oldBranch}.remote`, state.tracking.remote);
+      } else {
+        await gitLocal(a.repoDir, "config", "--unset", `branch.${record.oldBranch}.remote`);
+      }
+      if (state?.tracking?.merge) {
+        await gitLocal(a.repoDir, "config", `branch.${record.oldBranch}.merge`, state.tracking.merge);
+      } else {
+        await gitLocal(a.repoDir, "config", "--unset", `branch.${record.oldBranch}.merge`);
+      }
       inlineResult(a.repo, `reverted to ${record.oldBranch}`);
       undone++;
     } else {

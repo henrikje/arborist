@@ -408,7 +408,17 @@ async function runRename(
     const headResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
     const preHead = headResult.stdout.trim();
     if (!preHead) throw new ArbError(`Cannot capture HEAD for ${a.repo}`);
-    repoStates[a.repo] = { preHead, status: "pending" };
+    // Capture tracking config before rename so undo can restore it
+    const remoteResult = await gitLocal(a.repoDir, "config", `branch.${oldBranch}.remote`);
+    const mergeResult = await gitLocal(a.repoDir, "config", `branch.${oldBranch}.merge`);
+    const tracking =
+      remoteResult.exitCode === 0 || mergeResult.exitCode === 0
+        ? {
+            ...(remoteResult.exitCode === 0 && { remote: remoteResult.stdout.trim() }),
+            ...(mergeResult.exitCode === 0 && { merge: mergeResult.stdout.trim() }),
+          }
+        : undefined;
+    repoStates[a.repo] = { preHead, status: "pending", tracking };
   }
 
   const record: OperationRecord = {

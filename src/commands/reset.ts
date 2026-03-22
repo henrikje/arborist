@@ -489,7 +489,12 @@ export function registerResetCommand(program: Command): void {
           repoStates[a.repo] = await captureRepoState(a.repoDir, a.repo);
         }
 
-        const record = buildOperationRecord({ command: "reset" }, repoStates);
+        const record: OperationRecord = {
+          command: "reset",
+          startedAt: new Date().toISOString(),
+          status: "in-progress",
+          repos: repoStates,
+        };
         writeOperationRecord(wsDir, record);
 
         // Phase 5: execute
