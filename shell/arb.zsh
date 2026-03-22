@@ -198,6 +198,7 @@ _arb() {
                 'retarget:Change the base branch and rebase onto it'
                 'merge:Merge the base branch into feature branches'
                 'reset:Reset all repos to the share branch (or base if not pushed)'
+                'undo:Undo the last workspace operation'
                 'log:Show feature branch commits across repos'
                 'diff:Show feature branch diff across repos'
                 'exec:Run a command in each repo'
@@ -227,8 +228,6 @@ _arb() {
                     _arguments \
                         '--branch[Set the branch name independently from the workspace name]:branch:' \
                         '--base[Change the base branch]:branch:' \
-                        '--continue[Resume an in-progress rename]' \
-                        '--abort[Roll back an in-progress rename]' \
                         '(-r --delete-remote)'{-r,--delete-remote}'[Delete old branch on remote after rename]' \
                         '(-N --fetch --no-fetch)--fetch[Fetch before rename (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-rename remote fetch]' \
@@ -431,8 +430,6 @@ _arb() {
                             rename)
                                 shift words; (( CURRENT-- ))
                                 _arguments \
-                                    '--continue[Resume an in-progress rename]' \
-                                    '--abort[Roll back an in-progress rename]' \
                                     '(-r --delete-remote)'{-r,--delete-remote}'[Delete old branch on remote after rename]' \
                                     '(-N --fetch --no-fetch)--fetch[Fetch before rename (default)]' \
                                     '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-rename remote fetch]' \
@@ -545,6 +542,11 @@ _arb() {
                         '--include-wrong-branch[Include repos on a different branch than the workspace]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($ws_repo_names)'
+                    ;;
+                undo)
+                    _arguments \
+                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]'
                     ;;
                 log)
                     _arguments \

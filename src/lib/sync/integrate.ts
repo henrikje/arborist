@@ -7,6 +7,7 @@ import {
 } from "../analysis/conflict-prediction";
 import type { CommandContext } from "../core/command-action";
 import { readWorkspaceConfig, writeWorkspaceConfig } from "../core/config";
+import { assertNoInProgressOperation } from "../core/operation";
 import { getCommitsBetweenFull, getDiffShortstat, getMergeBase, gitLocal } from "../git/git";
 import type { GitCache } from "../git/git-cache";
 import { buildConflictReport, buildStashPopFailureReport } from "../render/conflict-report";
@@ -49,8 +50,11 @@ export async function integrate(
   const verb = mode === "rebase" ? "Rebase" : "Merge";
   const verbed = mode === "rebase" ? "Rebased" : "Merged";
 
-  // Phase 1: context & repo selection
+  // Phase 0: operation gate
   const { wsDir, workspace } = requireWorkspace(ctx);
+  assertNoInProgressOperation(wsDir, mode);
+
+  // Phase 1: context & repo selection
   const branch = await requireBranch(wsDir, workspace);
   const cache = ctx.cache;
   const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
