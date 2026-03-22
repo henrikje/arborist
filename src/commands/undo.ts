@@ -260,6 +260,7 @@ async function assessUndo(record: OperationRecord, wsDir: string): Promise<RepoU
     case "rebase":
     case "merge":
     case "pull":
+    case "reset":
       return assessSyncUndo(record, wsDir);
     default: {
       const msg = `Undo is not yet supported for '${record.command}' operations`;
@@ -397,6 +398,7 @@ export function registerUndoCommand(program: Command): void {
           case "rebase":
           case "merge":
           case "pull":
+          case "reset":
             result = await executeSyncUndo(record, assessments);
             break;
           default: {
