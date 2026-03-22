@@ -129,9 +129,9 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
   // Step 6: Early exit when all resolved (no actionable repos)
   const actionable = willContinue.length + stillConflicting.length;
   if (actionable === 0) {
+    if (onComplete) await onComplete(record);
     record.status = "completed";
     writeOperationRecord(wsDir, record);
-    if (onComplete) await onComplete(record);
     process.stderr.write("\n");
     finishSummary([`${capitalize(mode)} completed`], false);
     return;
@@ -183,9 +183,9 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
   const allCompleted = Object.values(record.repos).every((s) => s.status === "completed" || s.status === "skipped");
 
   if (allCompleted) {
+    if (onComplete) await onComplete(record);
     record.status = "completed";
     writeOperationRecord(wsDir, record);
-    if (onComplete) await onComplete(record);
   } else {
     writeOperationRecord(wsDir, record);
     if (newConflicts.length > 0 || stillConflicting.length > 0) {
