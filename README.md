@@ -248,6 +248,25 @@ If a rebase or merge does hit a conflict, Arborist continues with the remaining 
 
 For `arb pull --merge`, if the remote was rewritten and you have no unique commits, Arborist resets to the rewritten tip instead of attempting a three-way merge.
 
+### Auto-continue and undo
+
+Rebase conflicts in 3 out of 10 repos? Arborist finishes the other 7 and remembers where it stopped. Fix the conflicts, and just re-run the same command to continue.
+
+```bash
+arb rebase                    # repo-a conflicts, but repo-b and repo-c succeed
+# fix conflicts in repo-a
+arb rebase                    # picks up where it left off — done
+```
+
+`arb undo` reverses the last operation across all repos — whether it's still in progress or already completed:
+
+```bash
+arb reset --hard              # oops, reset 5 repos to remote HEAD
+arb undo                      # all 5 repos back exactly where they were, including uncommitted changes
+```
+
+This works for any tracked operation: rebase, merge, retarget, pull, reset, rename. Undo aborts in-progress git operations, resets HEADs, restores uncommitted changes, and rolls back config. It detects if you have done other changes, so it never silently discards work. It is as close to a magic wand as you can get!
+
 ### Commit matching
 
 When you rebase, squash-merge, or force-push, Git creates new commits that replace old ones. The old and new commits look different (different hashes), but represent the same work. Arborist matches them automatically — using patch identity and reflog history — so status and plans always show what's *genuinely new* versus what you've already seen.
@@ -264,27 +283,6 @@ my-feature (base origin/main, share origin/my-feature)
 
 When the "new" count is zero, every remote-only commit is already reflected in yours — a force push won't overwrite any collaborator work. `arb push` uses this to allow pushing after rebase, amend, or squash without requiring `--force`, and to block pushes of already-merged branches. `arb rebase` replays only the genuinely new work.
 
-### Filter by status
-
-```bash
-arb list --where at-risk                  # workspaces that need attention
-arb status --where dirty,unpushed         # repos matching either dirty or unpushed
-arb delete --older-than 10d --where gone  # delete old merged workspaces
-arb delete --newer-than 7d --dry-run      # preview recently active workspaces
-```
-
-Arborist tracks status flags across repos — dirty, unpushed, behind-base, diverged, wrong-branch, and more. The `--where` flag (`-w` for short) lets you filter by any combination, and works across most commands. Use `--dirty` as a shorthand for `--where dirty`. For age-based filtering, `--older-than` and `--newer-than` filter by workspace activity.
-
-### Run commands across repos
-
-```bash
-arb exec npm install
-arb exec --dirty git stash
-arb open code # open repos in VS Code
-```
-
-`arb exec` runs any command in each repo, using the repo directory as working directory. `arb open` passes all repo paths as arguments to the given command, useful for editors like VS Code or IntelliJ. Combine with `--dirty` or `--where` to narrow the scope.
-
 ### Know when you're done
 
 After your PR is merged, Arborist detects it — even for squash merges — and shows it clearly in `arb list`. PR numbers are detected automatically from merge and squash commit messages — no configuration needed:
@@ -297,16 +295,6 @@ After your PR is merged, Arborist detects it — even for squash merges — and 
 ```
 
 No guessing which branches have landed. You see "merged" with the detected PR number from the merge/squash commit, and "gone" when the remote branch was deleted. Ready to `arb delete`.
-
-### Seed files into new workspaces
-
-```bash
-cd my-feature/api
-arb template add .env
-# from now on, every new workspace gets api/.env automatically
-```
-
-Templates let you capture files and have them seeded into every new workspace. Common uses include `.env` files, IDE settings, and AI agent config. Templates live in `.arb/templates/` and are version-controllable. See [Template examples](docs/templates.md#examples) for ready-to-use starting points.
 
 ### Live dashboard
 
@@ -325,6 +313,16 @@ A live status dashboard that auto-refreshes on filesystem changes. Press `r` to 
 
   f fetch • v verbose • r rebase • m merge • l pull • p push • q quit
 ```
+
+### Seed files into new workspaces
+
+```bash
+cd my-feature/api
+arb template add .env
+# from now on, every new workspace gets api/.env automatically
+```
+
+Templates let you capture files and have them seeded into every new workspace. Common uses include `.env` files, IDE settings, and AI agent config. Templates live in `.arb/templates/` and are version-controllable. See [Template examples](docs/templates.md#examples) for ready-to-use starting points.
 
 ## Advanced use cases
 
@@ -352,9 +350,11 @@ arb rebase --yes              # skip confirmation
 arb branch --quiet            # just the branch name
 arb status --json | jq ...    # machine-readable output
 arb list --quiet | xargs ...  # one workspace name per line
+arb exec npm install          # run a command in every repo
+arb status -w dirty,unpushed  # filter repos by status flags
 ```
 
-All state-changing commands support `--dry-run` to preview the plan and `--yes` to skip confirmation prompts. `status`, `branch`, `list`, `log`, `diff`, and `repo list` support `--json` for structured output and `--quiet` for one name per line — useful for feeding into other commands. Exit codes are meaningful: 0 for success, 1 for issues, 130 for user abort. Human-facing output goes to stderr, machine-parsable data to stdout — so piping works naturally.
+All state-changing commands support `--dry-run` to preview the plan and `--yes` to skip confirmation prompts. `status`, `branch`, `list`, `log`, `diff`, and `repo list` support `--json` for structured output and `--quiet` for one name per line — useful for feeding into other commands. `arb exec` runs any command in each repo; `--where` (`-w`) filters repos by status flags like `dirty`, `behind-base`, or `ahead-share` and works across most commands. Exit codes are meaningful: 0 for success, 1 for issues, 130 for user abort. Human-facing output goes to stderr, machine-parsable data to stdout — so piping works naturally.
 
 ## Alternatives
 
