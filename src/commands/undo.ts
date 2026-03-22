@@ -8,7 +8,7 @@ import {
   readOperationRecord,
   writeWorkspaceConfig,
 } from "../lib/core";
-import { gitLocal } from "../lib/git";
+import { detectOperation, gitLocal } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
 import { cell } from "../lib/render";
@@ -138,12 +138,160 @@ async function executeBranchRenameUndo(
   finishSummary([`Undone ${plural(undone, "repo")}`], false);
 }
 
+// ── Sync undo (retarget, rebase, merge) ──
+
+async function assessSyncUndo(record: OperationRecord, wsDir: string): Promise<RepoUndoAssessment[]> {
+  const repoDirs = workspaceRepoDirs(wsDir);
+  const repoDirMap = new Map(repoDirs.map((d) => [basename(d), d]));
+
+  const assessments: RepoUndoAssessment[] = [];
+
+  for (const [repoName, state] of Object.entries(record.repos)) {
+    const repoDir = repoDirMap.get(repoName);
+    if (!repoDir) {
+      assessments.push({ repo: repoName, repoDir: "", action: "skip", detail: "repo not in workspace" });
+      continue;
+    }
+
+    if (state.status === "skipped") {
+      assessments.push({ repo: repoName, repoDir, action: "skip" });
+      continue;
+    }
+
+    if (state.status === "conflicting") {
+      // Check if git operation is still in progress
+      const op = await detectOperation(repoDir);
+      if (op) {
+        assessments.push({
+          repo: repoName,
+          repoDir,
+          action: "needs-abort",
+          detail: `abort in-progress ${op}`,
+        });
+        continue;
+      }
+      // No git op — check if user manually resolved or aborted
+      const headResult = await gitLocal(repoDir, "rev-parse", "HEAD");
+      const currentHead = headResult.stdout.trim();
+      if (currentHead === state.preHead) {
+        assessments.push({ repo: repoName, repoDir, action: "already-at-target" });
+      } else {
+        assessments.push({
+          repo: repoName,
+          repoDir,
+          action: "drifted",
+          detail: `HEAD moved from ${state.preHead.slice(0, 7)} to ${currentHead.slice(0, 7)} (manually continued?)`,
+        });
+      }
+      continue;
+    }
+
+    // status === "completed"
+    const headResult = await gitLocal(repoDir, "rev-parse", "HEAD");
+    const currentHead = headResult.stdout.trim();
+
+    if (state.postHead && currentHead === state.postHead) {
+      assessments.push({
+        repo: repoName,
+        repoDir,
+        action: "needs-undo",
+        detail: `reset to ${state.preHead.slice(0, 7)}`,
+      });
+    } else if (currentHead === state.preHead) {
+      assessments.push({ repo: repoName, repoDir, action: "already-at-target" });
+    } else {
+      assessments.push({
+        repo: repoName,
+        repoDir,
+        action: "drifted",
+        detail: `HEAD at ${currentHead.slice(0, 7)}, expected ${(state.postHead ?? state.preHead).slice(0, 7)}`,
+      });
+    }
+  }
+
+  return assessments;
+}
+
+async function executeSyncUndo(
+  record: OperationRecord,
+  assessments: RepoUndoAssessment[],
+  wsDir: string,
+  configFile: string,
+): Promise<void> {
+  let undone = 0;
+  const failures: string[] = [];
+
+  // First: abort in-progress git operations
+  for (const a of assessments) {
+    if (a.action !== "needs-abort") continue;
+
+    inlineStart(a.repo, "aborting");
+    const op = await detectOperation(a.repoDir);
+    const abortCmd = op === "merge" ? "merge" : "rebase";
+    const result = await gitLocal(a.repoDir, abortCmd, "--abort");
+    if (result.exitCode === 0) {
+      inlineResult(a.repo, `aborted ${abortCmd}`);
+      undone++;
+    } else {
+      inlineResult(a.repo, `failed to abort ${abortCmd}`);
+      failures.push(a.repo);
+    }
+  }
+
+  // Then: reset completed repos
+  for (const a of assessments) {
+    if (a.action !== "needs-undo") continue;
+
+    const state = record.repos[a.repo];
+    if (!state) continue;
+
+    inlineStart(a.repo, "resetting");
+    const result = await gitLocal(a.repoDir, "reset", "--hard", state.preHead);
+    if (result.exitCode === 0) {
+      // Restore stash if one was captured
+      if (state.stashSha) {
+        const stashResult = await gitLocal(a.repoDir, "stash", "apply", "--index", state.stashSha);
+        if (stashResult.exitCode !== 0) {
+          // Try without --index
+          await gitLocal(a.repoDir, "stash", "apply", state.stashSha);
+        }
+      }
+      inlineResult(a.repo, `reset to ${state.preHead.slice(0, 7)}`);
+      undone++;
+    } else {
+      inlineResult(a.repo, "failed to reset");
+      failures.push(a.repo);
+    }
+  }
+
+  if (failures.length > 0) {
+    process.stderr.write("\n");
+    error(`Failed to undo ${plural(failures.length, "repo")}: ${failures.join(", ")}`);
+    throw new ArbError(`Failed to undo ${plural(failures.length, "repo")}: ${failures.join(", ")}`);
+  }
+
+  // Restore config
+  if (record.configBefore) {
+    writeWorkspaceConfig(configFile, record.configBefore);
+  }
+
+  // Clean up operation record
+  deleteOperationRecord(wsDir);
+
+  process.stderr.write("\n");
+  finishSummary([`Undone ${plural(undone, "repo")}`], false);
+}
+
 // ── Shared undo infrastructure ──
 
 async function assessUndo(record: OperationRecord, wsDir: string): Promise<RepoUndoAssessment[]> {
   switch (record.command) {
     case "branch-rename":
       return assessBranchRenameUndo(record, wsDir);
+    case "retarget":
+    case "rebase":
+    case "merge":
+      return assessSyncUndo(record, wsDir);
     default: {
       const msg = `Undo is not yet supported for '${record.command}' operations`;
       error(msg);
@@ -275,6 +423,11 @@ export function registerUndoCommand(program: Command): void {
         switch (record.command) {
           case "branch-rename":
             await executeBranchRenameUndo(record, assessments, wsDir, configFile);
+            break;
+          case "retarget":
+          case "rebase":
+          case "merge":
+            await executeSyncUndo(record, assessments, wsDir, configFile);
             break;
           default: {
             const msg = `Undo is not yet supported for '${record.command}' operations`;

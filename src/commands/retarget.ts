@@ -4,12 +4,16 @@ import { predictMergeConflict } from "../lib/analysis";
 import { predictStashPopConflict } from "../lib/analysis/conflict-prediction";
 import {
   ArbError,
+  type OperationRecord,
+  type RepoOperationState,
   arbAction,
   assertNoInProgressOperation,
+  readOperationRecord,
   readWorkspaceConfig,
+  writeOperationRecord,
   writeWorkspaceConfig,
 } from "../lib/core";
-import { getCommitsBetweenFull, gitLocal } from "../lib/git";
+import { detectOperation, getCommitsBetweenFull, gitLocal, parseGitStatus } from "../lib/git";
 import { finishSummary, render } from "../lib/render";
 import type { RenderContext } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
@@ -52,6 +56,14 @@ export function registerRetargetCommand(program: Command): void {
       arbAction(async (ctx, branchArg: string | undefined, options) => {
         const { wsDir, workspace } = requireWorkspace(ctx);
         assertNoInProgressOperation(wsDir, "retarget");
+
+        // ── Continue flow: detect in-progress retarget operation ──
+        const existingRecord = readOperationRecord(wsDir);
+        if (existingRecord?.command === "retarget" && existingRecord.status === "in-progress") {
+          await runRetargetContinue(existingRecord, wsDir, workspace, options);
+          return;
+        }
+
         const branch = await requireBranch(wsDir, workspace);
         const configFile = `${wsDir}/.arbws/config.json`;
         const configBase = readWorkspaceConfig(configFile)?.base ?? null;
@@ -211,7 +223,35 @@ export function registerRetargetCommand(program: Command): void {
 
         process.stderr.write("\n");
 
-        // Phase 5: execute
+        // Phase 5: capture state and write operation record
+        const configBefore = readWorkspaceConfig(configFile) ?? { branch };
+        const first = willRetarget[0];
+        const configAfter = first ? await buildRetargetConfigAfter(wsDir, branch, first, cache) : configBefore;
+
+        const repoStates: Record<string, RepoOperationState> = {};
+        for (const a of willRetarget) {
+          const headResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+          const stashResult = await gitLocal(a.repoDir, "stash", "create");
+          repoStates[a.repo] = {
+            preHead: headResult.stdout.trim(),
+            stashSha: stashResult.stdout.trim() || null,
+            status: "skipped",
+          };
+        }
+
+        const record: OperationRecord = {
+          command: "retarget",
+          startedAt: new Date().toISOString(),
+          status: "in-progress",
+          repos: repoStates,
+          targetBranch: first?.targetBranch ?? "",
+          oldBase: first?.oldBase ?? "",
+          configBefore,
+          configAfter,
+        };
+        writeOperationRecord(wsDir, record);
+
+        // Phase 6: execute
         let succeeded = 0;
         const conflicted: { assessment: RetargetAssessment; stdout: string; stderr: string }[] = [];
 
@@ -236,18 +276,31 @@ export function registerRetargetCommand(program: Command): void {
           const result = await gitLocal(a.repoDir, ...rebaseArgs);
 
           if (result.exitCode === 0) {
+            const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+            const existing = record.repos[a.repo];
+            if (existing) {
+              record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+            }
+            writeOperationRecord(wsDir, record);
+
             const doneMsg = a.baseMerged
               ? `rebased ${n} new ${n === 1 ? "commit" : "commits"} onto ${targetRef} (merged)`
               : `rebased ${a.branch} onto ${targetRef} from ${a.oldBase} (retarget)`;
             inlineResult(a.repo, doneMsg);
             succeeded++;
           } else {
+            const existing = record.repos[a.repo];
+            if (existing) {
+              record.repos[a.repo] = { ...existing, status: "conflicting" };
+            }
+            writeOperationRecord(wsDir, record);
+
             inlineResult(a.repo, yellow("conflict"));
             conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
           }
         }
 
-        // Phase 6: conflict report
+        // Phase 7: conflict report
         const conflictNodes = buildConflictReport(
           conflicted.map((c) => ({
             repo: c.assessment.repo,
@@ -259,24 +312,23 @@ export function registerRetargetCommand(program: Command): void {
         const reportCtx = { tty: shouldColor() };
         if (conflictNodes.length > 0) process.stderr.write(render(conflictNodes, reportCtx));
 
-        // Phase 7: config update (only if no conflicts)
+        // Phase 8: finalize operation record + deferred config
         if (conflicted.length === 0) {
-          await maybeWriteRetargetConfig({
-            dryRun: options.dryRun,
-            wsDir,
-            branch,
-            assessments,
-            cache,
-          });
+          // All succeeded — apply deferred config and mark completed
+          writeWorkspaceConfig(configFile, configAfter);
+          record.status = "completed";
+          writeOperationRecord(wsDir, record);
 
-          const first = willRetarget[0];
           if (first) {
             const configDesc = `base branch changed from ${first.oldBase} to ${first.targetBranch}`;
             inlineResult(workspace, configDesc);
           }
+        } else {
+          // Conflicts — config NOT updated (this is the bug fix)
+          info("Run 'arb retarget' to continue or 'arb undo' to roll back");
         }
 
-        // Phase 8: summary
+        // Phase 9: summary
         process.stderr.write("\n");
         const parts: string[] = [];
         if (succeeded > 0) parts.push(`Retargeted ${plural(succeeded, "repo")}`);
@@ -286,6 +338,226 @@ export function registerRetargetCommand(program: Command): void {
         finishSummary(parts, conflicted.length > 0);
       }),
     );
+}
+
+// ── Continue flow ──
+
+type ContinueClassification =
+  | { action: "still-conflicting" }
+  | { action: "will-continue" }
+  | { action: "manually-aborted" }
+  | { action: "manually-continued"; postHead: string }
+  | { action: "already-done" }
+  | { action: "skip" };
+
+async function classifyContinueRepo(repoDir: string, state: RepoOperationState): Promise<ContinueClassification> {
+  if (state.status === "completed") return { action: "already-done" };
+  if (state.status === "skipped") return { action: "skip" };
+
+  // status === "conflicting"
+  const op = await detectOperation(repoDir);
+  if (op === "rebase") {
+    const status = await parseGitStatus(repoDir);
+    if (status.conflicts > 0) return { action: "still-conflicting" };
+    return { action: "will-continue" };
+  }
+
+  // No git operation in progress — user resolved or aborted manually
+  const headResult = await gitLocal(repoDir, "rev-parse", "HEAD");
+  const currentHead = headResult.stdout.trim();
+  if (currentHead === state.preHead) return { action: "manually-aborted" };
+  return { action: "manually-continued", postHead: currentHead };
+}
+
+async function runRetargetContinue(
+  record: OperationRecord & { command: "retarget" },
+  wsDir: string,
+  workspace: string,
+  options: { yes?: boolean; dryRun?: boolean },
+): Promise<void> {
+  const repoDirs = workspaceRepoDirs(wsDir);
+  const repoDirMap = new Map(repoDirs.map((d) => [basename(d), d]));
+
+  // Classify each repo
+  const classifications: { repo: string; repoDir: string; classification: ContinueClassification }[] = [];
+  for (const [repoName, state] of Object.entries(record.repos)) {
+    const repoDir = repoDirMap.get(repoName);
+    if (!repoDir) {
+      classifications.push({ repo: repoName, repoDir: "", classification: { action: "skip" } });
+      continue;
+    }
+    const classification = await classifyContinueRepo(repoDir, state);
+    classifications.push({ repo: repoName, repoDir, classification });
+  }
+
+  // Check for still-conflicting repos
+  const stillConflicting = classifications.filter((c) => c.classification.action === "still-conflicting");
+  const willContinue = classifications.filter((c) => c.classification.action === "will-continue");
+
+  // Update record for manually-resolved repos
+  for (const c of classifications) {
+    if (c.classification.action === "manually-continued") {
+      const existing = record.repos[c.repo];
+      if (existing) {
+        record.repos[c.repo] = { ...existing, status: "completed", postHead: c.classification.postHead };
+      }
+    } else if (c.classification.action === "manually-aborted") {
+      const existing = record.repos[c.repo];
+      if (existing) {
+        record.repos[c.repo] = { ...existing, status: "skipped" };
+      }
+    }
+  }
+
+  if (stillConflicting.length > 0 && willContinue.length === 0) {
+    // Nothing actionable — just show which repos still need resolution
+    writeOperationRecord(wsDir, record);
+    for (const c of stillConflicting) {
+      info(`${c.repo}: conflicts not yet resolved`);
+    }
+    info("Resolve conflicts, then run 'arb retarget' to continue or 'arb undo' to roll back");
+    throw new ArbError("Conflicts not yet resolved");
+  }
+
+  // Build continue plan display
+  const planNodes: OutputNode[] = [
+    { kind: "gap" },
+    {
+      kind: "message",
+      level: "default",
+      text: `Continuing retarget onto ${record.targetBranch}`,
+    },
+    { kind: "gap" },
+  ];
+
+  const rows = classifications
+    .filter((c) => c.classification.action !== "skip")
+    .map((c) => {
+      let actionCell: Cell;
+      switch (c.classification.action) {
+        case "will-continue":
+          actionCell = cell("continue rebase");
+          break;
+        case "still-conflicting":
+          actionCell = cell("conflicts not resolved", "attention");
+          break;
+        case "manually-continued":
+          actionCell = cell("already resolved", "muted");
+          break;
+        case "manually-aborted":
+          actionCell = cell("manually aborted", "muted");
+          break;
+        case "already-done":
+          actionCell = cell("already done", "muted");
+          break;
+        default:
+          actionCell = cell("skip", "muted");
+      }
+      return { cells: { repo: cell(c.repo), action: actionCell } };
+    });
+
+  planNodes.push({
+    kind: "table",
+    columns: [
+      { header: "REPO", key: "repo" },
+      { header: "ACTION", key: "action" },
+    ],
+    rows,
+  });
+  planNodes.push({ kind: "gap" });
+
+  const rCtx: RenderContext = { tty: shouldColor() };
+  process.stderr.write(render(planNodes, rCtx));
+
+  if (options.dryRun) {
+    dryRunNotice();
+    return;
+  }
+
+  const actionable = willContinue.length + stillConflicting.length;
+  if (actionable === 0) {
+    // All repos already resolved — finalize
+    const configFile = `${wsDir}/.arbws/config.json`;
+    if (record.configAfter) {
+      writeWorkspaceConfig(configFile, record.configAfter);
+    }
+    record.status = "completed";
+    writeOperationRecord(wsDir, record);
+    inlineResult(workspace, `base branch changed from ${record.oldBase} to ${record.targetBranch}`);
+    process.stderr.write("\n");
+    finishSummary(["Retarget completed"], false);
+    return;
+  }
+
+  await confirmOrExit({
+    yes: options.yes,
+    message: `Continue retarget in ${plural(willContinue.length, "repo")}?`,
+  });
+
+  process.stderr.write("\n");
+
+  // Execute continues
+  let succeeded = 0;
+  const newConflicts: string[] = [];
+
+  for (const c of willContinue) {
+    inlineStart(c.repo, "continuing rebase");
+    const result = await gitLocal(c.repoDir, "rebase", "--continue");
+    if (result.exitCode === 0) {
+      const postHeadResult = await gitLocal(c.repoDir, "rev-parse", "HEAD");
+      const existing = record.repos[c.repo];
+      if (existing) {
+        record.repos[c.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+      }
+      writeOperationRecord(wsDir, record);
+      inlineResult(c.repo, "rebase continued");
+      succeeded++;
+    } else {
+      // New conflict during continue (multi-commit rebase)
+      inlineResult(c.repo, yellow("conflict"));
+      newConflicts.push(c.repo);
+    }
+  }
+
+  // Check if all repos are now completed
+  const allCompleted = Object.values(record.repos).every((s) => s.status === "completed" || s.status === "skipped");
+
+  if (allCompleted) {
+    const configFile = `${wsDir}/.arbws/config.json`;
+    if (record.configAfter) {
+      writeWorkspaceConfig(configFile, record.configAfter);
+    }
+    record.status = "completed";
+    writeOperationRecord(wsDir, record);
+    inlineResult(workspace, `base branch changed from ${record.oldBase} to ${record.targetBranch}`);
+  } else {
+    writeOperationRecord(wsDir, record);
+    if (newConflicts.length > 0 || stillConflicting.length > 0) {
+      info("Run 'arb retarget' to continue or 'arb undo' to roll back");
+    }
+  }
+
+  process.stderr.write("\n");
+  const parts: string[] = [];
+  if (succeeded > 0) parts.push(`Continued ${plural(succeeded, "repo")}`);
+  if (stillConflicting.length > 0) parts.push(`${stillConflicting.length} still conflicting`);
+  if (newConflicts.length > 0) parts.push(`${newConflicts.length} new conflict`);
+  finishSummary(parts, stillConflicting.length > 0 || newConflicts.length > 0);
+}
+
+async function buildRetargetConfigAfter(
+  wsDir: string,
+  branch: string,
+  first: RetargetAssessment,
+  cache: { getDefaultBranch(repoDir: string, remote: string): Promise<string | null> },
+): Promise<{ branch: string; base?: string }> {
+  const wb = await workspaceBranch(wsDir);
+  const wsBranch = wb?.branch ?? branch;
+  const repoDefault = await cache.getDefaultBranch(first.repoDir, first.baseRemote);
+  if (repoDefault && first.targetBranch !== repoDefault) {
+    return { branch: wsBranch, base: first.targetBranch };
+  }
+  return { branch: wsBranch };
 }
 
 // ── Plan rendering ──
