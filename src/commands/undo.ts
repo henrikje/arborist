@@ -236,7 +236,15 @@ async function executeSyncUndo(record: OperationRecord, assessments: RepoUndoAss
         const stashResult = await gitLocal(a.repoDir, "stash", "apply", "--index", state.stashSha);
         if (stashResult.exitCode !== 0) {
           // Try without --index
-          await gitLocal(a.repoDir, "stash", "apply", state.stashSha);
+          const fallbackResult = await gitLocal(a.repoDir, "stash", "apply", state.stashSha);
+          if (fallbackResult.exitCode !== 0) {
+            inlineResult(
+              a.repo,
+              `reset to ${state.preHead.slice(0, 7)} (stash restore failed — run 'git stash apply ${state.stashSha}' manually)`,
+            );
+            undone++;
+            continue;
+          }
         }
       }
       inlineResult(a.repo, `reset to ${state.preHead.slice(0, 7)}`);
