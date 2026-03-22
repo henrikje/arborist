@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { arb, git, withEnv, write } from "./helpers/env";
 
@@ -494,5 +494,86 @@ describe("push gate", () => {
       const result = await arb(env, ["push", "--yes"], { cwd: ws });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("rebase in progress");
+    }));
+});
+
+// ── corrupted operation.json ─────────────────────────────────────
+
+describe("corrupted operation record", () => {
+  test("corrupted operation.json shows recovery guidance mentioning arb undo --force", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const ws = join(env.projectDir, "my-feature");
+      const opFile = join(ws, ".arbws/operation.json");
+
+      // Write invalid JSON to operation.json
+      writeFileSync(opFile, "{ this is not valid json }}}}");
+
+      // Any operation that reads the record should show recovery guidance
+      const result = await arb(env, ["rebase", "--yes", "--no-fetch"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("arb undo --force");
+    }));
+
+  test("arb undo --force clears corrupted record", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const ws = join(env.projectDir, "my-feature");
+      const opFile = join(ws, ".arbws/operation.json");
+
+      // Write invalid JSON to operation.json
+      writeFileSync(opFile, "{ this is not valid json }}}}");
+
+      // arb undo --force should delete the file without trying to parse it
+      const result = await arb(env, ["undo", "--force", "--yes"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("cleared");
+
+      // File should be gone
+      expect(existsSync(opFile)).toBe(false);
+
+      // Normal operations should work again
+      const statusResult = await arb(env, ["status", "--no-fetch"], { cwd: ws });
+      expect(statusResult.exitCode).toBe(0);
+    }));
+});
+
+// ── new operation overwrites old ─────────────────────────────────
+
+describe("operation record overwrite", () => {
+  test("new operation overwrites old → undo only affects the new operation", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const repoA = join(ws, "repo-a");
+
+      // First operation: successful branch rename
+      await arb(env, ["branch", "rename", "feat/step1", "--yes", "--no-fetch"], { cwd: ws });
+
+      // Verify first rename succeeded
+      expect((await git(repoA, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe("feat/step1");
+
+      // Second operation: another successful branch rename (overwrites operation.json)
+      await arb(env, ["branch", "rename", "feat/step2", "--yes", "--no-fetch"], { cwd: ws });
+
+      // Verify second rename succeeded
+      expect((await git(repoA, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe("feat/step2");
+
+      // Operation record should reflect only the second rename
+      const record = readJson(join(ws, ".arbws/operation.json")) as Record<string, unknown>;
+      expect(record.command).toBe("branch-rename");
+      expect(record.oldBranch).toBe("feat/step1");
+      expect(record.newBranch).toBe("feat/step2");
+
+      // Undo → should only reverse the second rename (step2 → step1)
+      const result = await arb(env, ["undo", "--yes"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+
+      // Should be back to step1 (not original my-feature)
+      expect((await git(repoA, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe("feat/step1");
+
+      // Config should also be at step1
+      const config = readJson(join(ws, ".arbws/config.json")) as Record<string, unknown>;
+      expect(config.branch).toBe("feat/step1");
     }));
 });
