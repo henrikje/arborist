@@ -9,8 +9,6 @@ import { atomicWriteFileSync } from "./fs";
 export const WorkspaceConfigSchema = z.object({
   branch: z.string(),
   base: z.string().optional(),
-  branch_rename_from: z.string().optional(),
-  workspace_rename_to: z.string().optional(),
 });
 
 export const ProjectConfigSchema = z.object({
@@ -166,8 +164,6 @@ function migrateWorkspaceIni(raw: Record<string, string>): unknown {
   return {
     branch: raw.branch,
     ...(raw.base && { base: raw.base }),
-    ...(raw.branch_rename_from && { branch_rename_from: raw.branch_rename_from }),
-    ...(raw.workspace_rename_to && { workspace_rename_to: raw.workspace_rename_to }),
   };
 }
 
