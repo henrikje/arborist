@@ -273,7 +273,7 @@ describe("analyzeRemoteName", () => {
     });
     const flags = computeFlags(repo, "feature");
     const result = analyzeRemoteName(repo, flags);
-    expect(result.plain).toBe("detached");
+    expect(result.plain).toBe("(detached)");
     expect(result.spans[0]?.attention).toBe("attention");
   });
 
