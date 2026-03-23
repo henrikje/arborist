@@ -120,7 +120,7 @@ async function runStatus(
         scanProgress(scanned, total);
       },
       cache,
-      { previousResults, analysisCache: aCache },
+      { previousResults, analysisCache: aCache, repoFilter: selectedSet },
     );
     clearScanProgress();
 

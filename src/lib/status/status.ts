@@ -596,13 +596,17 @@ export async function gatherWorkspaceSummary(
     gatherActivity?: boolean;
     previousResults?: Map<string, RepoStatus>;
     analysisCache?: AnalysisCache;
+    repoFilter?: Set<string>;
   },
 ): Promise<WorkspaceSummary> {
   const workspace = basename(wsDir);
   const wb = await workspaceBranch(wsDir);
   const branch = wb?.branch ?? workspace.toLowerCase();
   const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
-  const repoDirs = workspaceRepoDirs(wsDir);
+  let repoDirs = workspaceRepoDirs(wsDir);
+  if (options?.repoFilter) {
+    repoDirs = repoDirs.filter((d) => options.repoFilter?.has(basename(d)));
+  }
   let scanned = 0;
 
   const repoResults = await Promise.all(
