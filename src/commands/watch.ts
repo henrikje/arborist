@@ -94,10 +94,25 @@ async function buildIgnoreFilter(repoDir: string): Promise<((filename: string) =
   };
 }
 
-function resolveCanonicalGitDir(repoDir: string): string | null {
-  const gitdirPath = readGitdirFromWorktree(repoDir);
-  if (!gitdirPath) return null;
-  return dirname(dirname(gitdirPath));
+/**
+ * Build a shouldIgnore filter for the canonical .git/ directory watcher.
+ * Uses a whitelist: only ref changes, packed-refs, and this worktree's own
+ * entry dir pass through. Everything else (objects/, logs/, other worktrees)
+ * is ignored to avoid cross-workspace noise.
+ */
+export function buildCanonicalGitDirFilter(worktreeEntryName: string): (filename: string) => boolean {
+  const worktreeEntry = `worktrees/${worktreeEntryName}/`;
+  return (filename: string): boolean => {
+    if (filename.endsWith(".lock")) return true;
+    // Ref changes (branch updates, fetch results)
+    if (filename.startsWith("refs/")) return false;
+    if (filename === "packed-refs") return false;
+    // This worktree's state (HEAD, index, rebase/merge state)
+    if (filename.startsWith(worktreeEntry)) return false;
+    // Ignore everything else (objects/, logs/, etc.) — these are noisy
+    // and shared across all worktrees, causing cross-workspace chatter.
+    return true;
+  };
 }
 
 async function predictConflicts(
@@ -223,11 +238,12 @@ async function runWatch(
         shouldIgnore: ignoreFilter,
       });
 
-      const canonicalGitDir = resolveCanonicalGitDir(repoDir);
-      if (canonicalGitDir) {
+      const gitdirPath = readGitdirFromWorktree(repoDir);
+      if (gitdirPath) {
+        const canonicalGitDir = dirname(dirname(gitdirPath));
         watchEntries.push({
           path: canonicalGitDir,
-          shouldIgnore: (filename) => filename.endsWith(".lock"),
+          shouldIgnore: buildCanonicalGitDirFilter(basename(gitdirPath)),
         });
       }
     }),
