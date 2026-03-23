@@ -1,10 +1,10 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
-import { render } from "../lib/render";
+import { finishSummary, render } from "../lib/render";
 import { parallelFetch, reportFetchFailures, resolveDefaultFetch } from "../lib/sync";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
-import { error, info, plural, success, warn } from "../lib/terminal";
+import { error, info, plural, warn } from "../lib/terminal";
 import { readNamesFromStdin } from "../lib/terminal";
 import { shouldColor } from "../lib/terminal";
 import {
@@ -97,13 +97,16 @@ export function registerAttachCommand(program: Command): void {
         displayOverlaySummary(wsTemplates, repoTemplates, (nodes) => render(nodes, { tty: shouldColor() }));
 
         process.stderr.write("\n");
-        if (result.failed.length === 0 && result.skipped.length === 0) {
-          success(`Attached ${plural(result.created.length, "repo")} to ${ctx.currentWorkspace}`);
-        } else {
+        if (result.failed.length > 0 || result.skipped.length > 0) {
           if (result.created.length > 0) info(`  attached: ${result.created.join(" ")}`);
           if (result.skipped.length > 0) warn(`  skipped:  ${result.skipped.join(" ")}`);
           if (result.failed.length > 0) error(`  failed:   ${result.failed.join(" ")}`);
         }
+        const parts: string[] = [];
+        if (result.created.length > 0) parts.push(`Attached ${plural(result.created.length, "repo")}`);
+        if (result.skipped.length > 0) parts.push(`${result.skipped.length} skipped`);
+        if (result.failed.length > 0) parts.push(`${result.failed.length} failed`);
+        if (parts.length > 0) finishSummary(parts, result.failed.length > 0);
       }),
     );
 }

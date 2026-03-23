@@ -3,21 +3,21 @@ import { basename, join } from "node:path";
 import type { Command } from "commander";
 import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
 import { branchExistsLocally, detectOperation, gitLocal, isRepoDirty } from "../lib/git";
-import { type RenderContext, render } from "../lib/render";
+import { createRenderContext, finishSummary, render, skipCell } from "../lib/render";
 import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { LOSE_WORK_FLAGS, type RepoFlags, computeFlags, gatherRepoStatus, wouldLoseWork } from "../lib/status";
-import { confirmOrExit, parallelFetch, reportFetchFailures, resolveDefaultFetch } from "../lib/sync";
+import { confirmOrExit, resolveDefaultFetch, runPlanFlow } from "../lib/sync";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
 import {
   dryRunNotice,
   error,
+  info,
   inlineResult,
   inlineStart,
   plural,
   readNamesFromStdin,
   shouldColor,
-  success,
   warn,
 } from "../lib/terminal";
 import {
@@ -40,7 +40,7 @@ function buildDetachPlanNodes(assessments: DetachAssessment[]): OutputNode[] {
   const rows = assessments.map((a) => ({
     cells: {
       repo: cell(a.repo),
-      action: a.outcome === "will-detach" ? cell("detach") : cell(a.skipReason ?? "skip", "attention"),
+      action: a.outcome === "will-detach" ? cell("detach") : skipCell(a.skipReason ?? ""),
     },
   }));
   return [
@@ -55,6 +55,12 @@ function buildDetachPlanNodes(assessments: DetachAssessment[]): OutputNode[] {
     },
     { kind: "gap" },
   ];
+}
+
+function formatDetachPlan(assessments: DetachAssessment[]): string {
+  const nodes = buildDetachPlanNodes(assessments);
+  const ctx = createRenderContext();
+  return render(nodes, ctx);
 }
 
 const DETACH_SKIP_LABELS: Partial<Record<keyof RepoFlags, string>> = {
@@ -123,98 +129,94 @@ export function registerDetachCommand(program: Command): void {
         }
 
         const cache = ctx.cache;
-
-        // Phase 1: fetch
-        if (resolveDefaultFetch(options.fetch)) {
-          const presentRepos = repos.filter((repo) => existsSync(`${wsDir}/${repo}`));
-          if (presentRepos.length > 0) {
-            const fetchDirs = presentRepos.map((repo) => `${wsDir}/${repo}`);
-            const remotesMap = await cache.resolveRemotesMap(presentRepos, ctx.reposDir);
-            const fetchResults = await parallelFetch(fetchDirs, undefined, remotesMap);
-            reportFetchFailures(presentRepos, fetchResults);
-            cache.invalidateAfterFetch();
-          }
-        }
-
-        // Phase 2: assess
         const configBase = readWorkspaceConfig(`${wsDir}/.arbws/config.json`)?.base ?? null;
-        const assessments: DetachAssessment[] = [];
 
-        for (const repo of repos) {
-          const wtPath = `${wsDir}/${repo}`;
+        // Only fetch repos that exist in the workspace
+        const presentRepos = repos.filter((repo) => existsSync(`${wsDir}/${repo}`));
+        const fetchDirs = presentRepos.map((repo) => `${wsDir}/${repo}`);
+        const remotesMap = await cache.resolveRemotesMap(presentRepos, ctx.reposDir);
 
-          if (!existsSync(wtPath) || !existsSync(`${wtPath}/.git`)) {
-            assessments.push({ repo, outcome: "skip", skipReason: "not in this workspace" });
-            continue;
-          }
+        // Phase 1-2: fetch + assess + plan (via runPlanFlow)
+        const assess = async (): Promise<DetachAssessment[]> => {
+          const results: DetachAssessment[] = [];
 
-          const operation = await detectOperation(wtPath);
-          if (operation !== null) {
-            assessments.push({ repo, outcome: "skip", skipReason: `${operation} in progress` });
-            continue;
-          }
+          for (const repo of repos) {
+            const wtPath = `${wsDir}/${repo}`;
 
-          if (!options.force) {
-            try {
-              const status = await gatherRepoStatus(
-                wtPath,
-                ctx.reposDir,
-                configBase,
-                undefined,
-                cache,
-                ctx.analysisCache,
-              );
-              const flags = computeFlags(status, branch);
-              if (wouldLoseWork(flags)) {
-                const reasons = [...LOSE_WORK_FLAGS]
-                  .filter((f) => flags[f])
-                  .map((f) => DETACH_SKIP_LABELS[f] ?? f)
-                  .join(", ");
-                assessments.push({
+            if (!existsSync(wtPath) || !existsSync(`${wtPath}/.git`)) {
+              results.push({ repo, outcome: "skip", skipReason: "not in this workspace" });
+              continue;
+            }
+
+            const operation = await detectOperation(wtPath);
+            if (operation !== null) {
+              results.push({ repo, outcome: "skip", skipReason: `${operation} in progress` });
+              continue;
+            }
+
+            if (!options.force) {
+              try {
+                const status = await gatherRepoStatus(
+                  wtPath,
+                  ctx.reposDir,
+                  configBase,
+                  undefined,
+                  cache,
+                  ctx.analysisCache,
+                );
+                const flags = computeFlags(status, branch);
+                if (wouldLoseWork(flags)) {
+                  const reasons = [...LOSE_WORK_FLAGS]
+                    .filter((f) => flags[f])
+                    .map((f) => DETACH_SKIP_LABELS[f] ?? f)
+                    .join(", ");
+                  results.push({
+                    repo,
+                    outcome: "skip",
+                    skipReason: `${reasons} (use --force to override)`,
+                  });
+                  continue;
+                }
+              } catch {
+                results.push({
                   repo,
                   outcome: "skip",
-                  skipReason: `${reasons} (use --force to override)`,
+                  skipReason: "could not determine status (use --force to override)",
                 });
                 continue;
               }
-            } catch {
-              assessments.push({
-                repo,
-                outcome: "skip",
-                skipReason: "could not determine status (use --force to override)",
-              });
-              continue;
             }
+
+            results.push({ repo, outcome: "will-detach" });
           }
 
-          assessments.push({ repo, outcome: "will-detach" });
-        }
+          return results;
+        };
+
+        const assessments = await runPlanFlow({
+          shouldFetch: resolveDefaultFetch(options.fetch),
+          fetchDirs,
+          reposForFetchReport: presentRepos,
+          remotesMap,
+          assess,
+          formatPlan: formatDetachPlan,
+          onPostFetch: () => cache.invalidateAfterFetch(),
+        });
 
         const willDetach = assessments.filter((a) => a.outcome === "will-detach");
         const skipped = assessments.filter((a) => a.outcome === "skip");
 
         if (willDetach.length === 0) {
-          if (skipped.length > 0) {
-            for (const a of skipped) {
-              warn(`  [${a.repo}] ${a.skipReason} — skipping`);
-            }
-          }
-          process.stderr.write("\n");
-          warn("Nothing to detach.");
+          info("Nothing to detach");
           return;
         }
-
-        // Phase 3: plan
-        const planNodes = buildDetachPlanNodes(assessments);
-        const rCtx: RenderContext = { tty: shouldColor() };
-        process.stderr.write(render(planNodes, rCtx));
 
         if (options.dryRun) {
           dryRunNotice();
           return;
         }
 
-        // Phase 4: confirm
+        // Phase 3: confirm
         await confirmOrExit({
           yes: options.yes,
           message: `Detach ${plural(willDetach.length, "repo")}?`,
@@ -222,7 +224,7 @@ export function registerDetachCommand(program: Command): void {
 
         process.stderr.write("\n");
 
-        // Phase 5: execute
+        // Phase 4: execute
         const detached: string[] = [];
 
         for (const a of willDetach) {
@@ -272,10 +274,11 @@ export function registerDetachCommand(program: Command): void {
           displayOverlaySummary(wsTemplates, repoTemplates, (nodes) => render(nodes, { tty: shouldColor() }));
         }
 
-        // Phase 6: summarize
+        // Phase 5: summarize
         process.stderr.write("\n");
-        if (detached.length > 0) success(`Detached ${plural(detached.length, "repo")} from ${ctx.currentWorkspace}`);
-        if (skipped.length > 0) warn(`Skipped: ${skipped.map((a) => a.repo).join(" ")}`);
+        const parts = [`Detached ${plural(detached.length, "repo")}`];
+        if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
+        finishSummary(parts, false);
       }),
     );
 }
