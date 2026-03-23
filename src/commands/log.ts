@@ -101,10 +101,11 @@ export function registerLogCommand(program: Command): void {
 
         const where = resolveWhereFilter(options);
 
+        const selectedSet = new Set(selectedRepos);
         const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache, {
           analysisCache: ctx.analysisCache,
+          repoFilter: selectedSet,
         });
-        const selectedSet = new Set(selectedRepos);
         let repos = summary.repos.filter((r) => selectedSet.has(r.name));
 
         // Apply --where filter
