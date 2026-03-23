@@ -75,15 +75,6 @@ describe("repo default", () => {
       expect(JSON.parse(config).defaults).toEqual(["repo-b"]);
     }));
 
-  test("arb repo default -r removes repos from defaults", () =>
-    withEnv(async (env) => {
-      await arb(env, ["repo", "default", "repo-a", "repo-b"]);
-      await arb(env, ["repo", "default", "-r", "repo-b"]);
-
-      const config = await readFile(join(env.projectDir, ".arb/config.json"), "utf8");
-      expect(JSON.parse(config).defaults).toEqual(["repo-a"]);
-    }));
-
   test("arb repo default rejects unknown repos", () =>
     withEnv(async (env) => {
       const result = await arb(env, ["repo", "default", "nonexistent"]);

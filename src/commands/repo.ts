@@ -342,7 +342,7 @@ export function registerRepoCommand(program: Command): void {
 
   repo
     .command("default [names...]")
-    .option("-r, --remove", "Remove repos from defaults")
+    .option("--remove", "Remove repos from defaults")
     .summary("Manage default repo selection")
     .description(
       "Examples:\n\n  arb repo default                         List current defaults\n  arb repo default api web                 Add repos to defaults\n  arb repo default --remove api            Remove from defaults\n\nMark repos as defaults for workspace creation. Default repos are pre-selected in interactive pickers and used as the fallback repo set when no repos are specified in non-interactive mode.\n\nWith no arguments, lists current defaults. With repo names, adds them to defaults. With --remove, removes them from defaults.\n\nStored in .arb/config.json as a JSON array under the 'defaults' key.",

@@ -186,7 +186,7 @@ Manage defaults with `arb repo default`:
 ```bash
 arb repo default                         # list current defaults
 arb repo default api                     # add api to defaults
-arb repo default -r api                  # remove api from defaults
+arb repo default --remove api            # remove api from defaults
 ```
 
 Defaults are stored in `.arb/config.json` and can be committed to version control so the team shares the same project-level configuration. Removing a repo with `arb repo remove` automatically cleans up its default entry.
