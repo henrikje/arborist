@@ -52,10 +52,21 @@ export function freshRepoModel(): RepoModel {
 /** Single-workspace model: just a map of repo name → state. */
 export interface WorkspaceModel {
   repos: Record<string, RepoModel>;
+  /** Snapshot of the model before the last undoable operation (Rebase, Pull). */
+  lastOperationSnapshot: { repos: Record<string, RepoModel> } | null;
+  /** Whether an undoable operation record currently exists. */
+  hasOperationRecord: boolean;
+  /** After undo, commit matching (outdated counts) is unpredictable — skip those assertions. */
+  skipOutdatedAssertions: boolean;
 }
 
 export function freshWorkspaceModel(repoNames: string[]): WorkspaceModel {
-  return { repos: Object.fromEntries(repoNames.map((r) => [r, freshRepoModel()])) };
+  return {
+    repos: Object.fromEntries(repoNames.map((r) => [r, freshRepoModel()])),
+    lastOperationSnapshot: null,
+    hasOperationRecord: false,
+    skipOutdatedAssertions: false,
+  };
 }
 
 // ── Real system wrapper ──────────────────────────────────────────

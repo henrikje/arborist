@@ -24,6 +24,12 @@ import { type RealSystem, type WorkspaceModel, predictRepoStatus } from "./model
 
 const REPOS = ["repo-a", "repo-b"] as const;
 
+/** Clear undo snapshot — called by commands that invalidate the snapshot by changing external state. */
+function clearUndoSnapshot(model: WorkspaceModel): void {
+  model.hasOperationRecord = false;
+  model.lastOperationSnapshot = null;
+}
+
 // ── Status assertion ────────────────────────────────────────────
 
 /**
@@ -62,7 +68,10 @@ export async function assertStatus(model: WorkspaceModel, real: RealSystem): Pro
     expect(repoJson.share.toPush).toBe(predicted.shareToPush);
     expect(repoJson.share.toPull).toBe(predicted.shareToPull);
 
-    if (predicted.shareRebased !== null) {
+    // Skip outdated assertions after undo — commit matching is identity-based
+    // and the count-based model can't predict replaced/rebased/squashed counts
+    // after HEAD has been reset to a pre-operation state.
+    if (predicted.shareRebased !== null && !model.skipOutdatedAssertions) {
       const total = predicted.shareRebased + (predicted.shareReplaced ?? 0) + (predicted.shareSquashed ?? 0);
       if (total === 0) {
         // Implementation omits outdated when total is 0
@@ -92,7 +101,7 @@ export async function assertStatus(model: WorkspaceModel, real: RealSystem): Pro
 
     // ── Flags (derived from workspace-level statusCounts) ──
     assertFlag(json, predicted.isDirty, "dirty");
-    assertFlag(json, predicted.isUnpushed, "unpushed");
+    assertFlag(json, predicted.isUnpushed, "ahead share");
     assertFlag(json, predicted.needsPull, "behind share");
     assertFlag(json, predicted.needsRebase, "behind base");
     assertFlag(json, predicted.isDiverged, "diverged");
@@ -132,6 +141,7 @@ export class MakeCommit implements AsyncCommand<WorkspaceModel, RealSystem> {
 
   async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
     real.executedCommands.push(this.toString());
+    clearUndoSnapshot(model);
     const worktree = join(real.env.projectDir, real.wsName, this.repoName);
     const id = ++real.commitCounter;
     await write(join(worktree, `commit-${id}.txt`), `content-${id}`);
@@ -168,6 +178,7 @@ export class Push implements AsyncCommand<WorkspaceModel, RealSystem> {
 
   async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
     real.executedCommands.push(this.toString());
+    clearUndoSnapshot(model);
     // Fetch so local tracking refs reflect any external pushes (MakeCommitOnShare)
     const reposDir = join(real.env.projectDir, ".arb/repos");
     await Promise.all(REPOS.map((r) => git(join(reposDir, r), ["fetch", "--prune"]).catch(() => {})));
@@ -219,6 +230,9 @@ export class Pull implements AsyncCommand<WorkspaceModel, RealSystem> {
 
   async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
     real.executedCommands.push(this.toString());
+    // Snapshot model before operation (for undo)
+    model.lastOperationSnapshot = { repos: structuredClone(model.repos) };
+
     // Only pull repos the model considers eligible — pass explicit names so
     // arb doesn't also pull rebased repos (which would produce unpredictable base.ahead).
     const eligible = Object.entries(model.repos).filter(
@@ -230,8 +244,10 @@ export class Pull implements AsyncCommand<WorkspaceModel, RealSystem> {
       cwd: join(real.env.projectDir, real.wsName),
     });
     if (result.exitCode !== 0) {
+      model.lastOperationSnapshot = null;
       throw new Error(`arb pull failed: ${result.output}`);
     }
+    model.hasOperationRecord = true;
     for (const [_, repo] of eligible) {
       // After pull --rebase: external commits are absorbed into local history.
       // Local commits are replayed on top, so toPush count stays the same.
@@ -259,12 +275,18 @@ export class Rebase implements AsyncCommand<WorkspaceModel, RealSystem> {
 
   async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
     real.executedCommands.push(this.toString());
+    // Snapshot model before operation (for undo)
+    model.lastOperationSnapshot = { repos: structuredClone(model.repos) };
+
     const result = await arb(real.env, ["rebase", "--yes", "--no-fetch"], {
       cwd: join(real.env.projectDir, real.wsName),
     });
     if (result.exitCode !== 0) {
+      // Rebase failed — restore snapshot, no operation record persisted
+      model.lastOperationSnapshot = null;
       throw new Error(`arb rebase failed: ${result.output}`);
     }
+    model.hasOperationRecord = true;
     for (const repo of Object.values(model.repos)) {
       if (repo.baseAdvanced > 0) {
         repo.baseAbsorbedSinceLastPush += repo.baseAdvanced;
@@ -297,6 +319,7 @@ export class MakeCommitOnBase implements AsyncCommand<WorkspaceModel, RealSystem
 
   async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
     real.executedCommands.push(this.toString());
+    clearUndoSnapshot(model);
     const canonicalRepo = join(real.env.projectDir, ".arb/repos", this.repoName);
     await git(canonicalRepo, ["checkout", "main"]);
     const id = ++real.commitCounter;
@@ -337,6 +360,7 @@ export class MakeCommitOnShare implements AsyncCommand<WorkspaceModel, RealSyste
 
   async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
     real.executedCommands.push(this.toString());
+    clearUndoSnapshot(model);
     const bareOrigin = join(real.env.originDir, `${this.repoName}.git`);
     const tmpDir = await mkdtemp(join(tmpdir(), "arb-pbt-share-"));
     try {
@@ -380,6 +404,7 @@ export class MakeDirtyFile implements AsyncCommand<WorkspaceModel, RealSystem> {
 
   async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
     real.executedCommands.push(this.toString());
+    clearUndoSnapshot(model);
     const worktree = join(real.env.projectDir, real.wsName, this.repoName);
     const id = ++real.commitCounter;
     await write(join(worktree, `dirty-${id}.txt`), `dirty-${id}`);
@@ -399,5 +424,41 @@ export class MakeDirtyFile implements AsyncCommand<WorkspaceModel, RealSystem> {
 
   toString(): string {
     return `MakeDirtyFile(${this.repoName}, ${this.kind})`;
+  }
+}
+
+// ── Undo ──────────────────────────────────────────────────────────
+
+export class Undo implements AsyncCommand<WorkspaceModel, RealSystem> {
+  check(model: Readonly<WorkspaceModel>): boolean {
+    // Can only undo if there's an operation record and we have a snapshot to restore
+    return model.hasOperationRecord && model.lastOperationSnapshot !== null;
+  }
+
+  async run(model: WorkspaceModel, real: RealSystem): Promise<void> {
+    real.executedCommands.push(this.toString());
+    const result = await arb(real.env, ["undo", "--yes"], {
+      cwd: join(real.env.projectDir, real.wsName),
+    });
+    if (result.exitCode !== 0) {
+      throw new Error(`arb undo failed: ${result.output}`);
+    }
+
+    // Restore model from snapshot
+    const snapshot = model.lastOperationSnapshot;
+    if (snapshot) {
+      model.repos = snapshot.repos;
+    }
+    model.lastOperationSnapshot = null;
+    model.hasOperationRecord = false;
+    // After undo, commit matching (rebased/replaced/squashed) is unpredictable
+    // because the model tracks counts, not commit identities.
+    model.skipOutdatedAssertions = true;
+
+    await assertStatus(model, real);
+  }
+
+  toString(): string {
+    return "Undo";
   }
 }
