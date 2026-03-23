@@ -16,7 +16,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fc from "fast-check";
 import { type TestEnv, arb, cleanupTestEnv, createTestEnv } from "../integration/helpers/env";
-import { MakeCommit, MakeCommitOnBase, MakeCommitOnShare, MakeDirtyFile, Pull, Push, Rebase } from "./helpers/commands";
+import {
+  MakeCommit,
+  MakeCommitOnBase,
+  MakeCommitOnShare,
+  MakeDirtyFile,
+  Pull,
+  Push,
+  Rebase,
+  Undo,
+} from "./helpers/commands";
 import { type RealSystem, type WorkspaceModel, freshWorkspaceModel } from "./helpers/model";
 
 // ── Template ─────────────────────────────────────────────────────
@@ -78,6 +87,8 @@ function buildCommandArbitraries() {
     fc
       .tuple(fc.constantFrom(...REPOS), fc.constantFrom("untracked" as const, "staged" as const))
       .map(([repo, kind]) => new MakeDirtyFile(repo, kind)),
+    fc.constant(new Undo()),
+    fc.constant(new Undo()),
   ];
 }
 
