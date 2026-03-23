@@ -36,7 +36,7 @@ describe("basic output", () => {
       expect(result.output).toContain("feat/auth");
     }));
 
-  test("arb branch shows (default branch) when no explicit base", () =>
+  test("arb branch shows resolved default base with (default) suffix", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const result = await arb(env, ["branch"], {
@@ -44,7 +44,9 @@ describe("basic output", () => {
       });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("BASE");
-      expect(result.output).toContain("(default branch)");
+      expect(result.output).toContain("SHARE");
+      expect(result.output).toContain("(default)");
+      expect(result.output).toContain("origin/main");
     }));
 });
 
