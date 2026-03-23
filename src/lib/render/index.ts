@@ -46,7 +46,12 @@ export { type PhasedRenderOptions, type RenderPhase, runPhasedRender } from "./p
 export { headShaCell, skipCell, stashHintCell, upToDateCell, withSuffixes } from "./plan-format";
 export { type RenderContext, createRenderContext, finishSummary, render, renderCell } from "./render";
 export { buildRepoSkipHeader, repoHeaderNode } from "./repo-header";
-export { type StatusViewContext, buildStatusView } from "./status-view";
+export {
+  type StatusViewContext,
+  type StatusViewResult,
+  buildRefParenthetical,
+  buildStatusView,
+} from "./status-view";
 export {
   ITEM_INDENT,
   SECTION_INDENT,

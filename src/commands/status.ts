@@ -5,7 +5,15 @@ import { ArbError, type CommandContext, arbAction, readWorkspaceConfig } from ".
 import { localTimeout } from "../lib/git/git";
 import { printSchema } from "../lib/json";
 import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
-import { createRenderContext, fitToHeight, render, runPhasedRender } from "../lib/render";
+import {
+  buildRefParenthetical,
+  createRenderContext,
+  fitToHeight,
+  render,
+  renderCell,
+  runPhasedRender,
+  spans,
+} from "../lib/render";
 import { buildStatusView } from "../lib/render";
 import {
   type RepoStatus,
@@ -366,7 +374,7 @@ async function renderStatusTable(
   }
 
   // Build declarative view
-  const nodes = buildStatusView(filteredSummary, {
+  const { nodes, showBaseRef, showShareRef } = buildStatusView(filteredSummary, {
     expectedBranch: filteredSummary.branch,
     baseConflictRepos,
     pullConflictRepos,
@@ -374,7 +382,17 @@ async function renderStatusTable(
     verboseData,
   });
 
-  const fittedNodes = options.maxLines != null ? fitToHeight(nodes, options.maxLines) : nodes;
+  // Prepend header with ref parenthetical when ref columns are hidden
   const renderCtx = createRenderContext();
+  const paren = buildRefParenthetical(filteredSummary, showBaseRef, showShareRef);
+  if (paren) {
+    const headerCell = spans(
+      { text: filteredSummary.workspace, attention: "default" },
+      { text: ` (${paren})`, attention: "muted" },
+    );
+    nodes.unshift({ kind: "rawText", text: `${renderCell(headerCell, renderCtx)}\n` }, { kind: "gap" });
+  }
+
+  const fittedNodes = options.maxLines != null ? fitToHeight(nodes, options.maxLines) : nodes;
   return render(fittedNodes, renderCtx);
 }
