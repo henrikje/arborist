@@ -1,4 +1,4 @@
-import { renameSync } from "node:fs";
+import { existsSync, renameSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
 import {
@@ -9,7 +9,7 @@ import {
   readOperationRecord,
   writeWorkspaceConfig,
 } from "../lib/core";
-import { detectOperation, gitLocal } from "../lib/git";
+import { branchExistsLocally, detectOperation, gitLocal } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
 import { cell } from "../lib/render";
@@ -71,6 +71,17 @@ async function assessBranchRenameUndo(
           repoDir,
           action: "drifted",
           detail: `HEAD moved from ${state.preHead.slice(0, 7)} to ${currentSha.slice(0, 7)}`,
+        });
+        continue;
+      }
+      // Check if target branch already exists (collision)
+      const targetExists = await branchExistsLocally(repoDir, record.oldBranch);
+      if (targetExists) {
+        assessments.push({
+          repo: repoName,
+          repoDir,
+          action: "drifted",
+          detail: `branch '${record.oldBranch}' already exists (cannot rename back)`,
         });
         continue;
       }
@@ -141,7 +152,17 @@ async function executeBranchRenameUndo(
 async function assessRenameUndo(
   record: OperationRecord & { command: "rename" },
   wsDir: string,
+  arbRootDir: string,
 ): Promise<RepoUndoAssessment[]> {
+  // Check directory collision: target directory must not exist
+  if (record.oldName !== record.newName) {
+    const targetDir = `${arbRootDir}/${record.oldName}`;
+    if (existsSync(targetDir)) {
+      error(`Cannot undo — directory '${record.oldName}' already exists`);
+      throw new ArbError(`Cannot undo — directory '${record.oldName}' already exists`);
+    }
+  }
+
   // Workspace rename does branch renames — same assessment as branch-rename
   // but we need to derive oldBranch/newBranch from configBefore/configAfter
   const oldBranch = record.configBefore?.branch;
@@ -187,6 +208,17 @@ async function assessRenameUndo(
           repoDir,
           action: "drifted",
           detail: `HEAD moved from ${state.preHead.slice(0, 7)} to ${currentHead.stdout.trim().slice(0, 7)}`,
+        });
+        continue;
+      }
+      // Check if target branch already exists (collision)
+      const targetExists = await branchExistsLocally(repoDir, oldBranch);
+      if (targetExists) {
+        assessments.push({
+          repo: repoName,
+          repoDir,
+          action: "drifted",
+          detail: `branch '${oldBranch}' already exists (cannot rename back)`,
         });
         continue;
       }
@@ -411,7 +443,7 @@ async function executeSyncUndo(record: OperationRecord, assessments: RepoUndoAss
 
 // ── Shared undo infrastructure ──
 
-async function assessUndo(record: OperationRecord, wsDir: string): Promise<RepoUndoAssessment[]> {
+async function assessUndo(record: OperationRecord, wsDir: string, arbRootDir: string): Promise<RepoUndoAssessment[]> {
   switch (record.command) {
     case "branch-rename":
       return assessBranchRenameUndo(record, wsDir);
@@ -422,7 +454,7 @@ async function assessUndo(record: OperationRecord, wsDir: string): Promise<RepoU
     case "reset":
       return assessSyncUndo(record, wsDir);
     case "rename":
-      return assessRenameUndo(record, wsDir);
+      return assessRenameUndo(record, wsDir, arbRootDir);
     default: {
       const _exhaustive: never = record;
       throw new ArbError("Undo is not yet supported for this operation");
@@ -526,7 +558,7 @@ export function registerUndoCommand(program: Command): void {
           warn("This operation is older than 7 days — stashed changes may have been garbage collected by git");
         }
 
-        const assessments = await assessUndo(record, wsDir);
+        const assessments = await assessUndo(record, wsDir, ctx.arbRootDir);
 
         // Check for drift
         const drifted = assessments.filter((a) => a.action === "drifted");

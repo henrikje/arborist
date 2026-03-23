@@ -341,4 +341,37 @@ describe.skipIf(gitBelow230)("rename undo", () => {
       // Operation record cleaned up
       expect(existsSync(join(env.projectDir, "my-feature/.arbws/operation.json"))).toBe(false);
     }));
+
+  test("arb undo refuses when target directory already exists", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+
+      await arb(env, ["rename", "PROJ-208", "--yes", "--no-fetch"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+
+      // Manually create the old directory name
+      const { mkdir } = await import("node:fs/promises");
+      await mkdir(join(env.projectDir, "my-feature"));
+
+      const result = await arb(env, ["undo", "--yes"], { cwd: join(env.projectDir, "PROJ-208") });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("already exists");
+    }));
+
+  test("arb undo refuses when target branch already exists in a repo", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+
+      await arb(env, ["rename", "PROJ-208", "--yes", "--no-fetch"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+
+      // Manually create the old branch name in a repo
+      await git(join(env.projectDir, "PROJ-208/repo-a"), ["branch", "my-feature"]);
+
+      const result = await arb(env, ["undo", "--yes"], { cwd: join(env.projectDir, "PROJ-208") });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("already exists");
+    }));
 });
