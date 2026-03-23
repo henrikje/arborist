@@ -128,11 +128,13 @@ Before deleting a workspace, arb checks whether any template-generated files hav
 
 ### Manual re-application
 
-`arb template apply` re-seeds missing files into an existing workspace. Combined with `--force`, it also resets drifted files to the current template output:
+`arb template apply` re-seeds missing files into an existing workspace. Combined with `--force`, it also resets drifted files to the current template output. Use `--dry-run` (`-n`) to preview what would happen without writing any files:
 
 ```bash
 arb template apply              # seed only missing files (safe, non-destructive)
 arb template apply --force      # also overwrite files that differ from template output
+arb template apply --dry-run    # preview what would be seeded (no files written)
+arb template apply --force -n   # preview what would be reset
 ```
 
 ### No templates directory?

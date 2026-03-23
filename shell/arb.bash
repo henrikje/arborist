@@ -646,7 +646,7 @@ __arb_complete_template() {
                 return
             fi
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--repo --workspace -f --force" -- "$cur"))
+                COMPREPLY=($(compgen -W "--repo --workspace -f --force -n --dry-run" -- "$cur"))
                 return
             fi
             COMPREPLY=($(compgen -W "$(__arb_template_names "$base_dir")" -- "$cur"))

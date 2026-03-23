@@ -1745,3 +1745,89 @@ describe("unified display in lifecycle commands", () => {
       expect(result.output).not.toContain("modified");
     }));
 });
+
+describe("template apply --dry-run", () => {
+  test("arb template apply --dry-run shows seeded but does not write files", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      // Add template AFTER create so it hasn't been seeded yet
+      await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
+      await write(join(env.projectDir, ".arb/templates/workspace/.env"), "SECRET=abc");
+      const result = await arb(env, ["template", "apply", "--dry-run"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("seeded");
+      expect(result.output).toContain("Dry run");
+      // File must NOT exist — dry run should not write
+      expect(existsSync(join(env.projectDir, "my-feature/.env"))).toBe(false);
+    }));
+
+  test("arb template apply --dry-run shows skipped for existing files", () =>
+    withEnv(async (env) => {
+      await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
+      await write(join(env.projectDir, ".arb/templates/workspace/.env"), "TEMPLATE");
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      // File was seeded during create — modify it
+      await writeFile(join(env.projectDir, "my-feature/.env"), "MODIFIED");
+      const result = await arb(env, ["template", "apply", "--dry-run"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("skipped");
+      expect(result.output).toContain("Dry run");
+      // Content must be preserved
+      const content = await readFile(join(env.projectDir, "my-feature/.env"), "utf8");
+      expect(content).toBe("MODIFIED");
+    }));
+
+  test("arb template apply --force --dry-run shows reset but does not overwrite", () =>
+    withEnv(async (env) => {
+      await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
+      await write(join(env.projectDir, ".arb/templates/workspace/.env"), "TEMPLATE");
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      await writeFile(join(env.projectDir, "my-feature/.env"), "DRIFTED");
+      const result = await arb(env, ["template", "apply", "--force", "--dry-run"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("reset");
+      expect(result.output).toContain("Dry run");
+      // Drifted content must be preserved — dry run should not overwrite
+      const content = await readFile(join(env.projectDir, "my-feature/.env"), "utf8");
+      expect(content).toBe("DRIFTED");
+    }));
+
+  test("arb template apply --force --dry-run shows unchanged for matching files", () =>
+    withEnv(async (env) => {
+      await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
+      await write(join(env.projectDir, ".arb/templates/workspace/.env"), "TEMPLATE");
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      // Don't modify — content matches template
+      const result = await arb(env, ["template", "apply", "--force", "--dry-run"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("unchanged");
+      expect(result.output).toContain("Dry run");
+    }));
+
+  test("arb template apply --dry-run does not update manifest", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      // Add template AFTER create
+      await mkdir(join(env.projectDir, ".arb/templates/workspace"), { recursive: true });
+      await write(join(env.projectDir, ".arb/templates/workspace/new-file.txt"), "content");
+      // Read manifest before dry-run
+      const manifestPath = join(env.projectDir, "my-feature/.arbws/templates.json");
+      const manifestBefore = existsSync(manifestPath) ? await readFile(manifestPath, "utf8") : "";
+      const result = await arb(env, ["template", "apply", "--dry-run"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Dry run");
+      // Manifest must not have changed
+      const manifestAfter = existsSync(manifestPath) ? await readFile(manifestPath, "utf8") : "";
+      expect(manifestAfter).toBe(manifestBefore);
+    }));
+});

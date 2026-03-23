@@ -47,7 +47,7 @@ import {
   workspaceFilePath,
   workspaceRepoList,
 } from "../lib/templates";
-import { error, info, plural, shouldColor, warn, yellow } from "../lib/terminal";
+import { dryRunNotice, error, info, plural, shouldColor, warn, yellow } from "../lib/terminal";
 import { collectRepo, requireWorkspace, validateRepoNames, workspaceRepoDirs } from "../lib/workspace";
 
 function buildTemplateListNodes(
@@ -419,9 +419,10 @@ export function registerTemplateCommand(program: Command): void {
     .option("--repo <name>", "Apply only to specific repo (repeatable)", collectRepo, [])
     .option("--workspace", "Apply only workspace templates")
     .option("-f, --force", "Overwrite drifted files (reset to template version)")
+    .option("-n, --dry-run", "Show what would happen without executing")
     .summary("Re-seed templates into the current workspace")
     .description(
-      "Examples:\n\n  arb template apply                       Seed missing files only\n  arb template apply --force               Also reset drifted files\n\nRe-seed template files into the current workspace. By default, only copies files that don't already exist (safe, non-destructive). Use --force to also reset drifted files to their template version. Files with .arbtemplate extension undergo placeholder substitution. Use --repo or --workspace to limit scope, and optionally specify a file path to apply only that template.",
+      "Examples:\n\n  arb template apply                       Seed missing files only\n  arb template apply --force               Also reset drifted files\n  arb template apply --dry-run             Preview what would be seeded\n  arb template apply --force --dry-run     Preview what would be reset\n\nRe-seed template files into the current workspace. By default, only copies files that don't already exist (safe, non-destructive). Use --force to also reset drifted files to their template version. Files with .arbtemplate extension undergo placeholder substitution. Use --repo or --workspace to limit scope, and optionally specify a file path to apply only that template. Use --dry-run to preview what would happen without writing any files.",
     )
     .action(
       arbAction(async (ctx, file: string | undefined, options) => {
@@ -441,9 +442,9 @@ export function registerTemplateCommand(program: Command): void {
         const reposToApply = hasRepoFlag && options.repo ? options.repo : !hasWsFlag ? allRepos : [];
 
         if (options.force) {
-          await applyForceMode(ctx, wsDir, applyWorkspace, reposToApply, cache, file);
+          await applyForceMode(ctx, wsDir, applyWorkspace, reposToApply, cache, file, options.dryRun);
         } else {
-          await applyDefaultMode(ctx, wsDir, applyWorkspace, reposToApply, cache, file);
+          await applyDefaultMode(ctx, wsDir, applyWorkspace, reposToApply, cache, file, options.dryRun);
         }
       }),
     );
@@ -474,6 +475,7 @@ function applySingleFile(
   force: boolean,
   ctx?: TemplateContext,
   tplLabel?: string,
+  dryRun?: boolean,
 ): { status: "seeded" | "skipped" | "reset" | "unchanged"; unknownVariables: UnknownVariable[]; hash?: string } {
   const isArbtpl = tplPath.endsWith(ARBTEMPLATE_EXT);
   const tplContent = isArbtpl && ctx ? readFileSync(tplPath, "utf-8") : null;
@@ -483,15 +485,20 @@ function applySingleFile(
       : [];
 
   if (!existsSync(destPath)) {
-    mkdirSync(dirname(destPath), { recursive: true });
     let content: Buffer;
     if (tplContent !== null && ctx) {
       const rendered = renderTemplate(tplContent, ctx);
-      writeFileSync(destPath, rendered);
+      if (!dryRun) {
+        mkdirSync(dirname(destPath), { recursive: true });
+        writeFileSync(destPath, rendered);
+      }
       content = Buffer.from(rendered);
     } else {
-      copyFileSync(tplPath, destPath);
-      content = readFileSync(destPath);
+      if (!dryRun) {
+        mkdirSync(dirname(destPath), { recursive: true });
+        copyFileSync(tplPath, destPath);
+      }
+      content = readFileSync(tplPath);
     }
     return { status: "seeded", unknownVariables, hash: hashContent(content) };
   }
@@ -503,10 +510,12 @@ function applySingleFile(
   if (srcContent.equals(destContent)) {
     return { status: "unchanged", unknownVariables, hash: hashContent(srcContent) };
   }
-  if (tplContent !== null && ctx) {
-    writeFileSync(destPath, srcContent);
-  } else {
-    copyFileSync(tplPath, destPath);
+  if (!dryRun) {
+    if (tplContent !== null && ctx) {
+      writeFileSync(destPath, srcContent);
+    } else {
+      copyFileSync(tplPath, destPath);
+    }
   }
   return { status: "reset", unknownVariables, hash: hashContent(srcContent) };
 }
@@ -518,6 +527,7 @@ async function applyDefaultMode(
   repos: string[],
   cache: GitCache,
   fileFilter?: string,
+  dryRun?: boolean,
 ): Promise<void> {
   let totalSeeded = 0;
   let totalSkipped = 0;
@@ -550,7 +560,7 @@ async function applyDefaultMode(
         repos: allRepos,
       };
       const tplLabel = relative(ctx.arbRootDir, tplPath);
-      const { status, unknownVariables, hash } = applySingleFile(tplPath, destPath, false, tplCtx, tplLabel);
+      const { status, unknownVariables, hash } = applySingleFile(tplPath, destPath, false, tplCtx, tplLabel, dryRun);
       allUnknowns.push(...unknownVariables);
       if (hash) {
         batchedHashes[manifestKey(entry.scope, entry.relPath, entry.repo)] = hash;
@@ -560,11 +570,11 @@ async function applyDefaultMode(
       if (status === "seeded") totalSeeded++;
       else totalSkipped++;
     }
-    mergeManifest(wsDir, batchedHashes);
+    if (!dryRun) mergeManifest(wsDir, batchedHashes);
     repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(ctx.arbRootDir);
   } else {
     if (applyWorkspace) {
-      const result = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir, undefined, cache);
+      const result = await applyWorkspaceTemplates(ctx.arbRootDir, wsDir, undefined, cache, dryRun);
       displayOverlayResults(result, "workspace", maxScope);
       allConflicts.push(...result.conflicts);
       allUnknowns.push(...result.unknownVariables);
@@ -573,7 +583,7 @@ async function applyDefaultMode(
       totalSkipped += result.skipped.length + result.conflicts.length;
     }
     for (const repo of repos) {
-      const result = await applyRepoTemplates(ctx.arbRootDir, wsDir, [repo], undefined, cache);
+      const result = await applyRepoTemplates(ctx.arbRootDir, wsDir, [repo], undefined, cache, dryRun);
       displayOverlayResults(result, repo, maxScope);
       allConflicts.push(...result.conflicts);
       allUnknowns.push(...result.unknownVariables);
@@ -597,6 +607,7 @@ async function applyDefaultMode(
   if (totalSkipped > 0) parts.push(`${totalSkipped} already present`);
   if (parts.length === 0) parts.push("No templates to apply");
   finishSummary(parts, false);
+  if (dryRun) dryRunNotice();
 }
 
 async function applyForceMode(
@@ -606,6 +617,7 @@ async function applyForceMode(
   repos: string[],
   cache: GitCache,
   fileFilter?: string,
+  dryRun?: boolean,
 ): Promise<void> {
   let totalSeeded = 0;
   let totalReset = 0;
@@ -639,7 +651,7 @@ async function applyForceMode(
         repos: allRepos,
       };
       const tplLabel = relative(ctx.arbRootDir, tplPath);
-      const { status, unknownVariables, hash } = applySingleFile(tplPath, destPath, true, tplCtx, tplLabel);
+      const { status, unknownVariables, hash } = applySingleFile(tplPath, destPath, true, tplCtx, tplLabel, dryRun);
       allUnknowns.push(...unknownVariables);
       if (hash) {
         batchedHashes[manifestKey(entry.scope, entry.relPath, entry.repo)] = hash;
@@ -649,11 +661,11 @@ async function applyForceMode(
       else if (status === "reset") totalReset++;
       else totalUnchanged++;
     }
-    mergeManifest(wsDir, batchedHashes);
+    if (!dryRun) mergeManifest(wsDir, batchedHashes);
     repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(ctx.arbRootDir);
   } else {
     if (applyWorkspace) {
-      const result = await forceApplyWorkspaceTemplates(ctx.arbRootDir, wsDir, cache);
+      const result = await forceApplyWorkspaceTemplates(ctx.arbRootDir, wsDir, cache, dryRun);
       displayForceOverlayResults(result, "workspace", maxScope);
       allConflicts.push(...result.conflicts);
       allUnknowns.push(...result.unknownVariables);
@@ -663,7 +675,7 @@ async function applyForceMode(
       totalUnchanged += result.unchanged.length + result.conflicts.length;
     }
     for (const repo of repos) {
-      const result = await forceApplyRepoTemplates(ctx.arbRootDir, wsDir, [repo], cache);
+      const result = await forceApplyRepoTemplates(ctx.arbRootDir, wsDir, [repo], cache, dryRun);
       displayForceOverlayResults(result, repo, maxScope);
       allConflicts.push(...result.conflicts);
       allUnknowns.push(...result.unknownVariables);
@@ -688,6 +700,7 @@ async function applyForceMode(
   if (totalUnchanged > 0) parts.push(`${totalUnchanged} unchanged`);
   if (parts.length === 0) parts.push("No templates to apply");
   finishSummary(parts, false);
+  if (dryRun) dryRunNotice();
 }
 
 function displayOverlayResults(result: OverlayResult, scope: string, maxScope: number): void {
