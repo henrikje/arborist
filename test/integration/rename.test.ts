@@ -248,6 +248,29 @@ describe.skipIf(gitBelow230)("skip in-progress", () => {
       const { rm } = await import("node:fs/promises");
       await rm(join(gitDir, "MERGE_HEAD"), { force: true });
     }));
+
+  test("arb rename --include-in-progress renames repos with in-progress operations", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const wtA = join(env.projectDir, "my-feature/repo-a");
+      let gitDir = (await git(wtA, ["rev-parse", "--git-dir"])).trim();
+      if (!gitDir.startsWith("/")) {
+        gitDir = join(wtA, gitDir);
+      }
+      await writeFile(join(gitDir, "MERGE_HEAD"), "");
+
+      const result = await arb(env, ["rename", "PROJ-208", "--yes", "--no-fetch", "--include-in-progress"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      // Both repos renamed despite in-progress op in repo-a
+      const branchA = (await git(join(env.projectDir, "PROJ-208/repo-a"), ["symbolic-ref", "--short", "HEAD"])).trim();
+      const branchB = (await git(join(env.projectDir, "PROJ-208/repo-b"), ["symbolic-ref", "--short", "HEAD"])).trim();
+      expect(branchA).toBe("PROJ-208");
+      expect(branchB).toBe("PROJ-208");
+      const { rm } = await import("node:fs/promises");
+      await rm(join(gitDir, "MERGE_HEAD"), { force: true });
+    }));
 });
 
 // ── recovery: arb rename → arb rename ────────────────────────────

@@ -406,7 +406,7 @@ __arb_complete_rename() {
         return  # branch name, no completion
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--branch --base --continue --abort -r --delete-remote --fetch -N --no-fetch --dry-run -y --yes" -- "$cur"))
+        COMPREPLY=($(compgen -W "--branch --base --continue --abort -r --delete-remote --fetch -N --no-fetch --dry-run -y --yes --include-in-progress" -- "$cur"))
         return
     fi
 }
