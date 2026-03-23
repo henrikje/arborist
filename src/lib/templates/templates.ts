@@ -123,6 +123,7 @@ export async function applyWorkspaceTemplates(
   wsDir: string,
   changedRepos?: { added?: string[]; removed?: string[] },
   cache?: GitCache,
+  dryRun?: boolean,
 ): Promise<OverlayResult> {
   const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
   const reposDir = join(arbRootDir, ".arb", "repos");
@@ -139,13 +140,24 @@ export async function applyWorkspaceTemplates(
     ctx.previousRepos = await reconstructPreviousRepos(repos, changedRepos, reposDir, c);
   }
 
-  const result = overlayDirectory(templateDir, wsDir, ctx, ".arb/templates/workspace", "workspace");
+  const result = overlayDirectory(
+    templateDir,
+    wsDir,
+    ctx,
+    ".arb/templates/workspace",
+    "workspace",
+    undefined,
+    undefined,
+    dryRun,
+  );
   result.repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(arbRootDir);
-  const manifestEntries: Record<string, string> = {};
-  for (const [relPath, hash] of Object.entries(result.seededHashes)) {
-    manifestEntries[manifestKey("workspace", relPath)] = hash;
+  if (!dryRun) {
+    const manifestEntries: Record<string, string> = {};
+    for (const [relPath, hash] of Object.entries(result.seededHashes)) {
+      manifestEntries[manifestKey("workspace", relPath)] = hash;
+    }
+    mergeManifest(wsDir, manifestEntries);
   }
-  mergeManifest(wsDir, manifestEntries);
   return result;
 }
 
@@ -155,6 +167,7 @@ export async function applyRepoTemplates(
   repos: string[],
   changedRepos?: { added?: string[]; removed?: string[] },
   cache?: GitCache,
+  dryRun?: boolean,
 ): Promise<OverlayResult> {
   const result = emptyOverlayResult();
   const reposDir = join(arbRootDir, ".arb", "repos");
@@ -178,18 +191,29 @@ export async function applyRepoTemplates(
     if (changedRepos) {
       ctx.previousRepos = await reconstructPreviousRepos(allRepos, changedRepos, reposDir, c);
     }
-    const repoResult = overlayDirectory(templateDir, repoDir, ctx, `.arb/templates/repos/${repo}`, "repo", repo);
+    const repoResult = overlayDirectory(
+      templateDir,
+      repoDir,
+      ctx,
+      `.arb/templates/repos/${repo}`,
+      "repo",
+      repo,
+      undefined,
+      dryRun,
+    );
     result.seeded.push(...repoResult.seeded);
     result.skipped.push(...repoResult.skipped);
     result.regenerated.push(...repoResult.regenerated);
     result.conflicts.push(...repoResult.conflicts);
     result.failed.push(...repoResult.failed);
     result.unknownVariables.push(...repoResult.unknownVariables);
-    const manifestEntries: Record<string, string> = {};
-    for (const [relPath, hash] of Object.entries(repoResult.seededHashes)) {
-      manifestEntries[manifestKey("repo", relPath, repo)] = hash;
+    if (!dryRun) {
+      const manifestEntries: Record<string, string> = {};
+      for (const [relPath, hash] of Object.entries(repoResult.seededHashes)) {
+        manifestEntries[manifestKey("repo", relPath, repo)] = hash;
+      }
+      mergeManifest(wsDir, manifestEntries);
     }
-    mergeManifest(wsDir, manifestEntries);
   }
 
   return result;
@@ -199,6 +223,7 @@ export async function forceApplyWorkspaceTemplates(
   arbRootDir: string,
   wsDir: string,
   cache?: GitCache,
+  dryRun?: boolean,
 ): Promise<ForceOverlayResult> {
   const templateDir = join(arbRootDir, ".arb", "templates", "workspace");
   const reposDir = join(arbRootDir, ".arb", "repos");
@@ -210,13 +235,23 @@ export async function forceApplyWorkspaceTemplates(
     workspacePath: wsDir,
     repos,
   };
-  const result = forceOverlayDirectory(templateDir, wsDir, ctx, ".arb/templates/workspace", "workspace");
+  const result = forceOverlayDirectory(
+    templateDir,
+    wsDir,
+    ctx,
+    ".arb/templates/workspace",
+    "workspace",
+    undefined,
+    dryRun,
+  );
   result.repoDirectoryWarnings = checkWorkspaceTemplateRepoWarnings(arbRootDir);
-  const manifestEntries: Record<string, string> = {};
-  for (const [relPath, hash] of Object.entries(result.seededHashes)) {
-    manifestEntries[manifestKey("workspace", relPath)] = hash;
+  if (!dryRun) {
+    const manifestEntries: Record<string, string> = {};
+    for (const [relPath, hash] of Object.entries(result.seededHashes)) {
+      manifestEntries[manifestKey("workspace", relPath)] = hash;
+    }
+    mergeManifest(wsDir, manifestEntries);
   }
-  mergeManifest(wsDir, manifestEntries);
   return result;
 }
 
@@ -225,6 +260,7 @@ export async function forceApplyRepoTemplates(
   wsDir: string,
   repos: string[],
   cache?: GitCache,
+  dryRun?: boolean,
 ): Promise<ForceOverlayResult> {
   const result = emptyForceOverlayResult();
   const reposDir = join(arbRootDir, ".arb", "repos");
@@ -245,18 +281,28 @@ export async function forceApplyRepoTemplates(
       repoPath: repoDir,
       repos: allRepos,
     };
-    const repoResult = forceOverlayDirectory(templateDir, repoDir, ctx, `.arb/templates/repos/${repo}`, "repo", repo);
+    const repoResult = forceOverlayDirectory(
+      templateDir,
+      repoDir,
+      ctx,
+      `.arb/templates/repos/${repo}`,
+      "repo",
+      repo,
+      dryRun,
+    );
     result.seeded.push(...repoResult.seeded);
     result.reset.push(...repoResult.reset);
     result.unchanged.push(...repoResult.unchanged);
     result.conflicts.push(...repoResult.conflicts);
     result.failed.push(...repoResult.failed);
     result.unknownVariables.push(...repoResult.unknownVariables);
-    const manifestEntries: Record<string, string> = {};
-    for (const [relPath, hash] of Object.entries(repoResult.seededHashes)) {
-      manifestEntries[manifestKey("repo", relPath, repo)] = hash;
+    if (!dryRun) {
+      const manifestEntries: Record<string, string> = {};
+      for (const [relPath, hash] of Object.entries(repoResult.seededHashes)) {
+        manifestEntries[manifestKey("repo", relPath, repo)] = hash;
+      }
+      mergeManifest(wsDir, manifestEntries);
     }
-    mergeManifest(wsDir, manifestEntries);
   }
 
   return result;

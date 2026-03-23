@@ -633,6 +633,7 @@ _arb() {
                                     '*--repo[Apply only to specific repo]:repo:($repo_names)' \
                                     '--workspace[Apply only workspace templates]' \
                                     '(-f --force)'{-f,--force}'[Overwrite drifted files]' \
+                                    '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
                                     '1:template:{ _arb_template_names "$base_dir" }'
                                 ;;
                         esac

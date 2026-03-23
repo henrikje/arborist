@@ -73,6 +73,8 @@ export function overlayDirectory(
   tplPathPrefix?: string,
   conflictScope?: "workspace" | "repo",
   conflictRepo?: string,
+  force?: false,
+  dryRun?: boolean,
 ): OverlayResult;
 export function overlayDirectory(
   srcDir: string,
@@ -82,6 +84,7 @@ export function overlayDirectory(
   conflictScope: "workspace" | "repo" | undefined,
   conflictRepo: string | undefined,
   force: true,
+  dryRun?: boolean,
 ): ForceOverlayResult;
 export function overlayDirectory(
   srcDir: string,
@@ -91,6 +94,7 @@ export function overlayDirectory(
   conflictScope?: "workspace" | "repo",
   conflictRepo?: string,
   force?: boolean,
+  dryRun?: boolean,
 ): OverlayResult | ForceOverlayResult {
   if (!existsSync(srcDir)) return force ? emptyForceOverlayResult() : emptyOverlayResult();
 
@@ -140,15 +144,20 @@ export function overlayDirectory(
         if (!existsSync(destPath)) {
           // New file — identical for both modes
           try {
-            mkdirSync(join(destDir, relative(srcDir, dir)), { recursive: true });
             let content: Buffer;
             if (tplContent !== null && ctx) {
               const rendered = renderTemplate(tplContent, ctx);
-              writeFileSync(destPath, rendered);
+              if (!dryRun) {
+                mkdirSync(join(destDir, relative(srcDir, dir)), { recursive: true });
+                writeFileSync(destPath, rendered);
+              }
               content = Buffer.from(rendered);
             } else {
-              copyFileSync(srcPath, destPath);
-              content = readFileSync(destPath);
+              if (!dryRun) {
+                mkdirSync(join(destDir, relative(srcDir, dir)), { recursive: true });
+                copyFileSync(srcPath, destPath);
+              }
+              content = readFileSync(srcPath);
             }
             seeded.push(relPath);
             seededHashes[relPath] = hashContent(content);
@@ -166,10 +175,12 @@ export function overlayDirectory(
               unchanged.push(relPath);
               seededHashes[relPath] = hashContent(srcContent);
             } else {
-              if (tplContent !== null && ctx) {
-                writeFileSync(destPath, srcContent);
-              } else {
-                copyFileSync(srcPath, destPath);
+              if (!dryRun) {
+                if (tplContent !== null && ctx) {
+                  writeFileSync(destPath, srcContent);
+                } else {
+                  copyFileSync(srcPath, destPath);
+                }
               }
               reset.push(relPath);
               seededHashes[relPath] = hashContent(srcContent);
@@ -193,7 +204,7 @@ export function overlayDirectory(
 
               if (existingContent === prevRender) {
                 // User hasn't edited — safe to overwrite
-                writeFileSync(destPath, newRender);
+                if (!dryRun) writeFileSync(destPath, newRender);
                 regenerated.push(relPath);
                 seededHashes[relPath] = hashContent(newRender);
               } else {
@@ -246,6 +257,7 @@ export function forceOverlayDirectory(
   tplPathPrefix?: string,
   conflictScope?: "workspace" | "repo",
   conflictRepo?: string,
+  dryRun?: boolean,
 ): ForceOverlayResult {
-  return overlayDirectory(srcDir, destDir, ctx, tplPathPrefix, conflictScope, conflictRepo, true);
+  return overlayDirectory(srcDir, destDir, ctx, tplPathPrefix, conflictScope, conflictRepo, true, dryRun);
 }
