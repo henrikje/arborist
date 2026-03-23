@@ -264,6 +264,7 @@ export function buildRenamePlanNodes(
     rows,
   });
 
+  nodes.push({ kind: "gap" });
   return nodes;
 }
 
@@ -289,7 +290,6 @@ function formatPlan(
   if (fetchingNotice) {
     out += fetchingNotice;
   }
-  out += "\n";
   return out;
 }
 
@@ -322,10 +322,11 @@ export function formatAbortPlan(assessments: AbortAssessment[], oldBranch: strin
         return { cells: { repo: cell(a.repo), local: localCell } };
       }),
     },
+    { kind: "gap" },
   ];
 
   const rCtx: RenderContext = { tty: shouldColor() };
-  return `${render(nodes, rCtx)}\n`;
+  return render(nodes, rCtx);
 }
 
 async function runRename(

@@ -1,10 +1,10 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
-import { type RenderContext, render } from "../lib/render";
+import { type RenderContext, finishSummary, render } from "../lib/render";
 import { repoHeaderNode } from "../lib/render";
 import { computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
-import { error, plural, shouldColor, success } from "../lib/terminal";
+import { error, plural, shouldColor } from "../lib/terminal";
 import { collectRepo, requireBranch, requireWorkspace, validateRepoNames, workspaceRepoDirs } from "../lib/workspace";
 
 export function registerExecCommand(program: Command): void {
@@ -114,15 +114,7 @@ export function registerExecCommand(program: Command): void {
         if (execOk.length > 0) parts.push(`Ran in ${plural(execOk.length, "repo")}`);
         if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
         if (execFailed.length > 0) parts.push(`${execFailed.length} failed`);
-        if (parts.length > 0) {
-          if (execFailed.length > 0) {
-            error(parts.join(", "));
-          } else {
-            success(parts.join(", "));
-          }
-        }
-
-        if (execFailed.length > 0) throw new ArbError("Command failed in some repos");
+        if (parts.length > 0) finishSummary(parts, execFailed.length > 0);
       }),
     );
 }

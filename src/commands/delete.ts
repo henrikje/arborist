@@ -12,7 +12,7 @@ import {
 } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, gitLocal, gitNetwork, networkTimeout } from "../lib/git";
-import { type RenderContext, fitToHeight, render } from "../lib/render";
+import { type RenderContext, finishSummary, fitToHeight, render } from "../lib/render";
 import { EMPTY_CELL, cell } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
 import { enrichMergedLabel, formatStatusCounts } from "../lib/render";
@@ -52,7 +52,6 @@ import {
   readNamesFromStdin,
   red,
   shouldColor,
-  success,
   warn,
 } from "../lib/terminal";
 import { listWorkspaces, validateWorkspaceName, workspaceBranch, workspaceRepoDirs } from "../lib/workspace";
@@ -608,7 +607,7 @@ export function registerDeleteCommand(program: Command): void {
           }
 
           process.stderr.write("\n");
-          success(`Deleted ${plural(safeEntries.length, "workspace")}`);
+          finishSummary([`Deleted ${plural(safeEntries.length, "workspace")}`], false);
           return;
         }
 
@@ -728,7 +727,7 @@ export function registerDeleteCommand(program: Command): void {
 
         // Summarize
         process.stderr.write("\n");
-        success(`Deleted ${plural(assessments.length, "workspace")}`);
+        finishSummary([`Deleted ${plural(assessments.length, "workspace")}`], false);
 
         // If any deleted workspace was the current one, emit project root
         // so the shell wrapper can cd there (same pattern as create/branch rename).
