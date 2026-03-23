@@ -248,7 +248,7 @@ export function registerRepoCommand(program: Command): void {
     .command("remove [names...]")
     .option("-a, --all-repos", "Remove all canonical repos")
     .option("-y, --yes", "Skip confirmation prompt")
-    .option("-n, --dry-run", "Show what would be removed without removing")
+    .option("--dry-run", "Show what would be removed without removing")
     .summary("Remove canonical repos from .arb/repos/")
     .description(
       "Examples:\n\n  arb repo remove api                      Remove a single repo\n  arb repo remove api web --yes            Remove multiple, skip prompt\n  arb repo remove --all-repos              Remove all repos\n\nRemove one or more canonical repository clones from .arb/repos/ and their associated template files from .arb/templates/repos/. This is the inverse of 'arb repo clone'.\n\nRefuses to remove repos that are attached to a workspace. Run 'arb detach <repo>' or 'arb delete <workspace>' first, then retry. Prompts with a repo picker when run without arguments.",

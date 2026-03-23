@@ -219,7 +219,7 @@ _arb() {
                         '(-w --where)'{-w,--where}'[Filter workspaces by status flags]:filter:_arb_where_filter' \
                         '--older-than[Only delete workspaces not touched in the given duration (e.g. 30d, 2w, 3m, 1y)]:duration:' \
                         '--newer-than[Only delete workspaces touched within the given duration (e.g. 7d, 2w)]:duration:' \
-                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '--dry-run[Show what would happen without executing]' \
                         '(-N --fetch --no-fetch)--fetch[Fetch before assessing workspace status (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching]'
                     ;;
@@ -232,7 +232,7 @@ _arb() {
                         '(-r --delete-remote)'{-r,--delete-remote}'[Delete old branch on remote after rename]' \
                         '(-N --fetch --no-fetch)--fetch[Fetch before rename (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-rename remote fetch]' \
-                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '--dry-run[Show what would happen without executing]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '1:new-name:'
                     ;;
@@ -317,7 +317,7 @@ _arb() {
                         '(-a --all-repos)'{-a,--all-repos}'[Drop all repos from the workspace]' \
                         '--delete-branch[Delete the local branch from the canonical repo]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
-                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '--dry-run[Show what would happen without executing]' \
                         '(-N --fetch --no-fetch)--fetch[Fetch before detaching (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-fetch]' \
                         '*:repo:($ws_repo_names)'
@@ -346,7 +346,7 @@ _arb() {
                                 _arguments \
                                     '(-a --all-repos)'{-a,--all-repos}'[Remove all canonical repos]' \
                                     '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
-                                    '(-n --dry-run)'{-n,--dry-run}'[Show what would be removed without removing]' \
+                                    '--dry-run[Show what would be removed without removing]' \
                                     '*:repo:($repo_names)'
                                 ;;
                             list)
@@ -435,7 +435,7 @@ _arb() {
                                     '(-r --delete-remote)'{-r,--delete-remote}'[Delete old branch on remote after rename]' \
                                     '(-N --fetch --no-fetch)--fetch[Fetch before rename (default)]' \
                                     '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-rename remote fetch]' \
-                                    '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                                    '--dry-run[Show what would happen without executing]' \
                                     '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                                     '--include-in-progress[Rename repos even if they have an in-progress git operation]' \
                                     '1:new-name:'
@@ -469,7 +469,7 @@ _arb() {
                     _arguments \
                         '--reset[Reset to remote tip instead of pulling (overrides rebased-locally skip)]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
-                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '--dry-run[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \
                         '(--merge)--rebase[Pull with rebase]' \
                         '(--rebase)--merge[Pull with merge]' \
@@ -486,7 +486,7 @@ _arb() {
 						'(-N --fetch --no-fetch)--fetch[Fetch before push (default)]' \
 						'(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before push]' \
 						'(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
-                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '--dry-run[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show outgoing commits in the plan]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($ws_repo_names)'
@@ -496,7 +496,7 @@ _arb() {
                         '(-N --fetch --no-fetch)--fetch[Fetch before rebase (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before rebase]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
-                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '--dry-run[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \
                         '(-g --graph)'{-g,--graph}'[Show branch divergence graph in the plan]' \
                         '--autostash[Stash uncommitted changes before rebase, re-apply after]' \
@@ -509,7 +509,7 @@ _arb() {
                         '(-N --fetch --no-fetch)--fetch[Fetch before retarget (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before retarget]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
-                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '--dry-run[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \
                         '(-g --graph)'{-g,--graph}'[Show branch divergence graph in the plan]' \
                         '--autostash[Stash uncommitted changes before retarget, re-apply after]' \
@@ -522,7 +522,7 @@ _arb() {
                         '(-N --fetch --no-fetch)--fetch[Fetch before merge (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before merge]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
-                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '--dry-run[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show incoming commits in the plan]' \
                         '(-g --graph)'{-g,--graph}'[Show branch divergence graph in the plan]' \
                         '--autostash[Stash uncommitted changes before merge, re-apply after]' \
@@ -539,7 +539,7 @@ _arb() {
                         '(--soft --mixed --hard)--mixed[Move HEAD and reset index; changes become unstaged (default)]' \
                         '(--soft --mixed --hard)--hard[Move HEAD, reset index and working tree; discards all local changes]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
-                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '--dry-run[Show what would happen without executing]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($ws_repo_names)'
                     ;;

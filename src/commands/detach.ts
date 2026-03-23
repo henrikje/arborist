@@ -78,7 +78,7 @@ export function registerDetachCommand(program: Command): void {
     .option("-a, --all-repos", "Detach all repos from the workspace")
     .option("--delete-branch", "Delete the local branch from the canonical repo")
     .option("-y, --yes", "Skip confirmation prompt")
-    .option("-n, --dry-run", "Show what would happen without executing")
+    .option("--dry-run", "Show what would happen without executing")
     .option("--fetch", "Fetch before detaching (default)")
     .option("-N, --no-fetch", "Skip pre-fetch")
     .summary("Detach repos from the workspace")

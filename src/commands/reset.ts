@@ -305,7 +305,7 @@ export function registerResetCommand(program: Command): void {
     .option("--mixed", "Move HEAD and reset index; changes become unstaged (default)")
     .option("--hard", "Move HEAD, reset index and working tree; discards all local changes")
     .option("-y, --yes", "Skip confirmation prompt")
-    .option("-n, --dry-run", "Show what would happen without executing")
+    .option("--dry-run", "Show what would happen without executing")
     .option("-w, --where <filter>", "Only reset repos matching status filter (comma = OR, + = AND, ^ = negate)")
     .summary("Reset repos to the remote branch (or base if not pushed)")
     .description(
