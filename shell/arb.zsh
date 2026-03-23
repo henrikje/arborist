@@ -541,6 +541,7 @@ _arb() {
                         '(--soft --mixed --hard)--hard[Move HEAD, reset index and working tree; discards all local changes]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '(-v --verbose)'{-v,--verbose}'[Show commits to be reset in the plan]' \
                         '--include-wrong-branch[Include repos on a different branch than the workspace]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($ws_repo_names)'

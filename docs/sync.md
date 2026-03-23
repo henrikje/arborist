@@ -73,6 +73,12 @@ To always reset to the base branch (e.g. `origin/main`), even when a remote shar
 arb reset --base
 ```
 
+To see which commits will be reset:
+
+```bash
+arb reset --dry-run -v
+```
+
 ## Changing the base branch
 
 Switch the workspace to track a different base branch:
