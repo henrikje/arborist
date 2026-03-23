@@ -555,7 +555,7 @@ __arb_complete_reset() {
         return
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--fetch -N --no-fetch --base --soft --mixed --hard -y --yes -n --dry-run -v --verbose --include-wrong-branch -w --where" -- "$cur"))
+        COMPREPLY=($(compgen -W "--fetch -N --no-fetch --base --soft --mixed --hard -y --yes --dry-run -v --verbose --include-wrong-branch -w --where" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
@@ -646,7 +646,7 @@ __arb_complete_template() {
                 return
             fi
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--repo --workspace -f --force -n --dry-run" -- "$cur"))
+                COMPREPLY=($(compgen -W "--repo --workspace -f --force --dry-run" -- "$cur"))
                 return
             fi
             COMPREPLY=($(compgen -W "$(__arb_template_names "$base_dir")" -- "$cur"))

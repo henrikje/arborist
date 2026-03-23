@@ -369,7 +369,7 @@ export function registerResetCommand(program: Command): void {
     .option("--mixed", "Move HEAD and reset index; changes become unstaged (default)")
     .option("--hard", "Move HEAD, reset index and working tree; discards all local changes")
     .option("-y, --yes", "Skip confirmation prompt")
-    .option("-n, --dry-run", "Show what would happen without executing")
+    .option("--dry-run", "Show what would happen without executing")
     .option("-v, --verbose", "Show commits to be reset in the plan")
     .option("--include-wrong-branch", "Include repos on a different branch than the workspace")
     .option("-w, --where <filter>", "Only reset repos matching status filter (comma = OR, + = AND, ^ = negate)")

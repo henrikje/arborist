@@ -419,7 +419,7 @@ export function registerTemplateCommand(program: Command): void {
     .option("--repo <name>", "Apply only to specific repo (repeatable)", collectRepo, [])
     .option("--workspace", "Apply only workspace templates")
     .option("-f, --force", "Overwrite drifted files (reset to template version)")
-    .option("-n, --dry-run", "Show what would happen without executing")
+    .option("--dry-run", "Show what would happen without executing")
     .summary("Re-seed templates into the current workspace")
     .description(
       "Examples:\n\n  arb template apply                       Seed missing files only\n  arb template apply --force               Also reset drifted files\n  arb template apply --dry-run             Preview what would be seeded\n  arb template apply --force --dry-run     Preview what would be reset\n\nRe-seed template files into the current workspace. By default, only copies files that don't already exist (safe, non-destructive). Use --force to also reset drifted files to their template version. Files with .arbtemplate extension undergo placeholder substitution. Use --repo or --workspace to limit scope, and optionally specify a file path to apply only that template. Use --dry-run to preview what would happen without writing any files.",

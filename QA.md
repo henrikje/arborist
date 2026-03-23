@@ -63,6 +63,9 @@ Check that similar commands follow the same patterns as defined in GUIDELINES.md
 - `--force` has per-command semantics (plan modifier in `push`, safety bypass in `delete`). Verify that help text and behavior match each command's specific contract.
 - Error messages use the output module (`output.ts`) consistently — no raw `console.log` or `process.stdout.write` for human-facing output.
 - Exit codes follow the convention: 0 success, 1 error, 130 user abort.
+- **Flag parity within categories.** Compare every sync command (`push`, `pull`, `rebase`, `merge`, `reset`, `retarget`) against the "Expected flags per command category" table in GUIDELINES.md. Report any missing flags that lack a documented exception. Do the same for membership commands and overview commands.
+- **Short flag consistency.** Compare every `.option()` short flag against the "Short flag allocation" table in GUIDELINES.md. Report any new overloads not documented in the table, or any assignments that contradict the table.
+- **Shared-logic override exposure.** For each command that delegates to shared assessment functions (`assessRepo`, `assessIntegrateRepo`, `assessRetargetRepo`, `assessResetRepo`, `assessPushRepo`, `assessPullRepo`), verify that every override parameter in the shared function's options interface has a corresponding CLI flag on the calling command. Hardcoded overrides without CLI escape hatches are a finding.
 
 ### 5. Color and output conventions
 
