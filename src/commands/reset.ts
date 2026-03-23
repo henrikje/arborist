@@ -38,6 +38,7 @@ export interface ResetAssessment {
   totalAhead: number;
   unpushedCommits: number;
   headSha: string;
+  wrongBranch?: boolean;
 }
 
 export function assessResetRepo(
@@ -47,6 +48,7 @@ export function assessResetRepo(
   fetchFailed: string[],
   headSha: string,
   useBase: boolean,
+  includeWrongBranch?: boolean,
 ): ResetAssessment {
   const defaults: ResetAssessment = {
     repo: status.name,
@@ -77,11 +79,14 @@ export function assessResetRepo(
     return { ...defaults, skipReason: "HEAD is detached", skipFlag: "detached-head" };
   }
   if (status.identity.headMode.branch !== branch) {
-    return {
-      ...defaults,
-      skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch}`,
-      skipFlag: "wrong-branch",
-    };
+    if (!includeWrongBranch) {
+      return {
+        ...defaults,
+        skipReason: `on branch ${status.identity.headMode.branch}, expected ${branch} (use --include-wrong-branch)`,
+        skipFlag: "wrong-branch",
+      };
+    }
+    defaults.wrongBranch = true;
   }
 
   // No base branch resolved
@@ -283,6 +288,14 @@ export function buildResetPlanNodes(assessments: ResetAssessment[], resetMode: R
     rows,
   });
 
+  const wrongBranchCount = assessments.filter((a) => a.wrongBranch && a.outcome === "will-reset").length;
+  if (wrongBranchCount > 0) {
+    nodes.push({
+      kind: "hint",
+      cell: cell(`  hint: ${plural(wrongBranchCount, "repo")} on a different branch than the workspace`, "muted"),
+    });
+  }
+
   nodes.push({ kind: "gap" });
   return nodes;
 }
@@ -305,11 +318,12 @@ export function registerResetCommand(program: Command): void {
     .option("--mixed", "Move HEAD and reset index; changes become unstaged (default)")
     .option("--hard", "Move HEAD, reset index and working tree; discards all local changes")
     .option("-y, --yes", "Skip confirmation prompt")
-    .option("--dry-run", "Show what would happen without executing")
+    .option("-n, --dry-run", "Show what would happen without executing")
+    .option("--include-wrong-branch", "Include repos on a different branch than the workspace")
     .option("-w, --where <filter>", "Only reset repos matching status filter (comma = OR, + = AND, ^ = negate)")
     .summary("Reset repos to the remote branch (or base if not pushed)")
     .description(
-      "Examples:\n\n  arb reset                                Reset all repos to remote HEAD\n  arb reset api                            Reset a specific repo\n  arb reset --base                         Reset to base branch instead\n  arb reset --hard                         Reset and discard all local changes\n\nReset all repos (or only the named repos) to the remote share branch HEAD. When no remote share branch exists (never pushed), falls back to the base branch. Resolves the correct remote and branch per repo automatically. Untracked files are preserved (no git clean). Shows a plan and asks for confirmation before proceeding.\n\nThe reset mode controls what is preserved. With --mixed (default), the index is reset but the working tree is preserved — commits become unstaged changes. With --soft, only HEAD moves — commits become staged changes and the working tree is untouched. With --hard, the index and working tree are both reset — all local changes are permanently lost. This mirrors git reset --soft/--mixed/--hard.\n\nRepos whose branch has already been merged (or squash-merged) into base are skipped when the reset target is the base branch. Repos whose configured base branch was merged into the default branch are also skipped (use 'arb retarget' to update the base first).\n\nUse --base to always reset to the base branch, even when a remote share branch exists.\n\nTo change the base branch, use 'arb branch base <branch>'.\n\nUse --where to filter repos by status flags. See 'arb help filtering' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
+      "Examples:\n\n  arb reset                                Reset all repos to remote HEAD\n  arb reset api                            Reset a specific repo\n  arb reset --base                         Reset to base branch instead\n  arb reset --hard                         Reset and discard all local changes\n\nReset all repos (or only the named repos) to the remote share branch HEAD. When no remote share branch exists (never pushed), falls back to the base branch. Resolves the correct remote and branch per repo automatically. Untracked files are preserved (no git clean). Shows a plan and asks for confirmation before proceeding.\n\nThe reset mode controls what is preserved. With --mixed (default), the index is reset but the working tree is preserved — commits become unstaged changes. With --soft, only HEAD moves — commits become staged changes and the working tree is untouched. With --hard, the index and working tree are both reset — all local changes are permanently lost. This mirrors git reset --soft/--mixed/--hard.\n\nRepos on a different branch than the workspace are skipped unless --include-wrong-branch is used.\n\nRepos whose branch has already been merged (or squash-merged) into base are skipped when the reset target is the base branch. Repos whose configured base branch was merged into the default branch are also skipped (use 'arb retarget' to update the base first).\n\nUse --base to always reset to the base branch, even when a remote share branch exists.\n\nTo change the base branch, use 'arb branch base <branch>'.\n\nUse --where to filter repos by status flags. See 'arb help filtering' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
     )
     .action(
       arbAction(async (ctx, repoArgs: string[], options) => {
@@ -339,6 +353,7 @@ export function registerResetCommand(program: Command): void {
 
         // Phase 2: assess
         const useBase = options.base === true;
+        const includeWrongBranch = options.includeWrongBranch === true;
         const assess = buildCachedStatusAssess<ResetAssessment>({
           repos,
           wsDir,
@@ -351,7 +366,7 @@ export function registerResetCommand(program: Command): void {
           where,
           classify: async ({ repoDir, status, fetchFailed }) => {
             const headSha = await getShortHead(repoDir);
-            return assessResetRepo(status, repoDir, branch, fetchFailed, headSha, useBase);
+            return assessResetRepo(status, repoDir, branch, fetchFailed, headSha, useBase, includeWrongBranch);
           },
         });
 

@@ -539,7 +539,8 @@ _arb() {
                         '(--soft --mixed --hard)--mixed[Move HEAD and reset index; changes become unstaged (default)]' \
                         '(--soft --mixed --hard)--hard[Move HEAD, reset index and working tree; discards all local changes]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
-                        '--dry-run[Show what would happen without executing]' \
+                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '--include-wrong-branch[Include repos on a different branch than the workspace]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($ws_repo_names)'
                     ;;

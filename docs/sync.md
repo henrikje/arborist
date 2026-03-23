@@ -41,7 +41,7 @@ To intentionally push an already-merged branch (for example to restore a deleted
 
 ### Wrong-branch repos
 
-If a repo is on a different branch than the workspace expects (shown as "wrong branch" in status), sync commands skip it by default. Use `--include-wrong-branch` on `arb push`, `arb pull`, `arb rebase`, or `arb merge` to include it. The repo is pushed to / pulled from its actual branch, and the plan output annotates it for visibility.
+If a repo is on a different branch than the workspace expects (shown as "wrong branch" in status), sync commands skip it by default. Use `--include-wrong-branch` on `arb push`, `arb pull`, `arb rebase`, `arb merge`, or `arb reset` to include it. The repo is pushed to / pulled from / reset to its actual branch's state, and the plan output annotates it for visibility.
 
 Arb relies on tracking config to detect merged branches, so prefer `arb push` over `git push -u` unless you know what you're doing.
 
