@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.112.0](https://github.com/henrikje/arborist/compare/v0.111.0...v0.112.0) (2026-03-23)
+
+
+### Features
+
+* **branch:** show resolved base and share in default output ([3a158a2](https://github.com/henrikje/arborist/commit/3a158a244b6853316712f76a5986aeed2f5971ec))
+* **help:** add watch command to basic help ([673cb98](https://github.com/henrikje/arborist/commit/673cb9863978812e227be2ee120ee3348dabf4ee))
+* **status:** hide base/share ref columns when uniform ([95cad53](https://github.com/henrikje/arborist/commit/95cad53aefe72e66b7ff31250f32b5a2e44da3d7))
+* **watch:** add hidden debug mode toggled by Shift+D ([2cc08bc](https://github.com/henrikje/arborist/commit/2cc08bc30e2cb1306694716f94c6052801796257))
+
+
+### Bug Fixes
+
+* **install:** fix install not always working ([47b96db](https://github.com/henrikje/arborist/commit/47b96db2e23c5b5824bae77d7342d8d90ac08860))
+* **shell:** complete positional args after options in zsh ([438d98f](https://github.com/henrikje/arborist/commit/438d98f99e57207c80e989d2f10961d2307abb4c))
+* **status:** show "(detached)" with parentheses in SHARE column ([ab74098](https://github.com/henrikje/arborist/commit/ab74098a7eedaff7becb31e3b1dae2d976f2ddf1))
+* **watch:** filter cross-workspace noise from canonical .git/ watcher ([8468573](https://github.com/henrikje/arborist/commit/84685735ed179077ba756eb973f47205592991f8))
+
+
+### Performance Improvements
+
+* **status:** skip scanning unselected repos in status, log, and diff ([dae3fa0](https://github.com/henrikje/arborist/commit/dae3fa0be1fe04752fbb1f623d76037f360b1eab))
+
 ## [0.111.0](https://github.com/henrikje/arborist/compare/v0.110.0...v0.111.0) (2026-03-20)
 
 Introduces persistent analysis caching and improved Git caching for significantly faster status operations, alongside a new interactive watch dashboard for live workspace visibility. Adds a standalone retarget command and broader UX improvements across filtering, help, and command behavior.
