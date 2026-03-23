@@ -1,3 +1,4 @@
+import { renameSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
 import {
@@ -129,6 +130,147 @@ async function executeBranchRenameUndo(
     } else {
       inlineResult(a.repo, "failed to revert");
       failures.push(a.repo);
+    }
+  }
+
+  return { undone, failures };
+}
+
+// ── Workspace rename undo ──
+
+async function assessRenameUndo(
+  record: OperationRecord & { command: "rename" },
+  wsDir: string,
+): Promise<RepoUndoAssessment[]> {
+  // Workspace rename does branch renames — same assessment as branch-rename
+  // but we need to derive oldBranch/newBranch from configBefore/configAfter
+  const oldBranch = record.configBefore?.branch;
+  const newBranch = record.configAfter?.branch;
+
+  if (!oldBranch || !newBranch || oldBranch === newBranch) {
+    // No branch rename happened — only directory rename. Repos are fine.
+    return Object.entries(record.repos).map(([repoName]) => ({
+      repo: repoName,
+      repoDir: "",
+      action: "skip" as const,
+    }));
+  }
+
+  // Reuse branch-rename assessment logic — check each repo's branch
+  const repoDirs = workspaceRepoDirs(wsDir);
+  const repoDirMap = new Map(repoDirs.map((d) => [basename(d), d]));
+
+  const assessments: RepoUndoAssessment[] = [];
+  for (const [repoName, state] of Object.entries(record.repos)) {
+    const repoDir = repoDirMap.get(repoName);
+    if (!repoDir) {
+      assessments.push({ repo: repoName, repoDir: "", action: "skip", detail: "repo not in workspace" });
+      continue;
+    }
+    if (state.status === "skipped" || state.status === "pending") {
+      assessments.push({ repo: repoName, repoDir, action: "skip" });
+      continue;
+    }
+    if (state.status === "conflicting") {
+      assessments.push({ repo: repoName, repoDir, action: "no-action", detail: "rename did not complete" });
+      continue;
+    }
+
+    const headResult = await gitLocal(repoDir, "symbolic-ref", "--short", "HEAD");
+    const currentBranch = headResult.exitCode === 0 ? headResult.stdout.trim() : null;
+
+    if (currentBranch === newBranch) {
+      const currentHead = await gitLocal(repoDir, "rev-parse", "HEAD");
+      if (currentHead.stdout.trim() !== state.preHead) {
+        assessments.push({
+          repo: repoName,
+          repoDir,
+          action: "drifted",
+          detail: `HEAD moved from ${state.preHead.slice(0, 7)} to ${currentHead.stdout.trim().slice(0, 7)}`,
+        });
+        continue;
+      }
+      assessments.push({
+        repo: repoName,
+        repoDir,
+        action: "needs-undo",
+        detail: `rename ${newBranch} back to ${oldBranch}`,
+      });
+    } else if (currentBranch === oldBranch) {
+      assessments.push({ repo: repoName, repoDir, action: "already-at-target" });
+    } else {
+      assessments.push({
+        repo: repoName,
+        repoDir,
+        action: "drifted",
+        detail: `on branch ${currentBranch ?? "unknown"}, expected ${newBranch}`,
+      });
+    }
+  }
+  return assessments;
+}
+
+async function executeRenameUndo(
+  record: OperationRecord & { command: "rename" },
+  assessments: RepoUndoAssessment[],
+  _wsDir: string,
+  arbRootDir: string,
+  reposDir: string,
+): Promise<UndoResult> {
+  let undone = 0;
+  const failures: string[] = [];
+
+  const oldBranch = record.configBefore?.branch;
+  const newBranch = record.configAfter?.branch;
+
+  // Step 1: Reverse branch renames (if branches were renamed)
+  if (oldBranch && newBranch && oldBranch !== newBranch) {
+    for (const a of assessments) {
+      if (a.action !== "needs-undo") continue;
+
+      inlineStart(a.repo, "reverting branch");
+      const result = await gitLocal(a.repoDir, "branch", "-m", newBranch, oldBranch);
+      if (result.exitCode === 0) {
+        // Restore tracking config if captured
+        const state = record.repos[a.repo];
+        if (state?.tracking?.remote) {
+          await gitLocal(a.repoDir, "config", `branch.${oldBranch}.remote`, state.tracking.remote);
+        } else {
+          await gitLocal(a.repoDir, "config", "--unset", `branch.${oldBranch}.remote`);
+        }
+        if (state?.tracking?.merge) {
+          await gitLocal(a.repoDir, "config", `branch.${oldBranch}.merge`, state.tracking.merge);
+        } else {
+          await gitLocal(a.repoDir, "config", "--unset", `branch.${oldBranch}.merge`);
+        }
+        inlineResult(a.repo, `reverted to ${oldBranch}`);
+        undone++;
+      } else {
+        inlineResult(a.repo, "failed to revert branch");
+        failures.push(a.repo);
+      }
+    }
+  }
+
+  // Step 2: Reverse directory rename
+  if (record.oldName !== record.newName) {
+    const currentWsDir = `${arbRootDir}/${record.newName}`;
+    const targetWsDir = `${arbRootDir}/${record.oldName}`;
+    try {
+      renameSync(currentWsDir, targetWsDir);
+      inlineResult(record.newName, `workspace renamed back to ${record.oldName}`);
+
+      // Repair worktree paths
+      const repos = workspaceRepoDirs(targetWsDir).map((d) => basename(d));
+      for (const repo of repos) {
+        Bun.spawnSync(["git", "worktree", "repair", `${targetWsDir}/${repo}`], {
+          cwd: `${reposDir}/${repo}`,
+          stdout: "ignore",
+          stderr: "ignore",
+        });
+      }
+    } catch {
+      failures.push(`${record.newName} (directory rename failed)`);
     }
   }
 
@@ -278,8 +420,9 @@ async function assessUndo(record: OperationRecord, wsDir: string): Promise<RepoU
     case "merge":
     case "pull":
     case "reset":
-    case "rename":
       return assessSyncUndo(record, wsDir);
+    case "rename":
+      return assessRenameUndo(record, wsDir);
     default: {
       const _exhaustive: never = record;
       throw new ArbError("Undo is not yet supported for this operation");
@@ -431,8 +574,10 @@ export function registerUndoCommand(program: Command): void {
           case "merge":
           case "pull":
           case "reset":
-          case "rename":
             result = await executeSyncUndo(record, assessments);
+            break;
+          case "rename":
+            result = await executeRenameUndo(record, assessments, wsDir, ctx.arbRootDir, ctx.reposDir);
             break;
           default: {
             const _exhaustive: never = record;
@@ -441,8 +586,12 @@ export function registerUndoCommand(program: Command): void {
         }
 
         // Shared tail: always restore config (even on partial failure).
-        // Config should reflect the pre-operation state regardless of which repos succeeded.
-        const configFile = `${wsDir}/.arbws/config.json`;
+        // For rename undo, the workspace directory moved back to the old name.
+        const effectiveWsDir =
+          record.command === "rename" && record.oldName !== record.newName
+            ? `${ctx.arbRootDir}/${record.oldName}`
+            : wsDir;
+        const configFile = `${effectiveWsDir}/.arbws/config.json`;
         if (record.configBefore) {
           writeWorkspaceConfig(configFile, record.configBefore);
         }
@@ -454,7 +603,7 @@ export function registerUndoCommand(program: Command): void {
           throw new ArbError(`Failed to undo ${plural(result.failures.length, "repo")}: ${result.failures.join(", ")}`);
         }
 
-        deleteOperationRecord(wsDir);
+        deleteOperationRecord(effectiveWsDir);
         process.stderr.write("\n");
         finishSummary([`Undone ${plural(result.undone, "repo")}`], false);
       }),
