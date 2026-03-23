@@ -10,7 +10,7 @@ arb rebase --yes && arb push --yes
 
 ## Dry run
 
-Use `--dry-run` (`-n`) to preview what a command would do without executing it. The command runs its normal fetch and assessment phases, displays the plan, then exits cleanly:
+Use `--dry-run` to preview what a command would do without executing it. The command runs its normal fetch and assessment phases, displays the plan, then exits cleanly:
 
 ```bash
 arb push --dry-run        # see what would be pushed

@@ -212,16 +212,6 @@ describe("repo remove", () => {
       expect(result.output).toContain("dry-rm");
       expect(result.output).toContain("Dry run");
     }));
-
-  test("arb repo remove -n is equivalent to --dry-run", () =>
-    withEnv(async (env) => {
-      const cloneResult = await arb(env, ["repo", "clone", join(env.originDir, "repo-a.git"), "dry-rm-short"]);
-      expect(cloneResult.exitCode).toBe(0);
-      const result = await arb(env, ["repo", "remove", "dry-rm-short", "-n"]);
-      expect(result.exitCode).toBe(0);
-      expect(existsSync(join(env.projectDir, ".arb/repos/dry-rm-short"))).toBe(true);
-      expect(result.output).toContain("Dry run");
-    }));
 });
 
 // ── repo list quiet/json ─────────────────────────────────────────

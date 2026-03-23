@@ -36,7 +36,7 @@ export function registerPullCommand(program: Command): void {
     .command("pull [repos...]")
     .option("--reset", "Reset to remote tip instead of pulling (overrides rebased-locally skip)")
     .option("-y, --yes", "Skip confirmation prompt")
-    .option("-n, --dry-run", "Show what would happen without executing")
+    .option("--dry-run", "Show what would happen without executing")
     .option("--rebase", "Pull with rebase")
     .option("--merge", "Pull with merge")
     .option("--autostash", "Stash uncommitted changes before pull, re-apply after")

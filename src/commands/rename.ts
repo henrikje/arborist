@@ -352,7 +352,7 @@ export function registerRenameCommand(program: Command): void {
     .option("-r, --delete-remote", "Delete old branch on remote after rename")
     .option("--fetch", "Fetch from all remotes before rename (default)")
     .option("-N, --no-fetch", "Skip fetching before rename")
-    .option("-n, --dry-run", "Show what would happen without executing")
+    .option("--dry-run", "Show what would happen without executing")
     .option("-y, --yes", "Skip confirmation prompt")
     .summary("Rename the workspace (directory + branch)")
     .description(

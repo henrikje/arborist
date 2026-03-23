@@ -9,7 +9,7 @@ export function registerMergeCommand(program: Command): void {
     .option("--fetch", "Fetch from all remotes before merge (default)")
     .option("-N, --no-fetch", "Skip fetching before merge")
     .option("-y, --yes", "Skip confirmation prompt")
-    .option("-n, --dry-run", "Show what would happen without executing")
+    .option("--dry-run", "Show what would happen without executing")
     .option("-v, --verbose", "Show incoming commits in the plan")
     .option("-g, --graph", "Show branch divergence graph in the plan")
     .option("--autostash", "Stash uncommitted changes before merge, re-apply after")

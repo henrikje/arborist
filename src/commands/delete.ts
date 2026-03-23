@@ -479,7 +479,7 @@ export function registerDeleteCommand(program: Command): void {
       "Only delete workspaces not touched in the given duration (e.g. 30d, 2w, 3m, 1y)",
     )
     .option("--newer-than <duration>", "Only delete workspaces touched within the given duration (e.g. 7d, 2w)")
-    .option("-n, --dry-run", "Show what would happen without executing")
+    .option("--dry-run", "Show what would happen without executing")
     .option("--fetch", "Fetch before assessing workspace status (default)")
     .option("-N, --no-fetch", "Skip fetching")
     .summary("Delete one or more workspaces")

@@ -607,7 +607,7 @@ export function registerBranchRenameSubcommand(parent: Command): void {
     .option("-r, --delete-remote", "Delete old branch on remote after rename")
     .option("--fetch", "Fetch from all remotes before rename (default)")
     .option("-N, --no-fetch", "Skip fetching before rename")
-    .option("-n, --dry-run", "Show what would happen without executing")
+    .option("--dry-run", "Show what would happen without executing")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("--include-in-progress", "Rename repos even if they have an in-progress git operation")
     .summary("Rename the workspace branch across all repos")

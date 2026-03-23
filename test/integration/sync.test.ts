@@ -1818,21 +1818,6 @@ describe("push dry-run", () => {
       expect(branchResult).not.toContain("my-feature");
     }));
 
-  test("arb push -n short flag works", () =>
-    withEnv(async (env) => {
-      await arb(env, ["create", "my-feature", "repo-a"]);
-      await write(join(env.projectDir, "my-feature/repo-a/file.txt"), "change");
-      await git(join(env.projectDir, "my-feature/repo-a"), ["add", "file.txt"]);
-      await git(join(env.projectDir, "my-feature/repo-a"), ["commit", "-m", "change"]);
-      const result = await arb(env, ["push", "-n"], {
-        cwd: join(env.projectDir, "my-feature"),
-      });
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("to push");
-      expect(result.output).toContain("Dry run");
-      expect(result.output).not.toContain("Pushed");
-    }));
-
   test("arb push --dry-run when up to date shows up to date", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);

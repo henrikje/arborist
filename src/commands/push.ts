@@ -31,7 +31,7 @@ export function registerPushCommand(program: Command): void {
     .option("--fetch", "Fetch from all remotes before push (default)")
     .option("-N, --no-fetch", "Skip fetching before push")
     .option("-y, --yes", "Skip confirmation prompt")
-    .option("-n, --dry-run", "Show what would happen without executing")
+    .option("--dry-run", "Show what would happen without executing")
     .option("-v, --verbose", "Show outgoing commits in the plan")
     .option("-w, --where <filter>", "Only push repos matching status filter (comma = OR, + = AND, ^ = negate)")
     .summary("Push feature branches to the remote")
