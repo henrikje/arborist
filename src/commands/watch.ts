@@ -174,7 +174,7 @@ async function renderStatusTable(
     }
   }
 
-  const nodes = buildStatusView(filteredSummary, {
+  const { nodes } = buildStatusView(filteredSummary, {
     expectedBranch: filteredSummary.branch,
     baseConflictRepos,
     pullConflictRepos,

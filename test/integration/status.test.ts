@@ -982,6 +982,9 @@ describe("compact status display", () => {
       await arb(env, ["create", "my-long-branch-name-that-will-be-truncated", "repo-a", "repo-b"]);
       const wsCwd = join(env.projectDir, "my-long-branch-name-that-will-be-truncated");
 
+      // Switch repo-a to a different branch so the share ref column is visible (not hidden as uniform)
+      await git(join(wsCwd, "repo-a"), ["checkout", "-b", "other-branch"]);
+
       // First, get the untruncated width
       const fullResult = await arb(env, ["status"], { cwd: wsCwd });
       // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escape codes requires matching ESC
