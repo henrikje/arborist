@@ -574,7 +574,7 @@ describe("cell analysis (replaces plainCells)", () => {
     const flags = computeFlags(repo, branch);
     expect(analyzeBranch(repo, branch).plain).toBe("(detached)");
     expect(analyzeBaseDiff(repo, flags, false).plain).toBe("");
-    expect(analyzeRemoteName(repo, flags).plain).toBe("detached");
+    expect(analyzeRemoteName(repo, flags).plain).toBe("(detached)");
     expect(analyzeRemoteDiff(repo, flags).plain).toBe("");
   });
 

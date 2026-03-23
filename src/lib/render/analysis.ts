@@ -48,7 +48,7 @@ export function analyzeBaseDiff(repo: RepoStatus, flags: RepoFlags, hasConflict:
 /** Analyze the SHARE remote name cell */
 export function analyzeRemoteName(repo: RepoStatus, flags: RepoFlags): Cell {
   const isDetached = repo.identity.headMode.kind === "detached";
-  if (isDetached) return cell("detached", "attention");
+  if (isDetached) return cell("(detached)", "attention");
 
   let name: string;
   if (repo.share.refMode === "configured" && repo.share.ref) {
