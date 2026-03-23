@@ -540,7 +540,7 @@ _arb() {
                         '(--soft --mixed --hard)--mixed[Move HEAD and reset index; changes become unstaged (default)]' \
                         '(--soft --mixed --hard)--hard[Move HEAD, reset index and working tree; discards all local changes]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
-                        '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '--dry-run[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show commits to be reset in the plan]' \
                         '--include-wrong-branch[Include repos on a different branch than the workspace]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
@@ -636,7 +636,7 @@ _arb() {
                                     '*--repo[Apply only to specific repo]:repo:($repo_names)' \
                                     '--workspace[Apply only workspace templates]' \
                                     '(-f --force)'{-f,--force}'[Overwrite drifted files]' \
-                                    '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                                    '--dry-run[Show what would happen without executing]' \
                                     '1:template:{ _arb_template_names "$base_dir" }'
                                 ;;
                         esac

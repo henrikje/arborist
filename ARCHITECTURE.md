@@ -55,6 +55,8 @@ Mutation commands model their assess-phase results as discriminated unions in `s
 
 Cross-command status reuse lives in `sync/assess-with-cache.ts`. `buildCachedStatusAssess()` owns the common mechanics for mutation commands that assess from `RepoStatus`: previous-status caching, no-op fetch reuse via `unchangedRepos`, `gatherRepoStatus()`, and `--where` filtering. `runPlanFlow()` remains an orchestration primitive; it does not know command-specific assessment rules.
 
+When shared assessment logic accepts override options (e.g. `includeInProgress`, `includeWrongBranch`, `autostash`), every command that delegates to that logic must expose the corresponding flag to the user. Hardcoding an override to `false` without a CLI escape hatch means the user cannot recover from the skipped state without switching commands. When adding a new override parameter to shared logic, grep for all call sites and wire the flag through. When a new command delegates to existing shared logic, check the options interface for overrides that need CLI exposure.
+
 ### Parallel fetch, sequential mutations
 
 Network I/O (fetching) runs in parallel for speed. State-changing git operations (push, pull, rebase, merge) run sequentially for predictable ordering, clear errors, and the ability to stop on first failure. `parallelFetch()` batches all network I/O upfront to avoid per-repo latency during the sequential phase. `pull` is excluded from the fetch flag system — `git pull` inherently fetches. Quiet mode (`-q`) on dashboard commands skips fetching by default for scripting speed.

@@ -88,9 +88,44 @@ Tell the user *what happened*, not just *that it happened*. Use descriptive per-
 
 **Membership-changing commands** (`attach`, `detach`, `create`, workspace selection in `delete`): accept `[repos...]` args. When none given and stdin is a TTY, show an interactive picker. Offer `-a, --all-repos` for scripting. Non-TTY without args is an error with usage guidance.
 
-**State-changing commands** (`push`, `pull`, `rebase`, `merge`): accept optional `[repos...]` to narrow scope; default to all repos. Follow the five-phase workflow: assess → plan → confirm → execute → summarize. Each defines a typed assessment interface classifying repos into will-operate / up-to-date / skip-with-reason.
+**State-changing commands** (`push`, `pull`, `rebase`, `merge`, `reset`, `retarget`): accept optional `[repos...]` to narrow scope; default to all repos. Follow the five-phase workflow: assess → plan → confirm → execute → summarize. Each defines a typed assessment interface classifying repos into will-operate / up-to-date / skip-with-reason.
 
 **Overview commands** (`status`, `log`, `diff`) are read-only. They scope to the feature branch via base branch resolution, skip detached/drifted repos with explanation, and support `[repos...]` filtering, `--json`, and `--verbose`.
+
+### Expected flags per command category
+
+When adding a new command to a category, verify it carries all expected flags. Exceptions need a documented reason (e.g. `pull` omitting `--no-fetch` because it inherently fetches).
+
+**Sync commands** (`push`, `pull`, `rebase`, `merge`, `reset`, `retarget`):
+
+| Flag | Purpose |
+|------|---------|
+| `--fetch` / `--no-fetch` (`-N`) | Control pre-fetch (default: fetch) |
+| `--yes` (`-y`) | Skip confirmation prompt |
+| `--dry-run` | Show plan without executing |
+| `--verbose` (`-v`) | Show commits in the plan |
+| `--include-wrong-branch` | Include repos on a different branch |
+| `--where` (`-w`) | Filter repos by status flags |
+
+Individual sync commands add domain-specific flags (`--force`, `--autostash`, `--graph`, `--base`, etc.) as needed. `pull` always fetches and does not offer `--no-fetch`. `retarget` always operates on all repos — it does not accept `[repos...]` or `--where`.
+
+**Membership commands** (`attach`, `detach`, `create`, workspace selection in `delete`):
+
+| Flag | Purpose |
+|------|---------|
+| `[repos...]` | Positional repo selection |
+| `--all-repos` (`-a`) | Select all repos (scripting) |
+| Interactive picker | When no args and TTY |
+
+**Overview commands** (`status`, `log`, `diff`):
+
+| Flag | Purpose |
+|------|---------|
+| `[repos...]` | Positional repo selection |
+| `--json` / `--schema` | Structured output to stdout |
+| `--verbose` (`-v`) | Extended detail |
+| `--where` (`-w`) | Filter repos by status flags |
+| `--dirty` (`-d`) | Shorthand for `--where dirty` |
 
 ### Command groups for subsystems
 
@@ -143,6 +178,29 @@ All commands use `resolveWhereFilter()` from `status.ts` for validation. Follow 
 `--quiet` / `-q` outputs one primary identifier per line to stdout — no headers, no ANSI, no trailing whitespace. Supported on `list`, `status`, `repo list`. Conflicts with `--json` and `--verbose`.
 
 Commands accepting positional `[repos...]` also accept names from stdin when piped. Positional args take precedence, then stdin, then default (all). Commands that inherit stdin (`exec`, `open`) are excluded.
+
+### Short flag allocation
+
+Short flags carry consistent meaning across the CLI. Before assigning a short flag to a new option, check this table — reusing a letter with different semantics creates muscle-memory traps.
+
+| Short | Long form | Scope |
+|-------|-----------|-------|
+| `-a` | `--all-repos` | Membership commands |
+| `-a` | `--all-safe` | `delete` only (workspace-level, not repo-level) |
+| `-b` | `--branch` | `create` |
+| `-d` | `--dirty` | Overview and execution commands |
+| `-f` | `--force` | Per-command safety override |
+| `-g` | `--graph` | `rebase`, `merge`, `retarget` |
+| `-n` | `--max-count` | `log` only (mirrors `git log -n`) |
+| `-N` | `--no-fetch` | All commands with fetch behavior |
+| `-p` | `--parallel` | `exec` |
+| `-q` | `--quiet` | `status`, `list`, `repo list`, `branch show` |
+| `-r` | `--delete-remote` | `delete`, `rename`, `branch rename` |
+| `-v` | `--verbose` | Sync commands, overview commands, `branch show` |
+| `-w` | `--where` | All commands with status-based filtering |
+| `-y` | `--yes` | All mutation commands |
+
+The `-a` overload is intentional: it distinguishes repo-level (`--all-repos`) from workspace-level (`--all-safe`) selection. `-n` is reserved for `git log`'s `--max-count` convention; `--dry-run` is long-only. Avoid adding new overloads — if a letter is taken, leave the new option long-only.
 
 ### Error recovery guidance
 
