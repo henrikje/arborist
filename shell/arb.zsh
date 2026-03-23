@@ -168,7 +168,7 @@ _arb() {
         fi
     fi
 
-    _arguments -C \
+    _arguments -C - \
         '-C[Run as if arb was started in <directory>]:directory:_directories' \
         '(-h --help)'{-h,--help}'[Show help]' \
         '--version[Show version]' \
