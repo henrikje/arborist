@@ -360,7 +360,7 @@ _arb() {
                             default)
                                 shift words; (( CURRENT-- ))
                                 _arguments \
-                                    '(-r --remove)'{-r,--remove}'[Remove repos from defaults]' \
+                                    '--remove[Remove repos from defaults]' \
                                     '*:repo:($repo_names)'
                                 ;;
                         esac

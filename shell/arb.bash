@@ -241,7 +241,7 @@ __arb_complete_repo() {
             ;;
         default)
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "-r --remove" -- "$cur"))
+                COMPREPLY=($(compgen -W "--remove" -- "$cur"))
             else
                 local repo_names
                 repo_names=$(__arb_repo_names "$base_dir")
