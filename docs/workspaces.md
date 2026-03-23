@@ -133,7 +133,7 @@ arb rename --branch feat/PROJ-208                           # workspace name der
 arb rename PROJ-208 --branch feat/PROJ-208 --base develop   # full repurpose
 ```
 
-If the rename fails partway through (non-atomic across repos), use `--continue` to resume or `--abort` to roll back. Migration state is shared with `arb branch rename` — either command can recover from the other's partial rename.
+Repos with an in-progress git operation (rebase, merge, cherry-pick) are skipped by default — use `--include-in-progress` to override. If the rename fails partway through (non-atomic across repos), use `--continue` to resume or `--abort` to roll back. Migration state is shared with `arb branch rename` — either command can recover from the other's partial rename.
 
 To rename just the branch without renaming the workspace directory, use `arb branch rename`:
 

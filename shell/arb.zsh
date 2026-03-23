@@ -234,6 +234,7 @@ _arb() {
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-rename remote fetch]' \
                         '--dry-run[Show what would happen without executing]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                        '--include-in-progress[Rename repos even if they have an in-progress git operation]' \
                         '1:new-name:'
                     ;;
                 path)
