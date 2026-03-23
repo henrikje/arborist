@@ -300,3 +300,45 @@ describe.skipIf(gitBelow230)("operation gate", () => {
       expect(result.output).toContain("rebase in progress");
     }));
 });
+
+// ── undo ─────────────────────────────────────────────────────────
+
+describe.skipIf(gitBelow230)("rename undo", () => {
+  test("arb undo after arb rename reverses directory, branches, and config", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const ws = join(env.projectDir, "my-feature");
+
+      const result = await arb(env, ["rename", "PROJ-208", "--yes", "--no-fetch"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+
+      // Workspace renamed
+      expect(existsSync(join(env.projectDir, "PROJ-208"))).toBe(true);
+      expect(existsSync(join(env.projectDir, "my-feature"))).toBe(false);
+
+      // Undo from the NEW workspace dir
+      const undoResult = await arb(env, ["undo", "--yes"], { cwd: join(env.projectDir, "PROJ-208") });
+      expect(undoResult.exitCode).toBe(0);
+
+      // Directory reversed
+      expect(existsSync(join(env.projectDir, "my-feature"))).toBe(true);
+      expect(existsSync(join(env.projectDir, "PROJ-208"))).toBe(false);
+
+      // Branches reversed
+      const branchA = (
+        await git(join(env.projectDir, "my-feature/repo-a"), ["symbolic-ref", "--short", "HEAD"])
+      ).trim();
+      const branchB = (
+        await git(join(env.projectDir, "my-feature/repo-b"), ["symbolic-ref", "--short", "HEAD"])
+      ).trim();
+      expect(branchA).toBe("my-feature");
+      expect(branchB).toBe("my-feature");
+
+      // Config restored
+      const config = JSON.parse(await readFile(join(env.projectDir, "my-feature/.arbws/config.json"), "utf8"));
+      expect(config.branch).toBe("my-feature");
+
+      // Operation record cleaned up
+      expect(existsSync(join(env.projectDir, "my-feature/.arbws/operation.json"))).toBe(false);
+    }));
+});
