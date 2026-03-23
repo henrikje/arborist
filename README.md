@@ -179,9 +179,11 @@ git commit -am "Add dark mode API endpoint"
 Let's run `arb status` to get an overview. The hotfix landed on `main` while you were away, so `frontend` is now one commit behind:
 
 ```
-  REPO        LAST COMMIT    BASE                               SHARE                               LOCAL
-* backend     just now       origin/main  1 ahead               origin/add-dark-mode  1 to push     clean
-  frontend    5 minutes      origin/main  1 ahead, 1 behind     origin/add-dark-mode  1 to push     clean
+add-dark-mode (base origin/main, share origin/add-dark-mode)
+
+  REPO        LAST COMMIT    BASE                 SHARE        LOCAL
+* backend     just now       1 ahead              1 to push    clean
+  frontend    5 minutes      1 ahead, 1 behind    1 to push    clean
 ```
 
 Rebase to integrate the upstream changes (the **integration** axis from the mental model):
@@ -253,9 +255,11 @@ When you rebase, squash-merge, or force-push, Git creates new commits that repla
 `arb status` breaks push and pull counts down by identity — "outdated" for remote commits already reflected in your local history, "new" for genuinely new remote work:
 
 ```
-  REPO     LAST COMMIT    BASE                              SHARE                                             LOCAL
-  api      1 hour         origin/main  2 ahead              origin/feat  1 from main + 2 rebased → 2 outdated  clean
-  shared   2 hours        origin/main  2 ahead, 3 behind    origin/feat  2 new → 1 new                        1 change
+my-feature (base origin/main, share origin/my-feature)
+
+  REPO     LAST COMMIT    BASE                 SHARE                                    LOCAL
+  api      1 hour         2 ahead              1 from main + 2 rebased → 2 outdated     clean
+  shared   2 hours        2 ahead, 3 behind    2 new → 1 new                            1 change
 ```
 
 When the "new" count is zero, every remote-only commit is already reflected in yours — a force push won't overwrite any collaborator work. `arb push` uses this to allow pushing after rebase, amend, or squash without requiring `--force`, and to block pushes of already-merged branches. `arb rebase` replays only the genuinely new work.
@@ -315,9 +319,9 @@ A live status dashboard that auto-refreshes on filesystem changes. Press `r` to 
 ```
   my-project • feature-branch • status
 
-  REPO     LAST COMMIT    BASE                            SHARE                    LOCAL
-  api      1 minute       origin/main  2 ahead            origin/feat  1 to push   clean
-  shared   3 minutes      origin/main  2 ahead, 3 behind  origin/feat  up to date  1 change
+  REPO     LAST COMMIT    BASE                 SHARE        LOCAL
+  api      1 minute       2 ahead              1 to push    clean
+  shared   3 minutes      2 ahead, 3 behind    up to date   1 change
 
   f fetch • v verbose • r rebase • m merge • l pull • p push • q quit
 ```
