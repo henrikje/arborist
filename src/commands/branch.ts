@@ -2,11 +2,11 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, arbAction, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, branchNameError, gitLocal } from "../lib/git";
+import { GitCache, branchNameError } from "../lib/git";
 import { printSchema } from "../lib/json";
 import { type BranchJsonOutput, BranchJsonOutputSchema, type BranchJsonRepo } from "../lib/json";
 import { type RenderContext, render } from "../lib/render";
-import { cell } from "../lib/render";
+import { cell, suffix } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { runPhasedRender } from "../lib/render";
 import { type RepoRefs, computeFlags, gatherRepoRefs, gatherWorkspaceSummary } from "../lib/status";
@@ -34,20 +34,57 @@ interface VerboseRow {
   branchNoteworthy: boolean;
 }
 
-function buildBranchSummaryNodes(branch: string, base: string | null, repos: RepoBranch[]): OutputNode[] {
-  const baseDisplay = base ?? "(default branch)";
+function deriveWorkspaceSummary(repos: RepoRefs[]): { resolvedBase: string | null; share: string } {
+  const first = repos[0];
+
+  // Base: format as remote/ref
+  let resolvedBase: string | null = null;
+  if (first?.base) {
+    resolvedBase = first.base.remote ? `${first.base.remote}/${first.base.ref}` : first.base.ref;
+  }
+
+  // Share: derive from first repo's share state
+  let share = "(unknown)";
+  if (first) {
+    switch (first.share.refMode) {
+      case "configured":
+      case "implicit":
+        share = first.share.ref ?? "(unknown)";
+        break;
+      case "noRef":
+        share = "(not pushed)";
+        break;
+      case "gone":
+        share = "(gone)";
+        break;
+    }
+  }
+
+  return { resolvedBase, share };
+}
+
+function buildBranchSummaryNodes(
+  branch: string,
+  resolvedBase: string | null,
+  isDefaultBase: boolean,
+  share: string,
+  repos: RepoBranch[],
+): OutputNode[] {
+  const baseCell = resolvedBase ? suffix(cell(resolvedBase), " (default)", "muted") : cell("(unknown)", "muted");
   const nodes: OutputNode[] = [
     {
       kind: "table",
       columns: [
         { header: "BRANCH", key: "branch" },
         { header: "BASE", key: "base" },
+        { header: "SHARE", key: "share" },
       ],
       rows: [
         {
           cells: {
             branch: cell(branch),
-            base: cell(baseDisplay, base ? "default" : "muted"),
+            base: isDefaultBase ? baseCell : cell(resolvedBase ?? "(unknown)", "default"),
+            share: cell(share, share.startsWith("(") ? "muted" : "default"),
           },
         },
       ],
@@ -73,20 +110,29 @@ function buildBranchSummaryNodes(branch: string, base: string | null, repos: Rep
   return nodes;
 }
 
-function buildVerboseNodes(repos: RepoRefs[], branch: string, base: string | null): OutputNode[] {
-  const baseDisplay = base ?? "(default branch)";
+function buildVerboseNodes(
+  repos: RepoRefs[],
+  branch: string,
+  base: string | null,
+  resolvedBase: string | null,
+  share: string,
+): OutputNode[] {
+  const isDefaultBase = !base;
+  const baseCell = resolvedBase ? suffix(cell(resolvedBase), " (default)", "muted") : cell("(unknown)", "muted");
   const nodes: OutputNode[] = [
     {
       kind: "table",
       columns: [
         { header: "BRANCH", key: "branch" },
         { header: "BASE", key: "base" },
+        { header: "SHARE", key: "share" },
       ],
       rows: [
         {
           cells: {
             branch: cell(branch),
-            base: cell(baseDisplay, base ? "default" : "muted"),
+            base: isDefaultBase ? baseCell : cell(resolvedBase ?? "(unknown)", "default"),
+            share: cell(share, share.startsWith("(") ? "muted" : "default"),
           },
         },
       ],
@@ -135,7 +181,7 @@ export function registerBranchCommand(program: Command): void {
     .option("--schema", "Print JSON Schema for this command's --json output and exit")
     .summary("Show the workspace branch (default)")
     .description(
-      "Examples:\n\n  arb branch show                          Show branch and base\n  arb branch show -v                       Per-repo tracking detail\n  arb branch show -q                       Just the branch name\n\nShow the workspace branch, base branch (if configured), and any per-repo deviations. Use --verbose to show a per-repo table with branch and remote tracking info (fetches by default; use -N to skip). Press Ctrl+C during the fetch to cancel and use stale data. Use --quiet to output just the branch name (useful for scripting). Use --json for machine-readable output.\n\nSee 'arb help scripting' for output modes and piping.",
+      "Examples:\n\n  arb branch show                          Show branch, base, and share\n  arb branch show -v                       Per-repo tracking detail\n  arb branch show -q                       Just the branch name\n\nShow the workspace branch, base branch, share (remote tracking) branch, and any per-repo deviations. Use --verbose to show a per-repo table with branch and remote tracking info (fetches by default; use -N to skip). Press Ctrl+C during the fetch to cancel and use stale data. Use --quiet to output just the branch name (useful for scripting). Use --json for machine-readable output.\n\nSee 'arb help scripting' for output modes and piping.",
     )
     .action(async (options, command) => {
       if (options.schema) {
@@ -182,20 +228,20 @@ async function runBranch(
     return;
   }
 
-  // Gather per-repo branches
-  const repoDirs = workspaceRepoDirs(wsDir);
-  const repos: RepoBranch[] = await Promise.all(
-    repoDirs.map(async (dir) => {
-      const result = await gitLocal(dir, "symbolic-ref", "--short", "HEAD");
-      const repoBranch = result.exitCode === 0 ? result.stdout.trim() || null : null;
-      return { name: basename(dir), branch: repoBranch };
-    }),
-  );
-
   if (options.quiet) {
     process.stdout.write(`${branch}\n`);
     return;
   }
+
+  // Gather per-repo refs (base + share topology)
+  const cache = await GitCache.create();
+  const repoDirs = workspaceRepoDirs(wsDir);
+  const repoRefs = await Promise.all(repoDirs.map((dir) => gatherRepoRefs(dir, ctx.reposDir, base, undefined, cache)));
+
+  const repos: RepoBranch[] = repoRefs.map((r) => {
+    const b = r.identity.headMode.kind === "attached" ? r.identity.headMode.branch : null;
+    return { name: r.name, branch: b };
+  });
 
   if (options.json) {
     const output: BranchJsonOutput = {
@@ -207,8 +253,11 @@ async function runBranch(
     return;
   }
 
+  // Derive workspace-level base and share from first repo
+  const { resolvedBase, share } = deriveWorkspaceSummary(repoRefs);
+
   // Default table output
-  const nodes = buildBranchSummaryNodes(branch, base, repos);
+  const nodes = buildBranchSummaryNodes(branch, resolvedBase, !base, share, repos);
   const rCtx: RenderContext = { tty: shouldColor() };
   process.stdout.write(render(nodes, rCtx));
 }
@@ -342,7 +391,8 @@ function buildVerboseRows(repos: RepoRefs[], branch: string): VerboseRow[] {
 }
 
 function formatVerboseOutput(repos: RepoRefs[], branch: string, base: string | null): string {
-  const nodes = buildVerboseNodes(repos, branch, base);
+  const { resolvedBase, share } = deriveWorkspaceSummary(repos);
+  const nodes = buildVerboseNodes(repos, branch, base, resolvedBase, share);
   const rCtx: RenderContext = { tty: shouldColor() };
   return render(nodes, rCtx);
 }
