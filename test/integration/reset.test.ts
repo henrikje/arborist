@@ -658,4 +658,72 @@ describe("reset", () => {
       expect(result.output).toContain("1 unpushed commit and 1 dirty file");
       expect(result.output).toContain("permanently lost");
     }));
+
+  // ── --include-wrong-branch ──
+
+  test("skips wrong-branch repo by default with hint", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wt = join(env.projectDir, "my-feature/repo-a");
+
+      // Drift: checkout a different branch and add a commit
+      await git(wt, ["checkout", "-b", "experiment"]);
+      await write(join(wt, "file.txt"), "content");
+      await git(wt, ["add", "file.txt"]);
+      await git(wt, ["commit", "-m", "experiment commit"]);
+
+      const result = await arb(env, ["reset", "--dry-run"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("--include-wrong-branch");
+      expect(result.output).not.toContain("Reset");
+    }));
+
+  test("--include-wrong-branch resets wrong-branch repo", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wt = join(env.projectDir, "my-feature/repo-a");
+
+      // Drift: checkout a different branch, push, then add a local commit
+      await git(wt, ["checkout", "-b", "experiment"]);
+      await write(join(wt, "shared.txt"), "shared");
+      await git(wt, ["add", "shared.txt"]);
+      await git(wt, ["commit", "-m", "shared commit"]);
+      await git(wt, ["push", "-u", "origin", "experiment"]);
+
+      await write(join(wt, "local.txt"), "local");
+      await git(wt, ["add", "local.txt"]);
+      await git(wt, ["commit", "-m", "local commit"]);
+
+      const result = await arb(env, ["reset", "--include-wrong-branch", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Reset 1 repo");
+
+      // Local commit should be gone, shared commit should remain
+      const log = await git(wt, ["log", "--oneline"]);
+      expect(log).not.toContain("local commit");
+      expect(log).toContain("shared commit");
+    }));
+
+  test("--hard --include-wrong-branch resets wrong-branch repo and discards changes", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wt = join(env.projectDir, "my-feature/repo-a");
+
+      // Drift: checkout a different branch and add dirty files
+      await git(wt, ["checkout", "-b", "experiment"]);
+      await write(join(wt, "dirty.txt"), "dirty");
+      await git(wt, ["add", "dirty.txt"]);
+
+      const result = await arb(env, ["reset", "--hard", "--include-wrong-branch", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Reset 1 repo");
+
+      // Dirty file should be gone
+      const status = await git(wt, ["status", "--porcelain"]);
+      expect(status).not.toContain("dirty.txt");
+    }));
 });
