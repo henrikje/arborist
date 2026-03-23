@@ -660,3 +660,22 @@ describe("zero attached repos", () => {
       expect(readFileSync(join(copyDir, "repo-a/local-work.txt"), "utf-8")).toBe("important work");
     }));
 });
+
+// ── undo collision detection ──────────────────────────────────────
+
+describe("undo collision detection", () => {
+  test("arb undo refuses when target branch already exists", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const ws = join(env.projectDir, "my-feature");
+
+      await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--no-fetch"], { cwd: ws });
+
+      // Manually create the old branch name
+      await git(join(ws, "repo-a"), ["branch", "my-feature"]);
+
+      const result = await arb(env, ["undo", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("already exists");
+    }));
+});
