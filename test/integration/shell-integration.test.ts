@@ -502,3 +502,100 @@ describe("completion: global flags", () => {
       expect(result.output).toContain("--version");
     }));
 });
+
+// ── completion: after options ────────────────────────────────────
+
+describe("completion: after options", () => {
+  test("bash completion: status completes repo names after -v flag", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const result = await bash(
+        env,
+        `
+			source '${SHELL_FILE}'
+			cd '${env.projectDir}/my-feature'
+			COMP_WORDS=(arb status -v repo)
+			COMP_CWORD=3
+			_arb
+			echo "\${COMPREPLY[*]}"
+		`,
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("repo-a");
+      expect(result.output).toContain("repo-b");
+    }));
+
+  test("bash completion: status completes flags after repo name", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const result = await bash(
+        env,
+        `
+			source '${SHELL_FILE}'
+			cd '${env.projectDir}/my-feature'
+			COMP_WORDS=(arb status repo-a --)
+			COMP_CWORD=3
+			_arb
+			echo "\${COMPREPLY[*]}"
+		`,
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("--verbose");
+      expect(result.output).toContain("--json");
+    }));
+
+  test("bash completion: delete completes workspace names after --yes flag", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "ws-one", "repo-a"]);
+      const result = await bash(
+        env,
+        `
+			source '${SHELL_FILE}'
+			cd '${env.projectDir}'
+			COMP_WORDS=(arb delete --yes ws)
+			COMP_CWORD=3
+			_arb
+			echo "\${COMPREPLY[*]}"
+		`,
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("ws-one");
+    }));
+
+  test("bash completion: push completes repo names after --force flag", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const result = await bash(
+        env,
+        `
+			source '${SHELL_FILE}'
+			cd '${env.projectDir}/my-feature'
+			COMP_WORDS=(arb push --force repo)
+			COMP_CWORD=3
+			_arb
+			echo "\${COMPREPLY[*]}"
+		`,
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("repo-a");
+      expect(result.output).toContain("repo-b");
+    }));
+
+  test("bash completion: create completes repo names after -b flag and its value", () =>
+    withEnv(async (env) => {
+      const result = await bash(
+        env,
+        `
+			source '${SHELL_FILE}'
+			cd '${env.projectDir}'
+			COMP_WORDS=(arb create my-ws -b my-branch repo)
+			COMP_CWORD=5
+			_arb
+			echo "\${COMPREPLY[*]}"
+		`,
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("repo-a");
+      expect(result.output).toContain("repo-b");
+    }));
+});
