@@ -31,6 +31,8 @@ export interface WatchLoopCallbacks {
   suspendHeader?: (commandLabel: string) => string;
   /** Called after a suspended command completes, before re-rendering. */
   onPostCommand?: () => void;
+  /** Called when a non-ignored filesystem event passes the filter. Receives the full path. */
+  onFsEvent?: (event: string, fullPath: string) => void;
 }
 
 export interface WatchLoopOptions extends WatchLoopCallbacks {
@@ -48,7 +50,17 @@ export interface WatchLoopOptions extends WatchLoopCallbacks {
  * Returns a Promise that resolves when the loop ends.
  */
 export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
-  const { render, onFetch, onKey, commands, suspendHeader, onPostCommand, watchers, debounceMs = 300 } = options;
+  const {
+    render,
+    onFetch,
+    onKey,
+    commands,
+    suspendHeader,
+    onPostCommand,
+    onFsEvent,
+    watchers,
+    debounceMs = 300,
+  } = options;
 
   if (!isTTY() || !process.stdin.isTTY) {
     throw new Error("Watch mode requires a terminal (TTY).");
@@ -120,6 +132,7 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
         const watcher = watch(entry.path, { recursive: true }, (_event, filename) => {
           if (stopped || suspended) return;
           if (filename && entry.shouldIgnore?.(filename)) return;
+          if (filename) onFsEvent?.(_event, `${entry.path}/${filename}`);
           scheduleRender();
         });
         watcher.on("error", () => {}); // Ignore watcher errors (directory deleted, etc.)
