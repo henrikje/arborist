@@ -49,9 +49,18 @@ const WATCH_HEADER_LINES = 2;
 /** Number of terminal lines the watch footer occupies (blank line + hint bar). */
 const WATCH_FOOTER_LINES = 2;
 
-function watchHeader(project: string, workspace: string, command?: string): string {
+function watchHeader(project: string, workspace: string, command?: string, lastChanged?: string): string {
   const commandPart = command ? ` ${dim("\u2022")} ${command}` : "";
-  return `  ${bold(project)} ${dim("\u2022")} ${workspace}${commandPart}\n`;
+  const debugPart = lastChanged ? ` ${dim(`[last changed: ${lastChanged}]`)}` : "";
+  return `  ${bold(project)} ${dim("\u2022")} ${workspace}${commandPart}${debugPart}\n`;
+}
+
+/** Number of extra terminal lines the debug footer occupies (blank line + event line). */
+const WATCH_DEBUG_LINES = 2;
+
+function watchDebugFooter(event: { timestamp: string; detail: string } | null): string {
+  if (!event) return `\n  ${dim("[debug] no events yet")}\n`;
+  return `\n  ${dim(`[debug] ${event.detail}`)}\n`;
 }
 
 function watchFooter(fetching: boolean, verbose: boolean, commands: Map<string, WatchCommand>): string {
@@ -186,6 +195,12 @@ async function runWatch(
 ): Promise<void> {
   const cache = ctx.cache;
   let fetching = false;
+  let debugMode = false;
+  let lastEvent: { timestamp: string; detail: string } | null = null;
+
+  const recordEvent = (detail: string): void => {
+    lastEvent = { timestamp: new Date().toISOString(), detail };
+  };
 
   const gatherFiltered = async (): Promise<WorkspaceSummary> => {
     const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache, {
@@ -233,13 +248,17 @@ async function runWatch(
 
   const renderScreen = async (): Promise<string> => {
     const terminalHeight = process.stderr.rows ?? 24;
-    const maxLines = terminalHeight - WATCH_HEADER_LINES - WATCH_FOOTER_LINES;
-    const header = watchHeader(project, workspace, statusLabel());
+    const debugLines = debugMode ? WATCH_DEBUG_LINES : 0;
+    const maxLines = Math.max(1, terminalHeight - WATCH_HEADER_LINES - WATCH_FOOTER_LINES - debugLines);
+    const debugTimestamp = debugMode ? lastEvent?.timestamp : undefined;
+    const header = watchHeader(project, workspace, statusLabel(), debugTimestamp);
     const table = await renderStatusTable(await gatherFiltered(), wsDir, {
       verbose,
       maxLines,
     });
-    return `${header}\n${table}${watchFooter(fetching, verbose, commands)}`;
+    const footer = watchFooter(fetching, verbose, commands);
+    const debugSection = debugMode ? watchDebugFooter(lastEvent) : "";
+    return `${header}\n${table}${footer}${debugSection}`;
   };
 
   const fetchDirs = selectedRepos.map((name) => `${wsDir}/${name}`);
@@ -251,12 +270,24 @@ async function runWatch(
     onKey: (key) => {
       if (key === "v") {
         verbose = !verbose;
+        recordEvent("key: v (verbose toggle)");
+        return true;
+      }
+      if (key === "D") {
+        debugMode = !debugMode;
         return true;
       }
       return false;
     },
-    suspendHeader: (label) => watchHeader(project, workspace, label),
+    onFsEvent: (_event, fullPath) => {
+      recordEvent(`fs ${_event}: ${fullPath}`);
+    },
+    suspendHeader: (label) => {
+      const debugTimestamp = debugMode ? lastEvent?.timestamp : undefined;
+      return watchHeader(project, workspace, label, debugTimestamp);
+    },
     onFetch: async () => {
+      recordEvent("key: f (fetch)");
       fetching = true;
       try {
         const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
