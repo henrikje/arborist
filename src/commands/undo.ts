@@ -9,10 +9,10 @@ import {
   readOperationRecord,
   writeWorkspaceConfig,
 } from "../lib/core";
-import { branchExistsLocally, detectOperation, gitLocal } from "../lib/git";
+import { branchExistsLocally, detectOperation, getDiffShortstat, gitLocal } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
-import { cell } from "../lib/render";
+import { cell, suffix } from "../lib/render";
 import { confirmOrExit } from "../lib/sync";
 import { dryRunNotice, error, info, inlineResult, inlineStart, plural, shouldColor, warn } from "../lib/terminal";
 import { requireWorkspace, workspaceRepoDirs } from "../lib/workspace";
@@ -21,11 +21,20 @@ import { requireWorkspace, workspaceRepoDirs } from "../lib/workspace";
 
 type UndoAction = "needs-undo" | "needs-abort" | "already-at-target" | "no-action" | "skip" | "drifted";
 
+interface UndoStats {
+  commitCount: number;
+  filesChanged: number;
+  insertions: number;
+  deletions: number;
+  hasStash: boolean;
+}
+
 interface RepoUndoAssessment {
   repo: string;
   repoDir: string;
   action: UndoAction;
   detail?: string;
+  stats?: UndoStats;
 }
 
 // ── Undo logic per command type ──
@@ -362,11 +371,23 @@ async function assessSyncUndo(record: OperationRecord, wsDir: string): Promise<R
     const currentHead = headResult.stdout.trim();
 
     if (state.postHead && currentHead === state.postHead) {
+      // Gather stats: how many commits and file changes will be undone
+      const commitCountResult = await gitLocal(repoDir, "rev-list", "--count", `${state.preHead}..${state.postHead}`);
+      const commitCount = Number.parseInt(commitCountResult.stdout.trim(), 10) || 0;
+      const diffStats = await getDiffShortstat(repoDir, state.preHead, state.postHead);
+
       assessments.push({
         repo: repoName,
         repoDir,
         action: "needs-undo",
         detail: `reset to ${state.preHead.slice(0, 7)}`,
+        stats: {
+          commitCount,
+          filesChanged: diffStats?.files ?? 0,
+          insertions: diffStats?.insertions ?? 0,
+          deletions: diffStats?.deletions ?? 0,
+          hasStash: state.stashSha != null,
+        },
       });
     } else if (currentHead === state.preHead) {
       assessments.push({ repo: repoName, repoDir, action: "already-at-target" });
@@ -476,9 +497,19 @@ function formatUndoPlan(record: OperationRecord, assessments: RepoUndoAssessment
     .map((a) => {
       let actionCell: Cell;
       switch (a.action) {
-        case "needs-undo":
+        case "needs-undo": {
           actionCell = cell(a.detail ?? "undo");
+          if (a.stats) {
+            const parts: string[] = [];
+            if (a.stats.commitCount > 0) parts.push(plural(a.stats.commitCount, "commit"));
+            if (a.stats.filesChanged > 0) parts.push(`${a.stats.filesChanged} files changed`);
+            if (a.stats.hasStash) parts.push("+ restore stash");
+            if (parts.length > 0) {
+              actionCell = suffix(actionCell, ` — ${parts.join(", ")}`, "muted");
+            }
+          }
           break;
+        }
         case "needs-abort":
           actionCell = cell(a.detail ?? "abort in-progress operation");
           break;
