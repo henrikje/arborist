@@ -726,4 +726,55 @@ describe("reset", () => {
       const status = await git(wt, ["status", "--porcelain"]);
       expect(status).not.toContain("dirty.txt");
     }));
+
+  // ── Verbose tests ──
+
+  test("--verbose shows commits in plan", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Add two local commits
+      await write(join(repoA, "first.txt"), "first");
+      await git(repoA, ["add", "first.txt"]);
+      await git(repoA, ["commit", "-m", "first verbose commit"]);
+
+      await write(join(repoA, "second.txt"), "second");
+      await git(repoA, ["add", "second.txt"]);
+      await git(repoA, ["commit", "-m", "second verbose commit"]);
+
+      const result = await arb(env, ["reset", "--dry-run", "--verbose"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("first verbose commit");
+      expect(result.output).toContain("second verbose commit");
+      expect(result.output).toContain("Resetting:");
+    }));
+
+  test("--verbose with --hard shows Discarding label", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      await write(join(repoA, "local.txt"), "change");
+      await git(repoA, ["add", "local.txt"]);
+      await git(repoA, ["commit", "-m", "commit to discard"]);
+
+      const result = await arb(env, ["reset", "--hard", "--dry-run", "--verbose"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("commit to discard");
+      expect(result.output).toContain("Discarding:");
+    }));
+
+  test("--verbose without commits does not show verbose section", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+
+      const result = await arb(env, ["reset", "--dry-run", "--verbose"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      // No commits to reset, so no verbose section
+      expect(result.output).not.toContain("Resetting:");
+      expect(result.output).not.toContain("Discarding:");
+    }));
 });

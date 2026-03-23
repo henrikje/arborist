@@ -1,12 +1,28 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
-import { getShortHead, gitLocal } from "../lib/git";
+import { getCommitsBetweenFull, getShortHead, gitLocal } from "../lib/git";
 import type { Cell, OutputNode, Span } from "../lib/render";
-import { cell, createRenderContext, finishSummary, render, skipCell, spans, suffix } from "../lib/render";
+import {
+  cell,
+  createRenderContext,
+  finishSummary,
+  render,
+  skipCell,
+  spans,
+  suffix,
+  verboseCommitsToNodes,
+} from "../lib/render";
 import type { SkipFlag } from "../lib/status";
 import { type RepoStatus, computeFlags, resolveWhereFilter } from "../lib/status";
-import { buildCachedStatusAssess, confirmOrExit, resolveDefaultFetch, runPlanFlow } from "../lib/sync";
+import {
+  VERBOSE_COMMIT_LIMIT,
+  buildCachedStatusAssess,
+  confirmOrExit,
+  resolveDefaultFetch,
+  runPlanFlow,
+} from "../lib/sync";
+import type { CommitDisplayEntry } from "../lib/sync/types";
 import {
   dryRunNotice,
   error,
@@ -39,6 +55,10 @@ export interface ResetAssessment {
   unpushedCommits: number;
   headSha: string;
   wrongBranch?: boolean;
+  verbose?: {
+    commits?: CommitDisplayEntry[];
+    totalCommits?: number;
+  };
 }
 
 export function assessResetRepo(
@@ -198,6 +218,26 @@ export function assessResetRepo(
   };
 }
 
+// ── Verbose commit gathering ──
+
+async function gatherResetVerboseCommits(assessments: ResetAssessment[]): Promise<void> {
+  await Promise.all(
+    assessments
+      .filter((a) => a.outcome === "will-reset")
+      .map(async (a) => {
+        const commits = await getCommitsBetweenFull(a.repoDir, a.target, "HEAD");
+        const total = commits.length;
+        a.verbose = {
+          commits: commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
+            shortHash: c.shortHash,
+            subject: c.subject,
+          })),
+          totalCommits: total,
+        };
+      }),
+  );
+}
+
 // ── Plan formatting ──
 
 function commitLossSpans(totalAhead: number, unpushed: number): Span[] {
@@ -264,7 +304,11 @@ function alreadyCleanCell(target: string): Cell {
   return cell(`already at ${target}`);
 }
 
-export function buildResetPlanNodes(assessments: ResetAssessment[], resetMode: ResetMode): OutputNode[] {
+export function buildResetPlanNodes(
+  assessments: ResetAssessment[],
+  resetMode: ResetMode,
+  verbose?: boolean,
+): OutputNode[] {
   const nodes: OutputNode[] = [{ kind: "gap" }];
 
   const rows = assessments.map((a) => {
@@ -276,7 +320,14 @@ export function buildResetPlanNodes(assessments: ResetAssessment[], resetMode: R
     } else {
       actionCell = skipCell(a.skipReason ?? "", a.skipFlag);
     }
-    return { cells: { repo: cell(a.repo), action: actionCell } };
+
+    let afterRow: OutputNode[] | undefined;
+    if (verbose && a.outcome === "will-reset" && a.verbose?.commits && a.verbose.commits.length > 0) {
+      const label = resetMode === "hard" ? "Discarding:" : "Resetting:";
+      afterRow = verboseCommitsToNodes(a.verbose.commits, a.verbose.totalCommits ?? a.verbose.commits.length, label);
+    }
+
+    return { cells: { repo: cell(a.repo), action: actionCell }, afterRow };
   });
 
   nodes.push({
@@ -300,8 +351,8 @@ export function buildResetPlanNodes(assessments: ResetAssessment[], resetMode: R
   return nodes;
 }
 
-export function formatResetPlan(assessments: ResetAssessment[], resetMode: ResetMode): string {
-  const nodes = buildResetPlanNodes(assessments, resetMode);
+export function formatResetPlan(assessments: ResetAssessment[], resetMode: ResetMode, verbose?: boolean): string {
+  const nodes = buildResetPlanNodes(assessments, resetMode, verbose);
   const ctx = createRenderContext();
   return render(nodes, ctx);
 }
@@ -319,11 +370,12 @@ export function registerResetCommand(program: Command): void {
     .option("--hard", "Move HEAD, reset index and working tree; discards all local changes")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("-n, --dry-run", "Show what would happen without executing")
+    .option("-v, --verbose", "Show commits to be reset in the plan")
     .option("--include-wrong-branch", "Include repos on a different branch than the workspace")
     .option("-w, --where <filter>", "Only reset repos matching status filter (comma = OR, + = AND, ^ = negate)")
     .summary("Reset repos to the remote branch (or base if not pushed)")
     .description(
-      "Examples:\n\n  arb reset                                Reset all repos to remote HEAD\n  arb reset api                            Reset a specific repo\n  arb reset --base                         Reset to base branch instead\n  arb reset --hard                         Reset and discard all local changes\n\nReset all repos (or only the named repos) to the remote share branch HEAD. When no remote share branch exists (never pushed), falls back to the base branch. Resolves the correct remote and branch per repo automatically. Untracked files are preserved (no git clean). Shows a plan and asks for confirmation before proceeding.\n\nThe reset mode controls what is preserved. With --mixed (default), the index is reset but the working tree is preserved — commits become unstaged changes. With --soft, only HEAD moves — commits become staged changes and the working tree is untouched. With --hard, the index and working tree are both reset — all local changes are permanently lost. This mirrors git reset --soft/--mixed/--hard.\n\nRepos on a different branch than the workspace are skipped unless --include-wrong-branch is used.\n\nRepos whose branch has already been merged (or squash-merged) into base are skipped when the reset target is the base branch. Repos whose configured base branch was merged into the default branch are also skipped (use 'arb retarget' to update the base first).\n\nUse --base to always reset to the base branch, even when a remote share branch exists.\n\nTo change the base branch, use 'arb branch base <branch>'.\n\nUse --where to filter repos by status flags. See 'arb help filtering' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
+      "Examples:\n\n  arb reset                                Reset all repos to remote HEAD\n  arb reset api                            Reset a specific repo\n  arb reset --base                         Reset to base branch instead\n  arb reset --hard                         Reset and discard all local changes\n  arb reset --dry-run -v                   Preview reset with commit details\n\nReset all repos (or only the named repos) to the remote share branch HEAD. When no remote share branch exists (never pushed), falls back to the base branch. Resolves the correct remote and branch per repo automatically. Untracked files are preserved (no git clean). Shows a plan and asks for confirmation before proceeding.\n\nThe reset mode controls what is preserved. With --mixed (default), the index is reset but the working tree is preserved — commits become unstaged changes. With --soft, only HEAD moves — commits become staged changes and the working tree is untouched. With --hard, the index and working tree are both reset — all local changes are permanently lost. This mirrors git reset --soft/--mixed/--hard.\n\nRepos on a different branch than the workspace are skipped unless --include-wrong-branch is used.\n\nRepos whose branch has already been merged (or squash-merged) into base are skipped when the reset target is the base branch. Repos whose configured base branch was merged into the default branch are also skipped (use 'arb retarget' to update the base first).\n\nUse --base to always reset to the base branch, even when a remote share branch exists.\n\nUse --verbose to show the commits that will be reset for each repo in the plan.\n\nTo change the base branch, use 'arb branch base <branch>'.\n\nUse --where to filter repos by status flags. See 'arb help filtering' for filter syntax.\n\nSee 'arb help remotes' for remote role resolution.",
     )
     .action(
       arbAction(async (ctx, repoArgs: string[], options) => {
@@ -370,13 +422,19 @@ export function registerResetCommand(program: Command): void {
           },
         });
 
+        const postAssess = async (nextAssessments: ResetAssessment[]) => {
+          if (options.verbose) await gatherResetVerboseCommits(nextAssessments);
+          return nextAssessments;
+        };
+
         const assessments = await runPlanFlow({
           shouldFetch,
           fetchDirs,
           reposForFetchReport: repos,
           remotesMap,
           assess,
-          formatPlan: (nextAssessments) => formatResetPlan(nextAssessments, resetMode),
+          postAssess,
+          formatPlan: (nextAssessments) => formatResetPlan(nextAssessments, resetMode, options.verbose),
           onPostFetch: () => cache.invalidateAfterFetch(),
         });
 
