@@ -324,7 +324,7 @@ describe("arb undo", () => {
       expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(true);
     }));
 
-  test("undo partial failure recovery — re-running undo completes", () =>
+  test("undo refused when blocking branch exists — fix and retry succeeds", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       const ws = join(env.projectDir, "my-feature");
@@ -334,25 +334,29 @@ describe("arb undo", () => {
       await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--no-fetch"], { cwd: ws });
 
       // Block undo for repo-a by creating a branch named "my-feature"
-      // (git branch -m feat/new-name my-feature will fail because my-feature already exists)
       await git(repoA, ["branch", "my-feature"]);
 
+      // Undo is refused entirely (collision detected in assess phase)
       const r1 = await arb(env, ["undo", "--yes"], { cwd: ws });
       expect(r1.exitCode).not.toBe(0);
+      expect(r1.output).toContain("already exists");
 
-      // repo-b was undone, repo-a failed — record still exists
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(true);
-      expect((await git(repoB, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe("my-feature");
+      // Neither repo was changed — both still on new branch
       expect((await git(repoA, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe("feat/new-name");
+      expect((await git(repoB, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe("feat/new-name");
+
+      // Record still exists for retry
+      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(true);
 
       // Fix: remove blocking branch
       await git(repoA, ["branch", "-D", "my-feature"]);
 
-      // Re-run undo — repo-b is already-at-target, repo-a can now be undone
+      // Re-run undo — now succeeds for both repos
       const r2 = await arb(env, ["undo", "--yes"], { cwd: ws });
       expect(r2.exitCode).toBe(0);
 
       expect((await git(repoA, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe("my-feature");
+      expect((await git(repoB, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe("my-feature");
       expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
     }));
 
