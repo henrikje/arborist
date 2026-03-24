@@ -430,10 +430,20 @@ async function runMergeDetection(
   actualBranch: string,
   cache: GitCache,
 ): Promise<void> {
-  const { shouldCheckSquash, shouldCheckPrefixes, prefixLimit } = computeMergeDetectionStrategy(
-    baseStatus,
-    shareStatus,
-  );
+  let { shouldCheckSquash, shouldCheckPrefixes, prefixLimit } = computeMergeDetectionStrategy(baseStatus, shareStatus);
+
+  // For never-pushed branches, enable squash detection only when the replay plan
+  // confirms all local commits are already on target — avoids false positives from
+  // coincidental cumulative-diff matches and interference with stacked base-merge detection.
+  if (
+    !shouldCheckSquash &&
+    shareStatus.refMode === "noRef" &&
+    baseStatus.replayPlan &&
+    baseStatus.replayPlan.alreadyOnTarget === baseStatus.replayPlan.totalLocal &&
+    baseStatus.replayPlan.toReplay === 0
+  ) {
+    shouldCheckSquash = true;
+  }
 
   let mergeMatchingCommit: { hash: string; subject: string } | undefined;
   let mergeCommitHash: string | undefined;

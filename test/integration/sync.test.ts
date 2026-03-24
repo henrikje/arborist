@@ -1598,7 +1598,7 @@ describe("--where filtering", () => {
         cwd: join(env.projectDir, "rebase-squash-equivalent-test"),
       });
       expect(rebaseResult.exitCode).toBe(0);
-      expect(rebaseResult.output).toContain("All repos up to date");
+      expect(rebaseResult.output).toContain("already squash-merged");
       expect(rebaseResult.output).not.toContain("conflict");
     }));
 });

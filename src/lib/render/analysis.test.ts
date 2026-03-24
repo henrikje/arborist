@@ -461,6 +461,50 @@ describe("plainRemoteDiff", () => {
     expect(plainRemoteDiff(repo)).toBe("5 to push");
   });
 
+  test("noRef with merge returns no branch", () => {
+    const repo = makeRepo({
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: null,
+        ahead: 2,
+        behind: 1,
+        baseMergedIntoDefault: null,
+        merge: { kind: "squash" },
+      },
+      share: {
+        remote: "origin",
+        ref: null,
+        refMode: "noRef",
+        toPush: null,
+        toPull: null,
+      },
+    });
+    expect(plainRemoteDiff(repo)).toBe("no branch");
+  });
+
+  test("noRef with merge and newCommitsAfter returns N to push", () => {
+    const repo = makeRepo({
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: null,
+        ahead: 3,
+        behind: 1,
+        baseMergedIntoDefault: null,
+        merge: { kind: "squash", newCommitsAfter: 1 },
+      },
+      share: {
+        remote: "origin",
+        ref: null,
+        refMode: "noRef",
+        toPush: null,
+        toPull: null,
+      },
+    });
+    expect(plainRemoteDiff(repo)).toBe("1 to push");
+  });
+
   test("noRef without ahead returns no branch", () => {
     const repo = makeRepo({
       base: {

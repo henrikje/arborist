@@ -26,6 +26,14 @@ function remoteDiffGone(repo: RepoStatus): DiffResult {
 }
 
 function remoteDiffNeverPushed(repo: RepoStatus): DiffResult {
+  const merged = repo.base?.merge != null;
+  if (merged) {
+    const newCommits = repo.base?.merge?.newCommitsAfter;
+    if (newCommits && newCommits > 0) {
+      return { ...EMPTY_DIFF, push: `${newCommits} to push` };
+    }
+    return { ...EMPTY_DIFF, push: "no branch" };
+  }
   if (repo.base !== null && repo.base.ahead > 0) return { ...EMPTY_DIFF, push: `${repo.base.ahead} to push` };
   return { ...EMPTY_DIFF, push: "no branch" };
 }
