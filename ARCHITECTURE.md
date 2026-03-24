@@ -142,7 +142,7 @@ The forward reference (worktree `.git` file → `gitdir: .../.git/worktrees/<ent
 
 `arb watch` in `terminal/watch-loop.ts` monitors two path categories per repo: the worktree working directory (with gitignore filtering, for dirty/untracked detection) and the canonical `.git/` directory (with a whitelist filter, for ref and state changes). The whitelist only passes `refs/`, `packed-refs`, and this worktree's own entry dir — see "Git worktree directory layout" above for why.
 
-Debouncing: 300ms timer coalesces rapid filesystem events. After each render, a mute window of equal length suppresses events caused by the render's own git operations (e.g., `git status` touching `.git/index`). If events arrive during rendering, a dirty flag schedules a post-mute re-render. Suspended commands (full command flows triggered from watch) stop watchers → tear down stdin → run command → wait → resume watchers → re-render.
+Debouncing uses leading + trailing edges: the first event after a quiet period triggers an immediate render; subsequent events within the burst are debounced (300ms trailing). After each render, a mute window of equal length suppresses events caused by the render's own git operations (e.g., `git status` touching `.git/index`). If events arrive during rendering, a dirty flag schedules a post-mute re-render. When a render completes with no pending events, the system returns to leading-edge mode. See `decisions/0094-leading-edge-debounce.md`. Suspended commands (full command flows triggered from watch) stop watchers → tear down stdin → run command → wait → resume watchers → re-render.
 
 ### Shell completion
 
