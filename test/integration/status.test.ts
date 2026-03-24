@@ -239,6 +239,38 @@ describe("status", () => {
       expect(result.output).not.toContain("merged");
     }));
 
+  test("arb status never-pushed branch squash-merged into base shows merged", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "never-pushed-merged", "repo-a"]);
+      const wtRepoA = join(env.projectDir, "never-pushed-merged/repo-a");
+
+      // Add commits to the worktree (never push)
+      await write(join(wtRepoA, "feature.txt"), "feature");
+      await git(wtRepoA, ["add", "feature.txt"]);
+      await git(wtRepoA, ["commit", "-m", "feat: add feature"]);
+
+      // Squash merge the branch into main via the canonical repo
+      const repoA = join(env.projectDir, ".arb/repos/repo-a");
+      const headSha = (await git(wtRepoA, ["rev-parse", "HEAD"])).trim();
+      await git(repoA, ["merge", "--squash", headSha]);
+      await git(repoA, ["commit", "-m", "feat: add feature (#99)"]);
+      await git(repoA, ["push"]);
+
+      await fetchAllRepos(env);
+      const result = await arb(env, ["status"], { cwd: join(env.projectDir, "never-pushed-merged") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("merged");
+      expect(result.output).not.toContain("ahead");
+
+      // JSON output should have merge set
+      const jsonResult = await arb(env, ["status", "--no-fetch", "--json"], {
+        cwd: join(env.projectDir, "never-pushed-merged"),
+      });
+      const json = JSON.parse(jsonResult.stdout);
+      expect(json.repos[0].base.merge).not.toBeNull();
+      expect(json.repos[0].base.merge.kind).toBe("squash");
+    }));
+
   test("arb status shows pushed and synced repo as up to date", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);

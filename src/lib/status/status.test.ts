@@ -187,6 +187,32 @@ describe("computeMergeDetectionStrategy", () => {
     expect(result.shouldCheckSquash).toBe(true);
   });
 
+  test("shouldCheckSquash is false when refMode is noRef (override in runMergeDetection)", () => {
+    const baseStatus = makeRepo({
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: null,
+        ahead: 2,
+        behind: 1,
+        baseMergedIntoDefault: null,
+      },
+    });
+    const shareStatus = makeRepo({
+      share: {
+        remote: "origin",
+        ref: null,
+        refMode: "noRef",
+        toPush: null,
+        toPull: null,
+      },
+    }).share;
+    const result = computeMergeDetectionStrategy(requireBase(baseStatus), shareStatus);
+    // computeMergeDetectionStrategy returns false; runMergeDetection overrides
+    // when the replay plan confirms all commits are on target.
+    expect(result.shouldCheckSquash).toBe(false);
+  });
+
   test("shouldCheckSquash is false when share has unpushed work and is not gone", () => {
     const baseStatus = makeRepo({
       base: {
