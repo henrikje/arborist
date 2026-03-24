@@ -33,6 +33,8 @@ export interface WatchLoopCallbacks {
   onPostCommand?: () => void;
   /** Called when a non-ignored filesystem event passes the filter. Receives the full path. */
   onFsEvent?: (event: string, fullPath: string) => void;
+  /** Returns a header string for an in-progress activity. Used for delayed keypress feedback. */
+  activityHeader?: (activity: string) => string;
 }
 
 export interface WatchLoopOptions extends WatchLoopCallbacks {
@@ -58,6 +60,7 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
     suspendHeader,
     onPostCommand,
     onFsEvent,
+    activityHeader,
     watchers,
     debounceMs = 300,
   } = options;
@@ -70,7 +73,7 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let rendering = false;
   let dirty = false;
-  let fetching = false;
+  let fetching = false; // gates keypresses during fetch — UI indicator lives in the render callback
   let suspended = false;
   let stopped = false;
   // Mute events briefly after each render to ignore filesystem activity caused by
@@ -91,12 +94,37 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
     process.stderr.write(`\x1b[H\x1b[J${content}`);
   };
 
+  // --- Delayed activity header (instant keypress feedback) ---
+
+  let activityTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Schedule a header-only update after a short delay. Cancelled if the full render completes first. */
+  const scheduleActivityHeader = (activity: string): void => {
+    cancelActivityHeader();
+    if (!activityHeader) return;
+    activityTimer = setTimeout(() => {
+      activityTimer = null;
+      if (!stopped && !suspended) {
+        const header = activityHeader(activity);
+        if (header != null) process.stderr.write(`\x1b[H\x1b[2K${header}`);
+      }
+    }, 150);
+  };
+
+  const cancelActivityHeader = (): void => {
+    if (activityTimer !== null) {
+      clearTimeout(activityTimer);
+      activityTimer = null;
+    }
+  };
+
   const doRender = async (): Promise<void> => {
     if (stopped || suspended) return;
     rendering = true;
     dirty = false;
     try {
       const content = await render();
+      cancelActivityHeader();
       if (!stopped && !suspended) writeScreen(content);
     } finally {
       rendering = false;
@@ -189,6 +217,7 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
     if (stopped) return;
     stopped = true;
     if (debounceTimer !== null) clearTimeout(debounceTimer);
+    cancelActivityHeader();
     resolvers.resolve();
   };
 
@@ -268,6 +297,7 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
 
     // Tear down watch state — stay on alternate screen
     if (debounceTimer !== null) clearTimeout(debounceTimer);
+    cancelActivityHeader();
     stopFsWatchers();
     // Erase screen below the header so the command output starts clean,
     // but write header + erase in a single call to avoid a visible blank frame.
@@ -339,6 +369,7 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
     // f — trigger inline fetch
     if (byte === 0x66 && onFetch) {
       fetching = true;
+      scheduleActivityHeader("Fetching...");
       onFetch()
         .then(() => {
           fetching = false;
@@ -347,7 +378,7 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
         .catch(() => {
           fetching = false;
         });
-      // Re-render immediately to show "Fetching..." state
+      // Re-render immediately so the render callback can reflect the new state
       doRender();
       return;
     }
@@ -355,6 +386,7 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
     // Inline key handler (toggles, etc.)
     const key = String.fromCharCode(byte);
     if (onKey?.(key)) {
+      scheduleActivityHeader("Refreshing...");
       doRender();
       return;
     }
