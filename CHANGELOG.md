@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.113.0](https://github.com/henrikje/arborist/compare/v0.112.0...v0.113.0) (2026-03-24)
+
+
+### Features
+
+* **rename:** add --include-in-progress flag for parity with branch rename ([8c18c53](https://github.com/henrikje/arborist/commit/8c18c531752d58f940d8e2ded88fa1cd010108bd))
+* **reset:** add --include-wrong-branch flag ([1e1a39a](https://github.com/henrikje/arborist/commit/1e1a39a08d231a0bc86811e60138c53f532d5b9b))
+* **reset:** add --verbose flag to show commits in the plan ([b3a9f94](https://github.com/henrikje/arborist/commit/b3a9f9474500aeaa4c76fc24ef5faa1eb561994a))
+* **template:** add --dry-run to template apply ([6599280](https://github.com/henrikje/arborist/commit/65992800a5155320207f05d641fc708d2913403e))
+
+
+### Bug Fixes
+
+* **cli:** remove -n shorthand for --dry-run ([3689ef7](https://github.com/henrikje/arborist/commit/3689ef7844c57ff7d32dcd7b2860a18bbe9a5b5e))
+* **repo:** remove -r short alias from repo default --remove ([00d27f7](https://github.com/henrikje/arborist/commit/00d27f7daa920b233f021292dad68df30b94d2bb))
+* skip timestamp in version string for release builds ([7aec5c4](https://github.com/henrikje/arborist/commit/7aec5c408c1a5b600e08cfc294138ebd2af58f3f))
+
 ## [0.112.0](https://github.com/henrikje/arborist/compare/v0.111.0...v0.112.0) (2026-03-23)
 
 
