@@ -82,11 +82,16 @@ When a feature or change involves weighing meaningful options, preserve the reas
 
 ### Clear, descriptive output
 
-Tell the user *what happened*, not just *that it happened*. Use descriptive per-repo outcomes: "pushed 3 commits", "rebased onto origin/main", "3 refs updated", "created", "detached", "up to date". Every multi-repo command ends with a single green summary line on stderr that aggregates counts ("Pushed 3 repos, 1 up to date, 2 skipped"). When a repo is skipped, the reason is always stated ("diverged from origin", "uncommitted changes", "on branch X, expected Y") — the developer should never have to guess.
+Tell the user *what happened*, not just *that it happened*. Use descriptive per-repo outcomes: "pushed 3 commits", "rebased onto origin/main", "3 refs updated", "created", "detached", "up to date". When a repo is skipped, the reason is always stated ("diverged from origin", "uncommitted changes", "on branch X, expected Y") — the developer should never have to guess.
+
+- **Summary lines.** Every multi-repo command ends with a single green summary line on stderr that aggregates counts ("Pushed 3 repos, 1 up to date, 2 skipped") via `finishSummary()` in `render/render.ts`. Do not use `success()` or `error()` for multi-item summary output.
+- **Nothing to do.** When no items qualify for the operation, use `info()` with a verb-specific message (`Nothing to push`, `All repos up to date`). Never `warn()`, no trailing period.
+- **State labels.** Synthetic state labels in table cells (`detached`, `no branch`, `gone`) are wrapped in parentheses to distinguish them from actual values.
+- **Workspace-level refs.** When displaying workspace-level base or share refs (derived from per-repo data), prefer `configuredRef` over `ref` (show user's intent, not the fallback). Format as `remote/branch`.
 
 ### Command interaction patterns
 
-**Membership-changing commands** (`attach`, `detach`, `create`, workspace selection in `delete`): accept `[repos...]` args. When none given and stdin is a TTY, show an interactive picker. Offer `-a, --all-repos` for scripting. Non-TTY without args is an error with usage guidance.
+**Membership-changing commands** (`attach`, `detach`, `create`, workspace selection in `delete`): accept `[repos...]` args. When none given and stdin is a TTY, show an interactive picker. Offer `-a, --all-repos` for scripting. Non-TTY without args is an error with usage guidance. Note: `detach`, `delete`, and `branch rename` follow the same five-phase plan flow as state-changing commands (assess → plan → confirm → execute → summarize). Only `create` (guided flow with parameter-echo pattern) and `attach` (simple execute-report) are structurally different.
 
 **State-changing commands** (`push`, `pull`, `rebase`, `merge`, `reset`, `retarget`): accept optional `[repos...]` to narrow scope; default to all repos. Follow the five-phase workflow: assess → plan → confirm → execute → summarize. Each defines a typed assessment interface classifying repos into will-operate / up-to-date / skip-with-reason.
 
@@ -107,7 +112,7 @@ When adding a new command to a category, verify it carries all expected flags. E
 | `--include-wrong-branch` | Include repos on a different branch |
 | `--where` (`-w`) | Filter repos by status flags |
 
-Individual sync commands add domain-specific flags (`--force`, `--autostash`, `--graph`, `--base`, etc.) as needed. `pull` always fetches and does not offer `--no-fetch`. `retarget` always operates on all repos — it does not accept `[repos...]` or `--where`.
+Individual sync commands add domain-specific flags (`--force`, `--autostash`, `--graph`, `--base`, etc.) as needed. `pull` always fetches and does not offer `--no-fetch`. `retarget` always operates on all repos — it does not accept `[repos...]` or `--where`. `--verbose` shows commit subjects in the plan; the label describes direction (e.g., "Outgoing to remote:", "Resetting:"). Orthogonal to `--graph` — both can combine. See `decisions/0040-branch-divergence-graph.md`.
 
 **Membership commands** (`attach`, `detach`, `create`, workspace selection in `delete`):
 
@@ -158,6 +163,10 @@ Timeout values follow a resolution hierarchy: operation-specific env var → `AR
 Colors, progress indicators, and interactive prompts only appear when stderr is connected to a terminal. In non-TTY contexts (pipes, CI), output is plain text and confirmation prompts require `--yes`.
 
 Color output is additionally disabled when the `NO_COLOR` environment variable is set (any value, including empty — per the no-color.org convention) or when `TERM=dumb`. The `shouldColor()` function in `tty.ts` encapsulates this logic. Use `shouldColor()` for color decisions and `isTTY()` for interactive features (prompts, cursor control, progress indicators).
+
+### Adaptive table output
+
+Column *visibility* is driven by data, not terminal width. A column is hidden when its data is redundant across all rows (e.g., all repos share the same base ref) — never because the terminal is too narrow. When a column is hidden, its shared value appears in the parenthetical header note so no information is lost. Column *values* are truncated to fit the terminal width. Truncatable columns declare a minimum width; the renderer distributes overflow reduction across them, preserving remote prefixes (`origin/` + 3 chars + ellipsis). When terminal width is unknown, no truncation is applied. See `decisions/0092`.
 
 ### Repo specification: positional vs option
 
@@ -228,7 +237,7 @@ For network/git failures, use `classifyNetworkError()` from `src/lib/sync/networ
 
 **Plan commands** (state-changing: `rebase`, `merge`, `push`, `pull`, `delete`, `branch rename`): blank line before and after the table. The blank lines separate the plan from fetch output above and the confirmation prompt below.
 
-**Overview commands** (read-only: `status`, `list`, `branch`, `repo list`, `template list`): no surrounding blank lines. The table is the entire output; extra padding wastes screen real estate.
+**Overview commands** (read-only: `status`, `list`, `branch`, `repo list`, `template list`): minimize vertical padding. Blank lines appear only for structural clarity between distinct elements (e.g., a context header and the table body).
 
 ### Documentation: help is reference, README is tutorial
 

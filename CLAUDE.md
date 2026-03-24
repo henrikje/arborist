@@ -32,12 +32,13 @@ Organized into semantic subdirectories. Each directory has a barrel `index.ts` r
 - No circular dependencies between files or directories. Enforced by `bun run cycles` (madge). If a cycle is detected, extract the shared type into a `types.ts` leaf file.
 - Within `lib/`, use direct file imports (not barrels) to avoid circular dependency issues.
 - Command files and `src/index.ts` use barrel imports.
+- See ARCHITECTURE.md for rationale and the shared-logic override exposure rule.
 
 - **`core/`** — Foundation: `types.ts` (ArbContext), `errors.ts` (ArbError, ArbAbort), `config.ts` (JSON config with Zod schemas, auto-migrates legacy INI), `time.ts` (relative time formatting)
-- **`terminal/`** — Terminal I/O: `output.ts` (ANSI colors, logging, progress), `tty.ts` (TTY detection, `shouldColor()` for color decisions respecting `NO_COLOR`/`TERM=dumb`), `debug.ts`, `stdin.ts`, `abort-keypress.ts`
+- **`terminal/`** — Terminal I/O: `output.ts` (ANSI colors, logging, progress), `tty.ts` (TTY detection, `shouldColor()` for color decisions respecting `NO_COLOR`/`TERM=dumb`), `debug.ts`, `stdin.ts`, `abort-signal.ts` (Ctrl-C handling), `watch-loop.ts` (filesystem-driven render loop with debounce/mute — one of the most complex modules), `alternate-screen.ts`, `suppress-echo.ts`, `suppress-stdin.ts`, `pagination-status.ts`, inquiry widgets (`checkbox-with-preview.ts`, `checkbox-with-status.ts`, `select-with-status.ts`)
 - **`git/`** — Git operations: `git.ts` (process spawning, branch/status/remote ops), `git-cache.ts` (request-scoped promise coalescing), `remotes.ts` (remote role resolution), `remote-url.ts` (URL parsing, PR URL construction)
 - **`status/`** — Canonical status model: `status.ts` (RepoStatus, RepoFlags, gathering, filtering — see ARCHITECTURE.md), `skip-flags.ts`, `pr-detection.ts`, `ticket-detection.ts`, `test-helpers.ts` (makeRepo fixtures)
-- **`render/`** — Declarative render model: `model.ts` (Cell, Span, Attention, OutputNode types, cell helpers — zero lib imports), `analysis.ts` (analyze* functions, buildStatusCountsCell, formatStatusCounts, flagLabels), `render.ts` (OutputNode[] → ANSI string), `status-view.ts`, `status-verbose.ts`, `conflict-report.ts`, `repo-header.ts`, `plan-format.ts`, `integrate-graph.ts`, `phased-render.ts`
+- **`render/`** — Declarative render model: `model.ts` (Cell, Span, Attention, OutputNode types, cell helpers — zero lib imports), `analysis.ts` (analyze* functions, buildStatusCountsCell, formatStatusCounts, flagLabels), `render.ts` (OutputNode[] → ANSI string), `status-view.ts`, `status-verbose.ts`, `conflict-report.ts`, `repo-header.ts`, `plan-format.ts`, `integrate-graph.ts`, `integrate-cells.ts`, `phased-render.ts`, `height-fit.ts` (vertical truncation for watch mode)
 - **`workspace/`** — Workspace management: `arb-root.ts` (.arb/ marker detection), `repos.ts` (repo listing, selection), `worktrees.ts`, `branch.ts` (workspace branch detection), `context.ts` (requireWorkspace/requireBranch guards), `clean.ts`, `templates.ts`
 - **`sync/`** — Synchronization: `integrate.ts` (shared rebase/merge logic), `parallel-fetch.ts` (concurrent fetch with timeout), `mutation-flow.ts` (confirmation prompts, phased render integration)
 - **`json/`** — JSON output: `json-types.ts` (Zod schemas), `json-schema.ts`
@@ -46,6 +47,10 @@ Organized into semantic subdirectories. Each directory has a barrel `index.ts` r
 ### Scripts (`scripts/`)
 
 Build and release tooling. `set-version.ts` stamps `src/version.ts` at build time — version logic is in `src/lib/core/version.ts` so it can be unit tested. `build-release.ts` compiles multi-platform binaries and packages tarballs. `update-homebrew.ts` pushes formula updates to the Homebrew tap. Scripts are standalone Bun scripts that run outside the CLI runtime (see ARCHITECTURE.md § Scripts).
+
+### Shell and Install (`shell/`, `install.sh`, `uninstall.sh`)
+
+`shell/arb.bash` and `shell/arb.zsh` provide tab completion. `install.sh` copies the binary to `~/.local/bin/` and appends a PATH block to the shell RC file. `uninstall.sh` reverses both. See ARCHITECTURE.md § Shell completion and § Install scripts for invariants.
 
 ### Testing
 
@@ -97,3 +102,6 @@ After each change, check whether the following need updating:
 - **`arb dump`** — If the change adds new fields to `WorkspaceSummary`, `RepoStatus`, or other state gathered per-workspace/repo, update `src/commands/dump.ts` to include those fields in the dump output. Also update the `gatherWorkspaceSummary` call in `dump.ts` if new options need to be passed.
 - **Decision records** — If the change involved a significant design decision, write a `decisions/NNNN-*.md`. See `decisions/README.md` for the template. Existing records must never be modified.
 - **Flag parity** — When adding or modifying a command, check it against the "Expected flags per command category" and "Short flag allocation" tables in GUIDELINES.md. New sync commands must carry the full sync flag set. New short flags must not overload an existing letter with different semantics. When a command delegates to shared assessment logic, verify every override parameter has a corresponding CLI flag.
+- **Barrel imports** — Command files (`src/commands/`) use barrel imports (`../lib/render`, `../lib/sync`), not direct file imports (`../lib/render/status-verbose`). Within `lib/`, use direct file imports to avoid cycles.
+- **Sibling commands** — If the change touches a command that shares assessment or plan logic with another command (e.g., `rename` ↔ `branch rename`), verify that new flags, options, or skip-reason text are consistent across all commands using the shared logic.
+- **Watch mode** — If the change touches `buildStatusView` or the render pipeline, verify behavior in both `arb status` and `arb watch` (different constraints: vertical truncation, own header, `fitToHeight`).
