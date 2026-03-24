@@ -39,6 +39,7 @@ Compare `shell/arb.bash` and `shell/arb.zsh` against the actual command set:
 - The bash and zsh versions are functionally equivalent — same commands, same options, same dynamic values.
 - The shell wrapper functions (`arb()`) handle all commands that need shell-level interception (currently `cd` and `create`).
 - Internal function names reflect current command names (no legacy names from past renames).
+- Completion of positional arguments works correctly after flags (e.g., `arb status -v <repo><tab>`, `arb delete --yes <ws><tab>`). This exercises the dispatch boundary between global and subcommand option parsing.
 
 ### 3. Documentation accuracy
 
@@ -55,7 +56,7 @@ Check README.md and every file in `docs/` against the current codebase:
 
 Check that similar commands follow the same patterns as defined in GUIDELINES.md:
 
-- State-changing commands (`push`, `pull`, `rebase`, `merge`) all follow the five-phase mutation flow.
+- State-changing commands (`push`, `pull`, `rebase`, `merge`, `reset`, `retarget`) all follow the five-phase mutation flow.
 - Membership-changing commands (`attach`, `detach`, `create`) handle `[repos...]`, interactive picker, `--all-repos`, and non-TTY errors consistently.
 - Overview commands (`status`, `log`, `diff`) handle `--fetch`/`--no-fetch`, `--json`, `[repos...]` consistently. They must not fetch by default.
 - Mutation commands (`push`, `rebase`, `merge`) must fetch by default. `exec` and `open` must not have fetch flags.
@@ -66,6 +67,9 @@ Check that similar commands follow the same patterns as defined in GUIDELINES.md
 - **Flag parity within categories.** Compare every sync command (`push`, `pull`, `rebase`, `merge`, `reset`, `retarget`) against the "Expected flags per command category" table in GUIDELINES.md. Report any missing flags that lack a documented exception. Do the same for membership commands and overview commands.
 - **Short flag consistency.** Compare every `.option()` short flag against the "Short flag allocation" table in GUIDELINES.md. Report any new overloads not documented in the table, or any assignments that contradict the table.
 - **Shared-logic override exposure.** For each command that delegates to shared assessment functions (`assessRepo`, `assessIntegrateRepo`, `assessRetargetRepo`, `assessResetRepo`, `assessPushRepo`, `assessPullRepo`), verify that every override parameter in the shared function's options interface has a corresponding CLI flag on the calling command. Hardcoded overrides without CLI escape hatches are a finding.
+- **Implementation-level output consistency.** Multi-item mutation commands use `finishSummary()` — not manual `success()`/`error()`. Plan tables use `skipCell()` for skip reasons — not `cell(reason, 'attention')`. Plan node arrays follow the gap-table-gap structure. "Nothing to do" messages use `info()`, not `warn()`.
+- **Flag suggestion parity.** For every string matching `"use --*"` in plan/assessment output (shared renderers like `buildRenamePlanNodes`, `assessPushRepo`, etc.), verify the suggested flag is registered as a CLI option on every command that calls that renderer.
+- **Verbose consistency.** `--verbose` is supported on all sync commands that show a plan table. Each uses `verboseCommitsToNodes()` for rendering and `postAssess` for gathering.
 
 ### 5. Color and output conventions
 
@@ -78,6 +82,11 @@ Verify adherence to the color semantics in GUIDELINES.md:
 - Default (no color) for normal content and inline results.
 - Inline progress lines use `inlineStart`/`inlineResult` correctly.
 - Summary lines follow the "Pushed 3 repos, 1 up to date, 2 skipped" pattern.
+- Table-building code uses `TableColumnDef` with the declarative render model. No ad-hoc string concatenation for tabular output.
+- Column `show` conditions are data-driven (based on cell content), never terminal-width-driven.
+- Hidden columns surface their shared value in a parenthetical header note.
+- Tables that exceed terminal width truncate values gracefully — no line wrapping that destroys alignment.
+- When the same state is represented in multiple columns (e.g., detached HEAD affects BRANCH, SHARE, BASE), verify text and formatting are consistent.
 
 ### 6. Safety and error handling
 
@@ -124,6 +133,10 @@ Check all user-facing strings across the codebase:
 - `package.json` scripts are all functional and documented in CLAUDE.md.
 - `.github/workflows/check.yml` runs all necessary checks.
 - `lefthook.yml` pre-commit hooks match the current tooling.
+- Verify the installed binary actually runs (not just exists) — `$HOME/.local/bin/arb --version`.
+- Verify the `.zshrc`/`.bashrc` block is at the end of the file (after any `brew shellenv`).
+- Test install over an existing install (not just fresh install).
+- Test with Homebrew arb also installed — this is the primary conflict scenario.
 
 **Version stamping (`scripts/set-version.ts`):**
 

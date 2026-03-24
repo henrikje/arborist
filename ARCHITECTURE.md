@@ -55,7 +55,15 @@ Mutation commands model their assess-phase results as discriminated unions in `s
 
 Cross-command status reuse lives in `sync/assess-with-cache.ts`. `buildCachedStatusAssess()` owns the common mechanics for mutation commands that assess from `RepoStatus`: previous-status caching, no-op fetch reuse via `unchangedRepos`, `gatherRepoStatus()`, and `--where` filtering. `runPlanFlow()` remains an orchestration primitive; it does not know command-specific assessment rules.
 
+Additional building blocks for mutation commands: `finishSummary(parts, hasErrors)` in `render/render.ts` renders the final green/yellow summary line and throws `ArbError` when `hasErrors` is true. `confirmOrExit({ yes, message })` in `sync/mutation-flow.ts` handles the confirmation prompt or `--yes` skip. `skipCell(reason, skipFlag?)` and `upToDateCell()` in `render/plan-format.ts` produce standard plan-table cells for skipped and up-to-date repos. `dryRunNotice()` in `terminal/output.ts` prints the dry-run exit message.
+
 When shared assessment logic accepts override options (e.g. `includeInProgress`, `includeWrongBranch`, `autostash`), every command that delegates to that logic must expose the corresponding flag to the user. Hardcoding an override to `false` without a CLI escape hatch means the user cannot recover from the skipped state without switching commands. When adding a new override parameter to shared logic, grep for all call sites and wire the flag through. When a new command delegates to existing shared logic, check the options interface for overrides that need CLI exposure.
+
+### Mutation command flow
+
+`runPlanFlow<TAssessment>(options)` in `sync/mutation-flow.ts` orchestrates the five-phase flow for all mutation commands: fetch → assess → format plan → confirm → execute. `PlanFlowOptions<TAssessment>` configures each phase — `assess` classifies repos, `formatPlan` renders the plan table, and the command's action handler runs execution and summarization after `runPlanFlow` returns. Reference implementations: `push.ts` for sync, `integrate.ts` for parameterized rebase/merge.
+
+The optional `postAssess` callback runs after assessment, before plan formatting. It is the extension point for verbose commit gathering and conflict prediction. The verbose pattern: `postAssess` calls `getCommitsBetweenFull()`, slices to `VERBOSE_COMMIT_LIMIT` (from `sync/constants.ts`), and stores the result in the assessment's `verbose` field. The plan formatter then passes these to `verboseCommitsToNodes()` (from `render/status-verbose.ts`) via the `afterRow` property on `TableRow`, which the renderer appends after the corresponding table row. Six commands use this pattern identically.
 
 ### Parallel fetch, sequential mutations
 
@@ -78,6 +86,10 @@ Exception types:
 - `ArbAbort` — user cancellation (declined prompt, Ctrl-C during inquirer) → prints `info(err.message)` (default: "Aborted.") then `process.exit(130)`.
 
 The only `process.exit()` calls live in `index.ts`: the top-level catch handler and the SIGINT signal handler. Signal handlers must call `process.exit()` directly because they cannot throw into an async context. See `decisions/0036-exception-based-exit-handling.md`.
+
+### Declarative render model
+
+Table output is built as a tree of `OutputNode` values (`render/model.ts`), then rendered to an ANSI string by `render()` in a single pass. This separates structure from presentation. `TableColumnDef` defines each column's `key`, `header`, optional `show` (data-driven visibility: `true`, `false`, or `"auto"`), `truncate` (width-driven value shortening with a `min` floor), and `align`. `Cell` carries both `plain` text (for width measurement) and styled `Span[]` (for ANSI rendering). Analysis functions in `render/analysis.ts` produce `Cell` values from `RepoStatus`; view builders like `buildStatusView()` assemble them into `TableNode`; `render()` resolves column widths, applies truncation if the table exceeds terminal width, and emits the final string. `height-fit.ts` handles vertical truncation when `maxLines` is provided (used by watch mode). `createRenderContext()` detects terminal width (`process.stdout.columns` → `COLUMNS` env → `undefined`) and TTY status.
 
 ### Phased rendering
 
@@ -116,6 +128,29 @@ Workspace config (`.arbws/config.json`) and project config (`.arb/config.json`) 
 ### In-progress state for partially-completing commands
 
 Commands that can fail partway through sequential multi-repo execution carry explicit in-progress state in `.arbws/config.json`. This enables `--continue` (resume) and `--abort` (roll back), modeled after git's own rebase/merge-in-progress pattern. See `decisions/0025-rebranch-migration-state.md`.
+
+### Git worktree directory layout
+
+Linked worktrees (what arb creates) share the canonical repo's `.git/` directory but store per-worktree state in a dedicated entry:
+
+- **Per-worktree** (`.git/worktrees/<entry>/`): `HEAD`, `index`, `MERGE_HEAD`, `REBASE_HEAD`, `CHERRY_PICK_HEAD`, `ORIG_HEAD`, `rebase-merge/`, `rebase-apply/`
+- **Shared** (`.git/` root): `objects/`, `refs/`, `logs/`, `packed-refs`, `config`, `info/`
+
+The forward reference (worktree `.git` file → `gitdir: .../.git/worktrees/<entry>`) and backward reference (`.git/worktrees/<entry>/gitdir` → worktree path) are maintained by git. `readGitdirFromWorktree()` reads the forward reference; `clean.ts` handles repair of both directions. Any feature that watches or reads from the canonical `.git/` directory must account for this split — shared paths receive writes from all worktrees, not just the current one.
+
+### Watch loop
+
+`arb watch` in `terminal/watch-loop.ts` monitors two path categories per repo: the worktree working directory (with gitignore filtering, for dirty/untracked detection) and the canonical `.git/` directory (with a whitelist filter, for ref and state changes). The whitelist only passes `refs/`, `packed-refs`, and this worktree's own entry dir — see "Git worktree directory layout" above for why.
+
+Debouncing: 300ms timer coalesces rapid filesystem events. After each render, a mute window of equal length suppresses events caused by the render's own git operations (e.g., `git status` touching `.git/index`). If events arrive during rendering, a dirty flag schedules a post-mute re-render. Suspended commands (full command flows triggered from watch) stop watchers → tear down stdin → run command → wait → resume watchers → re-render.
+
+### Shell completion
+
+Bash (`shell/arb.bash`) uses a manual `while` loop to find the subcommand, then dispatches to per-subcommand functions. Zsh (`shell/arb.zsh`) uses `_arguments -C -` with `*::arg:->args` for a two-level dispatch. The `-` flag is critical — it stops global option parsing at the first positional argument (the subcommand). Without it, subcommand-specific options like `-v` are rejected as unknown global options and completion silently fails. When adding a new command, add both a `__arb_complete_<cmd>` function in bash and a `case` entry under `args)` in zsh.
+
+### Install scripts
+
+`install.sh` and `uninstall.sh` have non-obvious invariants: the binary must be replaced via `rm` + `cp`, not overwrite-in-place — macOS caches code-signing verification per inode. The RC block (`.zshrc`/`.bashrc`) must be appended at the end of the file so arb's PATH entry wins over Homebrew. RC block removal must be positional (only lines adjacent to the marker) — global pattern matching can accidentally delete user lines. Both scripts share cleanup logic but are separate files; changes must be made in both.
 
 ---
 
