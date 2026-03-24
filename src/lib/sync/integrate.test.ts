@@ -199,7 +199,7 @@ describe("classifyRepo", () => {
     expect(a.branch).toBe("feature");
   });
 
-  test("skips dirty without autostash", () => {
+  test("dirty but up-to-date returns up-to-date", () => {
     const a = classifyRepo(
       makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }),
       DIR,
@@ -208,28 +208,12 @@ describe("classifyRepo", () => {
       false,
       SHA,
     );
-    expect(a.outcome).toBe("skip");
-    expect(a.skipReason).toContain("uncommitted changes");
-    expect(a.skipReason).toContain("--autostash");
-    expect(a.skipFlag).toBe("dirty");
-  });
-
-  test("dirty skip carries baseBranch when up to date", () => {
-    const a = classifyRepo(
-      makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }),
-      DIR,
-      "feature",
-      [],
-      false,
-      SHA,
-    );
-    expect(a.outcome).toBe("skip");
-    expect(a.skipFlag).toBe("dirty");
+    expect(a.outcome).toBe("up-to-date");
     expect(a.baseBranch).toBe("main");
     expect(a.behind).toBe(0);
   });
 
-  test("dirty skip does not carry baseBranch when behind", () => {
+  test("skips dirty without autostash when behind base", () => {
     const a = classifyRepo(
       makeRepo({
         local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
@@ -249,8 +233,9 @@ describe("classifyRepo", () => {
       SHA,
     );
     expect(a.outcome).toBe("skip");
+    expect(a.skipReason).toContain("uncommitted changes");
+    expect(a.skipReason).toContain("--autostash");
     expect(a.skipFlag).toBe("dirty");
-    expect(a.baseBranch).toBeUndefined();
   });
 
   test("sets needsStash when dirty with autostash and staged files", () => {
@@ -694,22 +679,6 @@ describe("formatIntegratePlan", () => {
 
   test("shows up-to-date", () => {
     const plan = formatIntegratePlan([makeAssessment({ outcome: "up-to-date" })], "rebase");
-    expect(plan).toContain("up to date");
-  });
-
-  test("shows up-to-date for dirty skip when behind is 0", () => {
-    const plan = formatIntegratePlan(
-      [
-        makeAssessment({
-          outcome: "skip",
-          skipFlag: "dirty",
-          skipReason: "uncommitted changes",
-          baseBranch: "main",
-          behind: 0,
-        }),
-      ],
-      "rebase",
-    );
     expect(plan).toContain("up to date");
     expect(plan).not.toContain("skipped");
   });

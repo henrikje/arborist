@@ -114,8 +114,8 @@ export async function integrate(
 
   // Phase 4: confirm
   const willOperate = assessments.filter((a) => a.outcome === "will-operate");
-  const upToDate = assessments.filter((a) => a.outcome === "up-to-date" || isDirtyButUpToDate(a));
-  const skipped = assessments.filter((a) => a.outcome === "skip" && !isDirtyButUpToDate(a));
+  const upToDate = assessments.filter((a) => a.outcome === "up-to-date");
+  const skipped = assessments.filter((a) => a.outcome === "skip");
 
   if (willOperate.length === 0) {
     // Stale base fallback (needs confirmation — plan already shows the change)
@@ -276,7 +276,7 @@ export async function maybeWriteBaseFallbackConfig(options: {
 
   // Only proceed if ALL non-skip assessments have baseFallback — in multi-repo workspaces,
   // if any repo still has the configured base on its remote, don't clear the workspace config.
-  const nonSkip = assessments.filter((a) => a.outcome !== "skip" || isDirtyButUpToDate(a));
+  const nonSkip = assessments.filter((a) => a.outcome !== "skip");
   if (nonSkip.length === 0) return null;
   const allHaveFallback = nonSkip.every((a) => a.baseFallback != null);
   if (!allHaveFallback) return null;
@@ -348,13 +348,8 @@ export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode):
 
 /** Whether ALL non-skip assessments have a baseFallback (stale base config). */
 function hasBaseFallback(assessments: RepoAssessment[]): boolean {
-  const nonSkip = assessments.filter((a) => a.outcome !== "skip" || isDirtyButUpToDate(a));
+  const nonSkip = assessments.filter((a) => a.outcome !== "skip");
   return nonSkip.length > 0 && nonSkip.every((a) => a.baseFallback != null);
-}
-
-/** Dirty-skip that is actually up to date (behind === 0 with a resolved base). */
-function isDirtyButUpToDate(a: RepoAssessment): boolean {
-  return a.outcome === "skip" && a.skipFlag === "dirty" && a.baseBranch != null && a.behind === 0;
 }
 
 export interface PlannedConfigAction {
@@ -370,7 +365,7 @@ export function computePlannedConfigActions(assessments: RepoAssessment[], works
       (a) => a.outcome === "skip" && a.skipFlag === "base-merged-into-default",
     );
     if (!hasBaseMergedSkip) {
-      const nonSkip = assessments.filter((a) => a.outcome !== "skip" || isDirtyButUpToDate(a));
+      const nonSkip = assessments.filter((a) => a.outcome !== "skip");
       const first = nonSkip.find((a) => a.baseFallback != null);
       if (first?.baseFallback) {
         return [
@@ -399,7 +394,7 @@ export function buildIntegratePlanNodes(
     let actionCell: Cell;
     if (a.outcome === "will-operate") {
       actionCell = integrateActionCell(describeIntegrateAction(a, mode));
-    } else if (a.outcome === "up-to-date" || isDirtyButUpToDate(a)) {
+    } else if (a.outcome === "up-to-date") {
       actionCell = upToDateCell();
       if (a.baseFallback) {
         actionCell = suffix(actionCell, ` (base ${a.baseFallback} not found)`, "attention");

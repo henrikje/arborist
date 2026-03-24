@@ -136,9 +136,25 @@ describe("assessPullRepo", () => {
     expect(a.branch).toBe("feature");
   });
 
-  test("skips dirty without autostash", () => {
+  test("dirty but up-to-date returns up-to-date", () => {
     const a = assessPullRepo(
       makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }),
+      DIR,
+      "feature",
+      [],
+      "merge",
+      false,
+      SHA,
+    );
+    expect(a.outcome).toBe("up-to-date");
+  });
+
+  test("skips dirty without autostash when behind share", () => {
+    const a = assessPullRepo(
+      makeRepo({
+        local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
+        share: { remote: "origin", ref: "origin/feature", refMode: "configured", toPush: 0, toPull: 3 },
+      }),
       DIR,
       "feature",
       [],

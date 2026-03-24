@@ -366,18 +366,6 @@ export function assessPullRepo(
     base.wrongBranch = true;
   }
 
-  // Dirty check
-  const flags = computeFlags(status, branch);
-  if (flags.isDirty) {
-    if (!autostash) {
-      return { ...base, outcome: "skip", skipReason: "uncommitted changes (use --autostash)", skipFlag: "dirty" };
-    }
-    // Only stash if there are staged or modified files (not untracked-only)
-    if (status.local.staged > 0 || status.local.modified > 0) {
-      base.needsStash = true;
-    }
-  }
-
   // No remote branch
   if (status.share.refMode === "noRef") {
     return { ...base, outcome: "skip", skipReason: "no remote branch", skipFlag: "no-share" };
@@ -414,6 +402,18 @@ export function assessPullRepo(
   const toPull = status.share.toPull ?? 0;
   if (toPull === 0) {
     return { ...base, outcome: "up-to-date" };
+  }
+
+  // Dirty check — only reached for repos that need pulling
+  const flags = computeFlags(status, branch);
+  if (flags.isDirty) {
+    if (!autostash) {
+      return { ...base, outcome: "skip", skipReason: "uncommitted changes (use --autostash)", skipFlag: "dirty" };
+    }
+    // Only stash if there are staged or modified files (not untracked-only)
+    if (status.local.staged > 0 || status.local.modified > 0) {
+      base.needsStash = true;
+    }
   }
 
   // Skip if all to-pull commits are outdated locally (rebased, replaced via reflog, or squashed)

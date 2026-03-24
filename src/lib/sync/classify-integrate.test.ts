@@ -72,9 +72,24 @@ describe("classifyRepo", () => {
     expect(a.branch).toBe("other");
   });
 
-  test("skips dirty without autostash", () => {
+  test("dirty but up-to-date returns up-to-date", () => {
     const a = classifyRepo(
       makeRepo({ local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 } }),
+      DIR,
+      "feature",
+      [],
+      false,
+      SHA,
+    );
+    expect(a.outcome).toBe("up-to-date");
+  });
+
+  test("skips dirty without autostash when behind base", () => {
+    const a = classifyRepo(
+      makeRepo({
+        local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
+        base: { remote: "origin", ref: "main", configuredRef: null, ahead: 0, behind: 3, baseMergedIntoDefault: null },
+      }),
       DIR,
       "feature",
       [],
