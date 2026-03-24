@@ -122,9 +122,20 @@ Check all user-facing strings across the codebase:
 
 - `install.sh` references correct paths and URLs.
 - `package.json` scripts are all functional and documented in CLAUDE.md.
-- The `set-version.ts` build script works correctly.
 - `.github/workflows/check.yml` runs all necessary checks.
 - `lefthook.yml` pre-commit hooks match the current tooling.
+
+**Version stamping (`scripts/set-version.ts`):**
+
+- Run `bun run scripts/set-version.ts` in a clean tagged checkout and verify `src/version.ts` contains a clean semver (e.g. `0.112.0`) with no timestamp suffix.
+- Run it in an untagged checkout and verify the version is `dev.<sha>.<timestamp>`.
+- Run it with uncommitted changes on a tag and verify the version is `dev.<sha>.dirty.<timestamp>`.
+- Verify version strings used in artifact filenames contain no filesystem-unsafe characters (`:`, `/`, `\`, spaces). The `validateVersionForFilename()` function in `src/lib/core/version.ts` should catch these.
+- Verify `src/lib/core/version.test.ts` covers all four branches (tag+clean, tag+dirty, no-tag+clean, no-tag+dirty).
+
+**CI/local script parity:**
+
+- Compare the build logic in `publish.yml` ("Build and package" step) with `scripts/build-release.ts`. Verify both use the same archive structure (`arb-<version>-<os>-<arch>/`), the same version extraction method, and the same checksum format. Cross-reference comments in both files should be present and accurate.
 
 ### 11. README quality
 

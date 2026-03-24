@@ -1,26 +1,20 @@
 import { $ } from "bun";
+import { buildVersion } from "../src/lib/core/version";
 
 const sha = (await $`git rev-parse --short HEAD`.text()).trim();
 const dirty = (await $`git status --porcelain`.text()).trim().length > 0;
-
 const buildTime = new Date().toISOString();
 
-let fullVersion: string;
-
+let tag: string | null;
 try {
-  const tag = (await $`git describe --tags --exact-match --match "v*"`.text()).trim();
-  if (!dirty) {
-    fullVersion = tag.replace(/^v/, "");
-  } else {
-    fullVersion = `dev.${sha}.dirty`;
-  }
+  tag = (await $`git describe --tags --exact-match --match "v*"`.text()).trim();
 } catch {
-  fullVersion = dirty ? `dev.${sha}.dirty` : `dev.${sha}`;
+  tag = null;
 }
 
-fullVersion = `${fullVersion}.${buildTime}`;
+const { version } = buildVersion({ tag, dirty, sha, buildTime });
 
 await Bun.write(
   "src/version.ts",
-  `// Generated at build time — do not edit.\nexport const ARB_VERSION = "${fullVersion}";\n`,
+  `// Generated at build time — do not edit.\nexport const ARB_VERSION = "${version}";\n`,
 );

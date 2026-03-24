@@ -46,6 +46,16 @@ jobs:
         run: bun run typecheck
       - name: Check circular dependencies
         run: bun run cycles
+      - name: Validate version stamping
+        run: |
+          bun run scripts/set-version.ts
+          VERSION=$(grep -oP 'ARB_VERSION = "\K[^"]+' src/version.ts)
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::set-version.ts produced an empty version"
+            exit 1
+          fi
+          echo "Version stamp OK: $VERSION"
+          git checkout src/version.ts
 
   unit-tests:
     name: Unit tests

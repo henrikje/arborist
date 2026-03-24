@@ -43,6 +43,9 @@ jobs:
       - name: Stamp version
         run: bun run scripts/set-version.ts
 
+      # NOTE: This inline build logic must stay in sync with scripts/build-release.ts.
+      # If you change the archive structure, version extraction, or checksum format
+      # here, update build-release.ts to match.
       - name: Build and package
         run: |
           VERSION=$(grep -oP 'ARB_VERSION = "\K[^"]+' src/version.ts)
