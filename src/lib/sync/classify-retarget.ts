@@ -83,21 +83,6 @@ export async function assessRetargetRepo(
     base.wrongBranch = true;
   }
 
-  const flags = computeFlags(status, branch);
-  if (flags.isDirty) {
-    if (!options.autostash) {
-      return {
-        ...base,
-        outcome: "skip",
-        skipReason: "uncommitted changes (use --autostash)",
-        skipFlag: "dirty",
-      };
-    }
-    if (status.local.staged > 0 || status.local.modified > 0) {
-      base.needsStash = true;
-    }
-  }
-
   // ── Resolve base remote ──
 
   if (status.base === null || !status.base.remote) {
@@ -183,6 +168,23 @@ export async function assessRetargetRepo(
       outcome: "up-to-date",
       warning: retargetWarning,
     };
+  }
+
+  // ── Dirty check — only reached for repos that need retarget ──
+
+  const flags = computeFlags(status, branch);
+  if (flags.isDirty) {
+    if (!options.autostash) {
+      return {
+        ...base,
+        outcome: "skip",
+        skipReason: "uncommitted changes (use --autostash)",
+        skipFlag: "dirty",
+      };
+    }
+    if (status.local.staged > 0 || status.local.modified > 0) {
+      base.needsStash = true;
+    }
   }
 
   // ── Compute replay analysis ──

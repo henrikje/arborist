@@ -73,26 +73,6 @@ export function classifyRepo(
     base.wrongBranch = true;
   }
 
-  const flags = computeFlags(status, branch);
-  if (flags.isDirty) {
-    if (!autostash) {
-      return {
-        ...base,
-        outcome: "skip",
-        skipReason: "uncommitted changes (use --autostash)",
-        skipFlag: "dirty",
-        ...(status.base !== null &&
-          status.base.behind === 0 && {
-            baseBranch: status.base.ref,
-            ahead: status.base.ahead,
-          }),
-      };
-    }
-    if (status.local.staged > 0 || status.local.modified > 0) {
-      base.needsStash = true;
-    }
-  }
-
   if (status.base === null) {
     return { ...base, outcome: "skip", skipReason: "no base branch", skipFlag: "no-base-branch" };
   }
@@ -130,6 +110,21 @@ export function classifyRepo(
 
   if (status.base.behind === 0) {
     return { ...base, outcome: "up-to-date", baseBranch: status.base.ref, behind: 0, ahead: status.base.ahead };
+  }
+
+  const flags = computeFlags(status, branch);
+  if (flags.isDirty) {
+    if (!autostash) {
+      return {
+        ...base,
+        outcome: "skip",
+        skipReason: "uncommitted changes (use --autostash)",
+        skipFlag: "dirty",
+      };
+    }
+    if (status.local.staged > 0 || status.local.modified > 0) {
+      base.needsStash = true;
+    }
   }
 
   return {
