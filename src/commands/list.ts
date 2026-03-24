@@ -553,9 +553,12 @@ export function buildListTableNodes(displayRows: ListRow[], showStatus: boolean)
   const hasActivity = displayRows.some((row) => row.lastActivity != null);
   const timeHeader = hasActivity ? "LAST ACTIVITY" : "LAST COMMIT";
 
+  // Hide BRANCH column when every workspace's branch matches its name
+  const showBranch = displayRows.some((row) => row.special !== "config-missing" && row.branch !== row.name);
+
   const columns = [
     { header: "WORKSPACE", key: "workspace" },
-    { header: "BRANCH", key: "branch" },
+    { header: "BRANCH", key: "branch", show: showBranch },
     { header: "BASE", key: "base", show: "auto" as const },
     { header: "REPOS", key: "repos" },
     ...(showStatus

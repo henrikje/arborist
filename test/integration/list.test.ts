@@ -90,7 +90,7 @@ describe("list", () => {
       await arb(env, ["create", "ws-one", "repo-a"]);
       const result = await arb(env, ["list"]);
       expect(result.output).toContain("WORKSPACE");
-      expect(result.output).toContain("BRANCH");
+      expect(result.output).not.toContain("BRANCH");
       expect(result.output).toContain("REPOS");
       expect(result.output).toContain("LAST COMMIT");
       expect(result.output).toContain("STATUS");
@@ -195,6 +195,22 @@ describe("list", () => {
       expect(result.output).not.toContain("BASE");
     }));
 
+  test("arb list hides BRANCH column when all branches match workspace names", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "ws-one", "repo-a"]);
+      await arb(env, ["create", "ws-two", "repo-a"]);
+      const result = await arb(env, ["list"]);
+      expect(result.output).not.toContain("BRANCH");
+    }));
+
+  test("arb list shows BRANCH column when a branch differs from workspace name", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "ws-one", "repo-a"]);
+      await arb(env, ["create", "ws-two", "--branch", "custom-branch", "repo-a"]);
+      const result = await arb(env, ["list"]);
+      expect(result.output).toContain("BRANCH");
+    }));
+
   test("arb list --no-status shows workspaces without STATUS column", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "ws-one", "repo-a"]);
@@ -204,7 +220,6 @@ describe("list", () => {
       expect(result.output).toContain("ws-one");
       expect(result.output).toContain("ws-two");
       expect(result.output).toContain("WORKSPACE");
-      expect(result.output).toContain("BRANCH");
       expect(result.output).toContain("REPOS");
       expect(result.output).not.toContain("STATUS");
       expect(result.output).not.toContain("no issues");
