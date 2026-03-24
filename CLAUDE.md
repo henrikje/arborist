@@ -43,6 +43,10 @@ Organized into semantic subdirectories. Each directory has a barrel `index.ts` r
 - **`json/`** — JSON output: `json-types.ts` (Zod schemas), `json-schema.ts`
 - **`help/`** — Help topics
 
+### Scripts (`scripts/`)
+
+Build and release tooling. `set-version.ts` stamps `src/version.ts` at build time — version logic is in `src/lib/core/version.ts` so it can be unit tested. `build-release.ts` compiles multi-platform binaries and packages tarballs. `update-homebrew.ts` pushes formula updates to the Homebrew tap. Scripts are standalone Bun scripts that run outside the CLI runtime (see ARCHITECTURE.md § Scripts).
+
 ### Testing
 
 - **Unit tests**: Bun's native test runner, files colocated as `*.test.ts` under `src/`. For code testable without spawning git processes or filesystem operations.
@@ -74,6 +78,7 @@ Organized into semantic subdirectories. Each directory has a barrel `index.ts` r
 | `bun run typecheck` | TypeScript type checking |
 | `bun run cycles` | Check for circular dependencies (madge) |
 | `bun run check` | Run all checks (lint, typecheck, cycles, unit tests, integration tests) |
+| `bun run build:release` | Build multi-platform release tarballs to `dist/` |
 
 Always use these Bun scripts instead of running commands directly.
 

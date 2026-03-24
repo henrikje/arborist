@@ -105,6 +105,10 @@ Current exceptions:
 
 When adding a new git feature above 2.17, document it in this list and write a decision record.
 
+### Scripts (`scripts/`)
+
+Files in `scripts/` are standalone Bun scripts that run outside the CLI runtime. They may use `console.log`/`console.error` and `process.exit()` directly — the exception-based exit handling convention applies only to `src/` code. Scripts should import pure logic from `src/lib/` where possible so that decision logic is unit-testable (e.g. `scripts/set-version.ts` delegates to `src/lib/core/version.ts`).
+
 ### Config format and validation
 
 Workspace config (`.arbws/config.json`) and project config (`.arb/config.json`) are stored as JSON, validated at read/write time by Zod schemas in `core/config.ts`. Types are derived via `z.infer<>`, following the same pattern as JSON output schemas in `json-types.ts`. Legacy config files (old INI format or old `config` filename without `.json` extension) are auto-migrated on first read. See `decisions/0067-json-config-format.md`.

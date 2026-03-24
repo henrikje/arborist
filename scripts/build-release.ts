@@ -1,6 +1,11 @@
+// NOTE: The publish.yml workflow has its own inline build logic that must stay
+// in sync with this script. If you change the archive structure, version
+// extraction, or checksum format here, update publish.yml to match.
+
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { $ } from "bun";
+import { validateVersionForFilename } from "../src/lib/core/version";
 
 const targets = [
   { bun: "bun-darwin-arm64", os: "darwin", arch: "arm64" },
@@ -22,6 +27,13 @@ if (!match?.[1]) {
   process.exit(1);
 }
 const version = match[1];
+
+const filenameError = validateVersionForFilename(version);
+if (filenameError) {
+  console.error(filenameError);
+  process.exit(1);
+}
+
 console.log(`Building arb ${version}`);
 
 await mkdir("dist", { recursive: true });
