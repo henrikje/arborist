@@ -76,6 +76,9 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
   // Mute events briefly after each render to ignore filesystem activity caused by
   // our own git operations (e.g. git status touches .git/index, refs, etc.)
   let muteUntil = 0;
+  // Leading-edge mode: when true, the next FS event triggers an immediate render
+  // instead of waiting for the debounce window. Resets to true when events settle.
+  let idle = true;
 
   const resolvers: { resolve: () => void } = { resolve: () => {} };
   const done = new Promise<void>((resolve) => {
@@ -107,6 +110,10 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
       setTimeout(() => {
         if (!stopped && !suspended) doRender();
       }, debounceMs);
+    } else if (!stopped && !suspended) {
+      // No pending events — return to leading-edge mode so the next FS event
+      // triggers an immediate render.
+      idle = true;
     }
   };
 
@@ -117,6 +124,15 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
       return;
     }
     if (Date.now() < muteUntil) return;
+
+    if (idle) {
+      // Leading edge: react immediately to the first event after a quiet period
+      idle = false;
+      doRender();
+      return;
+    }
+
+    // Trailing edge: debounce subsequent events
     if (debounceTimer !== null) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
@@ -277,6 +293,7 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
         startFsWatchers();
         onPostCommand?.();
         suspended = false;
+        idle = true;
         doRender();
         throw err;
       }
@@ -294,6 +311,7 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
     startFsWatchers();
     onPostCommand?.();
     suspended = false;
+    idle = true;
     doRender();
   };
 
