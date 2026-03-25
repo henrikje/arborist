@@ -375,3 +375,27 @@ describe.skipIf(gitBelow230)("rename undo", () => {
       expect(result.output).toContain("already exists");
     }));
 });
+
+// ── --continue/--abort with no operation ─────────────────────────
+
+describe.skipIf(gitBelow230)("rename --continue/--abort with no operation", () => {
+  test("--continue with no operation errors", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const ws = join(env.projectDir, "my-feature");
+
+      const result = await arb(env, ["rename", "--continue", "--yes", "--no-fetch"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Nothing to continue");
+    }));
+
+  test("--abort with no operation errors", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const ws = join(env.projectDir, "my-feature");
+
+      const result = await arb(env, ["rename", "--abort", "--yes", "--no-fetch"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Nothing to abort");
+    }));
+});

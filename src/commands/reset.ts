@@ -397,7 +397,7 @@ export function registerResetCommand(program: Command): void {
 
         const where = resolveWhereFilter(options);
         const { wsDir, workspace } = requireWorkspace(ctx);
-        assertNoInProgressOperation(wsDir, "reset");
+        assertNoInProgressOperation(wsDir);
         const branch = await requireBranch(wsDir, workspace);
 
         const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);

@@ -113,7 +113,7 @@ describe("rebase continue", () => {
       await git(wt, ["add", "conflict.txt"]);
 
       // Continue
-      const result = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      const result = await arb(env, ["rebase", "--continue", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
 
       const record = readJson(join(ws, ".arbws/operation.json"));
@@ -138,7 +138,7 @@ describe("rebase continue", () => {
       await git(wt, ["add", "conflict.txt"]);
       await git(wt, ["rebase", "--continue"]);
 
-      const result = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      const result = await arb(env, ["rebase", "--continue", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("already resolved");
     }));
@@ -158,12 +158,12 @@ describe("rebase continue", () => {
 
       await git(wt, ["rebase", "--abort"]);
 
-      const result = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      const result = await arb(env, ["rebase", "--continue", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("manually aborted");
     }));
 
-  test("re-running without resolving shows still-conflicting", () =>
+  test("--continue without resolving shows still-conflicting", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
       const ws = join(env.projectDir, "my-feature");
@@ -176,7 +176,7 @@ describe("rebase continue", () => {
       await advanceMain(env, "repo-a", "conflict.txt", "main version");
       await arb(env, ["rebase", "--yes"], { cwd: ws });
 
-      const result = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      const result = await arb(env, ["rebase", "--continue", "--yes"], { cwd: ws });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("not yet resolved");
     }));
@@ -214,7 +214,7 @@ describe("rebase continue", () => {
       await write(join(wtA, "conflict.txt"), "resolved");
       await git(wtA, ["add", "conflict.txt"]);
 
-      const r2 = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      const r2 = await arb(env, ["rebase", "--continue", "--yes"], { cwd: ws });
       expect(r2.exitCode).toBe(0);
 
       const record2 = readJson(join(ws, ".arbws/operation.json"));
@@ -356,7 +356,7 @@ describe("merge operation", () => {
       await write(join(wt, "conflict.txt"), "resolved");
       await git(wt, ["add", "conflict.txt"]);
 
-      const r2 = await arb(env, ["merge", "--yes"], { cwd: ws });
+      const r2 = await arb(env, ["merge", "--continue", "--yes"], { cwd: ws });
       expect(r2.exitCode).toBe(0);
 
       const record2 = readJson(join(ws, ".arbws/operation.json"));
@@ -445,7 +445,7 @@ describe("rebase multi-round continue", () => {
       await git(wt, ["add", "file1.txt"]);
 
       // Continue → conflicts on file2 (second commit)
-      const r2 = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      const r2 = await arb(env, ["rebase", "--continue", "--yes"], { cwd: ws });
       expect(r2.exitCode).not.toBe(0);
 
       const record2 = readJson(join(ws, ".arbws/operation.json"));
@@ -456,7 +456,7 @@ describe("rebase multi-round continue", () => {
       await git(wt, ["add", "file2.txt"]);
 
       // Continue → completes
-      const r3 = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      const r3 = await arb(env, ["rebase", "--continue", "--yes"], { cwd: ws });
       expect(r3.exitCode).toBe(0);
 
       const record3 = readJson(join(ws, ".arbws/operation.json"));
@@ -530,7 +530,7 @@ describe("rebase continue then undo", () => {
       // Resolve and continue
       await write(join(wt, "conflict.txt"), "resolved");
       await git(wt, ["add", "conflict.txt"]);
-      const continueResult = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      const continueResult = await arb(env, ["rebase", "--continue", "--yes"], { cwd: ws });
       expect(continueResult.exitCode).toBe(0);
 
       // Record should be completed with postHead
@@ -652,7 +652,7 @@ describe("rebase 3-repo workspace", () => {
       await write(join(wtA, "conflict.txt"), "resolved");
       await git(wtA, ["add", "conflict.txt"]);
 
-      const r2 = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      const r2 = await arb(env, ["rebase", "--continue", "--yes"], { cwd: ws });
       expect(r2.exitCode).toBe(0);
 
       const record2 = readJson(join(ws, ".arbws/operation.json"));
@@ -727,7 +727,7 @@ describe("rebase continue dry-run", () => {
       await git(wt, ["add", "conflict.txt"]);
 
       // Dry-run continue → shows plan but does not execute
-      const dryResult = await arb(env, ["rebase", "--dry-run"], { cwd: ws });
+      const dryResult = await arb(env, ["rebase", "--continue", "--dry-run"], { cwd: ws });
       expect(dryResult.exitCode).toBe(0);
       expect(dryResult.output).toContain("Dry run");
 
@@ -738,5 +738,137 @@ describe("rebase continue dry-run", () => {
       // Conflict should still exist in git (not continued)
       const repos = record.repos as Record<string, Record<string, unknown>>;
       expect(repos["repo-a"]?.status).toBe("conflicting");
+    }));
+});
+
+// ── bare command blocked during in-progress ──────────────────────
+
+describe("rebase bare command blocked", () => {
+  test("bare arb rebase during in-progress is blocked with guidance", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+
+      await write(join(wt, "conflict.txt"), "feature version");
+      await git(wt, ["add", "conflict.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+      await advanceMain(env, "repo-a", "conflict.txt", "main version");
+
+      await arb(env, ["rebase", "--yes"], { cwd: ws });
+
+      const result = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("in progress");
+      expect(result.output).toContain("--continue");
+    }));
+
+  test("bare arb merge during in-progress is blocked with guidance", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+
+      await write(join(wt, "conflict.txt"), "feature version");
+      await git(wt, ["add", "conflict.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+      await advanceMain(env, "repo-a", "conflict.txt", "main version");
+
+      await arb(env, ["merge", "--yes"], { cwd: ws });
+
+      const result = await arb(env, ["merge", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("in progress");
+      expect(result.output).toContain("--continue");
+    }));
+});
+
+// ── --continue/--abort with no operation ─────────────────────────
+
+describe("rebase --continue/--abort with no operation", () => {
+  test("--continue with no operation errors", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+
+      const result = await arb(env, ["rebase", "--continue", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Nothing to continue");
+    }));
+
+  test("--abort with no operation errors", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+
+      const result = await arb(env, ["rebase", "--abort", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Nothing to abort");
+    }));
+
+  test("merge --continue with no operation errors", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+
+      const result = await arb(env, ["merge", "--continue", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Nothing to continue");
+    }));
+
+  test("merge --abort with no operation errors", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+
+      const result = await arb(env, ["merge", "--abort", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Nothing to abort");
+    }));
+});
+
+// ── --abort cancels in-progress ──────────────────────────────────
+
+describe("rebase --abort cancels in-progress", () => {
+  test("--abort cancels in-progress rebase", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+
+      await write(join(wt, "conflict.txt"), "feature version");
+      await git(wt, ["add", "conflict.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+
+      const preHead = (await git(wt, ["rev-parse", "HEAD"])).trim();
+      await advanceMain(env, "repo-a", "conflict.txt", "main version");
+
+      await arb(env, ["rebase", "--yes"], { cwd: ws });
+
+      const result = await arb(env, ["rebase", "--abort", "--yes"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+      expect((await git(wt, ["rev-parse", "HEAD"])).trim()).toBe(preHead);
+      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+    }));
+
+  test("--abort cancels in-progress merge", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+
+      await write(join(wt, "conflict.txt"), "feature version");
+      await git(wt, ["add", "conflict.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+
+      const preHead = (await git(wt, ["rev-parse", "HEAD"])).trim();
+      await advanceMain(env, "repo-a", "conflict.txt", "main version");
+
+      await arb(env, ["merge", "--yes"], { cwd: ws });
+
+      const result = await arb(env, ["merge", "--abort", "--yes"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+      expect((await git(wt, ["rev-parse", "HEAD"])).trim()).toBe(preHead);
+      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
     }));
 });

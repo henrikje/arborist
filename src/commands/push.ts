@@ -47,7 +47,7 @@ export function registerPushCommand(program: Command): void {
     .action(
       arbAction(async (ctx, repoArgs: string[], options) => {
         const { wsDir } = requireWorkspace(ctx);
-        assertNoInProgressOperation(wsDir, "push");
+        assertNoInProgressOperation(wsDir);
         const repoNames = await resolveReposFromArgsOrStdin(wsDir, repoArgs);
         await runPush(ctx, repoNames, options);
       }),

@@ -41,7 +41,7 @@ describe("buildConflictReport", () => {
     const nodes = buildConflictReport(entries);
     const section = nodes[3] as SectionNode;
     const conflictItems = section.items.filter((i) => i.spans[0]?.attention === "muted");
-    expect(conflictItems).toHaveLength(2);
+    expect(conflictItems).toHaveLength(3); // 2 CONFLICT lines + 1 arb guidance line
     expect(conflictItems[0]?.plain).toBe("CONFLICT (content): file.ts");
     expect(conflictItems[1]?.plain).toBe("CONFLICT (modify/delete): old.ts");
   });

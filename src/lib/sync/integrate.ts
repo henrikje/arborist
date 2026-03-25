@@ -9,7 +9,7 @@ import type { CommandContext } from "../core/command-action";
 import { readWorkspaceConfig, writeWorkspaceConfig } from "../core/config";
 import { ArbError } from "../core/errors";
 import type { OperationRecord, RepoOperationState } from "../core/operation";
-import { assertNoInProgressOperation, readOperationRecord, writeOperationRecord } from "../core/operation";
+import { assertNoInProgressOperation, readInProgressOperation, writeOperationRecord } from "../core/operation";
 import { getCommitsBetweenFull, getDiffShortstat, getMergeBase, gitLocal } from "../git/git";
 import type { GitCache } from "../git/git-cache";
 import { buildConflictReport, buildStashPopFailureReport } from "../render/conflict-report";
@@ -21,11 +21,12 @@ import { skipCell, upToDateCell } from "../render/plan-format";
 import { type RenderContext, finishSummary, render } from "../render/render";
 import { verboseCommitsToNodes } from "../render/status-verbose";
 import { resolveWhereFilter } from "../status/where";
-import { dryRunNotice, info, inlineResult, inlineStart, plural, yellow } from "../terminal/output";
+import { dryRunNotice, error, info, inlineResult, inlineStart, plural, yellow } from "../terminal/output";
 import { shouldColor } from "../terminal/tty";
 import { workspaceBranch } from "../workspace/branch";
 import { requireBranch, requireWorkspace } from "../workspace/context";
 import { resolveRepoSelection, workspaceRepoDirs } from "../workspace/repos";
+import { runSyncAbort } from "./abort-flow";
 import { buildCachedStatusAssess } from "./assess-with-cache";
 import { type IntegrateMode, assessIntegrateRepo } from "./classify-integrate";
 import { VERBOSE_COMMIT_LIMIT } from "./constants";
@@ -47,21 +48,39 @@ export async function integrate(
     verbose?: boolean;
     graph?: boolean;
     where?: string;
+    continue?: boolean;
+    abort?: boolean;
   },
   repoArgs: string[],
 ): Promise<void> {
   const verb = mode === "rebase" ? "Rebase" : "Merge";
   const verbed = mode === "rebase" ? "Rebased" : "Merged";
 
-  // Phase 0: operation gate + continue detection
+  // Phase 0: operation lifecycle (--continue, --abort, gate)
   const { wsDir, workspace } = requireWorkspace(ctx);
-  assertNoInProgressOperation(wsDir, mode);
 
-  const existingRecord = readOperationRecord(wsDir);
-  if (existingRecord?.command === mode && existingRecord.status === "in-progress") {
-    await runContinueFlow({ record: existingRecord, wsDir, mode, gitContinueCmd: mode, options });
+  const inProgress = readInProgressOperation(wsDir, mode);
+
+  if (options.abort) {
+    if (!inProgress) {
+      error(`No ${mode} in progress. Nothing to abort.`);
+      throw new ArbError(`No ${mode} in progress. Nothing to abort.`);
+    }
+    await runSyncAbort(inProgress, wsDir, options);
     return;
   }
+
+  if (options.continue) {
+    if (!inProgress) {
+      error(`No ${mode} in progress. Nothing to continue.`);
+      throw new ArbError(`No ${mode} in progress. Nothing to continue.`);
+    }
+    await runContinueFlow({ record: inProgress, wsDir, mode, gitContinueCmd: mode, options });
+    return;
+  }
+
+  // No --continue/--abort: block if in-progress, proceed if clean
+  assertNoInProgressOperation(wsDir);
 
   // Phase 1: context & repo selection
   const branch = await requireBranch(wsDir, workspace);

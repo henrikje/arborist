@@ -90,20 +90,20 @@ describe("pull continue", () => {
       await git(wt, ["add", "conflict.txt"]);
 
       // Continue
-      const result = await arb(env, ["pull", "--yes"], { cwd: ws });
+      const result = await arb(env, ["pull", "--continue", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
 
       const record = readJson(join(ws, ".arbws/operation.json"));
       expect(record.status).toBe("completed");
     }));
 
-  test("re-running without resolving shows still-conflicting", () =>
+  test("--continue without resolving shows still-conflicting", () =>
     withEnv(async (env) => {
       const { ws } = await setupPullConflict(env);
 
       await arb(env, ["pull", "--yes", "--rebase"], { cwd: ws });
 
-      const result = await arb(env, ["pull", "--yes"], { cwd: ws });
+      const result = await arb(env, ["pull", "--continue", "--yes"], { cwd: ws });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("not yet resolved");
     }));
@@ -165,5 +165,63 @@ describe("pull gate", () => {
       const result = await arb(env, ["rebase", "--yes"], { cwd: ws });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("pull in progress");
+    }));
+});
+
+// ── bare command blocked during in-progress ──────────────────────
+
+describe("pull bare command blocked", () => {
+  test("bare arb pull during in-progress is blocked with guidance", () =>
+    withEnv(async (env) => {
+      const { ws } = await setupPullConflict(env);
+
+      await arb(env, ["pull", "--yes", "--rebase"], { cwd: ws });
+
+      const result = await arb(env, ["pull", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("in progress");
+      expect(result.output).toContain("--continue");
+    }));
+});
+
+// ── --continue/--abort with no operation ─────────────────────────
+
+describe("pull --continue/--abort with no operation", () => {
+  test("--continue with no operation errors", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const ws = join(env.projectDir, "my-feature");
+
+      const result = await arb(env, ["pull", "--continue", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Nothing to continue");
+    }));
+
+  test("--abort with no operation errors", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const ws = join(env.projectDir, "my-feature");
+
+      const result = await arb(env, ["pull", "--abort", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Nothing to abort");
+    }));
+});
+
+// ── --abort cancels in-progress ──────────────────────────────────
+
+describe("pull --abort cancels in-progress", () => {
+  test("--abort cancels in-progress pull", () =>
+    withEnv(async (env) => {
+      const { ws, wt } = await setupPullConflict(env);
+
+      const preHead = (await git(wt, ["rev-parse", "HEAD"])).trim();
+
+      await arb(env, ["pull", "--yes", "--rebase"], { cwd: ws });
+
+      const result = await arb(env, ["pull", "--abort", "--yes"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+      expect((await git(wt, ["rev-parse", "HEAD"])).trim()).toBe(preHead);
+      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
     }));
 });
