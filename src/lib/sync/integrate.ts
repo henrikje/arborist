@@ -318,7 +318,7 @@ export async function integrate(
     record.status = "completed";
     writeOperationRecord(wsDir, record);
   } else {
-    info(`Run 'arb ${mode}' to continue or 'arb undo' to roll back`);
+    info(`Use 'arb ${mode} --continue' to resume or 'arb ${mode} --abort' to cancel`);
   }
 
   // Update config after stale base fallback

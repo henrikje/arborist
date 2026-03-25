@@ -375,7 +375,7 @@ export function registerRetargetCommand(program: Command): void {
           }
         } else {
           // Conflicts — config NOT updated (this is the bug fix)
-          info("Run 'arb retarget' to continue or 'arb undo' to roll back");
+          info("Use 'arb retarget --continue' to resume or 'arb retarget --abort' to cancel");
         }
 
         // Phase 9: summary

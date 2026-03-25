@@ -400,7 +400,7 @@ describe("status operation banner", () => {
       const result = await arb(env, ["status", "--no-fetch"], { cwd: ws });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("branch-rename in progress");
-      expect(result.output).toContain("arb undo");
+      expect(result.output).toContain("--abort");
     }));
 
   test("arb status shows no banner when no operation in progress", () =>
@@ -450,7 +450,7 @@ describe("conflict report mentions arb undo", () => {
 
       const result = await arb(env, ["rebase", "--yes"], { cwd: ws });
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("arb undo");
+      expect(result.output).toContain("--abort");
     }));
 });
 

@@ -76,7 +76,7 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
   // Step 3a: Warn about repos that were never started (crash recovery)
   if (needsExecute.length > 0) {
     for (const c of needsExecute) {
-      info(`${c.repo}: was not started — run 'arb undo' then re-run 'arb ${mode}' to include it`);
+      info(`${c.repo}: was not started — use 'arb ${mode} --abort' then re-run 'arb ${mode}' to include it`);
     }
   }
 
@@ -86,7 +86,7 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
     for (const c of stillConflicting) {
       info(`${c.repo}: conflicts not yet resolved`);
     }
-    info(`Resolve conflicts, then run 'arb ${mode}' to continue or 'arb undo' to roll back`);
+    info(`Resolve conflicts, then use 'arb ${mode} --continue' to resume or 'arb ${mode} --abort' to cancel`);
     throw new ArbError("Conflicts not yet resolved");
   }
 
@@ -211,7 +211,7 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
   } else {
     writeOperationRecord(wsDir, record);
     if (newConflicts.length > 0 || stillConflicting.length > 0) {
-      info(`Run 'arb ${mode}' to continue or 'arb undo' to roll back`);
+      info(`Use 'arb ${mode} --continue' to resume or 'arb ${mode} --abort' to cancel`);
     }
   }
 

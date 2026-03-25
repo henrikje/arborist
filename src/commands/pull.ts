@@ -407,7 +407,7 @@ export async function runPull(
     record.status = "completed";
     writeOperationRecord(wsDir, record);
   } else {
-    info("Run 'arb pull' to continue or 'arb undo' to roll back");
+    info("Use 'arb pull --continue' to resume or 'arb pull --abort' to cancel");
   }
 
   // Phase 6: summary
