@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
-import type { Command } from "commander";
+import { type Command, Option } from "commander";
 import {
   ArbError,
   type OperationRecord,
@@ -539,8 +539,10 @@ export function registerBranchRenameSubcommand(parent: Command): void {
     .option("--dry-run", "Show what would happen without executing")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("--include-in-progress", "Rename repos even if they have an in-progress git operation")
-    .option("--continue", "Resume a partial branch rename")
-    .option("--abort", "Cancel the in-progress branch rename and restore pre-rename state")
+    .addOption(new Option("--continue", "Resume a partial branch rename").conflicts("abort"))
+    .addOption(
+      new Option("--abort", "Cancel the in-progress branch rename and restore pre-rename state").conflicts("continue"),
+    )
     .summary("Rename the workspace branch across all repos")
     .description(
       "Examples:\n\n  arb branch rename feat/PROJ-209          Rename across all repos\n  arb branch rename feat/PROJ-209 --delete-remote\n  arb branch rename                        Resume after partial failure\n\nRenames the workspace branch locally across all repos and updates .arbws/config.json. The workspace directory is not renamed — use 'arb rename' to rename both the workspace and branch together.\n\nFetches before assessing to get fresh remote state (use -N/--no-fetch to skip). Shows a plan and asks for confirmation before proceeding. Repos with an in-progress git operation (rebase, merge, cherry-pick) are skipped by default — use --include-in-progress to override.\n\nBranch rename is tracked as an operation in .arbws/operation.json. If it fails partway, re-run 'arb branch rename' to retry remaining repos, or 'arb undo' to roll back. After rename, tracking is cleared so 'arb push' treats the branch as new and pushes under the new name. Use --delete-remote to also delete the old remote branch during rename.",
@@ -550,6 +552,12 @@ export function registerBranchRenameSubcommand(parent: Command): void {
         const { wsDir, workspace } = requireWorkspace(ctx);
 
         // Operation lifecycle: --continue, --abort, gate
+        if ((options.continue || options.abort) && newNameArg) {
+          const flag = options.continue ? "--continue" : "--abort";
+          error(`${flag} does not accept a branch name argument`);
+          throw new ArbError(`${flag} does not accept a branch name argument`);
+        }
+
         const inProgress = readInProgressOperation(wsDir, "branch-rename") as
           | (OperationRecord & { command: "branch-rename" })
           | null;
