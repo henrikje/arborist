@@ -86,7 +86,7 @@ export async function integrate(
   }
 
   // No --continue/--abort: block if in-progress, proceed if clean
-  assertNoInProgressOperation(wsDir);
+  await assertNoInProgressOperation(wsDir);
 
   // Phase 1: context & repo selection
   const branch = await requireBranch(wsDir, workspace);

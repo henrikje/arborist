@@ -872,3 +872,149 @@ describe("rebase --abort cancels in-progress", () => {
       expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
     }));
 });
+
+// ── auto-complete ───────────────────────────────────────────────
+
+describe("operation auto-complete", () => {
+  test("gate auto-completes when user resolved via git rebase --continue", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+
+      await write(join(wt, "conflict.txt"), "feature version");
+      await git(wt, ["add", "conflict.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+      await advanceMain(env, "repo-a", "conflict.txt", "main version");
+
+      // Rebase conflicts
+      const r1 = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      expect(r1.exitCode).not.toBe(0);
+
+      const record1 = readJson(join(ws, ".arbws/operation.json"));
+      expect(record1.status).toBe("in-progress");
+
+      // User resolves via git directly
+      await write(join(wt, "conflict.txt"), "resolved");
+      await git(wt, ["add", "conflict.txt"]);
+      await git(wt, ["rebase", "--continue"]);
+
+      // Running a gated command should auto-complete the record, not block
+      const r2 = await arb(env, ["push", "--dry-run", "--no-fetch"], { cwd: ws });
+      expect(r2.exitCode).toBe(0);
+      expect(r2.output).not.toContain("rebase in progress");
+
+      const record2 = readJson(join(ws, ".arbws/operation.json"));
+      expect(record2.status).toBe("completed");
+    }));
+
+  test("gate auto-completes multi-repo when all resolved via git", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wtA = join(ws, "repo-a");
+      const wtB = join(ws, "repo-b");
+
+      // Both repos: conflicting commits
+      await write(join(wtA, "conflict.txt"), "feature-a");
+      await git(wtA, ["add", "conflict.txt"]);
+      await git(wtA, ["commit", "-m", "feature-a"]);
+
+      await write(join(wtB, "conflict.txt"), "feature-b");
+      await git(wtB, ["add", "conflict.txt"]);
+      await git(wtB, ["commit", "-m", "feature-b"]);
+
+      await advanceMain(env, "repo-a", "conflict.txt", "main-a");
+      await advanceMain(env, "repo-b", "conflict.txt", "main-b");
+
+      const r1 = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      expect(r1.exitCode).not.toBe(0);
+
+      // Resolve both via git
+      await write(join(wtA, "conflict.txt"), "resolved-a");
+      await git(wtA, ["add", "conflict.txt"]);
+      await git(wtA, ["rebase", "--continue"]);
+
+      await write(join(wtB, "conflict.txt"), "resolved-b");
+      await git(wtB, ["add", "conflict.txt"]);
+      await git(wtB, ["rebase", "--continue"]);
+
+      // A gated command should auto-complete
+      const r2 = await arb(env, ["push", "--dry-run", "--no-fetch"], { cwd: ws });
+      expect(r2.exitCode).toBe(0);
+
+      const record2 = readJson(join(ws, ".arbws/operation.json"));
+      expect(record2.status).toBe("completed");
+    }));
+
+  test("gate does NOT auto-complete when conflicts remain", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+
+      await write(join(wt, "conflict.txt"), "feature version");
+      await git(wt, ["add", "conflict.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+      await advanceMain(env, "repo-a", "conflict.txt", "main version");
+
+      await arb(env, ["rebase", "--yes"], { cwd: ws });
+
+      // Do NOT resolve — try to run a gated command
+      const r2 = await arb(env, ["push", "--dry-run", "--no-fetch"], { cwd: ws });
+      expect(r2.exitCode).not.toBe(0);
+      expect(r2.output).toContain("rebase in progress");
+
+      const record = readJson(join(ws, ".arbws/operation.json"));
+      expect(record.status).toBe("in-progress");
+    }));
+
+  test("gate does NOT auto-complete when user git rebase --abort (manually aborted)", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+
+      await write(join(wt, "conflict.txt"), "feature version");
+      await git(wt, ["add", "conflict.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+      await advanceMain(env, "repo-a", "conflict.txt", "main version");
+
+      await arb(env, ["rebase", "--yes"], { cwd: ws });
+
+      // User aborts via git directly
+      await git(wt, ["rebase", "--abort"]);
+
+      // Gate should still block — manually-aborted is not a no-op
+      const r2 = await arb(env, ["push", "--dry-run", "--no-fetch"], { cwd: ws });
+      expect(r2.exitCode).not.toBe(0);
+      expect(r2.output).toContain("rebase in progress");
+    }));
+
+  test("gate does NOT auto-complete when configAfter is present even if all repos completed", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+
+      await write(join(wt, "feature.txt"), "feature");
+      await git(wt, ["add", "feature.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+      await advanceMain(env, "repo-a", "main-new.txt", "main advance");
+
+      await arb(env, ["rebase", "--yes"], { cwd: ws });
+
+      // Manually inject configAfter into the (completed) operation record
+      const recordPath = join(ws, ".arbws/operation.json");
+      const record = readJson(recordPath);
+      record.configAfter = { branch: "my-feature", base: "new-base" };
+      record.status = "in-progress";
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(recordPath, JSON.stringify(record, null, 2));
+
+      // Gate should block — configAfter needs explicit --continue
+      const r2 = await arb(env, ["push", "--dry-run", "--no-fetch"], { cwd: ws });
+      expect(r2.exitCode).not.toBe(0);
+      expect(r2.output).toContain("in progress");
+    }));
+});
