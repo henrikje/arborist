@@ -32,7 +32,7 @@ import { VERBOSE_COMMIT_LIMIT } from "./constants";
 import { runContinueFlow } from "./continue-flow";
 import { confirmOrExit, runPlanFlow } from "./mutation-flow";
 import { resolveDefaultFetch } from "./parallel-fetch";
-import { runUndoFlow } from "./undo-flow";
+import { runUndoFlow } from "./undo";
 export type { RepoAssessment } from "./types";
 import type { RepoAssessment } from "./types";
 

@@ -69,7 +69,7 @@ export function registerRetargetCommand(program: Command): void {
             error("No retarget in progress. Nothing to abort.");
             throw new ArbError("No retarget in progress. Nothing to abort.");
           }
-          const { runUndoFlow } = await import("../lib/sync/undo-flow");
+          const { runUndoFlow } = await import("../lib/sync/undo");
           await runUndoFlow({
             wsDir,
             arbRootDir: ctx.arbRootDir,

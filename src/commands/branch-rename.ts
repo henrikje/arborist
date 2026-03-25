@@ -559,7 +559,7 @@ export function registerBranchRenameSubcommand(parent: Command): void {
             error("No branch rename in progress. Nothing to abort.");
             throw new ArbError("No branch rename in progress. Nothing to abort.");
           }
-          const { runUndoFlow } = await import("../lib/sync/undo-flow");
+          const { runUndoFlow } = await import("../lib/sync/undo");
           await runUndoFlow({
             wsDir,
             arbRootDir: ctx.arbRootDir,
