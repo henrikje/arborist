@@ -59,6 +59,7 @@ const BASIC_HELP_COMMANDS = new Set([
   "rebase",
   "merge",
   "retarget",
+  "undo",
   "exec",
 ]);
 const BASIC_GROUP_NAMES: Record<string, string> = {
