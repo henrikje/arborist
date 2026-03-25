@@ -48,7 +48,8 @@ export interface WatchLoopOptions extends WatchLoopCallbacks {
  * Run a watch loop that renders content on an alternate screen buffer,
  * re-rendering when filesystem changes are detected.
  *
- * Exits when the user presses q, Escape, or Ctrl-C.
+ * Exits when the user presses q, Escape, or Ctrl-C, or when the process
+ * receives SIGHUP/SIGTERM, or when stdin reaches EOF (terminal closed).
  * Returns a Promise that resolves when the loop ends.
  */
 export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
@@ -204,12 +205,14 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
     stdin.setRawMode(true);
     stdin.resume();
     stdin.on("data", onData);
+    stdin.on("end", stop);
     stdin.unref();
   };
 
   const teardownStdin = (): void => {
     stdin.setRawMode(false);
     stdin.removeListener("data", onData);
+    stdin.removeListener("end", stop);
     stdin.unref();
   };
 
@@ -423,6 +426,8 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
 
   setupStdin();
   process.on("SIGWINCH", onResize);
+  process.on("SIGHUP", stop);
+  process.on("SIGTERM", stop);
 
   // Start filesystem watchers
   startFsWatchers();
@@ -439,9 +444,15 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
   await done;
 
   // --- Cleanup ---
-  teardownStdin();
+  try {
+    teardownStdin();
+  } catch {}
   process.removeListener("SIGWINCH", onResize);
+  process.removeListener("SIGHUP", stop);
+  process.removeListener("SIGTERM", stop);
   process.removeListener("exit", onExit);
   stopFsWatchers();
-  leaveAlternateScreen();
+  try {
+    leaveAlternateScreen();
+  } catch {}
 }
