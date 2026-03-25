@@ -129,9 +129,11 @@ Files in `scripts/` are standalone Bun scripts that run outside the CLI runtime.
 
 Workspace config (`.arbws/config.json`) and project config (`.arb/config.json`) are stored as JSON, validated at read/write time by Zod schemas in `core/config.ts`. Types are derived via `z.infer<>`, following the same pattern as JSON output schemas in `json-types.ts`. Legacy config files (old INI format or old `config` filename without `.json` extension) are auto-migrated on first read. See `decisions/0067-json-config-format.md`.
 
-### In-progress state for partially-completing commands
+### Operation record and recovery
 
-Commands that can fail partway through sequential multi-repo execution carry explicit in-progress state in `.arbws/config.json`. This enables `--continue` (resume) and `--abort` (roll back), modeled after git's own rebase/merge-in-progress pattern. See `decisions/0025-rebranch-migration-state.md`.
+Commands that can fail partway through sequential multi-repo execution write an operation record to `.arbws/operation.json`, enabling `--continue` (resume after conflicts), `--abort` (cancel and restore), and `arb undo` (reverse a completed operation). Running a bare command during an in-progress operation is blocked with guidance — the user must explicitly choose `--continue` or `--abort`.
+
+The shared infrastructure lives in `core/operation.ts` (schema, I/O, gate, reconciliation), `sync/continue-flow.ts` (shared continue orchestration), and `sync/abort-flow.ts` (shared abort execution). Adding a new command type requires a thin handler and an undo switch case. See `decisions/0095-operation-record-and-recovery-model.md` for the design rationale, option analysis, and the relationship between `--abort` and `arb undo`.
 
 ### Git worktree directory layout
 
