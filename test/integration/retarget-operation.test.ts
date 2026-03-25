@@ -238,7 +238,7 @@ describe("retarget continue", () => {
       // Resolve and manually continue the rebase
       await write(join(wt, "conflict.txt"), "resolved version");
       await git(wt, ["add", "conflict.txt"]);
-      await git(wt, ["rebase", "--continue"]);
+      await git(wt, ["-c", "core.editor=true", "rebase", "--continue"]);
 
       // Re-run — should detect manually-continued
       const result = await arb(env, ["retarget", "--continue", "--yes"], { cwd: ws });
@@ -509,7 +509,7 @@ describe("retarget edge cases", () => {
       // Resolve and manually continue
       await write(join(wt, "conflict.txt"), "resolved");
       await git(wt, ["add", "conflict.txt"]);
-      await git(wt, ["rebase", "--continue"]);
+      await git(wt, ["-c", "core.editor=true", "rebase", "--continue"]);
 
       // Undo — HEAD moved from preHead, no longer at postHead (which was never set since it conflicted)
       // The record shows status "conflicting" but HEAD != preHead → drifted

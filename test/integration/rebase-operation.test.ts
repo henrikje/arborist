@@ -136,7 +136,7 @@ describe("rebase continue", () => {
       // Resolve and manually continue
       await write(join(wt, "conflict.txt"), "resolved");
       await git(wt, ["add", "conflict.txt"]);
-      await git(wt, ["rebase", "--continue"]);
+      await git(wt, ["-c", "core.editor=true", "rebase", "--continue"]);
 
       const result = await arb(env, ["rebase", "--continue", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
@@ -897,7 +897,7 @@ describe("operation auto-complete", () => {
       // User resolves via git directly
       await write(join(wt, "conflict.txt"), "resolved");
       await git(wt, ["add", "conflict.txt"]);
-      await git(wt, ["rebase", "--continue"]);
+      await git(wt, ["-c", "core.editor=true", "rebase", "--continue"]);
 
       // Running a gated command should auto-complete the record, not block
       const r2 = await arb(env, ["push", "--dry-run", "--no-fetch"], { cwd: ws });
@@ -933,11 +933,11 @@ describe("operation auto-complete", () => {
       // Resolve both via git
       await write(join(wtA, "conflict.txt"), "resolved-a");
       await git(wtA, ["add", "conflict.txt"]);
-      await git(wtA, ["rebase", "--continue"]);
+      await git(wtA, ["-c", "core.editor=true", "rebase", "--continue"]);
 
       await write(join(wtB, "conflict.txt"), "resolved-b");
       await git(wtB, ["add", "conflict.txt"]);
-      await git(wtB, ["rebase", "--continue"]);
+      await git(wtB, ["-c", "core.editor=true", "rebase", "--continue"]);
 
       // A gated command should auto-complete
       const r2 = await arb(env, ["push", "--dry-run", "--no-fetch"], { cwd: ws });
