@@ -26,13 +26,13 @@ import { shouldColor } from "../terminal/tty";
 import { workspaceBranch } from "../workspace/branch";
 import { requireBranch, requireWorkspace } from "../workspace/context";
 import { resolveRepoSelection, workspaceRepoDirs } from "../workspace/repos";
-import { runSyncAbort } from "./abort-flow";
 import { buildCachedStatusAssess } from "./assess-with-cache";
 import { type IntegrateMode, assessIntegrateRepo } from "./classify-integrate";
 import { VERBOSE_COMMIT_LIMIT } from "./constants";
 import { runContinueFlow } from "./continue-flow";
 import { confirmOrExit, runPlanFlow } from "./mutation-flow";
 import { resolveDefaultFetch } from "./parallel-fetch";
+import { runUndoFlow } from "./undo-flow";
 export type { RepoAssessment } from "./types";
 import type { RepoAssessment } from "./types";
 
@@ -66,7 +66,13 @@ export async function integrate(
       error(`No ${mode} in progress. Nothing to abort.`);
       throw new ArbError(`No ${mode} in progress. Nothing to abort.`);
     }
-    await runSyncAbort(inProgress, wsDir, options);
+    await runUndoFlow({
+      wsDir,
+      arbRootDir: ctx.arbRootDir,
+      reposDir: ctx.reposDir,
+      options,
+      verb: "abort",
+    });
     return;
   }
 
