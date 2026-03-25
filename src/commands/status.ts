@@ -399,7 +399,7 @@ async function renderStatusTable(
       {
         kind: "message",
         level: "attention",
-        text: `${record.command} in progress${countStr} — run '${commandLabel}' to continue or 'arb undo' to roll back`,
+        text: `${record.command} in progress${countStr} — use '${commandLabel} --continue' to resume or '${commandLabel} --abort' to cancel`,
       },
       { kind: "gap" },
     );
