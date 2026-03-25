@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.114.0](https://github.com/henrikje/arborist/compare/v0.113.0...v0.114.0) (2026-03-25)
+
+
+### Features
+
+* **list:** auto-hide BRANCH column when branches match workspace names ([b600aef](https://github.com/henrikje/arborist/commit/b600aef70713e87e5d31939d9ebf10807f642ba4))
+
+
+### Bug Fixes
+
+* **rebase:** check up-to-date before dirty state in classification ([ba3817a](https://github.com/henrikje/arborist/commit/ba3817afebc6d8caa73a90a1f71fec2e5eea7b2c))
+* **status:** detect squash merge on never-pushed branches ([f53ce94](https://github.com/henrikje/arborist/commit/f53ce94ed85a3ce9e97399cdc2b663b9008095b2))
+* **watch:** add delayed activity indicator for keypress feedback ([0362299](https://github.com/henrikje/arborist/commit/03622996a41919ba7925c88c9e26240f819e60b8))
+* **watch:** add leading-edge debounce for instant response to first event ([ca720a2](https://github.com/henrikje/arborist/commit/ca720a2ebaf3053fd6b15b3615270cc3028ab304))
+
 ## [0.113.0](https://github.com/henrikje/arborist/compare/v0.112.0...v0.113.0) (2026-03-24)
 
 
