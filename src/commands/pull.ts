@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import type { Command } from "commander";
+import { type Command, Option } from "commander";
 import { predictMergeConflict, predictRebaseConflictCommits, predictStashPopConflict } from "../lib/analysis";
 import {
   ArbError,
@@ -61,14 +61,19 @@ export function registerPullCommand(program: Command): void {
     .option("--include-wrong-branch", "Include repos on a different branch than the workspace")
     .option("-v, --verbose", "Show incoming commits in the plan")
     .option("-w, --where <filter>", "Only pull repos matching status filter (comma = OR, + = AND, ^ = negate)")
-    .option("--continue", "Resume after resolving conflicts")
-    .option("--abort", "Cancel the in-progress pull and restore pre-pull state")
+    .addOption(new Option("--continue", "Resume after resolving conflicts").conflicts("abort"))
+    .addOption(new Option("--abort", "Cancel the in-progress pull and restore pre-pull state").conflicts("continue"))
     .summary("Pull feature branches from the remote")
     .description(
       "Examples:\n\n  arb pull                                 Pull all repos\n  arb pull api web                         Pull specific repos\n  arb pull --autostash --rebase            Stash changes, rebase on pull\n\nPull the feature branch for all repos, or only the named repos. Pulls from the share remote (origin by default, or as configured for fork workflows). Always fetches in parallel (ARB_NO_FETCH does not apply), then shows a plan and asks for confirmation before pulling.\n\nRepos with uncommitted changes are skipped unless --autostash is used. Repos on a different branch than the workspace are skipped unless --include-wrong-branch is used. Repos where the remote branch has been deleted are skipped.\n\nIf any repos conflict, arb continues with the remaining repos and reports all conflicts at the end. When a remote branch was rebased and local has no unique commits to preserve, arb may safely reset to the rewritten remote tip instead of attempting a three-way merge.\n\nUse --reset to override the rebased-locally skip and reset to the remote tip, discarding the local rebase. Use --verbose to show the incoming commits in the plan. Use --autostash to stash uncommitted changes before pulling and re-apply them after. Use --where to filter repos by status flags. See 'arb help filtering' for filter syntax.\n\nThe pull mode (rebase or merge) is determined per-repo from git config (branch.<name>.rebase, then pull.rebase), defaulting to merge if neither is set. Use --rebase or --merge to override for all repos.\n\nSee 'arb help remotes' for remote role resolution.",
     )
     .action(
       arbAction(async (ctx, repoArgs: string[], options) => {
+        if ((options.continue || options.abort) && repoArgs.length > 0) {
+          const flag = options.continue ? "--continue" : "--abort";
+          error(`${flag} does not accept repo arguments`);
+          throw new ArbError(`${flag} does not accept repo arguments`);
+        }
         if (options.rebase && options.merge) {
           error("Cannot use both --rebase and --merge");
           throw new ArbError("Cannot use both --rebase and --merge");

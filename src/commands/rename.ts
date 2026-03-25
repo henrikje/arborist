@@ -1,6 +1,6 @@
 import { existsSync, realpathSync, renameSync } from "node:fs";
 import { basename } from "node:path";
-import type { Command } from "commander";
+import { type Command, Option } from "commander";
 import {
   ArbError,
   type OperationRecord,
@@ -393,8 +393,10 @@ export function registerRenameCommand(program: Command): void {
     .option("-r, --delete-remote", "Delete old branch on remote after rename")
     .option("--fetch", "Fetch from all remotes before rename (default)")
     .option("-N, --no-fetch", "Skip fetching before rename")
-    .option("--continue", "Resume a partial workspace rename")
-    .option("--abort", "Cancel the in-progress rename and restore pre-rename state")
+    .addOption(new Option("--continue", "Resume a partial workspace rename").conflicts("abort"))
+    .addOption(
+      new Option("--abort", "Cancel the in-progress rename and restore pre-rename state").conflicts("continue"),
+    )
     .option("--dry-run", "Show what would happen without executing")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("--include-in-progress", "Rename repos even if they have an in-progress git operation")
@@ -407,6 +409,12 @@ export function registerRenameCommand(program: Command): void {
         const { wsDir, workspace } = requireWorkspace(ctx);
 
         // Operation lifecycle: --continue, --abort, gate
+        if ((options.continue || options.abort) && (newNameArg || options.branch)) {
+          const flag = options.continue ? "--continue" : "--abort";
+          error(`${flag} does not accept name or --branch arguments`);
+          throw new ArbError(`${flag} does not accept name or --branch arguments`);
+        }
+
         const inProgress = readInProgressOperation(wsDir, "rename") as (OperationRecord & { command: "rename" }) | null;
 
         if (options.abort) {

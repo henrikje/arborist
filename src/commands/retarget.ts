@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import type { Command } from "commander";
+import { type Command, Option } from "commander";
 import { predictMergeConflict } from "../lib/analysis";
 import { predictStashPopConflict } from "../lib/analysis/conflict-prediction";
 import {
@@ -49,8 +49,10 @@ export function registerRetargetCommand(program: Command): void {
     .option("-g, --graph", "Show branch divergence graph in the plan")
     .option("--autostash", "Stash uncommitted changes before rebase, re-apply after")
     .option("--include-wrong-branch", "Include repos on a different branch than the workspace")
-    .option("--continue", "Resume after resolving conflicts")
-    .option("--abort", "Cancel the in-progress retarget and restore pre-retarget state")
+    .addOption(new Option("--continue", "Resume after resolving conflicts").conflicts("abort"))
+    .addOption(
+      new Option("--abort", "Cancel the in-progress retarget and restore pre-retarget state").conflicts("continue"),
+    )
     .summary("Change the base branch and rebase onto it")
     .description(
       "Examples:\n\n  arb retarget feature1                    Retarget onto feature1\n  arb retarget                             Retarget onto the default branch\n  arb retarget feature1 --verbose          Show commits in the plan\n\nChanges the workspace's base branch and rebases all repos onto the new base. This is the \"I want to change what my workspace is based on\" command.\n\nWith a branch argument, retargets onto that branch — useful for stacking onto a feature branch, switching between base branches, or retargeting after the base branch has been merged. Without a branch argument, retargets onto each repo's default branch (e.g. main) and removes the configured base.\n\nWhen the old base was merged (squash or regular), uses 'git rebase --onto' to replay only your commits. When the old base was not merged, uses the same mechanism to graft your commits onto the new base.\n\nRequires a configured base branch or an explicit branch argument. If no base is configured and no branch is given, this is an error — use 'arb retarget <branch>' to set a base.\n\nAll-or-nothing: if any repo is blocked (dirty, wrong branch, etc.), the entire retarget is refused so the workspace config stays consistent. Use --autostash to stash uncommitted changes before rebasing.\n\nAlways operates on all repos in the workspace — retarget is a structural change to the workspace, not a per-repo operation. To change the base config without rebasing, or to rebase selectively, use 'arb branch base <branch>' then 'arb rebase [repos...]'.\n\nUse --verbose to show the incoming commits for each repo in the plan. Use --graph to show a branch divergence diagram. See 'arb help stacked' for stacked workspace workflows.",
@@ -60,6 +62,12 @@ export function registerRetargetCommand(program: Command): void {
         const { wsDir, workspace } = requireWorkspace(ctx);
 
         // ── Operation lifecycle: --continue, --abort, gate ──
+        if ((options.continue || options.abort) && branchArg) {
+          const flag = options.continue ? "--continue" : "--abort";
+          error(`${flag} does not accept a branch argument`);
+          throw new ArbError(`${flag} does not accept a branch argument`);
+        }
+
         const inProgress = readInProgressOperation(wsDir, "retarget") as
           | (OperationRecord & { command: "retarget" })
           | null;
