@@ -109,7 +109,12 @@ jobs:
         run: bun run build
       - name: Integration tests
         if: needs.changes.outputs.code == 'true'
-        run: bun test test/integration/ --concurrent --timeout 30000
+        run: |
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            bun test test/integration/macos.test.ts --concurrent --timeout 30000
+          else
+            bun test test/integration/ --concurrent --timeout 30000
+          fi
 
   integration-git217:
     name: Integration tests (git 2.17)
