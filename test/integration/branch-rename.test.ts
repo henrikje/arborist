@@ -229,11 +229,11 @@ describe("skip-in-progress", () => {
 
 // ── operation-based continue ─────────────────────────────────────
 // Branch rename uses .arbws/operation.json for in-progress state.
-// Re-running 'arb branch rename' (no args) continues a partial rename.
-// 'arb undo' replaces the old --abort flag.
+// Re-running 'arb branch rename --continue' continues a partial rename.
+// 'arb undo' or 'arb branch rename --abort' rolls back.
 
 describe("operation continue", () => {
-  test("re-running arb branch rename resumes partial rename", () =>
+  test("arb branch rename --continue resumes partial rename", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       const ws = join(env.projectDir, "my-feature");
@@ -244,9 +244,9 @@ describe("operation continue", () => {
       const r1 = await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--no-fetch"], { cwd: ws });
       expect(r1.exitCode).not.toBe(0);
 
-      // Fix and continue (no args)
+      // Fix and continue with --continue
       await git(repoA, ["branch", "-D", "feat/new-name"]);
-      const r2 = await arb(env, ["branch", "rename", "--yes", "--no-fetch"], { cwd: ws });
+      const r2 = await arb(env, ["branch", "rename", "--continue", "--yes", "--no-fetch"], { cwd: ws });
       expect(r2.exitCode).toBe(0);
 
       // Both repos on new branch
@@ -299,7 +299,7 @@ describe("operation continue", () => {
       expect(result.output).toContain("required");
     }));
 
-  test("arb branch rename blocks conflicting rename when operation is in progress", () =>
+  test("arb branch rename blocks any rename when operation is in progress", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       const ws = join(env.projectDir, "my-feature");
@@ -309,13 +309,13 @@ describe("operation continue", () => {
       await git(repoA, ["branch", "feat/new-name"]);
       await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--no-fetch"], { cwd: ws });
 
-      // Try a different target
+      // Try a different target — blocked
       const result = await arb(env, ["branch", "rename", "feat/other-name", "--yes", "--no-fetch"], { cwd: ws });
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("already in progress");
+      expect(result.output).toContain("in progress");
     }));
 
-  test("arb branch rename with same target as in-progress treats as resume", () =>
+  test("arb branch rename with same target as in-progress is also blocked (use --continue)", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       const ws = join(env.projectDir, "my-feature");
@@ -325,12 +325,10 @@ describe("operation continue", () => {
       await git(repoA, ["branch", "feat/new-name"]);
       await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--no-fetch"], { cwd: ws });
 
-      // Fix and re-run with same target
-      await git(repoA, ["branch", "-D", "feat/new-name"]);
+      // Same target without --continue — blocked
       const result = await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--no-fetch"], { cwd: ws });
-      expect(result.exitCode).toBe(0);
-      const branchB = (await git(join(ws, "repo-b"), ["symbolic-ref", "--short", "HEAD"])).trim();
-      expect(branchB).toBe("feat/new-name");
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("in progress");
     }));
 });
 
@@ -518,9 +516,9 @@ describe("tracking cleanup", () => {
       expect(r1.exitCode).not.toBe(0);
 
       // repo-a was renamed (completed), repo-b failed
-      // Fix repo-b and continue
+      // Fix repo-b and continue with --continue
       await git(repoB, ["branch", "-D", "new-name"]);
-      const r2 = await arb(env, ["branch", "rename", "--yes", "--no-fetch"], { cwd: ws });
+      const r2 = await arb(env, ["branch", "rename", "--continue", "--yes", "--no-fetch"], { cwd: ws });
       expect(r2.exitCode).toBe(0);
 
       // repo-a (already renamed in first run) should have tracking cleared
@@ -677,5 +675,75 @@ describe("undo collision detection", () => {
       const result = await arb(env, ["undo", "--yes"], { cwd: ws });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("already exists");
+    }));
+});
+
+// ── bare command blocked during in-progress ──────────────────────
+
+describe("branch rename bare command blocked", () => {
+  test("bare arb branch rename during in-progress is blocked with guidance", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const ws = join(env.projectDir, "my-feature");
+      const repoA = join(ws, "repo-a");
+
+      // Cause failure in repo-a
+      await git(repoA, ["branch", "feat/new-name"]);
+      await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--no-fetch"], { cwd: ws });
+
+      // Bare command (no --continue) should be blocked
+      const result = await arb(env, ["branch", "rename", "--yes", "--no-fetch"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("in progress");
+      expect(result.output).toContain("--continue");
+    }));
+});
+
+// ── --continue/--abort with no operation ─────────────────────────
+
+describe("branch rename --continue/--abort with no operation", () => {
+  test("--continue with no operation errors", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const ws = join(env.projectDir, "my-feature");
+
+      const result = await arb(env, ["branch", "rename", "--continue", "--yes", "--no-fetch"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Nothing to continue");
+    }));
+
+  test("--abort with no operation errors", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const ws = join(env.projectDir, "my-feature");
+
+      const result = await arb(env, ["branch", "rename", "--abort", "--yes", "--no-fetch"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Nothing to abort");
+    }));
+});
+
+// ── --abort cancels in-progress ──────────────────────────────────
+
+describe("branch rename --abort cancels in-progress", () => {
+  test("--abort cancels in-progress branch rename and restores config", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
+      const ws = join(env.projectDir, "my-feature");
+      const repoA = join(ws, "repo-a");
+
+      // Cause failure in repo-a
+      await git(repoA, ["branch", "feat/new-name"]);
+      await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--no-fetch"], { cwd: ws });
+
+      const result = await arb(env, ["branch", "rename", "--abort", "--yes", "--no-fetch"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+
+      // Config restored
+      const config = JSON.parse(await readFile(join(ws, ".arbws/config.json"), "utf8"));
+      expect(config.branch).toBe("my-feature");
+
+      // Operation record cleaned up
+      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
     }));
 });

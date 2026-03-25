@@ -8,7 +8,7 @@ import {
   arbAction,
   assertNoInProgressOperation,
   deleteOperationRecord,
-  readOperationRecord,
+  readInProgressOperation,
   readWorkspaceConfig,
   writeOperationRecord,
   writeWorkspaceConfig,
@@ -68,6 +68,8 @@ interface RenameOptions {
   dryRun?: boolean;
   yes?: boolean;
   includeInProgress?: boolean;
+  continue?: boolean;
+  abort?: boolean;
 }
 
 export async function assessRepo(
@@ -537,6 +539,8 @@ export function registerBranchRenameSubcommand(parent: Command): void {
     .option("--dry-run", "Show what would happen without executing")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("--include-in-progress", "Rename repos even if they have an in-progress git operation")
+    .option("--continue", "Resume a partial branch rename")
+    .option("--abort", "Cancel the in-progress branch rename and restore pre-rename state")
     .summary("Rename the workspace branch across all repos")
     .description(
       "Examples:\n\n  arb branch rename feat/PROJ-209          Rename across all repos\n  arb branch rename feat/PROJ-209 --delete-remote\n  arb branch rename                        Resume after partial failure\n\nRenames the workspace branch locally across all repos and updates .arbws/config.json. The workspace directory is not renamed — use 'arb rename' to rename both the workspace and branch together.\n\nFetches before assessing to get fresh remote state (use -N/--no-fetch to skip). Shows a plan and asks for confirmation before proceeding. Repos with an in-progress git operation (rebase, merge, cherry-pick) are skipped by default — use --include-in-progress to override.\n\nBranch rename is tracked as an operation in .arbws/operation.json. If it fails partway, re-run 'arb branch rename' to retry remaining repos, or 'arb undo' to roll back. After rename, tracking is cleared so 'arb push' treats the branch as new and pushes under the new name. Use --delete-remote to also delete the old remote branch during rename.",
@@ -545,8 +549,42 @@ export function registerBranchRenameSubcommand(parent: Command): void {
       arbAction(async (ctx, newNameArg: string | undefined, options: RenameOptions) => {
         const { wsDir, workspace } = requireWorkspace(ctx);
 
-        // Gate: block if a different operation is in progress
-        assertNoInProgressOperation(wsDir, "branch-rename");
+        // Operation lifecycle: --continue, --abort, gate
+        const inProgress = readInProgressOperation(wsDir, "branch-rename") as
+          | (OperationRecord & { command: "branch-rename" })
+          | null;
+
+        if (options.abort) {
+          if (!inProgress) {
+            error("No branch rename in progress. Nothing to abort.");
+            throw new ArbError("No branch rename in progress. Nothing to abort.");
+          }
+          const { runSyncAbort } = await import("../lib/sync/abort-flow");
+          await runSyncAbort(inProgress, wsDir, options);
+          return;
+        }
+
+        if (options.continue) {
+          if (!inProgress) {
+            error("No branch rename in progress. Nothing to continue.");
+            throw new ArbError("No branch rename in progress. Nothing to continue.");
+          }
+          const configFile = `${wsDir}/.arbws/config.json`;
+          const configBase = readWorkspaceConfig(configFile)?.base ?? null;
+          return runRename(
+            wsDir,
+            ctx,
+            configFile,
+            inProgress.oldBranch,
+            inProgress.newBranch,
+            configBase,
+            false,
+            options,
+            inProgress,
+          );
+        }
+
+        assertNoInProgressOperation(wsDir);
 
         const configFile = `${wsDir}/.arbws/config.json`;
         const wsConfig = readWorkspaceConfig(configFile);
@@ -559,46 +597,26 @@ export function registerBranchRenameSubcommand(parent: Command): void {
           throw new ArbError(msg);
         }
 
-        // Check for in-progress branch-rename operation (continue flow)
-        const existingRecord = readOperationRecord(wsDir);
-        const isContinue = existingRecord?.command === "branch-rename" && existingRecord.status === "in-progress";
+        if (!newNameArg) {
+          error("New branch name required. Usage: arb branch rename <new-name>");
+          throw new ArbError("New branch name required. Usage: arb branch rename <new-name>");
+        }
 
-        let oldBranch: string;
-        let newBranch: string;
+        if (!validateBranchName(newNameArg)) {
+          error(`Invalid branch name: '${newNameArg}'`);
+          throw new ArbError(`Invalid branch name: '${newNameArg}'`);
+        }
 
-        if (isContinue) {
-          oldBranch = existingRecord.oldBranch;
-          newBranch = existingRecord.newBranch;
+        const oldBranch = currentConfigBranch;
+        const newBranch = newNameArg;
 
-          // If user provides a name, it must match the in-progress target
-          if (newNameArg && newNameArg !== newBranch) {
-            const msg = `A rename to '${newBranch}' is already in progress — run 'arb branch rename' to continue or 'arb undo' to roll back`;
-            error(msg);
-            throw new ArbError(msg);
-          }
-        } else {
-          if (!newNameArg) {
-            error("New branch name required. Usage: arb branch rename <new-name>");
-            throw new ArbError("New branch name required. Usage: arb branch rename <new-name>");
-          }
-
-          if (!validateBranchName(newNameArg)) {
-            error(`Invalid branch name: '${newNameArg}'`);
-            throw new ArbError(`Invalid branch name: '${newNameArg}'`);
-          }
-
-          oldBranch = currentConfigBranch;
-          newBranch = newNameArg;
-
-          if (oldBranch === newBranch) {
-            info(`Already on branch '${newBranch}' — nothing to do`);
-            return;
-          }
+        if (oldBranch === newBranch) {
+          info(`Already on branch '${newBranch}' — nothing to do`);
+          return;
         }
 
         // Show hint when workspace could be renamed via arb rename
         const showRenameWorkspaceHint =
-          !isContinue &&
           workspace === oldBranch &&
           validateWorkspaceName(newBranch) === null &&
           !existsSync(`${ctx.arbRootDir}/${newBranch}`);
@@ -612,7 +630,7 @@ export function registerBranchRenameSubcommand(parent: Command): void {
           configBase,
           showRenameWorkspaceHint,
           options,
-          isContinue ? existingRecord : null,
+          null,
         );
       }),
     );

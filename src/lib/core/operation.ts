@@ -132,16 +132,24 @@ export function deleteOperationRecord(wsDir: string): void {
 
 // ── Gate ──
 
-export function assertNoInProgressOperation(wsDir: string, currentCommand: string): void {
+export function assertNoInProgressOperation(wsDir: string): void {
   const record = readOperationRecord(wsDir);
   if (!record) return;
   if (record.status !== "in-progress") return;
-  if (record.command === currentCommand) return;
 
   const commandLabel = record.command === "branch-rename" ? "arb branch rename" : `arb ${record.command}`;
-  const msg = `${record.command} in progress — run '${commandLabel}' to continue or 'arb undo' to roll back`;
+  const msg = `${record.command} in progress — use '${commandLabel} --continue' to resume or '${commandLabel} --abort' to cancel`;
   error(msg);
   throw new ArbError(msg);
+}
+
+/** Read the in-progress operation record if it matches the given command. Returns null if no match. */
+export function readInProgressOperation(wsDir: string, command: string): OperationRecord | null {
+  const record = readOperationRecord(wsDir);
+  if (!record) return null;
+  if (record.status !== "in-progress") return null;
+  if (record.command !== command) return null;
+  return record;
 }
 
 // ── Continue reconciliation ──

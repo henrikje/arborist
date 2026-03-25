@@ -8,7 +8,7 @@ import {
   arbAction,
   assertNoInProgressOperation,
   captureRepoState,
-  readOperationRecord,
+  readInProgressOperation,
   readWorkspaceConfig,
   writeOperationRecord,
   writeWorkspaceConfig,
@@ -38,6 +38,8 @@ import { deriveWorkspaceNameFromBranch } from "./create";
 interface RenameCommandOptions {
   branch?: string;
   base?: string;
+  continue?: boolean;
+  abort?: boolean;
   deleteRemote?: boolean;
   fetch?: boolean;
   dryRun?: boolean;
@@ -391,6 +393,8 @@ export function registerRenameCommand(program: Command): void {
     .option("-r, --delete-remote", "Delete old branch on remote after rename")
     .option("--fetch", "Fetch from all remotes before rename (default)")
     .option("-N, --no-fetch", "Skip fetching before rename")
+    .option("--continue", "Resume a partial workspace rename")
+    .option("--abort", "Cancel the in-progress rename and restore pre-rename state")
     .option("--dry-run", "Show what would happen without executing")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("--include-in-progress", "Rename repos even if they have an in-progress git operation")
@@ -401,25 +405,31 @@ export function registerRenameCommand(program: Command): void {
     .action(
       arbAction(async (ctx, newNameArg: string | undefined, options: RenameCommandOptions) => {
         const { wsDir, workspace } = requireWorkspace(ctx);
-        assertNoInProgressOperation(wsDir, "rename");
 
-        const configFile = `${wsDir}/.arbws/config.json`;
-        const wsConfig = readWorkspaceConfig(configFile);
-        const currentConfigBranch = wsConfig?.branch ?? null;
-        const configBase = wsConfig?.base ?? null;
+        // Operation lifecycle: --continue, --abort, gate
+        const inProgress = readInProgressOperation(wsDir, "rename") as (OperationRecord & { command: "rename" }) | null;
 
-        if (!currentConfigBranch) {
-          const msg = `No branch configured for workspace '${workspace}'. Cannot rename.`;
-          error(msg);
-          throw new ArbError(msg);
+        if (options.abort) {
+          if (!inProgress) {
+            error("No rename in progress. Nothing to abort.");
+            throw new ArbError("No rename in progress. Nothing to abort.");
+          }
+          const { runSyncAbort } = await import("../lib/sync/abort-flow");
+          await runSyncAbort(inProgress, wsDir, options);
+          return;
         }
 
-        // Check for in-progress rename operation (continue flow)
-        const existingRecord = readOperationRecord(wsDir);
-        if (existingRecord?.command === "rename" && existingRecord.status === "in-progress") {
+        if (options.continue) {
+          if (!inProgress) {
+            error("No rename in progress. Nothing to continue.");
+            throw new ArbError("No rename in progress. Nothing to continue.");
+          }
+          const configFile = `${wsDir}/.arbws/config.json`;
+          const currentConfigBranch = readWorkspaceConfig(configFile)?.branch ?? "";
+          const configBase = readWorkspaceConfig(configFile)?.base ?? null;
           const oldBranch = currentConfigBranch;
-          const newBranch = existingRecord.configAfter?.branch ?? currentConfigBranch;
-          const newWorkspaceName = existingRecord.newName;
+          const newBranch = inProgress.configAfter?.branch ?? currentConfigBranch;
+          const newWorkspaceName = inProgress.newName;
           return runWorkspaceRename(
             wsDir,
             ctx,
@@ -431,8 +441,21 @@ export function registerRenameCommand(program: Command): void {
             configBase,
             options.base,
             options,
-            existingRecord,
+            inProgress,
           );
+        }
+
+        assertNoInProgressOperation(wsDir);
+
+        const configFile = `${wsDir}/.arbws/config.json`;
+        const wsConfig = readWorkspaceConfig(configFile);
+        const currentConfigBranch = wsConfig?.branch ?? null;
+        const configBase = wsConfig?.base ?? null;
+
+        if (!currentConfigBranch) {
+          const msg = `No branch configured for workspace '${workspace}'. Cannot rename.`;
+          error(msg);
+          throw new ArbError(msg);
         }
 
         const oldBranch = currentConfigBranch;

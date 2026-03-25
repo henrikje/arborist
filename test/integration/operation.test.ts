@@ -75,7 +75,7 @@ describe("branch rename operation record", () => {
 // ── continue ─────────────────────────────────────────────────────
 
 describe("branch rename continue", () => {
-  test("re-running arb branch rename continues in-progress operation", () =>
+  test("arb branch rename --continue continues in-progress operation", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       const ws = join(env.projectDir, "my-feature");
@@ -100,8 +100,8 @@ describe("branch rename continue", () => {
       // Fix the issue: remove the blocking branch
       await git(repoA, ["branch", "-D", "feat/new-name"]);
 
-      // Continue: re-run the same command (no args needed)
-      const result2 = await arb(env, ["branch", "rename", "--yes", "--no-fetch"], { cwd: ws });
+      // Continue with --continue
+      const result2 = await arb(env, ["branch", "rename", "--continue", "--yes", "--no-fetch"], { cwd: ws });
       expect(result2.exitCode).toBe(0);
 
       // Both repos should now be on new branch
@@ -115,7 +115,7 @@ describe("branch rename continue", () => {
       expect(record2.status).toBe("completed");
     }));
 
-  test("arb branch rename <same-target> during in-progress treated as continue", () =>
+  test("arb branch rename <same-target> during in-progress is blocked (use --continue)", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
       const ws = join(env.projectDir, "my-feature");
@@ -125,10 +125,10 @@ describe("branch rename continue", () => {
       await git(repoA, ["branch", "feat/new-name"]);
       await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--no-fetch"], { cwd: ws });
 
-      // Fix and re-run with explicit same target
-      await git(repoA, ["branch", "-D", "feat/new-name"]);
+      // Same target without --continue is blocked
       const result = await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--no-fetch"], { cwd: ws });
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("in progress");
     }));
 
   test("arb branch rename <different-target> during in-progress is blocked", () =>
@@ -144,7 +144,7 @@ describe("branch rename continue", () => {
       // Try a different target
       const result = await arb(env, ["branch", "rename", "feat/other-name", "--yes", "--no-fetch"], { cwd: ws });
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("already in progress");
+      expect(result.output).toContain("in progress");
     }));
 });
 
@@ -165,7 +165,7 @@ describe("operation gate", () => {
       const result = await arb(env, ["rebase", "--yes"], { cwd: ws });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("branch-rename in progress");
-      expect(result.output).toContain("arb undo");
+      expect(result.output).toContain("--abort");
     }));
 
   test("in-progress branch-rename allows arb status", () =>
@@ -471,7 +471,7 @@ describe("push gate", () => {
       const result = await arb(env, ["push", "--yes", "--no-fetch"], { cwd: ws });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("in progress");
-      expect(result.output).toContain("arb undo");
+      expect(result.output).toContain("--abort");
     }));
 
   test("arb push is blocked during in-progress rebase", () =>

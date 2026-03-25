@@ -217,7 +217,7 @@ describe("retarget continue", () => {
       await git(wt, ["add", "conflict.txt"]);
 
       // Continue
-      const result = await arb(env, ["retarget", "--yes"], { cwd: ws });
+      const result = await arb(env, ["retarget", "--continue", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
 
       // Operation completed
@@ -241,7 +241,7 @@ describe("retarget continue", () => {
       await git(wt, ["rebase", "--continue"]);
 
       // Re-run — should detect manually-continued
-      const result = await arb(env, ["retarget", "--yes"], { cwd: ws });
+      const result = await arb(env, ["retarget", "--continue", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("already resolved");
 
@@ -260,7 +260,7 @@ describe("retarget continue", () => {
       await git(wt, ["rebase", "--abort"]);
 
       // Re-run — should detect manually-aborted
-      const result = await arb(env, ["retarget", "--yes"], { cwd: ws });
+      const result = await arb(env, ["retarget", "--continue", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("manually aborted");
 
@@ -269,14 +269,14 @@ describe("retarget continue", () => {
       expect(config.base).toBeUndefined();
     }));
 
-  test("re-running without resolving shows still-conflicting", () =>
+  test("--continue without resolving shows still-conflicting", () =>
     withEnv(async (env) => {
       const { ws } = await setupRetargetConflictScenario(env);
 
       await arb(env, ["retarget", "main", "--yes"], { cwd: ws });
 
-      // Re-run without resolving
-      const result = await arb(env, ["retarget", "--yes"], { cwd: ws });
+      // Re-run --continue without resolving
+      const result = await arb(env, ["retarget", "--continue", "--yes"], { cwd: ws });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("not yet resolved");
     }));
@@ -366,17 +366,17 @@ describe("retarget gate", () => {
       expect(result.output).toContain("retarget in progress");
     }));
 
-  test("re-running arb retarget during in-progress continues (not blocked)", () =>
+  test("arb retarget --continue during in-progress continues (not blocked)", () =>
     withEnv(async (env) => {
       const { ws, wt } = await setupRetargetConflictScenario(env);
 
       await arb(env, ["retarget", "main", "--yes"], { cwd: ws });
 
-      // Resolve and re-run — should continue, not be blocked by gate
+      // Resolve and re-run with --continue
       await write(join(wt, "conflict.txt"), "resolved");
       await git(wt, ["add", "conflict.txt"]);
 
-      const result = await arb(env, ["retarget", "--yes"], { cwd: ws });
+      const result = await arb(env, ["retarget", "--continue", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
     }));
 });
@@ -413,7 +413,7 @@ describe("retarget multi-repo", () => {
       await write(join(wtA, "conflict.txt"), "resolved");
       await git(wtA, ["add", "conflict.txt"]);
 
-      const r2 = await arb(env, ["retarget", "--yes"], { cwd: ws });
+      const r2 = await arb(env, ["retarget", "--continue", "--yes"], { cwd: ws });
       expect(r2.exitCode).toBe(0);
 
       // Config NOW updated
@@ -530,7 +530,7 @@ describe("retarget edge cases", () => {
       // Resolve and continue
       await write(join(wt, "conflict.txt"), "resolved");
       await git(wt, ["add", "conflict.txt"]);
-      await arb(env, ["retarget", "--yes"], { cwd: ws });
+      await arb(env, ["retarget", "--continue", "--yes"], { cwd: ws });
 
       // Config updated
       expect(readJson(join(ws, ".arbws/config.json")).base).toBeUndefined();
@@ -560,7 +560,7 @@ describe("retarget undo partial failure", () => {
       // Resolve repo-a and continue so both repos are completed
       await write(join(wtA, "conflict.txt"), "resolved");
       await git(wtA, ["add", "conflict.txt"]);
-      const continueResult = await arb(env, ["retarget", "--yes"], { cwd: ws });
+      const continueResult = await arb(env, ["retarget", "--continue", "--yes"], { cwd: ws });
       expect(continueResult.exitCode).toBe(0);
 
       // Config should now be updated (retarget completed)
@@ -581,5 +581,65 @@ describe("retarget undo partial failure", () => {
 
       // Operation record should still exist (not deleted on drift refusal)
       expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(true);
+    }));
+});
+
+// ── bare command blocked during in-progress ──────────────────────
+
+describe("retarget bare command blocked", () => {
+  test("bare arb retarget during in-progress is blocked with guidance", () =>
+    withEnv(async (env) => {
+      const { ws } = await setupRetargetConflictScenario(env);
+
+      await arb(env, ["retarget", "main", "--yes"], { cwd: ws });
+
+      const result = await arb(env, ["retarget", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("in progress");
+      expect(result.output).toContain("--continue");
+    }));
+});
+
+// ── --continue/--abort with no operation ─────────────────────────
+
+describe("retarget --continue/--abort with no operation", () => {
+  test("--continue with no operation errors", () =>
+    withEnv(async (env) => {
+      const { ws } = await setupRetargetScenario(env);
+
+      const result = await arb(env, ["retarget", "--continue", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Nothing to continue");
+    }));
+
+  test("--abort with no operation errors", () =>
+    withEnv(async (env) => {
+      const { ws } = await setupRetargetScenario(env);
+
+      const result = await arb(env, ["retarget", "--abort", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("Nothing to abort");
+    }));
+});
+
+// ── --abort cancels in-progress ──────────────────────────────────
+
+describe("retarget --abort cancels in-progress", () => {
+  test("--abort cancels in-progress retarget", () =>
+    withEnv(async (env) => {
+      const { ws, wt } = await setupRetargetConflictScenario(env);
+
+      const preHead = (await git(wt, ["rev-parse", "HEAD"])).trim();
+
+      await arb(env, ["retarget", "main", "--yes"], { cwd: ws });
+
+      const result = await arb(env, ["retarget", "--abort", "--yes"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+      expect((await git(wt, ["rev-parse", "HEAD"])).trim()).toBe(preHead);
+      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+
+      // Config restored
+      const config = readJson(join(ws, ".arbws/config.json"));
+      expect(config.base).toBe("feat/base");
     }));
 });

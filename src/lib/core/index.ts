@@ -28,6 +28,7 @@ export {
   captureRepoState,
   classifyContinueRepo,
   deleteOperationRecord,
+  readInProgressOperation,
   readOperationRecord,
   writeOperationRecord,
 } from "./operation";
