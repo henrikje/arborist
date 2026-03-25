@@ -140,7 +140,7 @@ export async function runPull(
     return;
   }
 
-  assertNoInProgressOperation(wsDir);
+  await assertNoInProgressOperation(wsDir);
 
   const branch = await requireBranch(wsDir, workspace);
 

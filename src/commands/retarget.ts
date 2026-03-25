@@ -110,7 +110,7 @@ export function registerRetargetCommand(program: Command): void {
           return;
         }
 
-        assertNoInProgressOperation(wsDir);
+        await assertNoInProgressOperation(wsDir);
 
         const branch = await requireBranch(wsDir, workspace);
         const configFile = `${wsDir}/.arbws/config.json`;

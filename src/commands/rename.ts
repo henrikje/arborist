@@ -459,7 +459,7 @@ export function registerRenameCommand(program: Command): void {
           );
         }
 
-        assertNoInProgressOperation(wsDir);
+        await assertNoInProgressOperation(wsDir);
 
         const configFile = `${wsDir}/.arbws/config.json`;
         const wsConfig = readWorkspaceConfig(configFile);

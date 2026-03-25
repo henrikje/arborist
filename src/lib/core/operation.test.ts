@@ -130,26 +130,26 @@ describe("deleteOperationRecord", () => {
 describe("assertNoInProgressOperation", () => {
   test("passes when no record exists", () =>
     withTestDir(async (wsDir) => {
-      expect(() => assertNoInProgressOperation(wsDir)).not.toThrow();
+      await assertNoInProgressOperation(wsDir);
     }));
 
   test("passes when record has status completed", () =>
     withTestDir(async (wsDir) => {
       writeOperationRecord(wsDir, validRecord({ status: "completed" }));
-      expect(() => assertNoInProgressOperation(wsDir)).not.toThrow();
+      await assertNoInProgressOperation(wsDir);
     }));
 
-  test("throws when any command is in-progress", () =>
+  test("throws when any command is in-progress with configAfter", () =>
     withTestDir(async (wsDir) => {
       writeOperationRecord(wsDir, validRecord({ status: "in-progress" }));
-      expect(() => assertNoInProgressOperation(wsDir)).toThrow("branch-rename in progress");
+      await expect(assertNoInProgressOperation(wsDir)).rejects.toThrow("branch-rename in progress");
     }));
 
   test("error message includes --continue and --abort guidance", () =>
     withTestDir(async (wsDir) => {
       writeOperationRecord(wsDir, validRecord({ status: "in-progress" }));
       try {
-        assertNoInProgressOperation(wsDir);
+        await assertNoInProgressOperation(wsDir);
       } catch (e: unknown) {
         const msg = (e as Error).message;
         expect(msg).toContain("arb branch rename");
@@ -168,11 +168,59 @@ describe("assertNoInProgressOperation", () => {
       };
       writeOperationRecord(wsDir, record);
       try {
-        assertNoInProgressOperation(wsDir);
+        await assertNoInProgressOperation(wsDir);
       } catch (e: unknown) {
         const msg = (e as Error).message;
         expect(msg).toContain("arb rebase");
       }
+    }));
+
+  test("blocks when repos have pending status (not auto-completable)", () =>
+    withTestDir(async (wsDir) => {
+      const record: OperationRecord = {
+        command: "rebase",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        status: "in-progress",
+        repos: {
+          "repo-a": { preHead: "abc1234", status: "completed", postHead: "def5678" },
+          "repo-b": { preHead: "abc1234", status: "pending" },
+        },
+      };
+      writeOperationRecord(wsDir, record);
+      await expect(assertNoInProgressOperation(wsDir)).rejects.toThrow("rebase in progress");
+    }));
+
+  test("blocks when configAfter is present even if all repos completed", () =>
+    withTestDir(async (wsDir) => {
+      writeOperationRecord(
+        wsDir,
+        validRecord({
+          status: "in-progress",
+          repos: {
+            "repo-a": { preHead: "abc1234", status: "completed", postHead: "def5678" },
+          },
+        }),
+      );
+      // validRecord includes configAfter, so it should block
+      await expect(assertNoInProgressOperation(wsDir)).rejects.toThrow("in progress");
+    }));
+
+  test("auto-completes when all repos are completed and no configAfter", () =>
+    withTestDir(async (wsDir) => {
+      const record: OperationRecord = {
+        command: "rebase",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        status: "in-progress",
+        repos: {
+          "repo-a": { preHead: "abc1234", status: "completed", postHead: "def5678" },
+          "repo-b": { preHead: "abc1234", status: "completed", postHead: "def5678" },
+        },
+      };
+      writeOperationRecord(wsDir, record);
+      await assertNoInProgressOperation(wsDir);
+      // Record should now be marked as completed
+      const updated = readOperationRecord(wsDir);
+      expect(updated?.status).toBe("completed");
     }));
 });
 

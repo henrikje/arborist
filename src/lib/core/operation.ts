@@ -132,10 +132,46 @@ export function deleteOperationRecord(wsDir: string): void {
 
 // ── Gate ──
 
-export function assertNoInProgressOperation(wsDir: string): void {
+export async function assertNoInProgressOperation(wsDir: string): Promise<void> {
   const record = readOperationRecord(wsDir);
   if (!record) return;
   if (record.status !== "in-progress") return;
+
+  // Auto-complete when all repos are resolved and no deferred config needs applying.
+  // Short-circuit: skip classification only when repos are pending (never started)
+  // or deferred config exists. Conflicting repos need classification since the user
+  // may have resolved them externally via git.
+  const repoStates = Object.values(record.repos);
+  const hasPending = repoStates.some((s) => s.status === "pending");
+  if (!record.configAfter && !hasPending) {
+    const entries = Object.entries(record.repos);
+    const classifications = await Promise.all(
+      entries.map(async ([repoName, state]) => {
+        const repoDir = `${wsDir}/${repoName}`;
+        return { repoName, classification: await classifyContinueRepo(repoDir, state) };
+      }),
+    );
+    const allResolved = classifications.every(
+      (c) =>
+        c.classification.action === "already-done" ||
+        c.classification.action === "manually-continued" ||
+        c.classification.action === "skip",
+    );
+    if (allResolved) {
+      // Update manually-continued repos in the record
+      for (const c of classifications) {
+        if (c.classification.action === "manually-continued") {
+          const existing = record.repos[c.repoName];
+          if (existing) {
+            record.repos[c.repoName] = { ...existing, status: "completed", postHead: c.classification.postHead };
+          }
+        }
+      }
+      record.status = "completed";
+      writeOperationRecord(wsDir, record);
+      return;
+    }
+  }
 
   const commandLabel = record.command === "branch-rename" ? "arb branch rename" : `arb ${record.command}`;
   const msg = `${record.command} in progress — use '${commandLabel} --continue' to resume or '${commandLabel} --abort' to cancel`;
