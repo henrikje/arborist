@@ -332,11 +332,13 @@ When the base branch is later merged (e.g. via a PR), `arb status` detects this 
 
 ### Fork-based development
 
+Contributing to an open-source project? Clone your fork and register the upstream in one step:
+
 ```bash
 arb repo clone https://github.com/you/api.git --upstream https://github.com/org/api.git
 ```
 
-One command clones your fork and registers the canonical repository. Arborist auto-detects remote roles from git config, so `rebase` targets the base while `push` goes to your fork — no additional configuration needed. Different repos in the same workspace can use different remote layouts — some forked, some single-origin — and Arborist resolves remote roles independently for each, so `rebase` targets the right base and `push` goes to the right fork without per-repo configuration.
+Arborist auto-detects remote roles from git config, so `rebase` targets upstream while `push` goes to your fork — no extra configuration needed. Different repos in the same workspace can mix layouts freely — some forked, some single-origin — and Arborist resolves remote roles independently for each.
 
 ### Script-friendly by design
 
