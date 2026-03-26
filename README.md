@@ -259,7 +259,7 @@ arb rebase --continue     # completes — but the result looks wrong
 arb undo                  # rolls back all repos to their pre-rebase state, ready to try again
 ```
 
-This works for any tracked operation: rebase, merge, retarget, pull, reset, rename. Undo aborts in-progress git operations, resets HEADs, restores uncommitted changes, and rolls back config. It detects if you have done other changes, so it never silently discards work. It restores everything — even uncommitted changes.
+This works for any tracked operation: rebase, merge, retarget, pull, reset, rename. Undo aborts in-progress git operations, resets HEADs, and rolls back config — even uncommitted changes. It detects if you have done other changes, so it never silently discards work. It is as close to a magic wand as you can get!
 
 ### Commit matching
 
