@@ -8,6 +8,7 @@ import {
   assertNoInProgressOperation,
   captureRepoState,
   readWorkspaceConfig,
+  withReflogAction,
   writeOperationRecord,
 } from "../lib/core";
 import { getCommitsBetweenFull, getShortHead, gitLocal } from "../lib/git";
@@ -501,8 +502,7 @@ export function registerResetCommand(program: Command): void {
         let resetOk = 0;
         const failed: { assessment: ResetAssessment; stderr: string }[] = [];
 
-        try {
-          process.env.GIT_REFLOG_ACTION = "arb-reset";
+        await withReflogAction("arb-reset", async () => {
           for (const a of willReset) {
             inlineStart(a.repo, `resetting to ${a.target}`);
             const result = await gitLocal(a.repoDir, "reset", `--${resetMode}`, a.target);
@@ -526,10 +526,7 @@ export function registerResetCommand(program: Command): void {
               failed.push({ assessment: a, stderr: result.stderr });
             }
           }
-        } finally {
-          // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
-          delete process.env.GIT_REFLOG_ACTION;
-        }
+        });
 
         // Failure report
         if (failed.length > 0) {

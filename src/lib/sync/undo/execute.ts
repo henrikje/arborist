@@ -1,6 +1,7 @@
 import { renameSync } from "node:fs";
 import { basename } from "node:path";
 import type { OperationRecord } from "../../core/operation";
+import { withReflogAction } from "../../core/operation";
 import { detectOperation, gitLocal } from "../../git/git";
 import { inlineResult, inlineStart } from "../../terminal/output";
 import { workspaceRepoDirs } from "../../workspace/repos";
@@ -13,8 +14,7 @@ export async function executeBranchRenameUndo(
   let undone = 0;
   const failures: string[] = [];
 
-  try {
-    process.env.GIT_REFLOG_ACTION = "arb-undo";
+  await withReflogAction("arb-undo", async () => {
     for (const a of assessments) {
       if (a.action !== "needs-undo") continue;
 
@@ -39,10 +39,7 @@ export async function executeBranchRenameUndo(
         failures.push(a.repo);
       }
     }
-  } finally {
-    // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
-    delete process.env.GIT_REFLOG_ACTION;
-  }
+  });
 
   return { undone, failures };
 }
@@ -60,8 +57,7 @@ export async function executeRenameUndo(
   const oldBranch = record.configBefore?.branch;
   const newBranch = record.configAfter?.branch;
 
-  try {
-    process.env.GIT_REFLOG_ACTION = "arb-undo";
+  await withReflogAction("arb-undo", async () => {
     if (oldBranch && newBranch && oldBranch !== newBranch) {
       for (const a of assessments) {
         if (a.action !== "needs-undo") continue;
@@ -108,10 +104,7 @@ export async function executeRenameUndo(
         failures.push(`${record.newName} (directory rename failed)`);
       }
     }
-  } finally {
-    // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
-    delete process.env.GIT_REFLOG_ACTION;
-  }
+  });
 
   return { undone, failures };
 }
@@ -120,8 +113,7 @@ export async function executeSyncUndo(record: OperationRecord, assessments: Repo
   let undone = 0;
   const failures: string[] = [];
 
-  try {
-    process.env.GIT_REFLOG_ACTION = "arb-undo";
+  await withReflogAction("arb-undo", async () => {
     for (const a of assessments) {
       if (a.action !== "needs-abort") continue;
 
@@ -168,10 +160,7 @@ export async function executeSyncUndo(record: OperationRecord, assessments: Repo
         failures.push(a.repo);
       }
     }
-  } finally {
-    // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
-    delete process.env.GIT_REFLOG_ACTION;
-  }
+  });
 
   return { undone, failures };
 }

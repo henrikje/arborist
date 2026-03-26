@@ -10,6 +10,7 @@ import {
   assertNoInProgressOperation,
   readInProgressOperation,
   readWorkspaceConfig,
+  withReflogAction,
   writeOperationRecord,
 } from "../lib/core";
 import {
@@ -276,8 +277,7 @@ export async function runPull(
     writeOperationRecord(wsDir, record);
   };
 
-  try {
-    process.env.GIT_REFLOG_ACTION = "arb-pull";
+  await withReflogAction("arb-pull", async () => {
     for (const a of willPull) {
       const strategy = a.pullStrategy ?? (a.pullMode === "rebase" ? "rebase-pull" : "merge-pull");
       inlineStart(a.repo, `pulling (${pullStrategyLabel(strategy)})`);
@@ -383,10 +383,7 @@ export async function runPull(
         }
       }
     }
-  } finally {
-    // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
-    delete process.env.GIT_REFLOG_ACTION;
-  }
+  });
 
   // Consolidated conflict report
   const conflictNodes = buildConflictReport(

@@ -10,6 +10,7 @@ import {
   assertNoInProgressOperation,
   readInProgressOperation,
   readWorkspaceConfig,
+  withReflogAction,
   writeOperationRecord,
   writeWorkspaceConfig,
 } from "../lib/core";
@@ -305,8 +306,7 @@ export function registerRetargetCommand(program: Command): void {
         let succeeded = 0;
         const conflicted: { assessment: RetargetAssessment; stdout: string; stderr: string }[] = [];
 
-        try {
-          process.env.GIT_REFLOG_ACTION = "arb-retarget";
+        await withReflogAction("arb-retarget", async () => {
           for (const a of willRetarget) {
             const targetRef = `${a.baseRemote}/${a.targetBranch}`;
 
@@ -352,10 +352,7 @@ export function registerRetargetCommand(program: Command): void {
               conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
             }
           }
-        } finally {
-          // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
-          delete process.env.GIT_REFLOG_ACTION;
-        }
+        });
 
         // Phase 7: conflict report
         const conflictNodes = buildConflictReport(

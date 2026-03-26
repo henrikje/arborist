@@ -133,7 +133,7 @@ Workspace config (`.arbws/config.json`) and project config (`.arb/config.json`) 
 
 Commands that can fail partway through sequential multi-repo execution write an operation record to `.arbws/operation.json`, enabling `--continue` (resume after conflicts), `--abort` (cancel and restore), and `arb undo` (reverse a completed operation). Running a bare command during an in-progress operation is blocked with guidance — the user must explicitly choose `--continue` or `--abort`.
 
-The shared infrastructure lives in `core/operation.ts` (schema, I/O, gate, reconciliation), `sync/continue-flow.ts` (shared continue orchestration), and `sync/abort-flow.ts` (shared abort execution). Adding a new command type requires a thin handler and an undo switch case. See `decisions/0095-operation-record-and-recovery-model.md` for the design rationale, option analysis, and the relationship between `--abort` and `arb undo`.
+The shared infrastructure lives in `core/operation.ts` (schema, I/O, gate, reconciliation), `sync/continue-flow.ts` (shared continue orchestration), and `sync/undo/` (assessment, planning, execution for both `--abort` and `arb undo`). Adding a new command type requires a thin handler and an undo switch case. See `decisions/0095-operation-record-and-recovery-model.md` for the design rationale, option analysis, and the relationship between `--abort` and `arb undo`.
 
 ### Git worktree directory layout
 

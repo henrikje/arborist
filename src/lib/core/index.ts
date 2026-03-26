@@ -31,6 +31,7 @@ export {
   deleteOperationRecord,
   finalizeOperationRecord,
   readInProgressOperation,
+  withReflogAction,
   readOperationRecord,
   writeOperationRecord,
 } from "./operation";
