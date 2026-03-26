@@ -394,6 +394,27 @@ describe("assessPushRepo", () => {
     expect(a.skipFlag).toBe("behind-remote");
   });
 
+  test("will-force-push when behind remote with --force", () => {
+    const a = assessPushRepo(
+      makeRepo({
+        share: {
+          remote: "origin",
+          ref: "origin/feature",
+          refMode: "configured",
+          toPush: 0,
+          toPull: 3,
+        },
+      }),
+      DIR,
+      "feature",
+      SHA,
+      { force: true },
+    );
+    expect(a.outcome).toBe("will-force-push");
+    expect(a.ahead).toBe(0);
+    expect(a.behind).toBe(3);
+  });
+
   test("will-force-push when diverged", () => {
     const a = assessPushRepo(
       makeRepo({
@@ -880,6 +901,16 @@ describe("formatPushPlan", () => {
     expect(plan).not.toContain("new");
   });
 
+  test("shows overwrite text for force push with ahead=0", () => {
+    const plan = formatPushPlan(
+      [makeAssessment({ outcome: "will-force-push", ahead: 0, behind: 3 })],
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(plan).toContain("force push");
+    expect(plan).toContain("overwrite 3 on origin");
+    expect(plan).not.toContain("0 commit");
+  });
+
   test("shows force with behind count when no base info and not rebased", () => {
     const plan = formatPushPlan(
       [makeAssessment({ outcome: "will-force-push", ahead: 3, behind: 2, rebased: 0 })],
@@ -1278,6 +1309,14 @@ describe("applyForcePushPolicy", () => {
     const nextAssessments = applyForcePushPolicy(assessments, false);
     expect(nextAssessments[0]?.skipReason).toContain("3 rebased");
   });
+
+  test("passes through will-force-push with ahead=0 when force allowed", () => {
+    const assessments = [makeAssessment({ ahead: 0, behind: 3 })];
+    const nextAssessments = applyForcePushPolicy(assessments, true);
+    expect(nextAssessments[0]?.outcome).toBe("will-force-push");
+    expect(nextAssessments[0]?.ahead).toBe(0);
+    expect(nextAssessments[0]?.behind).toBe(3);
+  });
 });
 
 describe("pushActionCell", () => {
@@ -1372,6 +1411,16 @@ describe("pushActionCell", () => {
       makeRemotesMap(["repo-a", {}]),
     );
     expect(result.plain).toContain("4 behind base");
+  });
+
+  test("will-force-push with ahead=0 shows overwrite text", () => {
+    const result = pushActionCell(
+      makeAssessment({ outcome: "will-force-push", ahead: 0, behind: 3 }),
+      makeRemotesMap(["repo-a", {}]),
+    );
+    expect(result.plain).toContain("force push");
+    expect(result.plain).toContain("overwrite 3 on origin");
+    expect(result.plain).not.toContain("0 commit");
   });
 
   test("will-force-push without baseAhead shows generic force text", () => {

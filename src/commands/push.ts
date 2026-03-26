@@ -158,7 +158,8 @@ export async function runPush(
         : ["push", "-u", a.shareRemote, a.branch];
     const pushResult = await gitNetwork(a.repoDir, pushTimeout, pushArgs);
     if (pushResult.exitCode === 0) {
-      inlineResult(a.repo, `pushed ${plural(a.ahead, "commit")}`);
+      const resultMsg = a.ahead === 0 ? "force pushed (overwrote remote)" : `pushed ${plural(a.ahead, "commit")}`;
+      inlineResult(a.repo, resultMsg);
       pushOk++;
     } else {
       inlineResult(a.repo, red("failed"));
@@ -360,6 +361,11 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
       result = behindBaseSuffix(result);
       if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
     }
+  } else if (a.ahead === 0) {
+    // will-force-push with ahead=0 — overwriting remote (behind-remote + force)
+    result = cell(`force push (overwrite ${a.behind} on ${a.shareRemote})`);
+    result = behindBaseSuffix(result);
+    if (a.headSha) result = suffix(result, `  (HEAD ${a.headSha})`, "muted");
   } else if (a.baseAhead > 0 || a.rebased > 0) {
     // will-force-push with base info
     const fromBase = Math.max(0, a.ahead - a.baseAhead);
@@ -578,6 +584,9 @@ export function assessPushRepo(
   }
 
   if (toPush === 0 && toPull > 0) {
+    if (options?.force) {
+      return { ...base, outcome: "will-force-push", ahead: 0, behind: toPull };
+    }
     return {
       ...base,
       outcome: "skip",
