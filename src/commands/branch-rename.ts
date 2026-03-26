@@ -10,6 +10,7 @@ import {
   finalizeOperationRecord,
   readInProgressOperation,
   readWorkspaceConfig,
+  withReflogAction,
   writeOperationRecord,
   writeWorkspaceConfig,
 } from "../lib/core";
@@ -439,8 +440,7 @@ async function runRename(
   let renameOk = 0;
   const failures: string[] = [];
 
-  try {
-    process.env.GIT_REFLOG_ACTION = "arb-branch-rename";
+  await withReflogAction("arb-branch-rename", async () => {
     for (const a of willRename) {
       inlineStart(a.repo, "renaming");
       const result = await renameBranch(a.repoDir, oldBranch, newBranch);
@@ -472,10 +472,7 @@ async function runRename(
         failures.push(a.repo);
       }
     }
-  } finally {
-    // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
-    delete process.env.GIT_REFLOG_ACTION;
-  }
+  });
 
   if (failures.length > 0) {
     process.stderr.write("\n");

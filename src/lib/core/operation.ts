@@ -158,6 +158,23 @@ export function finalizeOperationRecord(wsDir: string, outcome: OperationOutcome
   }
 }
 
+// ── Reflog action ──
+
+/**
+ * Run an async function with `GIT_REFLOG_ACTION` set so git reflog entries
+ * are tagged (e.g. `arb-rebase`, `arb-undo`). The env var is always cleaned
+ * up, even if the function throws.
+ */
+export async function withReflogAction<T>(action: string, fn: () => Promise<T>): Promise<T> {
+  process.env.GIT_REFLOG_ACTION = action;
+  try {
+    return await fn();
+  } finally {
+    // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
+    delete process.env.GIT_REFLOG_ACTION;
+  }
+}
+
 // ── Gate ──
 
 export async function assertNoInProgressOperation(wsDir: string): Promise<void> {

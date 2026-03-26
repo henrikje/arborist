@@ -9,7 +9,12 @@ import type { CommandContext } from "../core/command-action";
 import { readWorkspaceConfig, writeWorkspaceConfig } from "../core/config";
 import { ArbError } from "../core/errors";
 import type { OperationRecord, RepoOperationState } from "../core/operation";
-import { assertNoInProgressOperation, readInProgressOperation, writeOperationRecord } from "../core/operation";
+import {
+  assertNoInProgressOperation,
+  readInProgressOperation,
+  withReflogAction,
+  writeOperationRecord,
+} from "../core/operation";
 import { getCommitsBetweenFull, getDiffShortstat, getMergeBase, gitLocal } from "../git/git";
 import type { GitCache } from "../git/git-cache";
 import { buildConflictReport, buildStashPopFailureReport } from "../render/conflict-report";
@@ -222,8 +227,7 @@ export async function integrate(
   let succeeded = 0;
   const conflicted: { assessment: RepoAssessment; stdout: string; stderr: string }[] = [];
   const stashPopFailed: RepoAssessment[] = [];
-  try {
-    process.env.GIT_REFLOG_ACTION = `arb-${mode}`;
+  await withReflogAction(`arb-${mode}`, async () => {
     for (const a of willOperate) {
       const ref = `${a.baseRemote}/${a.baseBranch}`;
 
@@ -297,10 +301,7 @@ export async function integrate(
         conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
       }
     }
-  } finally {
-    // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
-    delete process.env.GIT_REFLOG_ACTION;
-  }
+  });
 
   // Consolidated conflict report
   const subcommand = mode === "rebase" ? ("rebase" as const) : ("merge" as const);

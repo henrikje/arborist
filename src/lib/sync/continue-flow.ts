@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import { ArbError } from "../core/errors";
 import type { OperationRecord } from "../core/operation";
-import { classifyContinueRepo, writeOperationRecord } from "../core/operation";
+import { classifyContinueRepo, withReflogAction, writeOperationRecord } from "../core/operation";
 import { gitLocal } from "../git/git";
 import { buildConflictReport } from "../render/conflict-report";
 import type { Cell, OutputNode } from "../render/model";
@@ -172,8 +172,7 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
   let succeeded = 0;
   const newConflicts: { repo: string; stdout: string; stderr: string }[] = [];
 
-  try {
-    process.env.GIT_REFLOG_ACTION = `arb-${mode}-continue`;
+  await withReflogAction(`arb-${mode}-continue`, async () => {
     for (const c of willContinue) {
       inlineStart(c.repo, `continuing ${mode}`);
       const cmd = typeof gitContinueCmd === "string" ? gitContinueCmd : await gitContinueCmd(c.repoDir);
@@ -197,10 +196,7 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
         newConflicts.push({ repo: c.repo, stdout: result.stdout, stderr: result.stderr });
       }
     }
-  } finally {
-    // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
-    delete process.env.GIT_REFLOG_ACTION;
-  }
+  });
 
   // Step 9: Show conflict details for failures (B2 fix)
   if (newConflicts.length > 0) {
