@@ -29,6 +29,11 @@ export async function assessBranchRenameUndo(
       continue;
     }
 
+    if (state.status === "undone") {
+      assessments.push({ repo: repoName, repoDir, action: "already-undone" });
+      continue;
+    }
+
     if (state.status === "conflicting") {
       assessments.push({ repo: repoName, repoDir, action: "no-action", detail: "rename did not complete" });
       continue;
@@ -118,6 +123,10 @@ export async function assessRenameUndo(
       assessments.push({ repo: repoName, repoDir, action: "skip" });
       continue;
     }
+    if (state.status === "undone") {
+      assessments.push({ repo: repoName, repoDir, action: "already-undone" });
+      continue;
+    }
     if (state.status === "conflicting") {
       assessments.push({ repo: repoName, repoDir, action: "no-action", detail: "rename did not complete" });
       continue;
@@ -182,6 +191,11 @@ export async function assessSyncUndo(record: OperationRecord, wsDir: string): Pr
 
     if (state.status === "skipped" || state.status === "pending") {
       assessments.push({ repo: repoName, repoDir, action: "skip" });
+      continue;
+    }
+
+    if (state.status === "undone") {
+      assessments.push({ repo: repoName, repoDir, action: "already-undone" });
       continue;
     }
 

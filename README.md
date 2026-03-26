@@ -259,6 +259,13 @@ arb rebase --continue     # completes — but the result looks wrong
 arb undo                  # rolls back all repos to their pre-rebase state, ready to try again
 ```
 
+You can also undo selectively — keep the rebase in most repos but roll back the ones that went wrong:
+
+```bash
+arb undo payments         # undo only payments, leave the rest
+arb undo                  # later: undo any remaining repos
+```
+
 This works for any tracked operation: rebase, merge, retarget, pull, reset, rename. Undo aborts in-progress git operations, resets HEADs, and rolls back config — even uncommitted changes. It detects if you have done other changes, so it never silently discards work. It is as close to a magic wand as you can get!
 
 ### Commit matching

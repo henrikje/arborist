@@ -1,6 +1,13 @@
 import type { CommitDisplayEntry, DiffStats } from "../types";
 
-export type UndoAction = "needs-undo" | "needs-abort" | "already-at-target" | "no-action" | "skip" | "drifted";
+export type UndoAction =
+  | "needs-undo"
+  | "needs-abort"
+  | "already-at-target"
+  | "already-undone"
+  | "no-action"
+  | "skip"
+  | "drifted";
 
 export interface UndoStats {
   commitCount: number;
@@ -27,5 +34,6 @@ export interface RepoUndoAssessment {
 
 export interface UndoResult {
   undone: number;
+  undoneRepos: string[];
   failures: string[];
 }

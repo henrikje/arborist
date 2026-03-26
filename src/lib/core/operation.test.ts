@@ -431,3 +431,50 @@ describe("new schema fields", () => {
       expect(updated?.completedAt).toBeDefined();
     }));
 });
+
+// ── undone status ────────────────────────────────────────────────
+
+describe("undone status", () => {
+  test("undone status is valid in RepoOperationState", () =>
+    withTestDir(async (wsDir) => {
+      const record: OperationRecord = {
+        command: "rebase",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        status: "completed",
+        repos: {
+          "repo-a": { preHead: "abc1234", status: "undone" },
+          "repo-b": { preHead: "def5678", status: "completed", postHead: "ghi9012" },
+        },
+      };
+      writeOperationRecord(wsDir, record);
+      const result = readOperationRecord(wsDir);
+      expect(result).not.toBeNull();
+      expect(result?.repos["repo-a"]?.status).toBe("undone");
+      expect(result?.repos["repo-b"]?.status).toBe("completed");
+    }));
+
+  test("classifyContinueRepo returns skip for undone status", async () => {
+    const { classifyContinueRepo } = await import("./operation");
+    const state = { preHead: "abc1234", status: "undone" as const };
+    const result = await classifyContinueRepo("/nonexistent", state);
+    expect(result.action).toBe("skip");
+  });
+
+  test("assertNoInProgressOperation treats undone repos as resolved", () =>
+    withTestDir(async (wsDir) => {
+      const record: OperationRecord = {
+        command: "rebase",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        status: "in-progress",
+        repos: {
+          "repo-a": { preHead: "abc1234", status: "undone" },
+          "repo-b": { preHead: "def5678", status: "completed", postHead: "ghi9012" },
+        },
+      };
+      writeOperationRecord(wsDir, record);
+      // Should auto-complete since undone + completed = all resolved
+      await assertNoInProgressOperation(wsDir);
+      const updated = readOperationRecord(wsDir);
+      expect(updated?.status).toBe("completed");
+    }));
+});

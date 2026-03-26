@@ -54,6 +54,9 @@ export function formatUndoPlan(
         case "already-at-target":
           actionCell = cell("already at original state", "muted");
           break;
+        case "already-undone":
+          actionCell = cell("already undone", "muted");
+          break;
         case "no-action":
           actionCell = cell(a.detail ?? "no action needed", "muted");
           break;

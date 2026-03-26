@@ -12,6 +12,7 @@ export async function executeBranchRenameUndo(
   assessments: RepoUndoAssessment[],
 ): Promise<UndoResult> {
   let undone = 0;
+  const undoneRepos: string[] = [];
   const failures: string[] = [];
 
   await withReflogAction("arb-undo", async () => {
@@ -34,6 +35,7 @@ export async function executeBranchRenameUndo(
         }
         inlineResult(a.repo, `reverted to ${record.oldBranch}`);
         undone++;
+        undoneRepos.push(a.repo);
       } else {
         inlineResult(a.repo, "failed to revert");
         failures.push(a.repo);
@@ -41,7 +43,7 @@ export async function executeBranchRenameUndo(
     }
   });
 
-  return { undone, failures };
+  return { undone, undoneRepos, failures };
 }
 
 export async function executeRenameUndo(
@@ -50,8 +52,10 @@ export async function executeRenameUndo(
   _wsDir: string,
   arbRootDir: string,
   reposDir: string,
+  options?: { skipDirectoryRename?: boolean },
 ): Promise<UndoResult> {
   let undone = 0;
+  const undoneRepos: string[] = [];
   const failures: string[] = [];
 
   const oldBranch = record.configBefore?.branch;
@@ -78,6 +82,7 @@ export async function executeRenameUndo(
           }
           inlineResult(a.repo, `reverted to ${oldBranch}`);
           undone++;
+          undoneRepos.push(a.repo);
         } else {
           inlineResult(a.repo, "failed to revert branch");
           failures.push(a.repo);
@@ -85,7 +90,7 @@ export async function executeRenameUndo(
       }
     }
 
-    if (record.oldName !== record.newName) {
+    if (!options?.skipDirectoryRename && record.oldName !== record.newName) {
       const currentWsDir = `${arbRootDir}/${record.newName}`;
       const targetWsDir = `${arbRootDir}/${record.oldName}`;
       try {
@@ -106,11 +111,12 @@ export async function executeRenameUndo(
     }
   });
 
-  return { undone, failures };
+  return { undone, undoneRepos, failures };
 }
 
 export async function executeSyncUndo(record: OperationRecord, assessments: RepoUndoAssessment[]): Promise<UndoResult> {
   let undone = 0;
+  const undoneRepos: string[] = [];
   const failures: string[] = [];
 
   await withReflogAction("arb-undo", async () => {
@@ -124,6 +130,7 @@ export async function executeSyncUndo(record: OperationRecord, assessments: Repo
       if (result.exitCode === 0) {
         inlineResult(a.repo, `aborted ${abortCmd}`);
         undone++;
+        undoneRepos.push(a.repo);
       } else {
         inlineResult(a.repo, `failed to abort ${abortCmd}`);
         failures.push(a.repo);
@@ -149,12 +156,14 @@ export async function executeSyncUndo(record: OperationRecord, assessments: Repo
                 `reset to ${state.preHead.slice(0, 7)} (stash restore failed — run 'git stash apply ${state.stashSha}' manually)`,
               );
               undone++;
+              undoneRepos.push(a.repo);
               continue;
             }
           }
         }
         inlineResult(a.repo, `reset to ${state.preHead.slice(0, 7)}`);
         undone++;
+        undoneRepos.push(a.repo);
       } else {
         inlineResult(a.repo, "failed to reset");
         failures.push(a.repo);
@@ -162,5 +171,5 @@ export async function executeSyncUndo(record: OperationRecord, assessments: Repo
     }
   });
 
-  return { undone, failures };
+  return { undone, undoneRepos, failures };
 }
