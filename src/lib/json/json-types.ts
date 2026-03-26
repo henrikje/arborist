@@ -172,38 +172,6 @@ export const LogJsonOutputSchema = z.object({
   totalCommits: z.number(),
 });
 
-// ── Diff JSON schemas ──
-
-const DiffJsonRepoStatusSchema = z.enum(["ok", "detached", "wrong-branch", "no-base", "fallback-base", "clean"]);
-
-const DiffJsonFileStatSchema = z.object({
-  file: z.string(),
-  insertions: z.number(),
-  deletions: z.number(),
-});
-
-export const DiffJsonRepoSchema = z.object({
-  name: z.string(),
-  status: DiffJsonRepoStatusSchema,
-  reason: z.string().optional(),
-  shallow: z.boolean().optional(),
-  stat: z.object({ files: z.number(), insertions: z.number(), deletions: z.number() }),
-  fileStat: z.array(DiffJsonFileStatSchema).optional(),
-  untrackedCount: z.number().optional(),
-  replayPlan: ReplayPlanSummarySchema,
-});
-
-export const DiffJsonOutputSchema = z.object({
-  workspace: z.string(),
-  branch: z.string(),
-  base: z.string().nullable(),
-  repos: z.array(DiffJsonRepoSchema),
-  totalFiles: z.number(),
-  totalInsertions: z.number(),
-  totalDeletions: z.number(),
-  totalUntracked: z.number().optional(),
-});
-
 // ── Repo list JSON schema ──
 
 export const RepoListJsonEntrySchema = z.object({
@@ -253,10 +221,6 @@ export type LogJsonRepoStatus = z.infer<typeof LogJsonRepoStatusSchema>;
 export type LogJsonCommit = z.infer<typeof LogJsonCommitSchema>;
 export type LogJsonRepo = z.infer<typeof LogJsonRepoSchema>;
 export type LogJsonOutput = z.infer<typeof LogJsonOutputSchema>;
-export type DiffJsonRepoStatus = z.infer<typeof DiffJsonRepoStatusSchema>;
-export type DiffJsonFileStat = z.infer<typeof DiffJsonFileStatSchema>;
-export type DiffJsonRepo = z.infer<typeof DiffJsonRepoSchema>;
-export type DiffJsonOutput = z.infer<typeof DiffJsonOutputSchema>;
 export type RepoListJsonEntry = z.infer<typeof RepoListJsonEntrySchema>;
 export type ListJsonEntry = z.infer<typeof ListJsonEntrySchema>;
 export type BranchJsonRepo = z.infer<typeof BranchJsonRepoSchema>;

@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { toJSONSchema, z } from "zod";
 import {
   BranchJsonOutputSchema,
-  DiffJsonOutputSchema,
   ListJsonEntrySchema,
   LogJsonOutputSchema,
   RepoListJsonEntrySchema,
@@ -49,14 +48,6 @@ describe("json-schema stability", () => {
     expectSchema(schema, {
       type: "object",
       required: ["workspace", "branch", "base", "repos", "totalCommits"],
-    });
-  });
-
-  test("DiffJsonOutputSchema", () => {
-    const schema = toJSONSchema(DiffJsonOutputSchema, { target: "draft-2020-12" });
-    expectSchema(schema, {
-      type: "object",
-      required: ["workspace", "branch", "base", "repos", "totalFiles", "totalInsertions", "totalDeletions"],
     });
   });
 

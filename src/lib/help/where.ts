@@ -10,7 +10,7 @@ export const whereFilterTopic: HelpTopic = {
     out(bold("WHERE FILTER SYNTAX"));
     out("");
     out("  The --where flag filters repos (or workspaces) by status flags.");
-    out("  It is supported by: status, list, exec, open, log, diff, delete, push, pull, rebase, merge.");
+    out("  It is supported by: status, list, exec, open, log, delete, push, pull, rebase, merge.");
     out("");
     out(bold("SYNTAX"));
     out("");

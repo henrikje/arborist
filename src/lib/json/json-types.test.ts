@@ -3,8 +3,6 @@ import type { z } from "zod";
 import type { RepoStatus, WorkspaceSummary } from "../status/types";
 import {
   BranchJsonOutputSchema,
-  DiffJsonOutputSchema,
-  DiffJsonRepoSchema,
   ListJsonEntrySchema,
   LogJsonOutputSchema,
   LogJsonRepoSchema,
@@ -192,29 +190,6 @@ describe("json-types zod validation", () => {
       totalCommits: 0,
     };
     expect(() => LogJsonOutputSchema.parse(output)).not.toThrow();
-  });
-
-  test("DiffJsonRepoSchema parses repo with stat", () => {
-    const repo = {
-      name: "api",
-      status: "ok" as const,
-      stat: { files: 3, insertions: 42, deletions: 7 },
-      fileStat: [{ file: "src/index.ts", insertions: 30, deletions: 5 }],
-    };
-    expect(() => DiffJsonRepoSchema.parse(repo)).not.toThrow();
-  });
-
-  test("DiffJsonOutputSchema parses a representative output", () => {
-    const output = {
-      workspace: "my-feature",
-      branch: "feat-x",
-      base: "main",
-      repos: [],
-      totalFiles: 0,
-      totalInsertions: 0,
-      totalDeletions: 0,
-    };
-    expect(() => DiffJsonOutputSchema.parse(output)).not.toThrow();
   });
 
   test("RepoListJsonEntrySchema parses an entry", () => {

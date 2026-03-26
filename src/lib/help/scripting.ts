@@ -24,7 +24,7 @@ export const scriptingTopic: HelpTopic = {
     out(`    ${dim("--json")}       Structured JSON on stdout`);
     out(`    ${dim("--schema")}     JSON Schema describing --json output on stdout`);
     out("");
-    out("  Commands with these modes: status, list, branch, log, diff, repo list.");
+    out("  Commands with these modes: status, list, branch, log, repo list.");
     out("");
     out(bold("EXIT CODES"));
     out("");

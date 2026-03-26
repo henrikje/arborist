@@ -7,7 +7,6 @@ import { registerCdCommand } from "./commands/cd";
 import { registerCreateCommand } from "./commands/create";
 import { registerDeleteCommand } from "./commands/delete";
 import { registerDetachCommand } from "./commands/detach";
-import { registerDiffCommand } from "./commands/diff";
 import { registerDumpCommand } from "./commands/dump";
 import { registerExecCommand } from "./commands/exec";
 import { registerHelpCommand } from "./commands/help";
@@ -301,8 +300,6 @@ registerStatusCommand(program);
 registerWatchCommand(program);
 registerBranchCommand(program);
 registerLogCommand(program);
-registerDiffCommand(program);
-
 // ── Synchronization Commands ────────────────────────────────────
 program.commandsGroup("Synchronization Commands:");
 registerPullCommand(program);

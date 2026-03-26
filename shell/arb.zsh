@@ -200,7 +200,6 @@ _arb() {
                 'reset:Reset all repos to the share branch (or base if not pushed)'
                 'undo:Undo the last workspace operation'
                 'log:Show feature branch commits across repos'
-                'diff:Show feature branch diff across repos'
                 'exec:Run a command in each repo'
                 'open:Open repos in an application'
                 'template:Manage workspace templates'
@@ -562,17 +561,6 @@ _arb() {
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '*:repo:($ws_repo_names)'
                     ;;
-                diff)
-                    _arguments \
-                        '(-N --fetch --no-fetch)--fetch[Fetch before showing diff]' \
-                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching (default)]' \
-                        '--stat[Show diffstat summary instead of full diff]' \
-                        '(--json --schema)--json[Output structured JSON]' \
-                        '(--schema --json)--schema[Print JSON Schema for --json output]' \
-                        '(-d --dirty -w --where)'{-d,--dirty}'[Only diff dirty repos]' \
-                        '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '*:repo:($ws_repo_names)'
-                    ;;
                 help)
                     local -a help_completions=(
                         'filtering:Filter syntax for --where and --dirty'
@@ -599,7 +587,6 @@ _arb() {
                         'merge:Merge the base branch into feature branches'
                         'reset:Reset all repos to the share branch (or base if not pushed)'
                         'log:Show feature branch commits across repos'
-                        'diff:Show feature branch diff across repos'
                         'exec:Run a command in each repo'
                         'open:Open repos in an application'
                         'template:Manage workspace templates'

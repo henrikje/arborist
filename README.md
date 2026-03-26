@@ -352,7 +352,7 @@ arb exec npm install          # run a command in every repo
 arb status -w dirty,unpushed  # filter repos by status flags
 ```
 
-All state-changing commands support `--dry-run` to preview the plan and `--yes` to skip confirmation prompts. `status`, `branch`, `list`, `log`, `diff`, and `repo list` support `--json` for structured output and `--quiet` for one name per line — useful for feeding into other commands. `arb exec` runs any command in each repo; `--where` (`-w`) filters repos by status flags like `dirty`, `behind-base`, or `ahead-share` and works across most commands. Exit codes are meaningful: 0 for success, 1 for issues, 130 for user abort. Human-facing output goes to stderr, machine-parsable data to stdout — so piping works naturally.
+All state-changing commands support `--dry-run` to preview the plan and `--yes` to skip confirmation prompts. `status`, `branch`, `list`, `log`, and `repo list` support `--json` for structured output and `--quiet` for one name per line — useful for feeding into other commands. `arb exec` runs any command in each repo; `--where` (`-w`) filters repos by status flags like `dirty`, `behind-base`, or `ahead-share` and works across most commands. Exit codes are meaningful: 0 for success, 1 for issues, 130 for user abort. Human-facing output goes to stderr, machine-parsable data to stdout — so piping works naturally.
 
 ## Alternatives
 

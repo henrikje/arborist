@@ -46,7 +46,7 @@ arb delete --all-safe --where gone          # batch-remove workspaces whose bran
 
 For workspace-level commands (`list`, `delete`), AND applies per-repo: a workspace matches `dirty+ahead-share` only if a _single_ repo is both dirty and ahead-share, not if one repo is dirty and a different repo is ahead-share.
 
-`--where` is supported on `status`, `exec`, `open`, `diff`, `log`, `list`, `delete`, `push`, `pull`, `rebase`, `merge`, and `reset`. On `status`, `exec`, `open`, `diff`, `log`, and `list`, the shorthand `--dirty` (`-d`) is equivalent to `--where dirty`.
+`--where` is supported on `status`, `exec`, `open`, `log`, `list`, `delete`, `push`, `pull`, `rebase`, `merge`, and `reset`. On `status`, `exec`, `open`, `log`, and `list`, the shorthand `--dirty` (`-d`) is equivalent to `--where dirty`.
 
 The full list of filter terms:
 
@@ -120,7 +120,7 @@ Commands that accept `[repos...]` or `[names...]` also read names from stdin whe
 
 ```bash
 arb status -q --where dirty | arb exec git stash  # stash only dirty repos (exec doesn't read stdin)
-arb status -q --where ahead-share | arb diff         # diff only ahead-share repos
+arb status -q --where ahead-share | arb log          # log only ahead-share repos
 arb list -q --where gone | arb delete -y          # delete gone workspaces
 arb status -q | grep -v legacy | arb rebase -y    # rebase all except "legacy"
 ```
@@ -132,7 +132,7 @@ arb push --where ^behind-base -y      # only push repos that are already rebased
 arb rebase --where ^diverged -y       # skip diverged repos, rebase the easy ones
 ```
 
-Stdin-accepting commands: `create`, `attach`, `detach`, `status`, `diff`, `log`, `push`, `pull`, `rebase`, `merge`, `reset`, `delete`.
+Stdin-accepting commands: `create`, `attach`, `detach`, `status`, `log`, `push`, `pull`, `rebase`, `merge`, `reset`, `delete`.
 
 `exec` and `open` are excluded because they inherit stdin for child processes. Use xargs instead:
 
@@ -142,14 +142,13 @@ arb status -q --where dirty | xargs -I{} arb exec --repo {} make test
 
 ## Machine-readable output
 
-Six commands support `--json` for structured output to stdout:
+Five commands support `--json` for structured output to stdout:
 
 | Command | Output shape |
 |---------|-------------|
 | `arb status --json` | Object with `workspace`, `branch`, `base`, `repos[]`, aggregates |
 | `arb list --json` | Array of workspace objects with status counts and labels |
 | `arb log --json` | Object with `workspace`, `branch`, `base`, `repos[]`, `totalCommits` |
-| `arb diff --json` | Object with `workspace`, `branch`, `base`, `repos[]`, file/line totals |
 | `arb branch --json` | Object with `branch`, `base`, per-repo branches |
 | `arb repo list --json` | Array of repo entries with remote role detail |
 

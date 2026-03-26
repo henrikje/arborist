@@ -113,6 +113,6 @@ All commands show a plan before proceeding. Add `--verbose` (`-v`) to see the ac
 | Sync commands (`push`, `rebase`, `merge`) | Yes | `--no-fetch` (`-N`) |
 | `pull` | Always | (no opt-out) |
 | Dashboard commands (`status`, `list`) | Yes | `--no-fetch` (`-N`) |
-| Content commands (`log`, `diff`) | No | `--fetch` |
+| `log` | No | `--fetch` |
 
 Set `ARB_NO_FETCH` to disable automatic fetching globally — equivalent to passing `-N` to every command. Explicit `--fetch` overrides the env var. `pull` always fetches regardless, since it inherently needs fresh remote state.

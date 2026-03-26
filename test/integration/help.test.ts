@@ -55,10 +55,10 @@ describe("bare arb (basic help)", () => {
       expect(result.output).toContain("exec");
     }));
 
-  test("omits advanced commands: template, rename, path, cd, attach, detach, branch, log, diff, reset, open", () =>
+  test("omits advanced commands: template, rename, path, cd, attach, detach, branch, log, reset, open", () =>
     withBareEnv(async (env) => {
       const result = await arb(env, []);
-      for (const cmd of ["template", "rename", "attach", "detach", "branch", "log", "diff", "reset", "open"]) {
+      for (const cmd of ["template", "rename", "attach", "detach", "branch", "log", "reset", "open"]) {
         expect(result.output).not.toContain(`  ${cmd} `);
       }
     }));
@@ -127,7 +127,7 @@ describe("full help", () => {
       const result = await arb(env, ["--help"]);
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("Usage:");
-      for (const cmd of ["template", "rename", "attach", "detach", "branch", "log", "diff", "reset", "exec", "open"]) {
+      for (const cmd of ["template", "rename", "attach", "detach", "branch", "log", "reset", "exec", "open"]) {
         expect(result.output).toContain(cmd);
       }
     }));
