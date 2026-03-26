@@ -58,7 +58,7 @@ Check that similar commands follow the same patterns as defined in GUIDELINES.md
 
 - State-changing commands (`push`, `pull`, `rebase`, `merge`, `reset`, `retarget`) all follow the five-phase mutation flow.
 - Membership-changing commands (`attach`, `detach`, `create`) handle `[repos...]`, interactive picker, `--all-repos`, and non-TTY errors consistently.
-- Overview commands (`status`, `log`, `diff`) handle `--fetch`/`--no-fetch`, `--json`, `[repos...]` consistently. They must not fetch by default.
+- Overview commands (`status`, `log`) handle `--fetch`/`--no-fetch`, `--json`, `[repos...]` consistently. They must not fetch by default.
 - Mutation commands (`push`, `rebase`, `merge`) must fetch by default. `exec` and `open` must not have fetch flags.
 - `--where` filtering works the same everywhere it appears. Filter terms must be anchored to `FILTER_TERMS` in `status.ts` — no ad-hoc string comparisons.
 - `--force` has per-command semantics (plan modifier in `push`, safety bypass in `delete`). Verify that help text and behavior match each command's specific contract.

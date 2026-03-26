@@ -24,7 +24,7 @@ Beyond showing honest state, Arborist actively watches for conditions that signa
 
 ### Coordination and overview, not authoring
 
-Arborist coordinates multi-repo operations (push, rebase, merge) and provides workspace-level overview (status, log, diff). It does not replace Git for authoring operations. Committing, staging, interactive rebase, and PR creation belong to direct interaction with each repository. `arb exec` bridges the gap for anything Arborist doesn't cover.
+Arborist coordinates multi-repo operations (push, rebase, merge) and provides workspace-level overview (status, log). It does not replace Git for authoring operations. Committing, staging, interactive rebase, and PR creation belong to direct interaction with each repository. `arb exec` bridges the gap for anything Arborist doesn't cover.
 
 ### Do one thing and do it well
 
@@ -95,7 +95,7 @@ Tell the user *what happened*, not just *that it happened*. Use descriptive per-
 
 **State-changing commands** (`push`, `pull`, `rebase`, `merge`, `reset`, `retarget`): accept optional `[repos...]` to narrow scope; default to all repos. Follow the five-phase workflow: assess → plan → confirm → execute → summarize. Each defines a typed assessment interface classifying repos into will-operate / up-to-date / skip-with-reason.
 
-**Overview commands** (`status`, `log`, `diff`) are read-only. They scope to the feature branch via base branch resolution, skip detached/drifted repos with explanation, and support `[repos...]` filtering, `--json`, and `--verbose`.
+**Overview commands** (`status`, `log`) are read-only. They scope to the feature branch via base branch resolution, skip detached/drifted repos with explanation, and support `[repos...]` filtering, `--json`, and `--verbose`.
 
 ### Expected flags per command category
 
@@ -122,7 +122,7 @@ Individual sync commands add domain-specific flags (`--force`, `--autostash`, `-
 | `--all-repos` (`-a`) | Select all repos (scripting) |
 | Interactive picker | When no args and TTY |
 
-**Overview commands** (`status`, `log`, `diff`):
+**Overview commands** (`status`, `log`):
 
 | Flag | Purpose |
 |------|---------|
@@ -142,7 +142,7 @@ When multiple operations manage the same `.arb/` subsystem (repos, templates), g
 
 **`pull`** always fetches — it inherently needs fresh remote state to assess what to pull. It does not offer `--no-fetch`.
 
-**Content commands** (`log`, `diff`) do not fetch by default — stale content is less confusing. `--fetch` opts in.
+**`log`** does not fetch by default — stale content is less confusing. `--fetch` opts in.
 
 The `ARB_NO_FETCH` environment variable globally suppresses automatic fetching — equivalent to passing `-N` to every command. Explicit `--fetch` overrides it. `pull` is unaffected (it always fetches). See `decisions/0045-universal-fetch-flags.md` and `decisions/0087-arb-no-fetch-env-var.md`.
 
@@ -174,9 +174,9 @@ When repos are the command's primary target, they are positional arguments (`arb
 
 ### Status-based filtering: `--where` and `--dirty`
 
-`--where` (`-w`) filters repos by `RepoFlags`. Supported on every command that gathers workspace status: `status`, `diff`, `log`, `exec`, `open`, `list`, `delete`, `push`, `pull`, `rebase`, `merge`, `reset`. Commands that don't gather status (e.g. `attach`, `create`, `branch rename`) do not get `--where`.
+`--where` (`-w`) filters repos by `RepoFlags`. Supported on every command that gathers workspace status: `status`, `log`, `exec`, `open`, `list`, `delete`, `push`, `pull`, `rebase`, `merge`, `reset`. Commands that don't gather status (e.g. `attach`, `create`, `branch rename`) do not get `--where`.
 
-`--dirty` (`-d`) is a shorthand for `--where dirty`, mutually exclusive with `--where`. Only offered where "dirty" is a natural filter: `status`, `diff`, `log`, `exec`, `open`, `list`. Omitted from sync commands and `delete`.
+`--dirty` (`-d`) is a shorthand for `--where dirty`, mutually exclusive with `--where`. Only offered where "dirty" is a natural filter: `status`, `log`, `exec`, `open`, `list`. Omitted from sync commands and `delete`.
 
 Filter terms are organized by orthogonal dimension (see ARCHITECTURE.md). Positional terms use the `<position>-<axis>` pattern (`ahead-share`, `behind-base`) so axis relationships are obvious. Filter names describe state, not suggested action — whether a repo "needs rebase" depends on the user's intent; the filter just says `behind-base`. Named positive terms exist only where they provide non-trivial composition (`pushed` = `^ahead-share+^no-share`) or are natural vocabulary (`clean`, `safe`); trivially-derivable positives use `^` negation instead (`^behind-base` rather than a named `synced-base`).
 

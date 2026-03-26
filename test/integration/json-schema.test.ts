@@ -51,20 +51,6 @@ describe("JSON Schema conformance", () => {
       expect(result.exitCode).toBe(0);
     }));
 
-  test("diff --json conforms to diff --schema", () =>
-    withEnv(async (env) => {
-      await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
-      await write(join(env.projectDir, "my-feature/repo-a/file.txt"), "change");
-      await git(join(env.projectDir, "my-feature/repo-a"), ["add", "file.txt"]);
-      await git(join(env.projectDir, "my-feature/repo-a"), ["commit", "-m", "test commit"]);
-      const wsCwd = join(env.projectDir, "my-feature");
-
-      const schemaResult = await arb(env, ["diff", "--schema"], { cwd: wsCwd });
-      const dataResult = await arb(env, ["diff", "--no-fetch", "--json"], { cwd: wsCwd });
-      const result = await validate(env, schemaResult.stdout, dataResult.stdout);
-      expect(result.exitCode).toBe(0);
-    }));
-
   test("branch --json conforms to branch --schema", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
