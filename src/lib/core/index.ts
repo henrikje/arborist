@@ -22,12 +22,14 @@ export { type UpdateCheckResult, checkForUpdate } from "./update";
 export { atomicWriteFileSync } from "./fs";
 export {
   type ContinueClassification,
+  type OperationOutcome,
   type OperationRecord,
   type RepoOperationState,
   assertNoInProgressOperation,
   captureRepoState,
   classifyContinueRepo,
   deleteOperationRecord,
+  finalizeOperationRecord,
   readInProgressOperation,
   readOperationRecord,
   writeOperationRecord,

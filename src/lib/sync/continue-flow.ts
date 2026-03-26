@@ -153,6 +153,7 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
   if (actionable === 0) {
     if (onComplete) await onComplete(record);
     record.status = "completed";
+    record.completedAt = new Date().toISOString();
     writeOperationRecord(wsDir, record);
     process.stderr.write("\n");
     finishSummary([`${capitalize(mode)} completed`], false);
@@ -171,23 +172,34 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
   let succeeded = 0;
   const newConflicts: { repo: string; stdout: string; stderr: string }[] = [];
 
-  for (const c of willContinue) {
-    inlineStart(c.repo, `continuing ${mode}`);
-    const cmd = typeof gitContinueCmd === "string" ? gitContinueCmd : await gitContinueCmd(c.repoDir);
-    const result = await gitLocal(c.repoDir, "-c", "core.editor=true", cmd, "--continue");
-    if (result.exitCode === 0) {
-      const postHeadResult = await gitLocal(c.repoDir, "rev-parse", "HEAD");
-      const existing = record.repos[c.repo];
-      if (existing) {
-        record.repos[c.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+  try {
+    process.env.GIT_REFLOG_ACTION = `arb-${mode}-continue`;
+    for (const c of willContinue) {
+      inlineStart(c.repo, `continuing ${mode}`);
+      const cmd = typeof gitContinueCmd === "string" ? gitContinueCmd : await gitContinueCmd(c.repoDir);
+      const result = await gitLocal(c.repoDir, "-c", "core.editor=true", cmd, "--continue");
+      if (result.exitCode === 0) {
+        const postHeadResult = await gitLocal(c.repoDir, "rev-parse", "HEAD");
+        const existing = record.repos[c.repo];
+        if (existing) {
+          record.repos[c.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+        }
+        writeOperationRecord(wsDir, record);
+        inlineResult(c.repo, `${mode} continued`);
+        succeeded++;
+      } else {
+        const existing = record.repos[c.repo];
+        if (existing) {
+          const errorOutput = result.stderr.trim().slice(0, 4000) || undefined;
+          record.repos[c.repo] = { ...existing, errorOutput };
+        }
+        inlineResult(c.repo, yellow("conflict"));
+        newConflicts.push({ repo: c.repo, stdout: result.stdout, stderr: result.stderr });
       }
-      writeOperationRecord(wsDir, record);
-      inlineResult(c.repo, `${mode} continued`);
-      succeeded++;
-    } else {
-      inlineResult(c.repo, yellow("conflict"));
-      newConflicts.push({ repo: c.repo, stdout: result.stdout, stderr: result.stderr });
     }
+  } finally {
+    // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
+    delete process.env.GIT_REFLOG_ACTION;
   }
 
   // Step 9: Show conflict details for failures (B2 fix)
@@ -207,6 +219,7 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
   if (allCompleted) {
     if (onComplete) await onComplete(record);
     record.status = "completed";
+    record.completedAt = new Date().toISOString();
     writeOperationRecord(wsDir, record);
   } else {
     writeOperationRecord(wsDir, record);

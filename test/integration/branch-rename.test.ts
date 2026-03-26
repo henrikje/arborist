@@ -4,6 +4,10 @@ import { cp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { arb, git, withEnv } from "./helpers/env";
 
+function readJson(path: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+}
+
 // ── basic rename ──────────────────────────────────────────────────
 
 describe("basic rename", () => {
@@ -743,7 +747,9 @@ describe("branch rename --abort cancels in-progress", () => {
       const config = JSON.parse(await readFile(join(ws, ".arbws/config.json"), "utf8"));
       expect(config.branch).toBe("my-feature");
 
-      // Operation record cleaned up
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+      // Operation record finalized
+      const op = readJson(join(ws, ".arbws/operation.json")) as Record<string, unknown>;
+      expect(op.status).toBe("completed");
+      expect(op.outcome).toBe("aborted");
     }));
 });

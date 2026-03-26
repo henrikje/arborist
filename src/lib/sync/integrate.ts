@@ -222,77 +222,84 @@ export async function integrate(
   let succeeded = 0;
   const conflicted: { assessment: RepoAssessment; stdout: string; stderr: string }[] = [];
   const stashPopFailed: RepoAssessment[] = [];
-  for (const a of willOperate) {
-    const ref = `${a.baseRemote}/${a.baseBranch}`;
+  try {
+    process.env.GIT_REFLOG_ACTION = `arb-${mode}`;
+    for (const a of willOperate) {
+      const ref = `${a.baseRemote}/${a.baseBranch}`;
 
-    let result: { exitCode: number; stdout: string; stderr: string };
-    if (a.retarget?.from) {
-      // Branch-merged replay: use --onto to skip already-merged commits
-      const n = a.retarget.replayCount ?? a.ahead;
-      const progressMsg = `rebasing ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`;
-      inlineStart(a.repo, progressMsg);
-      const rebaseArgs = ["rebase"];
-      if (a.needsStash) rebaseArgs.push("--autostash");
-      rebaseArgs.push("--onto", ref, a.retarget.from);
-      result = await gitLocal(a.repoDir, ...rebaseArgs);
-    } else if (mode === "rebase") {
-      const progressMsg = `rebasing ${a.branch} onto ${ref}`;
-      inlineStart(a.repo, progressMsg);
-      const rebaseArgs = ["rebase"];
-      if (a.needsStash) rebaseArgs.push("--autostash");
-      rebaseArgs.push(ref);
-      result = await gitLocal(a.repoDir, ...rebaseArgs);
-    } else {
-      // Merge mode
-      const progressMsg = `merging ${ref} into ${a.branch}`;
-      inlineStart(a.repo, progressMsg);
-      if (a.needsStash) {
-        await gitLocal(a.repoDir, "stash", "push", "-m", "arb: autostash before merge");
-      }
-      result = await gitLocal(a.repoDir, "merge", ref);
-    }
-
-    if (result.exitCode === 0) {
-      // For merge mode with stash, pop the stash
-      let stashPopOk = true;
-      if (a.needsStash && mode === "merge") {
-        const popResult = await gitLocal(a.repoDir, "stash", "pop");
-        if (popResult.exitCode !== 0) {
-          stashPopOk = false;
-          stashPopFailed.push(a);
-        }
-      }
-      let doneMsg: string;
+      let result: { exitCode: number; stdout: string; stderr: string };
       if (a.retarget?.from) {
+        // Branch-merged replay: use --onto to skip already-merged commits
         const n = a.retarget.replayCount ?? a.ahead;
-        doneMsg = `rebased ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`;
+        const progressMsg = `rebasing ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`;
+        inlineStart(a.repo, progressMsg);
+        const rebaseArgs = ["rebase"];
+        if (a.needsStash) rebaseArgs.push("--autostash");
+        rebaseArgs.push("--onto", ref, a.retarget.from);
+        result = await gitLocal(a.repoDir, ...rebaseArgs);
+      } else if (mode === "rebase") {
+        const progressMsg = `rebasing ${a.branch} onto ${ref}`;
+        inlineStart(a.repo, progressMsg);
+        const rebaseArgs = ["rebase"];
+        if (a.needsStash) rebaseArgs.push("--autostash");
+        rebaseArgs.push(ref);
+        result = await gitLocal(a.repoDir, ...rebaseArgs);
       } else {
-        doneMsg = mode === "rebase" ? `rebased ${a.branch} onto ${ref}` : `merged ${ref} into ${a.branch}`;
+        // Merge mode
+        const progressMsg = `merging ${ref} into ${a.branch}`;
+        inlineStart(a.repo, progressMsg);
+        if (a.needsStash) {
+          await gitLocal(a.repoDir, "stash", "push", "-m", "arb: autostash before merge");
+        }
+        result = await gitLocal(a.repoDir, "merge", ref);
       }
-      if (!stashPopOk) {
-        doneMsg += ` ${yellow("(stash pop failed)")}`;
-      }
-      const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
-      const existing = record.repos[a.repo];
-      if (existing) {
-        record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
-      }
-      writeOperationRecord(wsDir, record);
 
-      inlineResult(a.repo, doneMsg);
-      succeeded++;
-    } else {
-      // For rebase mode, git rebase --autostash handles stash internally.
-      // For merge mode with stash, do NOT pop if merge conflicted.
-      const existing = record.repos[a.repo];
-      if (existing) {
-        record.repos[a.repo] = { ...existing, status: "conflicting" };
-      }
-      writeOperationRecord(wsDir, record);
+      if (result.exitCode === 0) {
+        // For merge mode with stash, pop the stash
+        let stashPopOk = true;
+        if (a.needsStash && mode === "merge") {
+          const popResult = await gitLocal(a.repoDir, "stash", "pop");
+          if (popResult.exitCode !== 0) {
+            stashPopOk = false;
+            stashPopFailed.push(a);
+          }
+        }
+        let doneMsg: string;
+        if (a.retarget?.from) {
+          const n = a.retarget.replayCount ?? a.ahead;
+          doneMsg = `rebased ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`;
+        } else {
+          doneMsg = mode === "rebase" ? `rebased ${a.branch} onto ${ref}` : `merged ${ref} into ${a.branch}`;
+        }
+        if (!stashPopOk) {
+          doneMsg += ` ${yellow("(stash pop failed)")}`;
+        }
+        const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+        const existing = record.repos[a.repo];
+        if (existing) {
+          record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+        }
+        writeOperationRecord(wsDir, record);
 
-      inlineResult(a.repo, yellow("conflict"));
-      conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
+        inlineResult(a.repo, doneMsg);
+        succeeded++;
+      } else {
+        // For rebase mode, git rebase --autostash handles stash internally.
+        // For merge mode with stash, do NOT pop if merge conflicted.
+        const existing = record.repos[a.repo];
+        if (existing) {
+          const errorOutput = result.stderr.trim().slice(0, 4000) || undefined;
+          record.repos[a.repo] = { ...existing, status: "conflicting", errorOutput };
+        }
+        writeOperationRecord(wsDir, record);
+
+        inlineResult(a.repo, yellow("conflict"));
+        conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
+      }
     }
+  } finally {
+    // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
+    delete process.env.GIT_REFLOG_ACTION;
   }
 
   // Consolidated conflict report
@@ -316,6 +323,7 @@ export async function integrate(
   // Finalize operation record
   if (conflicted.length === 0) {
     record.status = "completed";
+    record.completedAt = new Date().toISOString();
     writeOperationRecord(wsDir, record);
   } else {
     info(`Use 'arb ${mode} --continue' to resume or 'arb ${mode} --abort' to cancel`);

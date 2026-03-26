@@ -244,7 +244,9 @@ describe("rebase undo", () => {
       const result = await arb(env, ["undo", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
       expect((await git(wt, ["rev-parse", "HEAD"])).trim()).toBe(preHead);
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+      const op = readJson(join(ws, ".arbws/operation.json")) as Record<string, unknown>;
+      expect(op.status).toBe("completed");
+      expect(op.outcome).toBe("undone");
     }));
 
   test("undo --verbose --dry-run shows commit subjects", () =>
@@ -570,7 +572,9 @@ describe("rebase continue then undo", () => {
       const undoResult = await arb(env, ["undo", "--yes"], { cwd: ws });
       expect(undoResult.exitCode).toBe(0);
       expect((await git(wt, ["rev-parse", "HEAD"])).trim()).toBe(preHead);
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+      const op = readJson(join(ws, ".arbws/operation.json")) as Record<string, unknown>;
+      expect(op.status).toBe("completed");
+      expect(op.outcome).toBe("undone");
     }));
 });
 
@@ -722,8 +726,10 @@ describe("rebase undo after repo detached", () => {
       // repo-b should be restored
       expect((await git(wtB, ["rev-parse", "HEAD"])).trim()).toBe(preHeadB);
 
-      // Operation record cleaned up
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+      // Operation record finalized
+      const op = readJson(join(ws, ".arbws/operation.json")) as Record<string, unknown>;
+      expect(op.status).toBe("completed");
+      expect(op.outcome).toBe("undone");
     }));
 });
 
@@ -871,7 +877,9 @@ describe("rebase --abort cancels in-progress", () => {
       const result = await arb(env, ["rebase", "--abort", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
       expect((await git(wt, ["rev-parse", "HEAD"])).trim()).toBe(preHead);
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+      const op851 = readJson(join(ws, ".arbws/operation.json")) as Record<string, unknown>;
+      expect(op851.status).toBe("completed");
+      expect(op851.outcome).toBe("aborted");
     }));
 
   test("--abort cancels in-progress merge", () =>
@@ -892,7 +900,9 @@ describe("rebase --abort cancels in-progress", () => {
       const result = await arb(env, ["merge", "--abort", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
       expect((await git(wt, ["rev-parse", "HEAD"])).trim()).toBe(preHead);
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+      const op872 = readJson(join(ws, ".arbws/operation.json")) as Record<string, unknown>;
+      expect(op872.status).toBe("completed");
+      expect(op872.outcome).toBe("aborted");
     }));
 });
 

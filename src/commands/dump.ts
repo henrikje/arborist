@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Command } from "commander";
-import { type CommandContext, arbAction, readWorkspaceConfig } from "../lib/core";
+import { type CommandContext, arbAction, readOperationRecord, readWorkspaceConfig } from "../lib/core";
 import { getRemoteNames, getRemoteUrl } from "../lib/git";
 import { AnalysisCache, computeFlags, gatherWorkspaceSummary } from "../lib/status";
 import { listRepos, listWorkspaces, readGitdirFromWorktree, workspaceRepoDirs } from "../lib/workspace";
@@ -204,7 +204,14 @@ async function runDump(ctx: CommandContext): Promise<void> {
         dumpErrors.push(`workspace ${ws} config: ${errMsg(err)}`);
       }
 
-      return { branch, base, repos };
+      let operation: object | null = null;
+      try {
+        operation = readOperationRecord(wsDir);
+      } catch (err) {
+        dumpErrors.push(`workspace ${ws} operation: ${errMsg(err)}`);
+      }
+
+      return { branch, base, repos, operation };
     }),
   );
 

@@ -305,49 +305,56 @@ export function registerRetargetCommand(program: Command): void {
         let succeeded = 0;
         const conflicted: { assessment: RetargetAssessment; stdout: string; stderr: string }[] = [];
 
-        for (const a of willRetarget) {
-          const targetRef = `${a.baseRemote}/${a.targetBranch}`;
+        try {
+          process.env.GIT_REFLOG_ACTION = "arb-retarget";
+          for (const a of willRetarget) {
+            const targetRef = `${a.baseRemote}/${a.targetBranch}`;
 
-          // Resolve old base ref: check remote first, fall back to local
-          const repoPath = `${ctx.reposDir}/${a.repo}`;
-          const oldBaseRemoteExists = await cache.remoteBranchExists(repoPath, a.oldBase, a.baseRemote);
-          const oldBaseRef = oldBaseRemoteExists ? `${a.baseRemote}/${a.oldBase}` : a.oldBase;
+            // Resolve old base ref: check remote first, fall back to local
+            const repoPath = `${ctx.reposDir}/${a.repo}`;
+            const oldBaseRemoteExists = await cache.remoteBranchExists(repoPath, a.oldBase, a.baseRemote);
+            const oldBaseRef = oldBaseRemoteExists ? `${a.baseRemote}/${a.oldBase}` : a.oldBase;
 
-          const n = a.replayCount ?? 0;
-          const progressMsg = a.baseMerged
-            ? `rebasing ${n} new ${n === 1 ? "commit" : "commits"} onto ${targetRef} (merged)`
-            : `rebasing ${a.branch} onto ${targetRef} from ${a.oldBase} (retarget)`;
-          inlineStart(a.repo, progressMsg);
+            const n = a.replayCount ?? 0;
+            const progressMsg = a.baseMerged
+              ? `rebasing ${n} new ${n === 1 ? "commit" : "commits"} onto ${targetRef} (merged)`
+              : `rebasing ${a.branch} onto ${targetRef} from ${a.oldBase} (retarget)`;
+            inlineStart(a.repo, progressMsg);
 
-          const rebaseArgs = ["rebase"];
-          if (a.needsStash) rebaseArgs.push("--autostash");
-          rebaseArgs.push("--onto", targetRef, oldBaseRef);
+            const rebaseArgs = ["rebase"];
+            if (a.needsStash) rebaseArgs.push("--autostash");
+            rebaseArgs.push("--onto", targetRef, oldBaseRef);
 
-          const result = await gitLocal(a.repoDir, ...rebaseArgs);
+            const result = await gitLocal(a.repoDir, ...rebaseArgs);
 
-          if (result.exitCode === 0) {
-            const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
-            const existing = record.repos[a.repo];
-            if (existing) {
-              record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+            if (result.exitCode === 0) {
+              const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+              const existing = record.repos[a.repo];
+              if (existing) {
+                record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+              }
+              writeOperationRecord(wsDir, record);
+
+              const doneMsg = a.baseMerged
+                ? `rebased ${n} new ${n === 1 ? "commit" : "commits"} onto ${targetRef} (merged)`
+                : `rebased ${a.branch} onto ${targetRef} from ${a.oldBase} (retarget)`;
+              inlineResult(a.repo, doneMsg);
+              succeeded++;
+            } else {
+              const existing = record.repos[a.repo];
+              if (existing) {
+                const errorOutput = result.stderr.trim().slice(0, 4000) || undefined;
+                record.repos[a.repo] = { ...existing, status: "conflicting", errorOutput };
+              }
+              writeOperationRecord(wsDir, record);
+
+              inlineResult(a.repo, yellow("conflict"));
+              conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
             }
-            writeOperationRecord(wsDir, record);
-
-            const doneMsg = a.baseMerged
-              ? `rebased ${n} new ${n === 1 ? "commit" : "commits"} onto ${targetRef} (merged)`
-              : `rebased ${a.branch} onto ${targetRef} from ${a.oldBase} (retarget)`;
-            inlineResult(a.repo, doneMsg);
-            succeeded++;
-          } else {
-            const existing = record.repos[a.repo];
-            if (existing) {
-              record.repos[a.repo] = { ...existing, status: "conflicting" };
-            }
-            writeOperationRecord(wsDir, record);
-
-            inlineResult(a.repo, yellow("conflict"));
-            conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
           }
+        } finally {
+          // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
+          delete process.env.GIT_REFLOG_ACTION;
         }
 
         // Phase 7: conflict report
@@ -367,6 +374,7 @@ export function registerRetargetCommand(program: Command): void {
           // All succeeded — apply deferred config and mark completed
           writeWorkspaceConfig(configFile, configAfter);
           record.status = "completed";
+          record.completedAt = new Date().toISOString();
           writeOperationRecord(wsDir, record);
 
           if (first) {
