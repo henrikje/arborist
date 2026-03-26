@@ -53,13 +53,18 @@ export async function analyzeReplayPlan(repoDir: string, baseRef: string): Promi
   const localOldestToNewest = [...localCommits].reverse().map((c) => c.fullHash);
   const firstUnmatched = localOldestToNewest.findIndex((hash) => !matchedLocal.has(hash));
 
+  // Track whether all matched commits came from 1:1 rebase matching (not squash).
+  // Used by merge detection to distinguish rebase-merges from squash-merges.
+  const rebaseMatchedLocals = new Set<string>(matchResult.rebaseMatches.values());
+  const allMatchedViaRebase = !matchResult.squashMatch && matchedLocal.size === rebaseMatchedLocals.size;
+
   if (firstUnmatched === -1) {
     return {
       totalLocal,
       alreadyOnTarget: totalLocal,
       toReplay: 0,
       contiguous: true,
-      allRebaseMatched: matchResult.rebaseMatches.size >= totalLocal && !matchResult.squashMatch,
+      allRebaseMatched: allMatchedViaRebase,
     };
   }
 
@@ -71,6 +76,7 @@ export async function analyzeReplayPlan(repoDir: string, baseRef: string): Promi
       alreadyOnTarget,
       toReplay: Math.max(0, totalLocal - alreadyOnTarget),
       contiguous: false,
+      allRebaseMatched: allMatchedViaRebase,
     };
   }
 
@@ -81,6 +87,7 @@ export async function analyzeReplayPlan(repoDir: string, baseRef: string): Promi
     toReplay,
     contiguous: true,
     ...(toReplay > 0 ? { boundaryRef: `HEAD~${toReplay}` } : {}),
+    allRebaseMatched: allMatchedViaRebase,
   };
 }
 

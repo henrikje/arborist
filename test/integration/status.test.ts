@@ -1893,7 +1893,7 @@ describe("status JSON: diverged share with outdated detection", () => {
 // ── rebase-merge detection via replay plan ──────────────────────
 
 describe("rebase-merge detection", () => {
-  test("branch with all commits cherry-picked onto base shows merged (gone remote)", () =>
+  test("branch with all commits rebase-merged onto base shows merged (multi-commit)", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const wtRepoA = join(env.projectDir, "my-feature/repo-a");
@@ -1910,18 +1910,22 @@ describe("rebase-merge detection", () => {
       await git(wtRepoA, ["commit", "-m", "feat: third change"]);
       await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
 
-      // Simulate rebase-merge: cherry-pick all 3 commits onto main (new SHAs)
+      // Simulate rebase-merge: recreate same changes on main with different SHAs
       const repoA = join(env.projectDir, ".arb/repos/repo-a");
-      const commits = (await git(wtRepoA, ["log", "--format=%H", "--reverse", "main..HEAD"])).trim().split("\n");
-      for (const sha of commits) {
-        await git(repoA, ["cherry-pick", sha]);
-      }
+      await write(join(repoA, "file1.txt"), "feature-1");
+      await git(repoA, ["add", "file1.txt"]);
+      await git(repoA, ["commit", "-m", "feat: first change", "--date=2020-01-01T00:00:00"]);
+      await write(join(repoA, "file2.txt"), "feature-2");
+      await git(repoA, ["add", "file2.txt"]);
+      await git(repoA, ["commit", "-m", "feat: second change", "--date=2020-01-01T00:00:01"]);
+      await write(join(repoA, "file3.txt"), "feature-3");
+      await git(repoA, ["add", "file3.txt"]);
+      await git(repoA, ["commit", "-m", "feat: third change", "--date=2020-01-01T00:00:02"]);
       await git(repoA, ["push"]);
-      // Delete remote branch (simulates post-PR-merge cleanup)
       await git(repoA, ["push", "origin", "--delete", "my-feature"]);
 
       await fetchAllRepos(env);
-      const result = await arb(env, ["status"], { cwd: join(env.projectDir, "my-feature") });
+      const result = await arb(env, ["status", "--no-fetch"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("merged");
 
@@ -1934,7 +1938,7 @@ describe("rebase-merge detection", () => {
       expect(json.repos[0].base.merge.kind).toBe("merge");
     }));
 
-  test("branch with all commits cherry-picked onto base shows merged (single commit)", () =>
+  test("branch with single commit rebase-merged onto base shows merged", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const wtRepoA = join(env.projectDir, "my-feature/repo-a");
@@ -1944,16 +1948,65 @@ describe("rebase-merge detection", () => {
       await git(wtRepoA, ["commit", "-m", "feat: the change"]);
       await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
 
-      // Cherry-pick onto main
+      // Recreate same change on main with different SHA
       const repoA = join(env.projectDir, ".arb/repos/repo-a");
-      const sha = (await git(wtRepoA, ["rev-parse", "HEAD"])).trim();
-      await git(repoA, ["cherry-pick", sha]);
+      await write(join(repoA, "feature.txt"), "feature");
+      await git(repoA, ["add", "feature.txt"]);
+      await git(repoA, ["commit", "-m", "feat: the change", "--date=2020-01-01T00:00:00"]);
       await git(repoA, ["push"]);
       await git(repoA, ["push", "origin", "--delete", "my-feature"]);
 
       await fetchAllRepos(env);
-      const result = await arb(env, ["status"], { cwd: join(env.projectDir, "my-feature") });
+      const result = await arb(env, ["status", "--no-fetch"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("merged");
+    }));
+
+  test("rebase-merged branch with new commit shows 'merged, N ahead'", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Create 2 commits on the feature branch
+      await write(join(wtRepoA, "file1.txt"), "feature-1");
+      await git(wtRepoA, ["add", "file1.txt"]);
+      await git(wtRepoA, ["commit", "-m", "feat: first change"]);
+      await write(join(wtRepoA, "file2.txt"), "feature-2");
+      await git(wtRepoA, ["add", "file2.txt"]);
+      await git(wtRepoA, ["commit", "-m", "feat: second change"]);
+      await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Simulate rebase-merge: recreate the same changes on main with different SHAs.
+      // Use GIT_COMMITTER_DATE to force different commit hashes.
+      const repoA = join(env.projectDir, ".arb/repos/repo-a");
+      await write(join(repoA, "file1.txt"), "feature-1");
+      await git(repoA, ["add", "file1.txt"]);
+      await git(repoA, ["commit", "-m", "feat: first change", "--date=2020-01-01T00:00:00"]);
+      await write(join(repoA, "file2.txt"), "feature-2");
+      await git(repoA, ["add", "file2.txt"]);
+      await git(repoA, ["commit", "-m", "feat: second change", "--date=2020-01-01T00:00:01"]);
+      await git(repoA, ["push"]);
+      await git(repoA, ["push", "origin", "--delete", "my-feature"]);
+
+      // Add a new commit on top of the merged branch
+      await write(join(wtRepoA, "file3.txt"), "new-work");
+      await git(wtRepoA, ["add", "file3.txt"]);
+      await git(wtRepoA, ["commit", "-m", "feat: new work after merge"]);
+
+      await fetchAllRepos(env);
+
+      // Verify JSON output
+      const jsonResult = await arb(env, ["status", "--no-fetch", "--json"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      const json = JSON.parse(jsonResult.stdout);
+      expect(json.repos[0].base.merge).toBeDefined();
+      expect(json.repos[0].base.merge.kind).toBe("merge");
+      expect(json.repos[0].base.merge.newCommitsAfter).toBe(1);
+
+      // Verify table output
+      const result = await arb(env, ["status", "--no-fetch"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("merged, 1 ahead");
     }));
 });

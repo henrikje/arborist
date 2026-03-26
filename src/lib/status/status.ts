@@ -449,19 +449,18 @@ async function runMergeDetection(
   let mergeMatchingCommit: { hash: string; subject: string } | undefined;
   let mergeCommitHash: string | undefined;
 
-  // Replay-plan merge detection: when every local commit has a 1:1 patch-id
-  // match on the base, the branch is effectively merged (rebase-merge or
-  // cherry-pick). Only fires when all matches are 1:1 rebase matches — squash
-  // merges are handled by Phase 2 which provides richer PR attribution.
-  if (
-    baseStatus.replayPlan &&
-    baseStatus.replayPlan.totalLocal > 1 &&
-    baseStatus.replayPlan.alreadyOnTarget === baseStatus.replayPlan.totalLocal &&
-    baseStatus.replayPlan.toReplay === 0 &&
-    baseStatus.replayPlan.allRebaseMatched
-  ) {
+  // Replay-plan merge detection: when all matched commits are 1:1 rebase
+  // matches on the base, the branch is effectively merged (rebase-merge or
+  // cherry-pick), possibly with new commits on top. Only fires for rebase
+  // matches — squash merges are handled by Phase 2 with richer PR attribution.
+  if (baseStatus.replayPlan && baseStatus.replayPlan.alreadyOnTarget > 1 && baseStatus.replayPlan.allRebaseMatched) {
+    const rp = baseStatus.replayPlan;
     const merge: NonNullable<typeof baseStatus.merge> = { kind: "merge" };
-    const mc = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, "HEAD");
+    if (rp.toReplay > 0) {
+      merge.newCommitsAfter = rp.toReplay;
+    }
+    const afterRef = rp.toReplay > 0 ? `HEAD~${rp.toReplay}` : "HEAD";
+    const mc = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, afterRef);
     if (mc) {
       mergeMatchingCommit = mc;
       mergeCommitHash = mc.hash;
