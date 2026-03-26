@@ -359,7 +359,7 @@ All state-changing commands support `--dry-run` to preview the plan and `--yes` 
 There are several ways to approach multi-repo development:
 
 - **Raw `git worktree` + scripts** — Flexible and lightweight, but you must build your own cross-repo status, safety checks, and coordination.
-- **Multiple clones per feature** — Simple, but duplicates repos and makes it harder to see overall state.
+- **Multiple clones per feature** — Simple, but duplicates repos and makes it harder to see overall state. And you still need to build the tools.
 - **Submodules / meta-repos** — Centralize checkouts, but add Git complexity and don’t inherently solve parallel feature isolation.
 - **Repo orchestration tools (`repo`, `west`, etc.)** — Good for syncing large trees, less focused on feature-branch workflows.
 - **Monorepo** — Removes the coordination problem entirely, but may mix projects with different lifecycles, and restructuring is not always an option.
