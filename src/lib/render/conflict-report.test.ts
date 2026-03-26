@@ -7,26 +7,34 @@ describe("buildConflictReport", () => {
     expect(buildConflictReport([])).toEqual([]);
   });
 
-  test("produces gap + message + gap + section for a single entry", () => {
+  test("produces gap + message + gap + section + trailing guidance for a single entry", () => {
     const entries: ConflictEntry[] = [
-      { repo: "api", stdout: "CONFLICT (content): Merge conflict in index.ts\n", stderr: "", subcommand: "rebase" },
+      { repo: "api", stdout: "CONFLICT (content): Merge conflict in index.ts\n", stderr: "", mode: "rebase" },
     ];
     const nodes = buildConflictReport(entries);
 
     expect(nodes[0]).toEqual({ kind: "gap" });
     const msg = nodes[1] as MessageNode;
     expect(msg.kind).toBe("message");
-    expect(msg.text).toBe("1 repo(s) have conflicts:");
+    expect(msg.text).toBe("1 repo has conflicts:");
 
     expect(nodes[2]).toEqual({ kind: "gap" });
     const section = nodes[3] as SectionNode;
     expect(section.kind).toBe("section");
     expect(section.header.plain).toBe("api");
+    expect(section.items).toHaveLength(1);
     expect(section.items[0]?.spans[0]?.attention).toBe("muted");
     expect(section.items[0]?.plain).toBe("CONFLICT (content): Merge conflict in index.ts");
-    expect(section.items[1]?.plain).toBe("cd api");
-    expect(section.items[2]?.plain).toBe("# fix conflicts, then: git rebase --continue");
-    expect(section.items[3]?.plain).toBe("# or to undo: git rebase --abort");
+
+    // Trailing guidance
+    expect(nodes[4]).toEqual({ kind: "gap" });
+    const cont = nodes[5] as MessageNode;
+    expect(cont.text).toBe("Fix conflicts, then: arb rebase --continue");
+    const abort = nodes[6] as MessageNode;
+    expect(abort.text).toBe("Or to abort:         arb rebase --abort");
+    const git = nodes[7] as MessageNode;
+    expect(git.level).toBe("muted");
+    expect(git.text).toContain("git rebase --continue/--abort per repo");
   });
 
   test("filters only CONFLICT lines from combined stdout/stderr", () => {
@@ -35,38 +43,67 @@ describe("buildConflictReport", () => {
         repo: "web",
         stdout: "Applying: abc\nCONFLICT (content): file.ts\nFailed to merge\n",
         stderr: "error: could not apply\nCONFLICT (modify/delete): old.ts\n",
-        subcommand: "merge",
+        mode: "merge",
       },
     ];
     const nodes = buildConflictReport(entries);
     const section = nodes[3] as SectionNode;
-    const conflictItems = section.items.filter((i) => i.spans[0]?.attention === "muted");
-    expect(conflictItems).toHaveLength(3); // 2 CONFLICT lines + 1 arb guidance line
-    expect(conflictItems[0]?.plain).toBe("CONFLICT (content): file.ts");
-    expect(conflictItems[1]?.plain).toBe("CONFLICT (modify/delete): old.ts");
+    const mutedItems = section.items.filter((i) => i.spans[0]?.attention === "muted");
+    expect(mutedItems).toHaveLength(2);
+    expect(mutedItems[0]?.plain).toBe("CONFLICT (content): file.ts");
+    expect(mutedItems[1]?.plain).toBe("CONFLICT (modify/delete): old.ts");
   });
 
-  test("uses correct subcommand in recovery instructions", () => {
-    const mergeEntries: ConflictEntry[] = [{ repo: "lib", stdout: "", stderr: "", subcommand: "merge" }];
+  test("uses mode for arb command and derives git subcommand", () => {
+    const mergeEntries: ConflictEntry[] = [{ repo: "lib", stdout: "", stderr: "", mode: "merge" }];
     const mergeNodes = buildConflictReport(mergeEntries);
-    const section = mergeNodes[3] as SectionNode;
-    expect(section.items.some((i) => i.plain.includes("git merge --continue"))).toBe(true);
-    expect(section.items.some((i) => i.plain.includes("git merge --abort"))).toBe(true);
+    const cont = mergeNodes[5] as MessageNode;
+    expect(cont.text).toContain("arb merge --continue");
+    const abort = mergeNodes[6] as MessageNode;
+    expect(abort.text).toContain("arb merge --abort");
+    const git = mergeNodes[7] as MessageNode;
+    expect(git.text).toContain("git merge --continue/--abort");
+
+    // pull and retarget use git rebase under the hood
+    const pullEntries: ConflictEntry[] = [{ repo: "lib", stdout: "", stderr: "", mode: "pull" }];
+    const pullNodes = buildConflictReport(pullEntries);
+    const pullCont = pullNodes[5] as MessageNode;
+    expect(pullCont.text).toContain("arb pull --continue");
+    const pullGit = pullNodes[7] as MessageNode;
+    expect(pullGit.text).toContain("git rebase --continue/--abort");
+
+    const retargetEntries: ConflictEntry[] = [{ repo: "lib", stdout: "", stderr: "", mode: "retarget" }];
+    const retargetNodes = buildConflictReport(retargetEntries);
+    const retargetCont = retargetNodes[5] as MessageNode;
+    expect(retargetCont.text).toContain("arb retarget --continue");
+    const retargetGit = retargetNodes[7] as MessageNode;
+    expect(retargetGit.text).toContain("git rebase --continue/--abort");
   });
 
   test("produces gap between multiple repo sections", () => {
     const entries: ConflictEntry[] = [
-      { repo: "api", stdout: "", stderr: "", subcommand: "rebase" },
-      { repo: "web", stdout: "", stderr: "", subcommand: "rebase" },
+      { repo: "api", stdout: "", stderr: "", mode: "rebase" },
+      { repo: "web", stdout: "", stderr: "", mode: "rebase" },
     ];
     const nodes = buildConflictReport(entries);
 
     const msg = nodes[1] as MessageNode;
-    expect(msg.text).toBe("2 repo(s) have conflicts:");
+    expect(msg.text).toBe("2 repos have conflicts:");
 
-    // Structure: gap, message, gap, section(api), gap, section(web)
+    // Structure: gap, message, gap, section(api), gap, section(web), gap, message, message, message
     const kinds = nodes.map((n) => n.kind);
-    expect(kinds).toEqual(["gap", "message", "gap", "section", "gap", "section"]);
+    expect(kinds).toEqual([
+      "gap",
+      "message",
+      "gap",
+      "section",
+      "gap",
+      "section",
+      "gap",
+      "message",
+      "message",
+      "message",
+    ]);
   });
 });
 
@@ -80,7 +117,7 @@ describe("buildStashPopFailureReport", () => {
 
     expect(nodes[0]).toEqual({ kind: "gap" });
     const msg = nodes[1] as MessageNode;
-    expect(msg.text).toBe("1 repo(s) need manual stash application:");
+    expect(msg.text).toBe("1 repo needs manual stash application:");
 
     expect(nodes[2]).toEqual({ kind: "gap" });
     const section = nodes[3] as SectionNode;

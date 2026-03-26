@@ -5,15 +5,14 @@ export interface ConflictEntry {
   repo: string;
   stdout: string;
   stderr: string;
-  subcommand: "rebase" | "merge";
+  /** The arb command name: "rebase", "merge", "pull", "retarget" */
+  mode: string;
 }
 
 export function buildConflictReport(entries: ConflictEntry[]): OutputNode[] {
   if (entries.length === 0) return [];
-  const nodes: OutputNode[] = [
-    { kind: "gap" },
-    { kind: "message", level: "default", text: `${entries.length} repo(s) have conflicts:` },
-  ];
+  const header = entries.length === 1 ? "1 repo has conflicts:" : `${entries.length} repos have conflicts:`;
+  const nodes: OutputNode[] = [{ kind: "gap" }, { kind: "message", level: "default", text: header }];
   for (const e of entries) {
     const combined = `${e.stdout}\n${e.stderr}`;
     const conflictLines = combined.split("\n").filter((l) => l.startsWith("CONFLICT"));
@@ -22,16 +21,23 @@ export function buildConflictReport(entries: ConflictEntry[]): OutputNode[] {
       {
         kind: "section",
         header: cell(e.repo),
-        items: [
-          ...conflictLines.map((line) => cell(line, "muted")),
-          cell(`cd ${e.repo}`),
-          cell(`# fix conflicts, then: git ${e.subcommand} --continue`),
-          cell(`# or to undo: git ${e.subcommand} --abort`),
-          cell(`# or from workspace root: arb ${e.subcommand} --continue  /  arb ${e.subcommand} --abort`, "muted"),
-        ],
+        items: conflictLines.map((line) => cell(line, "muted")),
       },
     );
   }
+  // Safe: guarded by early return when entries is empty
+  const mode = entries[0]?.mode ?? "rebase";
+  const gitSub = mode === "merge" ? "merge" : "rebase";
+  nodes.push(
+    { kind: "gap" },
+    { kind: "message", level: "default", text: `Fix conflicts, then: arb ${mode} --continue` },
+    { kind: "message", level: "default", text: `Or to abort:         arb ${mode} --abort` },
+    {
+      kind: "message",
+      level: "muted",
+      text: `                     (or use git ${gitSub} --continue/--abort per repo)`,
+    },
+  );
   return nodes;
 }
 
@@ -39,7 +45,11 @@ export function buildStashPopFailureReport(repos: { repo: string }[], verb: stri
   if (repos.length === 0) return [];
   const nodes: OutputNode[] = [
     { kind: "gap" },
-    { kind: "message", level: "default", text: `${repos.length} repo(s) need manual stash application:` },
+    {
+      kind: "message",
+      level: "default",
+      text: `${repos.length === 1 ? "1 repo needs" : `${repos.length} repos need`} manual stash application:`,
+    },
   ];
   for (const r of repos) {
     nodes.push(

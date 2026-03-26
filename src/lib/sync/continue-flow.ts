@@ -200,13 +200,14 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
 
   // Step 9: Show conflict details for failures (B2 fix)
   if (newConflicts.length > 0) {
-    const subcommand = mode === "merge" ? ("merge" as const) : ("rebase" as const);
     const conflictNodes = buildConflictReport(
-      newConflicts.map((c) => ({ repo: c.repo, stdout: c.stdout, stderr: c.stderr, subcommand })),
+      newConflicts.map((c) => ({ repo: c.repo, stdout: c.stdout, stderr: c.stderr, mode })),
     );
     if (conflictNodes.length > 0) {
       process.stderr.write(render(conflictNodes, rCtx));
     }
+  } else if (stillConflicting.length > 0) {
+    info(`Fix conflicts, then: arb ${mode} --continue`);
   }
 
   // Step 10: Finalize
@@ -219,9 +220,6 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
     writeOperationRecord(wsDir, record);
   } else {
     writeOperationRecord(wsDir, record);
-    if (newConflicts.length > 0 || stillConflicting.length > 0) {
-      info(`Use 'arb ${mode} --continue' to resume or 'arb ${mode} --abort' to cancel`);
-    }
   }
 
   // Step 11: Summary

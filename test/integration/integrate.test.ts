@@ -69,8 +69,9 @@ describe("rebase", () => {
       expect(result.output).toContain("CONFLICT");
       expect(result.output).toContain("conflict.txt");
       expect(result.output).toContain("conflict");
-      expect(result.output).toContain("git rebase --continue");
-      expect(result.output).toContain("git rebase --abort");
+      expect(result.output).toContain("arb rebase --continue");
+      expect(result.output).toContain("arb rebase --abort");
+      expect(result.output).toContain("git rebase --continue/--abort per repo");
       expect(result.output).toContain("Rebased 1 repo, 1 conflicted");
     }));
 
@@ -207,8 +208,9 @@ describe("merge", () => {
       expect(result.output).toContain("CONFLICT");
       expect(result.output).toContain("conflict.txt");
       expect(result.output).toContain("conflict");
-      expect(result.output).toContain("git merge --continue");
-      expect(result.output).toContain("git merge --abort");
+      expect(result.output).toContain("arb merge --continue");
+      expect(result.output).toContain("arb merge --abort");
+      expect(result.output).toContain("git merge --continue/--abort per repo");
       expect(result.output).toContain("Merged 1 repo, 1 conflicted");
     }));
 });
