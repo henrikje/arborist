@@ -2,6 +2,7 @@ import type { OperationRecord } from "../../core/operation";
 import type { Cell, OutputNode } from "../../render/model";
 import { cell, suffix } from "../../render/model";
 import { type RenderContext, render } from "../../render/render";
+import { verboseCommitsToNodes } from "../../render/status-verbose";
 import { plural } from "../../terminal/output";
 import { shouldColor } from "../../terminal/tty";
 import type { RepoUndoAssessment } from "./types";
@@ -10,6 +11,7 @@ export function formatUndoPlan(
   record: OperationRecord,
   assessments: RepoUndoAssessment[],
   verb: "undo" | "abort",
+  verbose?: boolean,
 ): string {
   const commandLabel = record.command === "branch-rename" ? "branch rename" : record.command;
   const verbLabel = verb === "abort" ? "Abort" : "Undo";
@@ -24,10 +26,18 @@ export function formatUndoPlan(
     .filter((a) => a.action !== "skip")
     .map((a) => {
       let actionCell: Cell;
+      let afterRow: OutputNode[] | undefined;
       switch (a.action) {
         case "needs-undo": {
           actionCell = cell(a.detail ?? "undo");
-          if (a.stats) {
+          if (verbose && a.verbose?.commits && a.verbose.commits.length > 0) {
+            if (a.stats?.hasStash) {
+              actionCell = suffix(actionCell, " — + restore stash", "muted");
+            }
+            afterRow = verboseCommitsToNodes(a.verbose.commits, a.verbose.totalCommits, "Rolling back:", {
+              diffStats: a.verbose.diffStats,
+            });
+          } else if (a.stats) {
             const parts: string[] = [];
             if (a.stats.commitCount > 0) parts.push(plural(a.stats.commitCount, "commit"));
             if (a.stats.filesChanged > 0) parts.push(`${a.stats.filesChanged} files changed`);
@@ -53,7 +63,7 @@ export function formatUndoPlan(
         default:
           actionCell = cell("unknown");
       }
-      return { cells: { repo: cell(a.repo), action: actionCell } };
+      return { cells: { repo: cell(a.repo), action: actionCell }, afterRow };
     });
 
   nodes.push({
