@@ -15,6 +15,7 @@ export interface UndoStats {
   insertions: number;
   deletions: number;
   hasStash: boolean;
+  stashFilesChanged?: number;
 }
 
 export interface UndoVerboseInfo {
@@ -28,6 +29,7 @@ export interface RepoUndoAssessment {
   repoDir: string;
   action: UndoAction;
   detail?: string;
+  targetSubject?: string;
   stats?: UndoStats;
   verbose?: UndoVerboseInfo;
   /** True when a drifted repo was reclassified to needs-undo by --force */

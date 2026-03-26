@@ -5,7 +5,7 @@ import { type RenderContext, render } from "../../render/render";
 import { verboseCommitsToNodes } from "../../render/status-verbose";
 import { plural } from "../../terminal/output";
 import { shouldColor } from "../../terminal/tty";
-import type { RepoUndoAssessment } from "./types";
+import type { RepoUndoAssessment, UndoStats } from "./types";
 
 export function formatUndoPlan(
   record: OperationRecord,
@@ -30,21 +30,16 @@ export function formatUndoPlan(
       switch (a.action) {
         case "needs-undo": {
           actionCell = a.forced ? cell(a.detail ?? "undo", "attention") : cell(a.detail ?? "undo");
+          if (a.targetSubject) {
+            actionCell = suffix(actionCell, ` "${truncate(a.targetSubject, 50)}"`, "muted");
+          }
+          if (a.stats?.hasStash) {
+            actionCell = suffix(actionCell, ` — + restore stash${stashFilesSuffix(a.stats)}`, "muted");
+          }
           if (verbose && a.verbose?.commits && a.verbose.commits.length > 0) {
-            if (a.stats?.hasStash) {
-              actionCell = suffix(actionCell, " — + restore stash", "muted");
-            }
             afterRow = verboseCommitsToNodes(a.verbose.commits, a.verbose.totalCommits, "Rolling back:", {
               diffStats: a.verbose.diffStats,
             });
-          } else if (a.stats) {
-            const parts: string[] = [];
-            if (a.stats.commitCount > 0) parts.push(plural(a.stats.commitCount, "commit"));
-            if (a.stats.filesChanged > 0) parts.push(`${a.stats.filesChanged} files changed`);
-            if (a.stats.hasStash) parts.push("+ restore stash");
-            if (parts.length > 0) {
-              actionCell = suffix(actionCell, ` — ${parts.join(", ")}`, "muted");
-            }
           }
           break;
         }
@@ -91,4 +86,14 @@ function formatTime(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function stashFilesSuffix(stats: UndoStats): string {
+  return stats.stashFilesChanged != null && stats.stashFilesChanged > 0
+    ? ` (${plural(stats.stashFilesChanged, "file")})`
+    : "";
 }

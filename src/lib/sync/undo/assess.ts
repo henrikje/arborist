@@ -224,21 +224,28 @@ export async function assessSyncUndo(record: OperationRecord, wsDir: string): Pr
     const currentHead = headResult.stdout.trim();
 
     if (state.postHead && currentHead === state.postHead) {
-      const commitCountResult = await gitLocal(repoDir, "rev-list", "--count", `${state.preHead}..${state.postHead}`);
+      const [commitCountResult, diffStats, subjectResult, stashStats] = await Promise.all([
+        gitLocal(repoDir, "rev-list", "--count", `${state.preHead}..${state.postHead}`),
+        getDiffShortstat(repoDir, state.preHead, state.postHead),
+        gitLocal(repoDir, "log", "--format=%s", "-1", state.preHead),
+        state.stashSha ? getDiffShortstat(repoDir, state.preHead, state.stashSha) : Promise.resolve(null),
+      ]);
       const commitCount = Number.parseInt(commitCountResult.stdout.trim(), 10) || 0;
-      const diffStats = await getDiffShortstat(repoDir, state.preHead, state.postHead);
+      const targetSubject = subjectResult.exitCode === 0 ? subjectResult.stdout.trim() : undefined;
 
       assessments.push({
         repo: repoName,
         repoDir,
         action: "needs-undo",
-        detail: `reset to ${state.preHead.slice(0, 7)}`,
+        detail: `restore to ${state.preHead.slice(0, 7)}`,
+        targetSubject,
         stats: {
           commitCount,
           filesChanged: diffStats?.files ?? 0,
           insertions: diffStats?.insertions ?? 0,
           deletions: diffStats?.deletions ?? 0,
           hasStash: state.stashSha != null,
+          stashFilesChanged: stashStats?.files,
         },
       });
     } else if (currentHead === state.preHead) {
