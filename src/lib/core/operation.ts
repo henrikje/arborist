@@ -19,7 +19,7 @@ const RepoOperationStateSchema = z.object({
   preHead: z.string(),
   postHead: z.string().optional(),
   stashSha: z.string().nullable().optional(),
-  status: z.enum(["completed", "conflicting", "skipped", "pending"]),
+  status: z.enum(["completed", "conflicting", "skipped", "pending", "undone"]),
   tracking: TrackingSchema,
   errorOutput: z.string().optional(),
 });
@@ -252,6 +252,7 @@ export async function classifyContinueRepo(
 ): Promise<ContinueClassification> {
   if (state.status === "completed") return { action: "already-done" };
   if (state.status === "skipped") return { action: "skip" };
+  if (state.status === "undone") return { action: "skip" };
   if (state.status === "pending") return { action: "needs-execute" };
 
   // status === "conflicting"
