@@ -143,7 +143,7 @@ export async function executeSyncUndo(record: OperationRecord, assessments: Repo
       const state = record.repos[a.repo];
       if (!state) continue;
 
-      inlineStart(a.repo, "resetting");
+      inlineStart(a.repo, "restoring");
       const result = await gitLocal(a.repoDir, "reset", "--hard", state.preHead);
       if (result.exitCode === 0) {
         if (state.stashSha) {
@@ -153,7 +153,7 @@ export async function executeSyncUndo(record: OperationRecord, assessments: Repo
             if (fallbackResult.exitCode !== 0) {
               inlineResult(
                 a.repo,
-                `reset to ${state.preHead.slice(0, 7)} (stash restore failed — run 'git stash apply ${state.stashSha}' manually)`,
+                `restored to ${state.preHead.slice(0, 7)} (stash restore failed — run 'git stash apply ${state.stashSha}' manually)`,
               );
               undone++;
               undoneRepos.push(a.repo);
@@ -161,11 +161,11 @@ export async function executeSyncUndo(record: OperationRecord, assessments: Repo
             }
           }
         }
-        inlineResult(a.repo, `reset to ${state.preHead.slice(0, 7)}`);
+        inlineResult(a.repo, `restored to ${state.preHead.slice(0, 7)}`);
         undone++;
         undoneRepos.push(a.repo);
       } else {
-        inlineResult(a.repo, "failed to reset");
+        inlineResult(a.repo, "failed to restore");
         failures.push(a.repo);
       }
     }
