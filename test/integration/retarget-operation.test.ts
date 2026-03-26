@@ -504,9 +504,11 @@ describe("retarget edge cases", () => {
       expect(config.base).toBe("feat/base");
     }));
 
-  test("undo after user manually continued is treated as drifted", () =>
+  test("undo after user manually continued reconciles and succeeds", () =>
     withEnv(async (env) => {
       const { ws, wt } = await setupRetargetConflictScenario(env);
+
+      const preHead = (await git(wt, ["rev-parse", "HEAD"])).trim();
 
       await arb(env, ["retarget", "main", "--yes"], { cwd: ws });
 
@@ -515,11 +517,14 @@ describe("retarget edge cases", () => {
       await git(wt, ["add", "conflict.txt"]);
       await git(wt, ["-c", "core.editor=true", "rebase", "--continue"]);
 
-      // Undo — HEAD moved from preHead, no longer at postHead (which was never set since it conflicted)
-      // The record shows status "conflicting" but HEAD != preHead → drifted
+      // Undo — reconciles the manually-continued repo, then undoes
       const result = await arb(env, ["undo", "--yes"], { cwd: ws });
-      expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("drifted");
+      expect(result.exitCode).toBe(0);
+      expect((await git(wt, ["rev-parse", "HEAD"])).trim()).toBe(preHead);
+
+      // Config restored (base still set to feat/base from the original scenario)
+      const config = readJson(join(ws, ".arbws/config.json"));
+      expect(config.base).toBe("feat/base");
     }));
 
   test("continue then undo works end-to-end", () =>

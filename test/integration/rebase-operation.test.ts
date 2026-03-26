@@ -1124,3 +1124,64 @@ describe("operation auto-complete", () => {
       expect(r2.output).toContain("in progress");
     }));
 });
+
+// ── undo reconciles manually-continued repos ────────────────────
+
+describe("undo reconciles manually-continued repos", () => {
+  test("undo after manual git rebase --continue succeeds", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+
+      await write(join(wt, "conflict.txt"), "feature version");
+      await git(wt, ["add", "conflict.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+
+      const preHead = (await git(wt, ["rev-parse", "HEAD"])).trim();
+      await advanceMain(env, "repo-a", "conflict.txt", "main version");
+
+      // Rebase conflicts
+      const r1 = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      expect(r1.exitCode).not.toBe(0);
+
+      // User resolves via git directly
+      await write(join(wt, "conflict.txt"), "resolved");
+      await git(wt, ["add", "conflict.txt"]);
+      await git(wt, ["-c", "core.editor=true", "rebase", "--continue"]);
+
+      // Undo directly — should succeed without needing a gated command first
+      const result = await arb(env, ["undo", "--yes"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+
+      // HEAD restored
+      expect((await git(wt, ["rev-parse", "HEAD"])).trim()).toBe(preHead);
+
+      // Record finalized
+      const record = readJson(join(ws, ".arbws/operation.json"));
+      expect(record.status).toBe("completed");
+      expect(record.outcome).toBe("undone");
+    }));
+
+  test("undo after manual git rebase --abort shows nothing to undo", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+
+      await write(join(wt, "conflict.txt"), "feature version");
+      await git(wt, ["add", "conflict.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+      await advanceMain(env, "repo-a", "conflict.txt", "main version");
+
+      await arb(env, ["rebase", "--yes"], { cwd: ws });
+
+      // User aborts via git directly
+      await git(wt, ["rebase", "--abort"]);
+
+      // Undo — repo already at preHead, nothing to undo
+      const result = await arb(env, ["undo", "--yes"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Nothing to undo");
+    }));
+});
