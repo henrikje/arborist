@@ -250,22 +250,13 @@ For `arb pull --merge`, if the remote was rewritten and you have no unique commi
 
 ### Undo
 
-`arb undo` reverses the last operation across all repos — whether it's still in progress or already completed. Say a rebase lands in a messy conflict and you'd rather start fresh than untangle it:
-
-```
-  1 repo has conflicts:
-
-      payments
-          CONFLICT (content): src/checkout.ts
-          CONFLICT (modify/delete): src/legacy-api.ts
-          cd payments
-          # fix conflicts, then: arb rebase --continue
-          # or to undo: arb rebase --abort
-          # or from workspace root: arb rebase --continue  /  arb rebase --abort
-```
+`arb undo` reverses the last operation across all repos — whether it's still in progress or already completed. Say you run a rebase, hit a conflict, resolve it, continue — and then realise the resolution was wrong:
 
 ```bash
-arb undo    # rolls back all repos — including those that completed — ready to try again
+arb rebase                # conflicts in payments
+# fix conflicts... or so you think
+arb rebase --continue     # completes — but the result looks wrong
+arb undo                  # rolls back all repos to their pre-rebase state, ready to try again
 ```
 
 This works for any tracked operation: rebase, merge, retarget, pull, reset, rename. Undo aborts in-progress git operations, resets HEADs, restores uncommitted changes, and rolls back config. It detects if you have done other changes, so it never silently discards work. It is as close to a magic wand as you can get!
