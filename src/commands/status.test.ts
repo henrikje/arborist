@@ -130,7 +130,7 @@ describe("plainRemoteDiff", () => {
         },
       }),
     );
-    expect(text).toBe("merged, gone");
+    expect(text).toBe("gone");
   });
 
   test("shows merged with PR number and gone", () => {
@@ -157,7 +157,7 @@ describe("plainRemoteDiff", () => {
         },
       }),
     );
-    expect(text).toBe("merged (#123), gone");
+    expect(text).toBe("gone");
   });
 
   test("shows merged with PR number without gone", () => {
@@ -184,7 +184,7 @@ describe("plainRemoteDiff", () => {
         },
       }),
     );
-    expect(text).toBe("merged (#42)");
+    expect(text).toBe("up to date");
   });
 
   test("shows gone with ahead", () => {
@@ -254,7 +254,7 @@ describe("plainRemoteDiff", () => {
         },
       }),
     );
-    expect(text).toBe("merged");
+    expect(text).toBe("up to date");
   });
 
   test("shows pull count instead of merged when toPull > 0", () => {
@@ -418,7 +418,7 @@ describe("plainRemoteDiff", () => {
         },
       }),
     );
-    expect(text).toBe("merged, 1 to push");
+    expect(text).toBe("1 to push");
   });
 
   test("shows merged with PR and new commits to push (not gone)", () => {
@@ -446,7 +446,7 @@ describe("plainRemoteDiff", () => {
         },
       }),
     );
-    expect(text).toBe("merged (#42), 1 to push");
+    expect(text).toBe("1 to push");
   });
 
   test("shows merged with new commits to push (gone)", () => {
@@ -474,7 +474,7 @@ describe("plainRemoteDiff", () => {
         },
       }),
     );
-    expect(text).toBe("merged (#1), gone, 1 to push");
+    expect(text).toBe("gone, 1 to push");
   });
 
   test("shows merged without push count when no new commits", () => {
@@ -498,7 +498,7 @@ describe("plainRemoteDiff", () => {
         },
       }),
     );
-    expect(text).toBe("merged");
+    expect(text).toBe("up to date");
   });
 });
 

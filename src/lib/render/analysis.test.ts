@@ -395,7 +395,7 @@ describe("plainRemoteDiff", () => {
         toPull: null,
       },
     });
-    expect(plainRemoteDiff(repo)).toBe("merged (#42), gone");
+    expect(plainRemoteDiff(repo)).toBe("gone");
   });
 
   test("gone without merged, with ahead returns gone N to push", () => {
@@ -545,7 +545,7 @@ describe("plainRemoteDiff", () => {
         toPull: 0,
       },
     });
-    expect(plainRemoteDiff(repo)).toBe("merged (#99)");
+    expect(plainRemoteDiff(repo)).toBe("up to date");
   });
 
   test("up to date returns up to date", () => {
@@ -858,7 +858,7 @@ describe("analyzeRemoteDiff", () => {
     expect(result.spans).toEqual([]);
   });
 
-  test("merged with new work produces multi-span with attention on push part", () => {
+  test("merged with new work produces attention on push part", () => {
     const repo = makeRepo({
       base: {
         remote: "origin",
@@ -873,19 +873,46 @@ describe("analyzeRemoteDiff", () => {
         remote: "origin",
         ref: "origin/feature",
         refMode: "configured",
-        toPush: 0,
+        toPush: 2,
         toPull: 0,
       },
     });
     const flags = computeFlags(repo, "feature");
     const result = analyzeRemoteDiff(repo, flags);
-    // plainRemoteDiff produces "merged (#10), 2 to push"
-    expect(result.plain).toBe("merged (#10), 2 to push");
-    // First span is the prefix (default), second is the push part (attention)
+    // SHARE no longer shows "merged" — that's in the BASE column
+    expect(result.plain).toBe("2 to push");
+    expect(result.spans.length).toBe(1);
+    expect(result.spans[0]?.attention).toBe("attention");
+    expect(result.spans[0]?.text).toBe("2 to push");
+  });
+
+  test("gone+merged with new commits highlights push suffix with attention", () => {
+    const repo = makeRepo({
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: null,
+        ahead: 3,
+        behind: 2,
+        merge: { kind: "merge", newCommitsAfter: 1 },
+        baseMergedIntoDefault: null,
+      },
+      share: {
+        remote: "origin",
+        ref: null,
+        refMode: "gone",
+        toPush: null,
+        toPull: null,
+      },
+    });
+    const flags = computeFlags(repo, "feature");
+    const result = analyzeRemoteDiff(repo, flags);
+    expect(result.plain).toBe("gone, 1 to push");
     expect(result.spans.length).toBe(2);
+    expect(result.spans[0]?.text).toBe("gone, ");
     expect(result.spans[0]?.attention).toBe("default");
+    expect(result.spans[1]?.text).toBe("1 to push");
     expect(result.spans[1]?.attention).toBe("attention");
-    expect(result.spans[1]?.text).toBe("2 to push");
   });
 
   test("rebased-only (no new work) returns default attention with arrow and outdated", () => {
