@@ -93,8 +93,10 @@ export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags, hasPullCon
   if (!pushText) return cell(pullText);
   if (pushText === "up to date" || pushText === "gone" || pushText === "no branch") return cell(pushText);
 
-  // Gone with new commits to push — highlight the push suffix
-  if (repo.share.refMode === "gone" && repo.base?.merge?.newCommitsAfter && pushText.includes("to push")) {
+  // Merged with new commits to push — the push suffix needs attention.
+  // share.toPush may be 0 (share tracks the feature branch, not base), so the
+  // general attention logic below won't fire. Handle it explicitly.
+  if (repo.base?.merge?.newCommitsAfter && pushText.includes("to push")) {
     const commaIdx = pushText.indexOf(", ");
     if (commaIdx >= 0) {
       return spans(
@@ -102,6 +104,7 @@ export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags, hasPullCon
         { text: pushText.slice(commaIdx + 2), attention: "attention" },
       );
     }
+    return cell(pushText, "attention");
   }
 
   // Determine push-side attention

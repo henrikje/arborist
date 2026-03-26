@@ -886,6 +886,32 @@ describe("analyzeRemoteDiff", () => {
     expect(result.spans[0]?.text).toBe("2 to push");
   });
 
+  test("merged with new commits and share up-to-date still highlights push with attention", () => {
+    const repo = makeRepo({
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: null,
+        ahead: 3,
+        behind: 1,
+        merge: { kind: "squash", newCommitsAfter: 2 },
+        baseMergedIntoDefault: null,
+      },
+      share: {
+        remote: "origin",
+        ref: "origin/feature",
+        refMode: "configured",
+        toPush: 0,
+        toPull: 0,
+      },
+    });
+    const flags = computeFlags(repo, "feature");
+    const result = analyzeRemoteDiff(repo, flags);
+    expect(result.plain).toBe("2 to push");
+    expect(result.spans.length).toBe(1);
+    expect(result.spans[0]?.attention).toBe("attention");
+  });
+
   test("gone+merged with new commits highlights push suffix with attention", () => {
     const repo = makeRepo({
       base: {
