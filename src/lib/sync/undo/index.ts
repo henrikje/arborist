@@ -16,7 +16,7 @@ export async function runUndoFlow(params: {
   wsDir: string;
   arbRootDir: string;
   reposDir: string;
-  options: { yes?: boolean; dryRun?: boolean; verbose?: boolean };
+  options: { yes?: boolean; dryRun?: boolean; verbose?: boolean; force?: boolean };
   /** "undo" for arb undo, "abort" for --abort (changes wording in prompts/summary) */
   verb?: "undo" | "abort";
   /** When provided, only undo these repos (selective undo). Empty/undefined = all repos. */
@@ -52,6 +52,24 @@ export async function runUndoFlow(params: {
 
   if (options.verbose) {
     await gatherUndoVerboseCommits(record, assessments);
+  }
+
+  // Force reclassification: drifted → needs-undo (skip structural blockers)
+  if (options.force) {
+    const isRename = record.command === "branch-rename" || record.command === "rename";
+    for (const a of assessments) {
+      if (a.action !== "drifted") continue;
+      // "already exists" is a structural blocker (target branch exists), not a safety guard
+      if (a.detail?.includes("already exists")) continue;
+      const state = record.repos[a.repo];
+      const preHead = state?.preHead;
+      if (!preHead) continue;
+      a.action = "needs-undo";
+      a.forced = true;
+      a.detail = isRename
+        ? `force undo (was: ${a.detail})`
+        : `force reset to ${preHead.slice(0, 7)} (was: ${a.detail})`;
+    }
   }
 
   // Drift check — scoped to active assessments only

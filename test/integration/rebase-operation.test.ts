@@ -314,6 +314,40 @@ describe("rebase undo", () => {
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("drifted");
     }));
+
+  test("undo --force overrides drift on sync undo (rebase with post-operation commit)", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+
+      await write(join(wt, "feature.txt"), "feature");
+      await git(wt, ["add", "feature.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+      await advanceMain(env, "repo-a", "main-new.txt", "main");
+
+      await arb(env, ["rebase", "--yes"], { cwd: ws });
+
+      // Capture pre-operation HEAD from the record
+      const op = readJson(join(ws, ".arbws/operation.json"));
+      const repoState = (op.repos as Record<string, { preHead: string }>)["repo-a"];
+      const preHead = repoState.preHead;
+
+      // Drift: make a new commit after rebase
+      await write(join(wt, "drift.txt"), "drift");
+      await git(wt, ["add", "drift.txt"]);
+      await git(wt, ["commit", "-m", "drift"]);
+
+      // --force should override drift and reset to preHead
+      const result = await arb(env, ["undo", "--force", "--yes"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Undone");
+      expect(result.output).toContain("force reset");
+
+      // HEAD should be at the pre-operation state
+      const currentHead = (await git(wt, ["rev-parse", "HEAD"])).trim();
+      expect(currentHead).toBe(preHead);
+    }));
 });
 
 // ── rebase gate ──────────────────────────────────────────────────
@@ -614,6 +648,45 @@ describe("multi-repo undo with drift", () => {
       const undoResult = await arb(env, ["undo", "--yes"], { cwd: ws });
       expect(undoResult.exitCode).not.toBe(0);
       expect(undoResult.output).toContain("drifted");
+    }));
+
+  test("2 repos rebased, one drifted → --force undoes both", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "repo-b", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wtA = join(ws, "repo-a");
+      const wtB = join(ws, "repo-b");
+
+      await write(join(wtA, "feature.txt"), "feature a");
+      await git(wtA, ["add", "feature.txt"]);
+      await git(wtA, ["commit", "-m", "feature a"]);
+
+      await write(join(wtB, "feature.txt"), "feature b");
+      await git(wtB, ["add", "feature.txt"]);
+      await git(wtB, ["commit", "-m", "feature b"]);
+
+      await advanceMain(env, "repo-a", "main-new.txt", "main advance a");
+      await advanceMain(env, "repo-b", "main-new.txt", "main advance b");
+
+      const rebaseResult = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      expect(rebaseResult.exitCode).toBe(0);
+
+      const op = readJson(join(ws, ".arbws/operation.json"));
+      const preHeadA = (op.repos as Record<string, { preHead: string }>)["repo-a"].preHead;
+      const preHeadB = (op.repos as Record<string, { preHead: string }>)["repo-b"].preHead;
+
+      // Drift repo-a only
+      await write(join(wtA, "drift.txt"), "drift");
+      await git(wtA, ["add", "drift.txt"]);
+      await git(wtA, ["commit", "-m", "drift commit"]);
+
+      // --force undoes both (force-resets drifted repo-a, normal undo for repo-b)
+      const forceResult = await arb(env, ["undo", "--force", "--yes"], { cwd: ws });
+      expect(forceResult.exitCode).toBe(0);
+      expect(forceResult.output).toContain("Undone 2 repos");
+
+      expect((await git(wtA, ["rev-parse", "HEAD"])).trim()).toBe(preHeadA);
+      expect((await git(wtB, ["rev-parse", "HEAD"])).trim()).toBe(preHeadB);
     }));
 });
 
