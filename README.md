@@ -250,11 +250,22 @@ For `arb pull --merge`, if the remote was rewritten and you have no unique commi
 
 ### Undo
 
-`arb undo` reverses the last operation across all repos — whether it's still in progress or already completed:
+`arb undo` reverses the last operation across all repos — whether it's still in progress or already completed. Say you have in-progress work scattered across repos:
+
+```
+add-auth (base origin/main, share origin/add-auth)
+
+  REPO        LAST COMMIT    BASE        SHARE        LOCAL
+* api         2 hours        2 ahead     2 to push    5 changes
+  payments    1 hour         1 ahead     1 to push    3 changes
+  shared      3 hours        1 ahead     1 to push    clean
+```
+
+One misfire and it's all gone — then one command brings it all back:
 
 ```bash
-arb reset --hard              # oops — nuked uncommitted work across 5 repos
-arb undo                      # all 5 repos restored: commits, branches, and uncommitted changes
+arb reset --hard    # oops — wiped all uncommitted changes
+arb undo            # all repos restored: commits, branches, and every uncommitted change
 ```
 
 This works for any tracked operation: rebase, merge, retarget, pull, reset, rename. Undo aborts in-progress git operations, resets HEADs, restores uncommitted changes, and rolls back config. It detects if you have done other changes, so it never silently discards work. It is as close to a magic wand as you can get!
