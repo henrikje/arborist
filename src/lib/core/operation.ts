@@ -84,7 +84,7 @@ export function readOperationRecord(wsDir: string): OperationRecord | null {
   } catch {
     const msg = `Failed to parse operation record: ${filePath}`;
     error(msg);
-    error("Run 'arb undo --force' to clear the corrupted record, or delete the file manually");
+    error("Run 'arb undo --discard' to clear the corrupted record, or delete the file manually");
     throw new ArbError(msg);
   }
 
@@ -93,7 +93,7 @@ export function readOperationRecord(wsDir: string): OperationRecord | null {
     const issues = result.error.issues.map((i) => `${i.path.join(".")} ${i.message}`.trim()).join("; ");
     const msg = `Invalid operation record ${filePath}: ${issues}`;
     error(msg);
-    error("Run 'arb undo --force' to clear the corrupted record, or delete the file manually");
+    error("Run 'arb undo --discard' to clear the corrupted record, or delete the file manually");
     throw new ArbError(msg);
   }
 

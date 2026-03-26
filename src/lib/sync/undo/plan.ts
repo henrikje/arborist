@@ -29,7 +29,7 @@ export function formatUndoPlan(
       let afterRow: OutputNode[] | undefined;
       switch (a.action) {
         case "needs-undo": {
-          actionCell = cell(a.detail ?? "undo");
+          actionCell = a.forced ? cell(a.detail ?? "undo", "attention") : cell(a.detail ?? "undo");
           if (verbose && a.verbose?.commits && a.verbose.commits.length > 0) {
             if (a.stats?.hasStash) {
               actionCell = suffix(actionCell, " — + restore stash", "muted");

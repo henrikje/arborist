@@ -289,6 +289,46 @@ describe("arb undo", () => {
       expect(result.output).toContain("drifted");
     }));
 
+  test("undo --force overrides drift on branch rename (HEAD moved)", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const ws = join(env.projectDir, "my-feature");
+      const repoA = join(ws, "repo-a");
+
+      await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--no-fetch"], { cwd: ws });
+
+      // Make a commit (drift)
+      await write(join(repoA, "drift.txt"), "drift");
+      await git(repoA, ["add", "drift.txt"]);
+      await git(repoA, ["commit", "-m", "drift commit"]);
+
+      // --force should override drift and rename back
+      const result = await arb(env, ["undo", "--force", "--yes"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Undone");
+
+      // Branch should be renamed back
+      const branch = (await git(repoA, ["symbolic-ref", "--short", "HEAD"])).trim();
+      expect(branch).toBe("my-feature");
+    }));
+
+  test("undo --force still refuses when target branch already exists in branch rename", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const ws = join(env.projectDir, "my-feature");
+      const repoA = join(ws, "repo-a");
+
+      await arb(env, ["branch", "rename", "feat/new-name", "--yes", "--no-fetch"], { cwd: ws });
+
+      // Create a branch with the old name (structural blocker)
+      await git(repoA, ["branch", "my-feature"]);
+
+      const result = await arb(env, ["undo", "--force", "--yes"], { cwd: ws });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("drifted");
+      expect(result.output).toContain("already exists");
+    }));
+
   test("undo after manual revert cleans up record and config", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
@@ -515,7 +555,7 @@ describe("push gate", () => {
 // ── corrupted operation.json ─────────────────────────────────────
 
 describe("corrupted operation record", () => {
-  test("corrupted operation.json shows recovery guidance mentioning arb undo --force", () =>
+  test("corrupted operation.json shows recovery guidance mentioning arb undo --discard", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const ws = join(env.projectDir, "my-feature");
@@ -527,10 +567,10 @@ describe("corrupted operation record", () => {
       // Any operation that reads the record should show recovery guidance
       const result = await arb(env, ["rebase", "--yes", "--no-fetch"], { cwd: ws });
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("arb undo --force");
+      expect(result.output).toContain("arb undo --discard");
     }));
 
-  test("arb undo --force clears corrupted record", () =>
+  test("arb undo --discard clears corrupted record", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const ws = join(env.projectDir, "my-feature");
@@ -539,8 +579,8 @@ describe("corrupted operation record", () => {
       // Write invalid JSON to operation.json
       writeFileSync(opFile, "{ this is not valid json }}}}");
 
-      // arb undo --force should delete the file without trying to parse it
-      const result = await arb(env, ["undo", "--force", "--yes"], { cwd: ws });
+      // arb undo --discard should delete the file without trying to parse it
+      const result = await arb(env, ["undo", "--discard"], { cwd: ws });
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("cleared");
 

@@ -306,7 +306,7 @@ describe("selective branch-rename undo", () => {
 // ── edge cases ───────────────────────────────────────────────────
 
 describe("selective undo edge cases", () => {
-  test("--force with repos errors", () =>
+  test("--discard with repos errors", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
       const ws = join(env.projectDir, "my-feature");
@@ -319,7 +319,7 @@ describe("selective undo edge cases", () => {
       await advanceMain(env, "repo-a", "main-a.txt", "main advance a");
       await arb(env, ["rebase", "--yes"], { cwd: ws });
 
-      const result = await arb(env, ["undo", "repo-a", "--force"], { cwd: ws });
+      const result = await arb(env, ["undo", "repo-a", "--discard"], { cwd: ws });
       expect(result.exitCode).toBe(1);
       expect(result.output).toContain("cannot be combined");
     }));

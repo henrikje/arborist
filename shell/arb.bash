@@ -550,7 +550,7 @@ __arb_complete_reset() {
 __arb_complete_undo() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-y --yes --dry-run -v --verbose -f --force" -- "$cur"))
+        COMPREPLY=($(compgen -W "-y --yes --dry-run -v --verbose -f --force --discard" -- "$cur"))
         return
     fi
     COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))

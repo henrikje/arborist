@@ -547,7 +547,8 @@ _arb() {
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '--dry-run[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show commits being rolled back]' \
-                        '(-f --force)'{-f,--force}'[Delete corrupted operation record without undo]' \
+                        '(-f --force)'{-f,--force}'[Force undo even when repos have drifted]' \
+                        '--discard[Delete corrupted operation record without undo]' \
                         '*:repo:($ws_repo_names)'
                     ;;
                 log)

@@ -30,6 +30,8 @@ export interface RepoUndoAssessment {
   detail?: string;
   stats?: UndoStats;
   verbose?: UndoVerboseInfo;
+  /** True when a drifted repo was reclassified to needs-undo by --force */
+  forced?: boolean;
 }
 
 export interface UndoResult {
