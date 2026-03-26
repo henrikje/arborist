@@ -1,4 +1,4 @@
-export type { RepoUndoAssessment, UndoAction, UndoResult, UndoStats } from "./types";
+export type { RepoUndoAssessment, UndoAction, UndoResult, UndoStats, UndoVerboseInfo } from "./types";
 
 import { writeWorkspaceConfig } from "../../core/config";
 import { ArbError } from "../../core/errors";
@@ -6,7 +6,7 @@ import { deleteOperationRecord, readOperationRecord } from "../../core/operation
 import { finishSummary } from "../../render/render";
 import { dryRunNotice, error, info, plural, warn } from "../../terminal/output";
 import { confirmOrExit } from "../mutation-flow";
-import { assessUndo } from "./assess";
+import { assessUndo, gatherUndoVerboseCommits } from "./assess";
 import { executeBranchRenameUndo, executeRenameUndo, executeSyncUndo } from "./execute";
 import { formatUndoPlan } from "./plan";
 import type { UndoResult } from "./types";
@@ -15,7 +15,7 @@ export async function runUndoFlow(params: {
   wsDir: string;
   arbRootDir: string;
   reposDir: string;
-  options: { yes?: boolean; dryRun?: boolean };
+  options: { yes?: boolean; dryRun?: boolean; verbose?: boolean };
   /** "undo" for arb undo, "abort" for --abort (changes wording in prompts/summary) */
   verb?: "undo" | "abort";
 }): Promise<void> {
@@ -40,10 +40,14 @@ export async function runUndoFlow(params: {
 
   const assessments = await assessUndo(record, wsDir, arbRootDir);
 
+  if (options.verbose) {
+    await gatherUndoVerboseCommits(record, assessments);
+  }
+
   // Drift check
   const drifted = assessments.filter((a) => a.action === "drifted");
   if (drifted.length > 0) {
-    process.stderr.write(formatUndoPlan(record, assessments, verb));
+    process.stderr.write(formatUndoPlan(record, assessments, verb, options.verbose));
     const msg = `Cannot ${verb} — ${plural(drifted.length, "repo")} drifted since the operation`;
     error(msg);
     throw new ArbError(msg);
@@ -61,7 +65,7 @@ export async function runUndoFlow(params: {
     return;
   }
 
-  process.stderr.write(formatUndoPlan(record, assessments, verb));
+  process.stderr.write(formatUndoPlan(record, assessments, verb, options.verbose));
 
   if (options.dryRun) {
     dryRunNotice();

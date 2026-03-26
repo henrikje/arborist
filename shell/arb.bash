@@ -715,7 +715,7 @@ _arb() {
         retarget) __arb_complete_retarget "$base_dir" "$cur" ;;
         merge)    __arb_complete_merge "$base_dir" "$cur" ;;
         reset)    __arb_complete_reset "$base_dir" "$cur" ;;
-        undo)     COMPREPLY=($(compgen -W "-y --yes -n --dry-run -f --force" -- "$cur")) ;;
+        undo)     COMPREPLY=($(compgen -W "-y --yes -n --dry-run -v --verbose -f --force" -- "$cur")) ;;
         log)      __arb_complete_log "$base_dir" "$cur" ;;
         diff)     __arb_complete_diff "$base_dir" "$cur" ;;
         exec)     __arb_complete_exec "$base_dir" "$cur" ;;

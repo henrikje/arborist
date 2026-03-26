@@ -547,6 +547,7 @@ _arb() {
                     _arguments \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '(-n --dry-run)'{-n,--dry-run}'[Show what would happen without executing]' \
+                        '(-v --verbose)'{-v,--verbose}'[Show commits being rolled back]' \
                         '(-f --force)'{-f,--force}'[Delete corrupted operation record without undo]'
                     ;;
                 log)

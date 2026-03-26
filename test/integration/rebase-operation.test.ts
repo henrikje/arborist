@@ -247,6 +247,29 @@ describe("rebase undo", () => {
       expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
     }));
 
+  test("undo --verbose --dry-run shows commit subjects", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+
+      await write(join(wt, "feature.txt"), "feature");
+      await git(wt, ["add", "feature.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+
+      await advanceMain(env, "repo-a", "upstream-one.txt", "one");
+      await advanceMain(env, "repo-a", "upstream-two.txt", "two");
+
+      await arb(env, ["rebase", "--yes"], { cwd: ws });
+
+      const result = await arb(env, ["undo", "--verbose", "--dry-run"], { cwd: ws });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Rolling back");
+      expect(result.output).toContain("advance main: upstream-one.txt");
+      expect(result.output).toContain("advance main: upstream-two.txt");
+      expect(result.output).toContain("files changed");
+    }));
+
   test("undo conflicted rebase aborts rebase and resets", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);

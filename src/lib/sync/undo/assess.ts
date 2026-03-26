@@ -2,9 +2,10 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { ArbError } from "../../core/errors";
 import type { OperationRecord } from "../../core/operation";
-import { branchExistsLocally, detectOperation, getDiffShortstat, gitLocal } from "../../git/git";
+import { branchExistsLocally, detectOperation, getCommitsBetweenFull, getDiffShortstat, gitLocal } from "../../git/git";
 import { error } from "../../terminal/output";
 import { workspaceRepoDirs } from "../../workspace/repos";
+import { VERBOSE_COMMIT_LIMIT } from "../constants";
 import type { RepoUndoAssessment } from "./types";
 
 export async function assessBranchRenameUndo(
@@ -262,4 +263,31 @@ export async function assessUndo(
       throw new ArbError("Undo is not yet supported for this operation");
     }
   }
+}
+
+export async function gatherUndoVerboseCommits(
+  record: OperationRecord,
+  assessments: RepoUndoAssessment[],
+): Promise<void> {
+  await Promise.all(
+    assessments
+      .filter((a) => a.action === "needs-undo" && a.stats)
+      .map(async (a) => {
+        const { stats } = a;
+        const state = record.repos[a.repo];
+        if (!state?.postHead || !stats) return;
+
+        const commits = await getCommitsBetweenFull(a.repoDir, state.preHead, state.postHead);
+        const total = commits.length;
+
+        a.verbose = {
+          commits: commits.slice(0, VERBOSE_COMMIT_LIMIT).map((c) => ({
+            shortHash: c.shortHash,
+            subject: c.subject,
+          })),
+          totalCommits: total,
+          diffStats: { files: stats.filesChanged, insertions: stats.insertions, deletions: stats.deletions },
+        };
+      }),
+  );
 }
