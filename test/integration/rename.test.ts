@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { arb, git, gitBelow230, withEnv, write } from "./helpers/env";
+
+function readJson(path: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+}
 
 // ── basic rename ──────────────────────────────────────────────────
 
@@ -338,8 +342,10 @@ describe.skipIf(gitBelow230)("rename undo", () => {
       const config = JSON.parse(await readFile(join(env.projectDir, "my-feature/.arbws/config.json"), "utf8"));
       expect(config.branch).toBe("my-feature");
 
-      // Operation record cleaned up
-      expect(existsSync(join(env.projectDir, "my-feature/.arbws/operation.json"))).toBe(false);
+      // Operation record finalized
+      const op = readJson(join(env.projectDir, "my-feature/.arbws/operation.json")) as Record<string, unknown>;
+      expect(op.status).toBe("completed");
+      expect(op.outcome).toBe("undone");
     }));
 
   test("arb undo refuses when target directory already exists", () =>

@@ -267,118 +267,125 @@ export async function runPull(
     }
     writeOperationRecord(wsDir, record);
   };
-  const markConflicting = (repo: string) => {
+  const markConflicting = (repo: string, stderr?: string) => {
     const existing = record.repos[repo];
     if (existing) {
-      record.repos[repo] = { ...existing, status: "conflicting" };
+      const errorOutput = stderr?.trim().slice(0, 4000) || undefined;
+      record.repos[repo] = { ...existing, status: "conflicting", errorOutput };
     }
     writeOperationRecord(wsDir, record);
   };
 
-  for (const a of willPull) {
-    const strategy = a.pullStrategy ?? (a.pullMode === "rebase" ? "rebase-pull" : "merge-pull");
-    inlineStart(a.repo, `pulling (${pullStrategyLabel(strategy)})`);
-    const pullRemote = remotesMap.get(a.repo)?.share;
-    if (!pullRemote) continue;
+  try {
+    process.env.GIT_REFLOG_ACTION = "arb-pull";
+    for (const a of willPull) {
+      const strategy = a.pullStrategy ?? (a.pullMode === "rebase" ? "rebase-pull" : "merge-pull");
+      inlineStart(a.repo, `pulling (${pullStrategyLabel(strategy)})`);
+      const pullRemote = remotesMap.get(a.repo)?.share;
+      if (!pullRemote) continue;
 
-    if (strategy === "rebase-pull") {
-      const pullArgs = a.needsStash
-        ? ["pull", "--rebase", "--autostash", pullRemote, a.branch]
-        : ["pull", "--rebase", pullRemote, a.branch];
-      const pullResult = await gitNetwork(a.repoDir, pullTimeout, pullArgs);
-      if (pullResult.exitCode === 0) {
-        await markCompleted(a.repo);
-        inlineResult(a.repo, `pulled ${plural(a.behind, "commit")} (${a.pullMode})`);
-        pullOk++;
-      } else {
-        if (isConflictResult(pullResult.stdout, pullResult.stderr)) {
-          markConflicting(a.repo);
-          inlineResult(a.repo, yellow("conflict"));
-          conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
+      if (strategy === "rebase-pull") {
+        const pullArgs = a.needsStash
+          ? ["pull", "--rebase", "--autostash", pullRemote, a.branch]
+          : ["pull", "--rebase", pullRemote, a.branch];
+        const pullResult = await gitNetwork(a.repoDir, pullTimeout, pullArgs);
+        if (pullResult.exitCode === 0) {
+          await markCompleted(a.repo);
+          inlineResult(a.repo, `pulled ${plural(a.behind, "commit")} (${a.pullMode})`);
+          pullOk++;
         } else {
+          if (isConflictResult(pullResult.stdout, pullResult.stderr)) {
+            markConflicting(a.repo, pullResult.stderr);
+            inlineResult(a.repo, yellow("conflict"));
+            conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
+          } else {
+            inlineResult(a.repo, yellow("failed"));
+            failed.push({
+              assessment: a,
+              exitCode: pullResult.exitCode,
+              stdout: pullResult.stdout,
+              stderr: pullResult.stderr,
+              action: "pull --rebase",
+            });
+          }
+        }
+      } else if (strategy === "safe-reset" || strategy === "forced-reset") {
+        if (a.needsStash) {
+          await gitLocal(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
+        }
+        const target = a.safeReset?.target ?? `${pullRemote}/${a.branch}`;
+        const resetLabel = strategy === "forced-reset" ? "forced reset" : "safe reset";
+        const resetResult = await gitLocal(a.repoDir, "reset", "--hard", target);
+        if (resetResult.exitCode === 0) {
+          let stashPopOk = true;
+          if (a.needsStash) {
+            const popResult = await gitLocal(a.repoDir, "stash", "pop");
+            if (popResult.exitCode !== 0) {
+              stashPopOk = false;
+              stashPopFailed.push(a);
+            }
+          }
+          await markCompleted(a.repo);
+          let doneMsg = `${resetLabel} to ${target}`;
+          if (!stashPopOk) {
+            doneMsg += ` ${yellow("(stash pop failed)")}`;
+          }
+          inlineResult(a.repo, doneMsg);
+          pullOk++;
+        } else {
+          markConflicting(a.repo, resetResult.stderr);
           inlineResult(a.repo, yellow("failed"));
           failed.push({
             assessment: a,
-            exitCode: pullResult.exitCode,
-            stdout: pullResult.stdout,
-            stderr: pullResult.stderr,
-            action: "pull --rebase",
+            exitCode: resetResult.exitCode,
+            stdout: resetResult.stdout,
+            stderr: resetResult.stderr,
+            action: `reset --hard ${target}`,
           });
         }
-      }
-    } else if (strategy === "safe-reset" || strategy === "forced-reset") {
-      if (a.needsStash) {
-        await gitLocal(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
-      }
-      const target = a.safeReset?.target ?? `${pullRemote}/${a.branch}`;
-      const resetLabel = strategy === "forced-reset" ? "forced reset" : "safe reset";
-      const resetResult = await gitLocal(a.repoDir, "reset", "--hard", target);
-      if (resetResult.exitCode === 0) {
-        let stashPopOk = true;
-        if (a.needsStash) {
-          const popResult = await gitLocal(a.repoDir, "stash", "pop");
-          if (popResult.exitCode !== 0) {
-            stashPopOk = false;
-            stashPopFailed.push(a);
-          }
-        }
-        await markCompleted(a.repo);
-        let doneMsg = `${resetLabel} to ${target}`;
-        if (!stashPopOk) {
-          doneMsg += ` ${yellow("(stash pop failed)")}`;
-        }
-        inlineResult(a.repo, doneMsg);
-        pullOk++;
       } else {
-        markConflicting(a.repo);
-        inlineResult(a.repo, yellow("failed"));
-        failed.push({
-          assessment: a,
-          exitCode: resetResult.exitCode,
-          stdout: resetResult.stdout,
-          stderr: resetResult.stderr,
-          action: `reset --hard ${target}`,
-        });
-      }
-    } else {
-      if (a.needsStash) {
-        await gitLocal(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
-      }
-      const pullResult = await gitNetwork(a.repoDir, pullTimeout, ["pull", "--no-rebase", pullRemote, a.branch]);
-      if (pullResult.exitCode === 0) {
-        let stashPopOk = true;
         if (a.needsStash) {
-          const popResult = await gitLocal(a.repoDir, "stash", "pop");
-          if (popResult.exitCode !== 0) {
-            stashPopOk = false;
-            stashPopFailed.push(a);
+          await gitLocal(a.repoDir, "stash", "push", "-m", "arb: autostash before pull");
+        }
+        const pullResult = await gitNetwork(a.repoDir, pullTimeout, ["pull", "--no-rebase", pullRemote, a.branch]);
+        if (pullResult.exitCode === 0) {
+          let stashPopOk = true;
+          if (a.needsStash) {
+            const popResult = await gitLocal(a.repoDir, "stash", "pop");
+            if (popResult.exitCode !== 0) {
+              stashPopOk = false;
+              stashPopFailed.push(a);
+            }
           }
-        }
-        await markCompleted(a.repo);
-        let doneMsg = `pulled ${plural(a.behind, "commit")} (${a.pullMode})`;
-        if (!stashPopOk) {
-          doneMsg += ` ${yellow("(stash pop failed)")}`;
-        }
-        inlineResult(a.repo, doneMsg);
-        pullOk++;
-      } else {
-        if (isConflictResult(pullResult.stdout, pullResult.stderr)) {
-          markConflicting(a.repo);
-          inlineResult(a.repo, yellow("conflict"));
-          conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
+          await markCompleted(a.repo);
+          let doneMsg = `pulled ${plural(a.behind, "commit")} (${a.pullMode})`;
+          if (!stashPopOk) {
+            doneMsg += ` ${yellow("(stash pop failed)")}`;
+          }
+          inlineResult(a.repo, doneMsg);
+          pullOk++;
         } else {
-          markConflicting(a.repo);
-          inlineResult(a.repo, yellow("failed"));
-          failed.push({
-            assessment: a,
-            exitCode: pullResult.exitCode,
-            stdout: pullResult.stdout,
-            stderr: pullResult.stderr,
-            action: "pull --no-rebase",
-          });
+          if (isConflictResult(pullResult.stdout, pullResult.stderr)) {
+            markConflicting(a.repo, pullResult.stderr);
+            inlineResult(a.repo, yellow("conflict"));
+            conflicted.push({ assessment: a, stdout: pullResult.stdout, stderr: pullResult.stderr });
+          } else {
+            markConflicting(a.repo, pullResult.stderr);
+            inlineResult(a.repo, yellow("failed"));
+            failed.push({
+              assessment: a,
+              exitCode: pullResult.exitCode,
+              stdout: pullResult.stdout,
+              stderr: pullResult.stderr,
+              action: "pull --no-rebase",
+            });
+          }
         }
       }
     }
+  } finally {
+    // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
+    delete process.env.GIT_REFLOG_ACTION;
   }
 
   // Consolidated conflict report
@@ -405,6 +412,7 @@ export async function runPull(
   // Finalize operation record
   if (conflicted.length === 0 && failed.length === 0) {
     record.status = "completed";
+    record.completedAt = new Date().toISOString();
     writeOperationRecord(wsDir, record);
   } else {
     info("Use 'arb pull --continue' to resume or 'arb pull --abort' to cancel");

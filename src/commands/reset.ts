@@ -501,27 +501,34 @@ export function registerResetCommand(program: Command): void {
         let resetOk = 0;
         const failed: { assessment: ResetAssessment; stderr: string }[] = [];
 
-        for (const a of willReset) {
-          inlineStart(a.repo, `resetting to ${a.target}`);
-          const result = await gitLocal(a.repoDir, "reset", `--${resetMode}`, a.target);
-          if (result.exitCode === 0) {
-            const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
-            const existing = record.repos[a.repo];
-            if (existing) {
-              record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+        try {
+          process.env.GIT_REFLOG_ACTION = "arb-reset";
+          for (const a of willReset) {
+            inlineStart(a.repo, `resetting to ${a.target}`);
+            const result = await gitLocal(a.repoDir, "reset", `--${resetMode}`, a.target);
+            if (result.exitCode === 0) {
+              const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+              const existing = record.repos[a.repo];
+              if (existing) {
+                record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+              }
+              writeOperationRecord(wsDir, record);
+              inlineResult(a.repo, `reset to ${a.target}`);
+              resetOk++;
+            } else {
+              const existing = record.repos[a.repo];
+              if (existing) {
+                const errorOutput = result.stderr.trim().slice(0, 4000) || undefined;
+                record.repos[a.repo] = { ...existing, status: "conflicting", errorOutput };
+              }
+              writeOperationRecord(wsDir, record);
+              inlineResult(a.repo, yellow("failed"));
+              failed.push({ assessment: a, stderr: result.stderr });
             }
-            writeOperationRecord(wsDir, record);
-            inlineResult(a.repo, `reset to ${a.target}`);
-            resetOk++;
-          } else {
-            const existing = record.repos[a.repo];
-            if (existing) {
-              record.repos[a.repo] = { ...existing, status: "conflicting" };
-            }
-            writeOperationRecord(wsDir, record);
-            inlineResult(a.repo, yellow("failed"));
-            failed.push({ assessment: a, stderr: result.stderr });
           }
+        } finally {
+          // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
+          delete process.env.GIT_REFLOG_ACTION;
         }
 
         // Failure report
@@ -556,6 +563,7 @@ export function registerResetCommand(program: Command): void {
         // Finalize operation record
         if (failed.length === 0) {
           record.status = "completed";
+          record.completedAt = new Date().toISOString();
           writeOperationRecord(wsDir, record);
         } else {
           info("Run 'arb undo' to roll back");

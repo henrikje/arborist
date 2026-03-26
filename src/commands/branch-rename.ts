@@ -7,7 +7,7 @@ import {
   type RepoOperationState,
   arbAction,
   assertNoInProgressOperation,
-  deleteOperationRecord,
+  finalizeOperationRecord,
   readInProgressOperation,
   readWorkspaceConfig,
   writeOperationRecord,
@@ -320,7 +320,7 @@ async function runRename(
       branch: newBranch,
       ...(configBase && { base: configBase }),
     });
-    if (existingRecord) deleteOperationRecord(wsDir);
+    if (existingRecord) finalizeOperationRecord(wsDir, "completed");
     success(`Workspace branch set to '${newBranch}' (no repos to rename)`);
     info("Run 'arb attach' to attach repos on the new branch");
     return;
@@ -372,7 +372,7 @@ async function runRename(
     // If continuing and all repos are already renamed, finalize the operation
     if (existingRecord) {
       writeWorkspaceConfig(configFile, { branch: newBranch, ...(configBase && { base: configBase }) });
-      deleteOperationRecord(wsDir);
+      finalizeOperationRecord(wsDir, "completed");
       info("All repos already renamed");
     } else {
       info("Nothing to rename");
@@ -439,35 +439,42 @@ async function runRename(
   let renameOk = 0;
   const failures: string[] = [];
 
-  for (const a of willRename) {
-    inlineStart(a.repo, "renaming");
-    const result = await renameBranch(a.repoDir, oldBranch, newBranch);
-    if (result.exitCode === 0) {
-      // Clear stale tracking left by git branch -m.
-      // Without this, @{upstream} resolves to origin/<oldBranch> and
-      // arb push reports "up to date" instead of pushing the new name.
-      await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.remote`);
-      await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.merge`);
+  try {
+    process.env.GIT_REFLOG_ACTION = "arb-branch-rename";
+    for (const a of willRename) {
+      inlineStart(a.repo, "renaming");
+      const result = await renameBranch(a.repoDir, oldBranch, newBranch);
+      if (result.exitCode === 0) {
+        // Clear stale tracking left by git branch -m.
+        // Without this, @{upstream} resolves to origin/<oldBranch> and
+        // arb push reports "up to date" instead of pushing the new name.
+        await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.remote`);
+        await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.merge`);
 
-      const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
-      const existing = record.repos[a.repo];
-      if (existing) {
-        record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+        const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+        const existing = record.repos[a.repo];
+        if (existing) {
+          record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+        }
+        writeOperationRecord(wsDir, record);
+
+        inlineResult(a.repo, `local branch renamed to ${newBranch}`);
+        renameOk++;
+      } else {
+        const existing = record.repos[a.repo];
+        if (existing) {
+          const errorOutput = result.stderr.trim().slice(0, 4000) || undefined;
+          record.repos[a.repo] = { ...existing, status: "conflicting", errorOutput };
+        }
+        writeOperationRecord(wsDir, record);
+
+        inlineResult(a.repo, red("failed"));
+        failures.push(a.repo);
       }
-      writeOperationRecord(wsDir, record);
-
-      inlineResult(a.repo, `local branch renamed to ${newBranch}`);
-      renameOk++;
-    } else {
-      const existing = record.repos[a.repo];
-      if (existing) {
-        record.repos[a.repo] = { ...existing, status: "conflicting" };
-      }
-      writeOperationRecord(wsDir, record);
-
-      inlineResult(a.repo, red("failed"));
-      failures.push(a.repo);
     }
+  } finally {
+    // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
+    delete process.env.GIT_REFLOG_ACTION;
   }
 
   if (failures.length > 0) {
@@ -489,6 +496,7 @@ async function runRename(
   // All local renames succeeded — apply deferred config and mark completed
   writeWorkspaceConfig(configFile, configAfter);
   record.status = "completed";
+  record.completedAt = new Date().toISOString();
   writeOperationRecord(wsDir, record);
 
   // Remote cleanup — only runs after all local renames succeed

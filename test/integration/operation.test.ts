@@ -211,8 +211,11 @@ describe("arb undo", () => {
       const config = readJson(join(ws, ".arbws/config.json")) as Record<string, unknown>;
       expect(config.branch).toBe("my-feature");
 
-      // Operation record removed
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+      // Operation record finalized (not deleted)
+      const op = readJson(join(ws, ".arbws/operation.json")) as Record<string, unknown>;
+      expect(op.status).toBe("completed");
+      expect(op.outcome).toBe("undone");
+      expect(op.completedAt).toBeDefined();
     }));
 
   test("undo after successful rename preserves base in config", () =>
@@ -251,8 +254,11 @@ describe("arb undo", () => {
       const config = readJson(join(ws, ".arbws/config.json")) as Record<string, unknown>;
       expect(config.branch).toBe("my-feature");
 
-      // Operation record removed
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+      // Operation record finalized (not deleted)
+      const op = readJson(join(ws, ".arbws/operation.json")) as Record<string, unknown>;
+      expect(op.status).toBe("completed");
+      expect(op.outcome).toBe("undone");
+      expect(op.completedAt).toBeDefined();
     }));
 
   test("undo with no operation record errors", () =>
@@ -297,8 +303,11 @@ describe("arb undo", () => {
       const result = await arb(env, ["undo", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
 
-      // Record cleaned up
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+      // Record finalized (not deleted)
+      const op = readJson(join(ws, ".arbws/operation.json")) as Record<string, unknown>;
+      expect(op.status).toBe("completed");
+      expect(op.outcome).toBe("completed");
+      expect(op.completedAt).toBeDefined();
 
       // Config restored
       const config = readJson(join(ws, ".arbws/config.json")) as Record<string, unknown>;
@@ -357,7 +366,9 @@ describe("arb undo", () => {
 
       expect((await git(repoA, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe("my-feature");
       expect((await git(repoB, ["symbolic-ref", "--short", "HEAD"])).trim()).toBe("my-feature");
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+      const op = readJson(join(ws, ".arbws/operation.json")) as Record<string, unknown>;
+      expect(op.status).toBe("completed");
+      expect(op.outcome).toBe("undone");
     }));
 
   test("undo skips repos detached from workspace since the operation", () =>

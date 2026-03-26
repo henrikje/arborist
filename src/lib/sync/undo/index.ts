@@ -2,7 +2,7 @@ export type { RepoUndoAssessment, UndoAction, UndoResult, UndoStats, UndoVerbose
 
 import { writeWorkspaceConfig } from "../../core/config";
 import { ArbError } from "../../core/errors";
-import { deleteOperationRecord, readOperationRecord } from "../../core/operation";
+import { finalizeOperationRecord, readOperationRecord } from "../../core/operation";
 import { finishSummary } from "../../render/render";
 import { dryRunNotice, error, info, plural, warn } from "../../terminal/output";
 import { confirmOrExit } from "../mutation-flow";
@@ -56,7 +56,7 @@ export async function runUndoFlow(params: {
   // Nothing to do
   const actionable = assessments.filter((a) => a.action === "needs-undo" || a.action === "needs-abort");
   if (actionable.length === 0) {
-    deleteOperationRecord(wsDir);
+    finalizeOperationRecord(wsDir, "completed");
     const configFile = `${wsDir}/.arbws/config.json`;
     if (record.configBefore) {
       writeWorkspaceConfig(configFile, record.configBefore);
@@ -115,7 +115,7 @@ export async function runUndoFlow(params: {
     throw new ArbError(`Failed to ${verb} ${plural(result.failures.length, "repo")}: ${result.failures.join(", ")}`);
   }
 
-  deleteOperationRecord(effectiveWsDir);
+  finalizeOperationRecord(effectiveWsDir, verb === "abort" ? "aborted" : "undone");
   process.stderr.write("\n");
   finishSummary([`${verbed} ${plural(result.undone, "repo")}`], false);
 }

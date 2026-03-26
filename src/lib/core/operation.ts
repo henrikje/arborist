@@ -21,15 +21,22 @@ const RepoOperationStateSchema = z.object({
   stashSha: z.string().nullable().optional(),
   status: z.enum(["completed", "conflicting", "skipped", "pending"]),
   tracking: TrackingSchema,
+  errorOutput: z.string().optional(),
 });
+
+const OperationOutcomeSchema = z.enum(["completed", "aborted", "undone", "force-cleared"]);
 
 const OperationBaseSchema = z.object({
   startedAt: z.string(),
+  completedAt: z.string().optional(),
   status: z.enum(["in-progress", "completed"]),
+  outcome: OperationOutcomeSchema.optional(),
   repos: z.record(z.string(), RepoOperationStateSchema),
   configBefore: WorkspaceConfigSchema.optional(),
   configAfter: WorkspaceConfigSchema.optional(),
 });
+
+export type OperationOutcome = z.infer<typeof OperationOutcomeSchema>;
 
 const OperationRecordSchema = z.discriminatedUnion("command", [
   OperationBaseSchema.extend({ command: z.literal("rebase") }),
@@ -130,6 +137,27 @@ export function deleteOperationRecord(wsDir: string): void {
   }
 }
 
+// ── Finalize ──
+
+/**
+ * Mark an operation record as finalized with an outcome instead of deleting it.
+ * The record stays in `.arbws/operation.json` until the next operation overwrites it,
+ * preserving diagnostic information for debugging.
+ */
+export function finalizeOperationRecord(wsDir: string, outcome: OperationOutcome): void {
+  try {
+    const record = readOperationRecord(wsDir);
+    if (!record) return;
+    record.status = "completed";
+    record.completedAt = new Date().toISOString();
+    record.outcome = outcome;
+    writeOperationRecord(wsDir, record);
+  } catch {
+    // Record is corrupt or unreadable — fall back to deletion
+    deleteOperationRecord(wsDir);
+  }
+}
+
 // ── Gate ──
 
 export async function assertNoInProgressOperation(wsDir: string): Promise<void> {
@@ -168,6 +196,7 @@ export async function assertNoInProgressOperation(wsDir: string): Promise<void> 
         }
       }
       record.status = "completed";
+      record.completedAt = new Date().toISOString();
       writeOperationRecord(wsDir, record);
       return;
     }

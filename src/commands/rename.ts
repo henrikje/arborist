@@ -277,29 +277,36 @@ async function runWorkspaceRename(
     // Operation record tracks in-progress state (no config mutation until completion)
 
     const failures: string[] = [];
-    for (const a of willRename) {
-      inlineStart(a.repo, "renaming");
-      const result = await renameBranch(a.repoDir, oldBranch, newBranch);
-      if (result.exitCode === 0) {
-        await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.remote`);
-        await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.merge`);
-        const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
-        const existing = record.repos[a.repo];
-        if (existing) {
-          record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+    try {
+      process.env.GIT_REFLOG_ACTION = "arb-rename";
+      for (const a of willRename) {
+        inlineStart(a.repo, "renaming");
+        const result = await renameBranch(a.repoDir, oldBranch, newBranch);
+        if (result.exitCode === 0) {
+          await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.remote`);
+          await gitLocal(a.repoDir, "config", "--unset", `branch.${newBranch}.merge`);
+          const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+          const existing = record.repos[a.repo];
+          if (existing) {
+            record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+          }
+          writeOperationRecord(wsDir, record);
+          inlineResult(a.repo, `local branch renamed to ${newBranch}`);
+          renameOk++;
+        } else {
+          const existing = record.repos[a.repo];
+          if (existing) {
+            const errorOutput = result.stderr.trim().slice(0, 4000) || undefined;
+            record.repos[a.repo] = { ...existing, status: "conflicting", errorOutput };
+          }
+          writeOperationRecord(wsDir, record);
+          inlineResult(a.repo, red("failed"));
+          failures.push(a.repo);
         }
-        writeOperationRecord(wsDir, record);
-        inlineResult(a.repo, `local branch renamed to ${newBranch}`);
-        renameOk++;
-      } else {
-        const existing = record.repos[a.repo];
-        if (existing) {
-          record.repos[a.repo] = { ...existing, status: "conflicting" };
-        }
-        writeOperationRecord(wsDir, record);
-        inlineResult(a.repo, red("failed"));
-        failures.push(a.repo);
       }
+    } finally {
+      // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
+      delete process.env.GIT_REFLOG_ACTION;
     }
 
     if (failures.length > 0) {
@@ -369,6 +376,7 @@ async function runWorkspaceRename(
   // Finalize operation record (use new wsDir if workspace was renamed)
   const finalWsDir = renamedWorkspace ? `${ctx.arbRootDir}/${newWorkspaceName}` : wsDir;
   record.status = "completed";
+  record.completedAt = new Date().toISOString();
   writeOperationRecord(finalWsDir, record);
 
   finishSummary(parts.length > 0 ? parts : ["no changes"], false);

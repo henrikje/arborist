@@ -309,8 +309,10 @@ describe("retarget undo", () => {
       const config = readJson(join(ws, ".arbws/config.json"));
       expect(config.base).toBe("feat/base");
 
-      // Operation record cleaned up
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+      // Operation record finalized
+      const op = readJson(join(ws, ".arbws/operation.json")) as Record<string, unknown>;
+      expect(op.status).toBe("completed");
+      expect(op.outcome).toBe("undone");
     }));
 
   test("undo conflicted retarget aborts rebase and restores config", () =>
@@ -492,8 +494,10 @@ describe("retarget edge cases", () => {
       const result = await arb(env, ["undo", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
 
-      // Record cleaned up
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+      // Record finalized (nothing-to-undo path cleans up as "completed")
+      const op = readJson(join(ws, ".arbws/operation.json")) as Record<string, unknown>;
+      expect(op.status).toBe("completed");
+      expect(op.outcome).toBe("completed");
 
       // Config restored
       const config = readJson(join(ws, ".arbws/config.json"));
@@ -636,7 +640,9 @@ describe("retarget --abort cancels in-progress", () => {
       const result = await arb(env, ["retarget", "--abort", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
       expect((await git(wt, ["rev-parse", "HEAD"])).trim()).toBe(preHead);
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+      const op = readJson(join(ws, ".arbws/operation.json")) as Record<string, unknown>;
+      expect(op.status).toBe("completed");
+      expect(op.outcome).toBe("aborted");
 
       // Config restored
       const config = readJson(join(ws, ".arbws/config.json"));

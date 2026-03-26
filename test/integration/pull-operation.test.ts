@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { arb, git, withEnv, write } from "./helpers/env";
 
@@ -124,7 +124,9 @@ describe("pull undo", () => {
       expect(result.exitCode).toBe(0);
 
       expect((await git(wt, ["rev-parse", "HEAD"])).trim()).toBe(preHead);
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+      const op = readJson(join(ws, ".arbws/operation.json"));
+      expect(op.status).toBe("completed");
+      expect(op.outcome).toBe("undone");
     }));
 
   test("undo successful pull resets HEAD", () =>
@@ -222,6 +224,8 @@ describe("pull --abort cancels in-progress", () => {
       const result = await arb(env, ["pull", "--abort", "--yes"], { cwd: ws });
       expect(result.exitCode).toBe(0);
       expect((await git(wt, ["rev-parse", "HEAD"])).trim()).toBe(preHead);
-      expect(existsSync(join(ws, ".arbws/operation.json"))).toBe(false);
+      const op = readJson(join(ws, ".arbws/operation.json"));
+      expect(op.status).toBe("completed");
+      expect(op.outcome).toBe("aborted");
     }));
 });

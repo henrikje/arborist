@@ -7,6 +7,7 @@ import type { OperationRecord } from "./operation";
 import {
   assertNoInProgressOperation,
   deleteOperationRecord,
+  finalizeOperationRecord,
   readOperationRecord,
   writeOperationRecord,
 } from "./operation";
@@ -293,4 +294,140 @@ describe("classifyContinueRepo", () => {
     const result = await classifyContinueRepo("/nonexistent", state);
     expect(result.action).toBe("needs-execute");
   });
+});
+
+// ── finalizeOperationRecord ─────────────────────────────────────
+
+describe("finalizeOperationRecord", () => {
+  test("sets outcome, completedAt, and status to completed", () =>
+    withTestDir(async (wsDir) => {
+      writeOperationRecord(wsDir, validRecord({ status: "in-progress" }));
+      finalizeOperationRecord(wsDir, "aborted");
+      const result = readOperationRecord(wsDir);
+      expect(result).not.toBeNull();
+      expect(result?.status).toBe("completed");
+      expect(result?.outcome).toBe("aborted");
+      expect(result?.completedAt).toBeDefined();
+    }));
+
+  test("preserves all original record fields", () =>
+    withTestDir(async (wsDir) => {
+      const original = validRecord({ status: "in-progress" });
+      writeOperationRecord(wsDir, original);
+      finalizeOperationRecord(wsDir, "completed");
+      const result = readOperationRecord(wsDir);
+      expect(result?.command).toBe("branch-rename");
+      expect(result?.startedAt).toBe("2026-01-01T00:00:00.000Z");
+      expect(result?.repos["repo-a"]?.preHead).toBe("abc1234");
+    }));
+
+  test("no-op when no record exists", () =>
+    withTestDir(async (wsDir) => {
+      finalizeOperationRecord(wsDir, "completed");
+      expect(readOperationRecord(wsDir)).toBeNull();
+    }));
+
+  test("falls back to delete on corrupt record", () =>
+    withTestDir(async (wsDir) => {
+      writeFileSync(join(wsDir, ".arbws/operation.json"), "not json");
+      finalizeOperationRecord(wsDir, "force-cleared");
+      expect(existsSync(join(wsDir, ".arbws/operation.json"))).toBe(false);
+    }));
+
+  test("records different outcomes", () =>
+    withTestDir(async (wsDir) => {
+      for (const outcome of ["completed", "aborted", "undone", "force-cleared"] as const) {
+        writeOperationRecord(wsDir, validRecord({ status: "in-progress" }));
+        finalizeOperationRecord(wsDir, outcome);
+        const result = readOperationRecord(wsDir);
+        expect(result?.outcome).toBe(outcome);
+      }
+    }));
+});
+
+// ── new schema fields ───────────────────────────────────────────
+
+describe("new schema fields", () => {
+  test("completedAt is optional and round-trips", () =>
+    withTestDir(async (wsDir) => {
+      const record: OperationRecord = {
+        command: "rebase",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        completedAt: "2026-01-01T00:05:00.000Z",
+        status: "completed",
+        repos: {},
+      };
+      writeOperationRecord(wsDir, record);
+      const result = readOperationRecord(wsDir);
+      expect(result?.completedAt).toBe("2026-01-01T00:05:00.000Z");
+    }));
+
+  test("outcome is optional and round-trips", () =>
+    withTestDir(async (wsDir) => {
+      const record: OperationRecord = {
+        command: "rebase",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        status: "completed",
+        outcome: "undone",
+        repos: {},
+      };
+      writeOperationRecord(wsDir, record);
+      const result = readOperationRecord(wsDir);
+      expect(result?.outcome).toBe("undone");
+    }));
+
+  test("errorOutput is optional and round-trips", () =>
+    withTestDir(async (wsDir) => {
+      const record: OperationRecord = {
+        command: "rebase",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        status: "in-progress",
+        repos: {
+          "repo-a": {
+            preHead: "abc1234",
+            status: "conflicting",
+            errorOutput: "CONFLICT (content): Merge conflict in file.ts",
+          },
+        },
+      };
+      writeOperationRecord(wsDir, record);
+      const result = readOperationRecord(wsDir);
+      expect(result?.repos["repo-a"]?.errorOutput).toBe("CONFLICT (content): Merge conflict in file.ts");
+    }));
+
+  test("records without new fields still parse (backward compat)", () =>
+    withTestDir(async (wsDir) => {
+      // Simulate an old-format record without completedAt/outcome/errorOutput
+      const oldRecord = {
+        command: "rebase",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        status: "completed",
+        repos: {
+          "repo-a": { preHead: "abc1234", status: "completed", postHead: "def5678" },
+        },
+      };
+      writeFileSync(join(wsDir, ".arbws/operation.json"), JSON.stringify(oldRecord));
+      const result = readOperationRecord(wsDir);
+      expect(result).not.toBeNull();
+      expect(result?.completedAt).toBeUndefined();
+      expect(result?.outcome).toBeUndefined();
+      expect(result?.repos["repo-a"]?.errorOutput).toBeUndefined();
+    }));
+
+  test("auto-complete sets completedAt", () =>
+    withTestDir(async (wsDir) => {
+      const record: OperationRecord = {
+        command: "rebase",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        status: "in-progress",
+        repos: {
+          "repo-a": { preHead: "abc1234", status: "completed", postHead: "def5678" },
+        },
+      };
+      writeOperationRecord(wsDir, record);
+      await assertNoInProgressOperation(wsDir);
+      const updated = readOperationRecord(wsDir);
+      expect(updated?.status).toBe("completed");
+      expect(updated?.completedAt).toBeDefined();
+    }));
 });
