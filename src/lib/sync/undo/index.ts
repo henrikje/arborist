@@ -1,11 +1,18 @@
 export type { RepoUndoAssessment, UndoAction, UndoResult, UndoStats, UndoVerboseInfo } from "./types";
 
+import { basename } from "node:path";
 import { writeWorkspaceConfig } from "../../core/config";
 import { ArbError } from "../../core/errors";
 import type { OperationRecord } from "../../core/operation";
-import { finalizeOperationRecord, readOperationRecord, writeOperationRecord } from "../../core/operation";
+import {
+  classifyContinueRepo,
+  finalizeOperationRecord,
+  readOperationRecord,
+  writeOperationRecord,
+} from "../../core/operation";
 import { finishSummary } from "../../render/render";
 import { dryRunNotice, error, info, plural, warn } from "../../terminal/output";
+import { workspaceRepoDirs } from "../../workspace/repos";
 import { confirmOrExit } from "../mutation-flow";
 import { assessUndo, gatherUndoVerboseCommits } from "./assess";
 import { executeBranchRenameUndo, executeRenameUndo, executeSyncUndo } from "./execute";
@@ -44,6 +51,9 @@ export async function runUndoFlow(params: {
   if (ageMs > 7 * 24 * 60 * 60 * 1000 && hasStash) {
     warn("This operation is older than 7 days — stashed changes may have been garbage collected by git");
   }
+
+  // Reconcile conflicting repos that were manually continued/aborted via git
+  await reconcileConflictingRepos(record, wsDir);
 
   const allAssessments = await assessUndo(record, wsDir, arbRootDir);
 
@@ -217,4 +227,40 @@ async function executeDeferredDirectoryRename(
 ): Promise<void> {
   // Pass empty assessments — only the directory rename runs (branch renames were already done).
   await executeRenameUndo(record, [], wsDir, arbRootDir, reposDir);
+}
+
+/**
+ * Patch the operation record for repos the user resolved outside arb (e.g. `git rebase --continue`
+ * or `git rebase --abort`). Without this, `assessSyncUndo` would classify them as "drifted" and
+ * block the undo. The same classification logic is used by the gate (`assertNoInProgressOperation`).
+ */
+async function reconcileConflictingRepos(record: OperationRecord, wsDir: string): Promise<void> {
+  if (record.status !== "in-progress") return;
+
+  const syncCommands = new Set(["rebase", "merge", "pull", "retarget", "reset"]);
+  if (!syncCommands.has(record.command)) return;
+
+  const conflicting = Object.entries(record.repos).filter(([, s]) => s.status === "conflicting");
+  if (conflicting.length === 0) return;
+
+  const repoDirMap = new Map(workspaceRepoDirs(wsDir).map((d) => [basename(d), d]));
+
+  let changed = false;
+  for (const [repoName, state] of conflicting) {
+    const repoDir = repoDirMap.get(repoName);
+    if (!repoDir) continue;
+
+    const c = await classifyContinueRepo(repoDir, state);
+    if (c.action === "manually-continued") {
+      record.repos[repoName] = { ...state, status: "completed", postHead: c.postHead };
+      changed = true;
+    } else if (c.action === "manually-aborted") {
+      record.repos[repoName] = { ...state, status: "completed" };
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    writeOperationRecord(wsDir, record);
+  }
 }
