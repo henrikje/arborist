@@ -11,6 +11,8 @@ export interface ReplayPlanAnalysis {
   boundaryRef?: string;
   /** True when alreadyOnTarget was determined via detectBranchMerged heuristic, not patch-id matching. */
   mergedPrefix?: boolean;
+  /** True when all local commits matched via 1:1 patch-id (rebase), not via squash matching. */
+  allRebaseMatched?: boolean;
 }
 
 /**
@@ -57,6 +59,7 @@ export async function analyzeReplayPlan(repoDir: string, baseRef: string): Promi
       alreadyOnTarget: totalLocal,
       toReplay: 0,
       contiguous: true,
+      allRebaseMatched: matchResult.rebaseMatches.size >= totalLocal && !matchResult.squashMatch,
     };
   }
 

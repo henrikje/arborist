@@ -48,6 +48,7 @@ export interface RepoStatus extends RepoRefs {
       toReplay: number;
       contiguous: boolean;
       mergedPrefix?: boolean;
+      allRebaseMatched?: boolean;
     };
   } | null;
   share: {
