@@ -304,13 +304,12 @@ export async function integrate(
   });
 
   // Consolidated conflict report
-  const subcommand = mode === "rebase" ? ("rebase" as const) : ("merge" as const);
   const conflictNodes = buildConflictReport(
     conflicted.map((c) => ({
       repo: c.assessment.repo,
       stdout: c.stdout,
       stderr: c.stderr,
-      subcommand,
+      mode,
     })),
   );
 
@@ -326,8 +325,6 @@ export async function integrate(
     record.status = "completed";
     record.completedAt = new Date().toISOString();
     writeOperationRecord(wsDir, record);
-  } else {
-    info(`Use 'arb ${mode} --continue' to resume or 'arb ${mode} --abort' to cancel`);
   }
 
   // Update config after stale base fallback

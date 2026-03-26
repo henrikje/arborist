@@ -360,7 +360,7 @@ export function registerRetargetCommand(program: Command): void {
             repo: c.assessment.repo,
             stdout: c.stdout,
             stderr: c.stderr,
-            subcommand: "rebase" as const,
+            mode: "retarget",
           })),
         );
         const reportCtx = { tty: shouldColor() };
@@ -380,7 +380,6 @@ export function registerRetargetCommand(program: Command): void {
           }
         } else {
           // Conflicts — config NOT updated (this is the bug fix)
-          info("Use 'arb retarget --continue' to resume or 'arb retarget --abort' to cancel");
         }
 
         // Phase 9: summary

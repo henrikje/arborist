@@ -391,7 +391,7 @@ export async function runPull(
       repo: c.assessment.repo,
       stdout: c.stdout,
       stderr: c.stderr,
-      subcommand: c.assessment.pullMode === "rebase" ? ("rebase" as const) : ("merge" as const),
+      mode: "pull",
     })),
   );
 
@@ -411,7 +411,7 @@ export async function runPull(
     record.status = "completed";
     record.completedAt = new Date().toISOString();
     writeOperationRecord(wsDir, record);
-  } else {
+  } else if (conflicted.length === 0 && failed.length > 0) {
     info("Use 'arb pull --continue' to resume or 'arb pull --abort' to cancel");
   }
 
