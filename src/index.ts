@@ -58,7 +58,6 @@ const BASIC_HELP_COMMANDS = new Set([
   "pull",
   "rebase",
   "merge",
-  "retarget",
   "undo",
   "exec",
 ]);
