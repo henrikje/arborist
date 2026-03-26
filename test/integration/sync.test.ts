@@ -840,6 +840,46 @@ describe("push [repos...] and --force", () => {
       expect(result.output).toContain("uncommitted changes");
       expect(result.output).not.toContain("reset");
     }));
+
+  test("arb push --force overwrites remote when strictly behind", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const repoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Make 1 commit and push
+      await write(join(repoA, "a.txt"), "a");
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "commit a"]);
+      await git(repoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Simulate someone else pushing a new commit to remote
+      const bare = join(env.originDir, "repo-a.git");
+      const tmp = join(env.testDir, "tmp-behind");
+      await git(env.testDir, ["clone", bare, tmp]);
+      await git(tmp, ["checkout", "my-feature"]);
+      await write(join(tmp, "extra.txt"), "extra");
+      await git(tmp, ["add", "extra.txt"]);
+      await git(tmp, ["commit", "-m", "extra commit"]);
+      await git(tmp, ["push", "origin", "my-feature"]);
+      await rm(tmp, { recursive: true });
+
+      await fetchAllRepos(env);
+
+      // Without --force, should skip as behind remote
+      const skipResult = await arb(env, ["push", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(skipResult.output).toContain("behind origin");
+      expect(skipResult.output).toContain("pull first");
+
+      // With --force, should overwrite remote
+      const forceResult = await arb(env, ["push", "--force", "--yes"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(forceResult.exitCode).toBe(0);
+      expect(forceResult.output).toContain("overwrite");
+      expect(forceResult.output).toContain("Pushed 1 repo");
+    }));
 });
 
 // ── pull [repos...] ─────────────────────────────────────────────

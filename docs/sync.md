@@ -29,7 +29,7 @@ arb pull --merge      # pull with merge commit
 arb push
 ```
 
-After a rebase, amend, or squash, `arb push` detects that all remote commits are outdated (already reflected in your local history) and pushes automatically with `--force-with-lease` — no `--force` flag needed. Use `--force` only when the remote has genuinely new commits from someone else.
+After a rebase, amend, or squash, `arb push` detects that all remote commits are outdated (already reflected in your local history) and pushes automatically with `--force-with-lease` — no `--force` flag needed. Use `--force` when the remote has genuinely new commits that you want to overwrite — including when your local branch is strictly behind the remote and you want to roll it back to your local state.
 
 When a collaborator force-pushes a rebased branch and you have no unique local commits to preserve, `arb pull --merge` shows a **safe reset** action in the plan and resets to the rewritten remote tip instead of attempting a three-way merge.
 
