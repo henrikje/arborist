@@ -248,7 +248,7 @@ If a rebase or merge does hit a conflict, Arborist continues with the remaining 
 
 For `arb pull --merge`, if the remote was rewritten and you have no unique commits, Arborist resets to the rewritten tip instead of attempting a three-way merge.
 
-### Undo
+### Undo anything
 
 `arb undo` reverses the last operation across all repos — whether it's still in progress or already completed. Say you run a rebase, hit a conflict, resolve it, continue — and then realise the resolution was wrong:
 
