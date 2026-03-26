@@ -31,6 +31,8 @@ export interface WatchLoopCallbacks {
   suspendHeader?: (commandLabel: string) => string;
   /** Called after a suspended command completes, before re-rendering. */
   onPostCommand?: () => void;
+  /** Called after each successful render. Use to detect new repos and push watch entries. */
+  onPostRender?: () => Promise<void> | void;
   /** Called when a non-ignored filesystem event passes the filter. Receives the full path. */
   onFsEvent?: (event: string, fullPath: string) => void;
   /** Returns a header string for an in-progress activity. Used for delayed keypress feedback. */
@@ -62,6 +64,7 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
     onPostCommand,
     onFsEvent,
     activityHeader,
+    onPostRender,
     watchers,
     debounceMs = 300,
   } = options;
@@ -80,6 +83,8 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
   // Mute events briefly after each render to ignore filesystem activity caused by
   // our own git operations (e.g. git status touches .git/index, refs, etc.)
   let muteUntil = 0;
+  // Deferred render scheduled for after the mute window expires.
+  let muteTimer: ReturnType<typeof setTimeout> | null = null;
   // Leading-edge mode: when true, the next FS event triggers an immediate render
   // instead of waiting for the debounce window. Resets to true when events settle.
   let idle = true;
@@ -127,6 +132,16 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
       const content = await render();
       cancelActivityHeader();
       if (!stopped && !suspended) writeScreen(content);
+      // Let the caller detect new repos and push watch entries after each render.
+      // Wrapped in try-catch so a failure (e.g. git error in a newly-attached repo)
+      // doesn't prevent startFsWatchers from running.
+      if (!stopped && !suspended) {
+        try {
+          await onPostRender?.();
+        } catch {}
+      }
+      // Start watchers for any entries added by onPostRender (or earlier).
+      startFsWatchers();
     } finally {
       rendering = false;
       // Mute events for the debounce window after render completes, so filesystem
@@ -136,6 +151,11 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
     // If real events arrived during render, schedule a re-render after the mute window.
     if (dirty && !stopped && !suspended) {
       dirty = false;
+      // Cancel any pending mute timer — this branch already handles the deferred render.
+      if (muteTimer !== null) {
+        clearTimeout(muteTimer);
+        muteTimer = null;
+      }
       setTimeout(() => {
         if (!stopped && !suspended) doRender();
       }, debounceMs);
@@ -152,7 +172,24 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
       dirty = true;
       return;
     }
-    if (Date.now() < muteUntil) return;
+    if (Date.now() < muteUntil) {
+      // Don't drop events during mute — defer a render so external changes
+      // (e.g. commits from another terminal) are picked up after the mute expires.
+      dirty = true;
+      if (muteTimer === null) {
+        muteTimer = setTimeout(
+          () => {
+            muteTimer = null;
+            if (dirty && !stopped && !suspended && !rendering) {
+              dirty = false;
+              doRender();
+            }
+          },
+          Math.max(0, muteUntil - Date.now()),
+        );
+      }
+      return;
+    }
 
     if (idle) {
       // Leading edge: react immediately to the first event after a quiet period
@@ -171,8 +208,12 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
 
   // --- Filesystem watcher management ---
 
+  const startedPaths = new Set<string>();
+
   const startFsWatchers = (): void => {
     for (const entry of watchers) {
+      if (startedPaths.has(entry.path)) continue;
+      startedPaths.add(entry.path);
       try {
         const watcher = watch(entry.path, { recursive: true }, (_event, filename) => {
           if (stopped || suspended) return;
@@ -195,6 +236,7 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
       } catch {}
     }
     fsWatchers = [];
+    startedPaths.clear();
   };
 
   // --- Keypress handling ---
@@ -220,6 +262,10 @@ export async function runWatchLoop(options: WatchLoopOptions): Promise<void> {
     if (stopped) return;
     stopped = true;
     if (debounceTimer !== null) clearTimeout(debounceTimer);
+    if (muteTimer !== null) {
+      clearTimeout(muteTimer);
+      muteTimer = null;
+    }
     cancelActivityHeader();
     resolvers.resolve();
   };
