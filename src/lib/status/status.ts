@@ -351,6 +351,7 @@ export async function gatherRepoStatus(
             toReplay: replayPlan.toReplay,
             contiguous: replayPlan.contiguous,
             ...(replayPlan.mergedPrefix && { mergedPrefix: true }),
+            ...(replayPlan.allRebaseMatched && { allRebaseMatched: true }),
           };
         }
       }
@@ -448,15 +449,23 @@ async function runMergeDetection(
   let mergeMatchingCommit: { hash: string; subject: string } | undefined;
   let mergeCommitHash: string | undefined;
 
-  // Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
-  const ancestorResult = await gitLocal(repoDir, "merge-base", "--is-ancestor", "HEAD", compareRef);
-  if (ancestorResult.exitCode === 0) {
+  // Replay-plan merge detection: when every local commit has a 1:1 patch-id
+  // match on the base, the branch is effectively merged (rebase-merge or
+  // cherry-pick). Only fires when all matches are 1:1 rebase matches — squash
+  // merges are handled by Phase 2 which provides richer PR attribution.
+  if (
+    baseStatus.replayPlan &&
+    baseStatus.replayPlan.totalLocal > 1 &&
+    baseStatus.replayPlan.alreadyOnTarget === baseStatus.replayPlan.totalLocal &&
+    baseStatus.replayPlan.toReplay === 0 &&
+    baseStatus.replayPlan.allRebaseMatched
+  ) {
     const merge: NonNullable<typeof baseStatus.merge> = { kind: "merge" };
-    const mergeCommit = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, "HEAD");
-    if (mergeCommit) {
-      mergeMatchingCommit = mergeCommit;
-      mergeCommitHash = mergeCommit.hash;
-      merge.commitHash = mergeCommit.hash;
+    const mc = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, "HEAD");
+    if (mc) {
+      mergeMatchingCommit = mc;
+      mergeCommitHash = mc.hash;
+      merge.commitHash = mc.hash;
     }
     baseStatus.merge = merge;
     if (!mergeMatchingCommit || !extractPrNumber(mergeMatchingCommit.subject)) {
@@ -466,43 +475,20 @@ async function runMergeDetection(
         if (ticketCommit) mergeMatchingCommit = ticketCommit;
       }
     }
-  } else if (shouldCheckSquash || shouldCheckPrefixes) {
-    // Phase 2: Squash merge detection via cumulative patch-id (with prefix fallback)
-    let squashResult = await detectBranchMerged(repoDir, compareRef, 200, "HEAD", prefixLimit, cache.basePatchIdCache);
+  }
 
-    // Guard: after `reset --hard <base>` + `git pull`, the merge commit's first parent
-    // is the base tip. The prefix loop finds HEAD~k is-ancestor of base, but the feature
-    // was never merged into base — it's a local pull-merge.
-    if (squashResult?.newCommitsAfterMerge != null && squashResult.kind === "merge" && shareStatus.ref) {
-      const n = squashResult.newCommitsAfterMerge;
-      const [prefixHash, baseHash] = await Promise.all([
-        gitLocal(repoDir, "rev-parse", `HEAD~${n}`),
-        gitLocal(repoDir, "rev-parse", compareRef),
-      ]);
-      if (prefixHash.exitCode === 0 && baseHash.exitCode === 0 && prefixHash.stdout.trim() === baseHash.stdout.trim()) {
-        const shareAheadResult = await gitLocal(repoDir, "rev-list", "--count", `${compareRef}..${shareStatus.ref}`);
-        if (shareAheadResult.exitCode === 0 && Number.parseInt(shareAheadResult.stdout.trim(), 10) > 0) {
-          squashResult = null;
-        }
-      }
-    }
+  if (!baseStatus.merge) {
+    type MergeInfo = NonNullable<(typeof baseStatus)["merge"]>;
 
-    if (squashResult) {
-      const merge: NonNullable<typeof baseStatus.merge> = { kind: squashResult.kind };
-      if (squashResult.newCommitsAfterMerge) {
-        merge.newCommitsAfter = squashResult.newCommitsAfterMerge;
-      }
-      if (squashResult.matchingCommit) {
-        mergeMatchingCommit = squashResult.matchingCommit;
-        merge.commitHash = squashResult.matchingCommit.hash;
-      } else if (squashResult.kind === "merge" && squashResult.newCommitsAfterMerge) {
-        const n = squashResult.newCommitsAfterMerge;
-        const mc = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, `HEAD~${n}`);
-        if (mc) {
-          mergeMatchingCommit = mc;
-          mergeCommitHash = mc.hash;
-          merge.commitHash = mc.hash;
-        }
+    // Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
+    const ancestorResult = await gitLocal(repoDir, "merge-base", "--is-ancestor", "HEAD", compareRef);
+    if (ancestorResult.exitCode === 0) {
+      const merge: MergeInfo = { kind: "merge" };
+      const mergeCommit = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, "HEAD");
+      if (mergeCommit) {
+        mergeMatchingCommit = mergeCommit;
+        mergeCommitHash = mergeCommit.hash;
+        merge.commitHash = mergeCommit.hash;
       }
       baseStatus.merge = merge;
       if (!mergeMatchingCommit || !extractPrNumber(mergeMatchingCommit.subject)) {
@@ -510,6 +496,64 @@ async function runMergeDetection(
         if (ticket) {
           const ticketCommit = await findTicketReferencedCommit(repoDir, ticket);
           if (ticketCommit) mergeMatchingCommit = ticketCommit;
+        }
+      }
+    } else if (shouldCheckSquash || shouldCheckPrefixes) {
+      // Phase 2: Squash merge detection via cumulative patch-id (with prefix fallback)
+      let squashResult = await detectBranchMerged(
+        repoDir,
+        compareRef,
+        200,
+        "HEAD",
+        prefixLimit,
+        cache.basePatchIdCache,
+      );
+
+      // Guard: after `reset --hard <base>` + `git pull`, the merge commit's first parent
+      // is the base tip. The prefix loop finds HEAD~k is-ancestor of base, but the feature
+      // was never merged into base — it's a local pull-merge.
+      if (squashResult?.newCommitsAfterMerge != null && squashResult.kind === "merge" && shareStatus.ref) {
+        const n = squashResult.newCommitsAfterMerge;
+        const [prefixHash, baseHash] = await Promise.all([
+          gitLocal(repoDir, "rev-parse", `HEAD~${n}`),
+          gitLocal(repoDir, "rev-parse", compareRef),
+        ]);
+        if (
+          prefixHash.exitCode === 0 &&
+          baseHash.exitCode === 0 &&
+          prefixHash.stdout.trim() === baseHash.stdout.trim()
+        ) {
+          const shareAheadResult = await gitLocal(repoDir, "rev-list", "--count", `${compareRef}..${shareStatus.ref}`);
+          if (shareAheadResult.exitCode === 0 && Number.parseInt(shareAheadResult.stdout.trim(), 10) > 0) {
+            squashResult = null;
+          }
+        }
+      }
+
+      if (squashResult) {
+        const merge: MergeInfo = { kind: squashResult.kind };
+        if (squashResult.newCommitsAfterMerge) {
+          merge.newCommitsAfter = squashResult.newCommitsAfterMerge;
+        }
+        if (squashResult.matchingCommit) {
+          mergeMatchingCommit = squashResult.matchingCommit;
+          merge.commitHash = squashResult.matchingCommit.hash;
+        } else if (squashResult.kind === "merge" && squashResult.newCommitsAfterMerge) {
+          const n = squashResult.newCommitsAfterMerge;
+          const mc = await findMergeCommitForBranch(repoDir, compareRef, actualBranch, 50, `HEAD~${n}`);
+          if (mc) {
+            mergeMatchingCommit = mc;
+            mergeCommitHash = mc.hash;
+            merge.commitHash = mc.hash;
+          }
+        }
+        baseStatus.merge = merge;
+        if (!mergeMatchingCommit || !extractPrNumber(mergeMatchingCommit.subject)) {
+          const ticket = detectTicketFromName(actualBranch);
+          if (ticket) {
+            const ticketCommit = await findTicketReferencedCommit(repoDir, ticket);
+            if (ticketCommit) mergeMatchingCommit = ticketCommit;
+          }
         }
       }
     }

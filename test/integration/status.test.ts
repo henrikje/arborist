@@ -1889,3 +1889,71 @@ describe("status JSON: diverged share with outdated detection", () => {
       expect(repo.identity.headMode.kind).toBe("detached");
     }));
 });
+
+// ── rebase-merge detection via replay plan ──────────────────────
+
+describe("rebase-merge detection", () => {
+  test("branch with all commits cherry-picked onto base shows merged (gone remote)", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+
+      // Create multiple commits on the feature branch
+      await write(join(wtRepoA, "file1.txt"), "feature-1");
+      await git(wtRepoA, ["add", "file1.txt"]);
+      await git(wtRepoA, ["commit", "-m", "feat: first change"]);
+      await write(join(wtRepoA, "file2.txt"), "feature-2");
+      await git(wtRepoA, ["add", "file2.txt"]);
+      await git(wtRepoA, ["commit", "-m", "feat: second change"]);
+      await write(join(wtRepoA, "file3.txt"), "feature-3");
+      await git(wtRepoA, ["add", "file3.txt"]);
+      await git(wtRepoA, ["commit", "-m", "feat: third change"]);
+      await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Simulate rebase-merge: cherry-pick all 3 commits onto main (new SHAs)
+      const repoA = join(env.projectDir, ".arb/repos/repo-a");
+      const commits = (await git(wtRepoA, ["log", "--format=%H", "--reverse", "main..HEAD"])).trim().split("\n");
+      for (const sha of commits) {
+        await git(repoA, ["cherry-pick", sha]);
+      }
+      await git(repoA, ["push"]);
+      // Delete remote branch (simulates post-PR-merge cleanup)
+      await git(repoA, ["push", "origin", "--delete", "my-feature"]);
+
+      await fetchAllRepos(env);
+      const result = await arb(env, ["status"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("merged");
+
+      // Verify JSON output
+      const jsonResult = await arb(env, ["status", "--no-fetch", "--json"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      const json = JSON.parse(jsonResult.stdout);
+      expect(json.repos[0].base.merge).toBeDefined();
+      expect(json.repos[0].base.merge.kind).toBe("merge");
+    }));
+
+  test("branch with all commits cherry-picked onto base shows merged (single commit)", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+      const wtRepoA = join(env.projectDir, "my-feature/repo-a");
+
+      await write(join(wtRepoA, "feature.txt"), "feature");
+      await git(wtRepoA, ["add", "feature.txt"]);
+      await git(wtRepoA, ["commit", "-m", "feat: the change"]);
+      await git(wtRepoA, ["push", "-u", "origin", "my-feature"]);
+
+      // Cherry-pick onto main
+      const repoA = join(env.projectDir, ".arb/repos/repo-a");
+      const sha = (await git(wtRepoA, ["rev-parse", "HEAD"])).trim();
+      await git(repoA, ["cherry-pick", sha]);
+      await git(repoA, ["push"]);
+      await git(repoA, ["push", "origin", "--delete", "my-feature"]);
+
+      await fetchAllRepos(env);
+      const result = await arb(env, ["status"], { cwd: join(env.projectDir, "my-feature") });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("merged");
+    }));
+});
