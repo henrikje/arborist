@@ -115,6 +115,17 @@ export function buildCanonicalGitDirFilter(worktreeEntryName: string): (filename
   };
 }
 
+/**
+ * Workspace root watcher filter. Passes top-level events (new repo directories)
+ * and .arbws/ config changes. Ignores deep repo file changes that are already
+ * covered by per-repo watchers.
+ */
+export function buildWorkspaceDirFilter(filename: string): boolean {
+  if (!filename.includes("/")) return false; // top-level: new repo dirs
+  if (filename.startsWith(".arbws/")) return false; // workspace config changes
+  return true;
+}
+
 async function predictConflicts(
   repos: RepoStatus[],
   wsDir: string,
@@ -217,6 +228,9 @@ async function runWatch(
     lastEvent = { timestamp: new Date().toISOString(), detail };
   };
 
+  /** Live repo list — re-scans the workspace directory on each call. */
+  const getCurrentRepos = (): string[] => workspaceRepoDirs(wsDir).map((d) => basename(d));
+
   const gatherFiltered = async (): Promise<WorkspaceSummary> => {
     const summary = await gatherWorkspaceSummary(wsDir, ctx.reposDir, undefined, cache, {
       analysisCache: ctx.analysisCache,
@@ -249,11 +263,20 @@ async function runWatch(
     }),
   );
 
+  // Watch the workspace root for new repo directories (from arb attach) and config changes.
+  watchEntries.push({
+    path: wsDir,
+    shouldIgnore: buildWorkspaceDirFilter,
+  });
+
+  // Track known repos so onPostRender can detect newly attached ones.
+  const knownRepos = new Set(selectedRepos);
+
   const commands = new Map<string, WatchCommand>([
-    ["r", { label: "rebase", run: () => integrate(ctx, "rebase", {}, selectedRepos) }],
-    ["m", { label: "merge", run: () => integrate(ctx, "merge", {}, selectedRepos) }],
-    ["l", { label: "pull", run: () => runPull(ctx, selectedRepos, {}) }],
-    ["p", { label: "push", run: () => runPush(ctx, selectedRepos, {}) }],
+    ["r", { label: "rebase", run: () => integrate(ctx, "rebase", {}, getCurrentRepos()) }],
+    ["m", { label: "merge", run: () => integrate(ctx, "merge", {}, getCurrentRepos()) }],
+    ["l", { label: "pull", run: () => runPull(ctx, getCurrentRepos(), {}) }],
+    ["p", { label: "push", run: () => runPush(ctx, getCurrentRepos(), {}) }],
   ]);
 
   const project = basename(ctx.arbRootDir);
@@ -282,8 +305,6 @@ async function runWatch(
     return `${header}\n${table}${footer}${debugSection}`;
   };
 
-  const fetchDirs = selectedRepos.map((name) => `${wsDir}/${name}`);
-
   await runWatchLoop({
     render: renderScreen,
     watchers: watchEntries,
@@ -309,13 +330,40 @@ async function runWatch(
       activity = "Fetching...";
       recordEvent("key: f (fetch)");
       try {
-        const remotesMap = await cache.resolveRemotesMap(selectedRepos, ctx.reposDir);
-        await parallelFetch(fetchDirs, undefined, remotesMap, { silent: true });
+        const currentRepos = getCurrentRepos();
+        const remotesMap = await cache.resolveRemotesMap(currentRepos, ctx.reposDir);
+        const currentFetchDirs = currentRepos.map((name) => `${wsDir}/${name}`);
+        await parallelFetch(currentFetchDirs, undefined, remotesMap, { silent: true });
         cache.invalidateAfterFetch();
       } finally {
         activity = null;
       }
     },
     onPostCommand: () => cache.invalidateAfterFetch(),
+    onPostRender: async () => {
+      // Detect newly attached repos and add watchers for them.
+      const currentRepos = getCurrentRepos();
+      const newRepos = currentRepos.filter((r) => !knownRepos.has(r));
+      if (newRepos.length === 0) return;
+
+      await Promise.all(
+        newRepos.map(async (repoName) => {
+          knownRepos.add(repoName);
+          const repoDir = `${wsDir}/${repoName}`;
+
+          const ignoreFilter = await buildIgnoreFilter(repoDir);
+          watchEntries.push({ path: repoDir, shouldIgnore: ignoreFilter });
+
+          const gitdirPath = readGitdirFromWorktree(repoDir);
+          if (gitdirPath) {
+            const canonicalGitDir = dirname(dirname(gitdirPath));
+            watchEntries.push({
+              path: canonicalGitDir,
+              shouldIgnore: buildCanonicalGitDirFilter(basename(gitdirPath)),
+            });
+          }
+        }),
+      );
+    },
   });
 }

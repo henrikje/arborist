@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildCanonicalGitDirFilter } from "./watch";
+import { buildCanonicalGitDirFilter, buildWorkspaceDirFilter } from "./watch";
 
 describe("buildCanonicalGitDirFilter", () => {
   const filter = buildCanonicalGitDirFilter("my-workspace");
@@ -59,5 +59,35 @@ describe("buildCanonicalGitDirFilter", () => {
     expect(filter("refs/heads/main.lock")).toBe(true);
     expect(filter("packed-refs.lock")).toBe(true);
     expect(filter("worktrees/my-workspace/index.lock")).toBe(true);
+  });
+});
+
+describe("buildWorkspaceDirFilter", () => {
+  // --- Paths that should NOT be ignored (relevant signals) ---
+
+  test("allows top-level entries (new repo directories)", () => {
+    expect(buildWorkspaceDirFilter("api")).toBe(false);
+    expect(buildWorkspaceDirFilter("web")).toBe(false);
+    expect(buildWorkspaceDirFilter(".arbws")).toBe(false);
+  });
+
+  test("allows .arbws/ config changes", () => {
+    expect(buildWorkspaceDirFilter(".arbws/config.json")).toBe(false);
+    expect(buildWorkspaceDirFilter(".arbws/templates.json")).toBe(false);
+  });
+
+  // --- Paths that SHOULD be ignored (covered by per-repo watchers) ---
+
+  test("ignores deep repo file changes", () => {
+    expect(buildWorkspaceDirFilter("api/src/index.ts")).toBe(true);
+    expect(buildWorkspaceDirFilter("web/package.json")).toBe(true);
+  });
+
+  test("ignores repo .git files", () => {
+    expect(buildWorkspaceDirFilter("api/.git")).toBe(true);
+  });
+
+  test("ignores nested directories", () => {
+    expect(buildWorkspaceDirFilter("api/node_modules/foo")).toBe(true);
   });
 });
