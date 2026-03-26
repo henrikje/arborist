@@ -3,8 +3,10 @@ import type { RepoStatus } from "./types";
 /** Compute plain-text BASE diff */
 export function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
   if (base.merge != null) {
+    const prNumber = base.merge.detectedPr?.number;
+    const prSuffix = prNumber ? ` (#${prNumber})` : "";
     const n = base.merge.newCommitsAfter;
-    return n && n > 0 ? `merged, ${n} ahead` : "merged";
+    return n && n > 0 ? `merged${prSuffix}, ${n} ahead` : `merged${prSuffix}`;
   }
   if (base.baseMergedIntoDefault != null) return "base merged";
   const parts = [base.ahead > 0 && `${base.ahead} ahead`, base.behind > 0 && `${base.behind} behind`]
@@ -18,12 +20,10 @@ const EMPTY_DIFF: DiffResult = { push: "", pull: "", pullNewText: "", pushNewTex
 
 function remoteDiffGone(repo: RepoStatus): DiffResult {
   const merged = repo.base?.merge != null;
-  const prNumber = repo.base?.merge?.detectedPr?.number;
-  const prSuffix = prNumber ? ` (#${prNumber})` : "";
   const newCommits = repo.base?.merge?.newCommitsAfter;
   const pushSuffix = merged && newCommits && newCommits > 0 ? `, ${newCommits} to push` : "";
 
-  if (merged) return { ...EMPTY_DIFF, push: `merged${prSuffix}, gone${pushSuffix}` };
+  if (merged) return { ...EMPTY_DIFF, push: `gone${pushSuffix}` };
   if (repo.base !== null && repo.base.ahead > 0) return { ...EMPTY_DIFF, push: `gone, ${repo.base.ahead} to push` };
   return { ...EMPTY_DIFF, push: "gone" };
 }
@@ -42,11 +42,9 @@ function remoteDiffNeverPushed(repo: RepoStatus): DiffResult {
 }
 
 function remoteDiffMerged(repo: RepoStatus): DiffResult {
-  const prNumber = repo.base?.merge?.detectedPr?.number;
-  const prSuffix = prNumber ? ` (#${prNumber})` : "";
   const newCommits = repo.base?.merge?.newCommitsAfter;
-  const pushSuffix = newCommits && newCommits > 0 ? `, ${newCommits} to push` : "";
-  return { ...EMPTY_DIFF, push: `merged${prSuffix}${pushSuffix}` };
+  if (newCommits && newCommits > 0) return { ...EMPTY_DIFF, push: `${newCommits} to push` };
+  return { ...EMPTY_DIFF, push: "up to date" };
 }
 
 function remoteDiffDiverged(repo: RepoStatus): DiffResult {

@@ -312,11 +312,9 @@ describe("analyzeRemoteDiff", () => {
     });
     const flags = computeFlags(repo, "feature");
     const c = analyzeRemoteDiff(repo, flags);
-    expect(c.plain).toBe("merged, 1 to push");
-    expect(c.spans.length).toBeGreaterThan(1);
-    // The "1 to push" part should have attention
-    const lastSpan = c.spans[c.spans.length - 1];
-    expect(lastSpan?.attention).toBe("attention");
+    expect(c.plain).toBe("1 to push");
+    expect(c.spans.length).toBe(1);
+    expect(c.spans[0]?.attention).toBe("attention");
   });
 
   test("no branch — default attention", () => {
@@ -486,7 +484,7 @@ describe("plainRemoteDiff", () => {
           },
         }),
       ),
-    ).toBe("merged, gone");
+    ).toBe("gone");
   });
 });
 

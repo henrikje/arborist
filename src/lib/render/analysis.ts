@@ -93,7 +93,16 @@ export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags, hasPullCon
   if (!pushText) return cell(pullText);
   if (pushText === "up to date" || pushText === "gone" || pushText === "no branch") return cell(pushText);
 
-  // Behind-only: already handled above (pushText empty)
+  // Gone with new commits to push — highlight the push suffix
+  if (repo.share.refMode === "gone" && repo.base?.merge?.newCommitsAfter && pushText.includes("to push")) {
+    const commaIdx = pushText.indexOf(", ");
+    if (commaIdx >= 0) {
+      return spans(
+        { text: pushText.slice(0, commaIdx + 2), attention: "default" },
+        { text: pushText.slice(commaIdx + 2), attention: "attention" },
+      );
+    }
+  }
 
   // Determine push-side attention
   const toPush = repo.share.toPush ?? 0;
@@ -102,18 +111,6 @@ export function analyzeRemoteDiff(repo: RepoStatus, flags: RepoFlags, hasPullCon
   const newCount = Math.max(0, Math.min(baseAhead, toPush) - totalMatched);
   const pushNeedsAttention = flags.isAheadOfShare && (totalMatched === 0 || newCount > 0);
   const pushSpans = pushSideSpans(pushText, pushNewText, pushNeedsAttention);
-
-  // Merged with new work — color only the push suffix portion
-  if (repo.base?.merge?.newCommitsAfter && repo.base.merge.newCommitsAfter > 0 && !pullText) {
-    const text = pushText;
-    const pushIdx = text.lastIndexOf(", ");
-    if (pushIdx >= 0 && text.includes("to push")) {
-      const prefix = text.slice(0, pushIdx + 2);
-      const pushPart = text.slice(pushIdx + 2);
-      return spans({ text: prefix, attention: "default" }, { text: pushPart, attention: "attention" });
-    }
-    return cell(text);
-  }
 
   // Push-only: single span
   if (!pullText)
