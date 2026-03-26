@@ -2,7 +2,10 @@ import type { RepoStatus } from "./types";
 
 /** Compute plain-text BASE diff */
 export function plainBaseDiff(base: NonNullable<RepoStatus["base"]>): string {
-  if (base.merge != null) return "merged";
+  if (base.merge != null) {
+    const n = base.merge.newCommitsAfter;
+    return n && n > 0 ? `merged, ${n} ahead` : "merged";
+  }
   if (base.baseMergedIntoDefault != null) return "base merged";
   const parts = [base.ahead > 0 && `${base.ahead} ahead`, base.behind > 0 && `${base.behind} behind`]
     .filter(Boolean)
