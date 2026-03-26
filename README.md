@@ -248,27 +248,13 @@ If a rebase or merge does hit a conflict, Arborist continues with the remaining 
 
 For `arb pull --merge`, if the remote was rewritten and you have no unique commits, Arborist resets to the rewritten tip instead of attempting a three-way merge.
 
-### Continue, abort, and undo
-
-Rebase conflicts in 3 out of 10 repos? Arborist finishes the other 7 and remembers where it stopped. Fix the conflicts, then use `--continue` — just like `git rebase --continue`, but across all repos at once:
-
-```bash
-arb rebase                    # repo-a conflicts, but repo-b and repo-c succeed
-# fix conflicts in repo-a
-arb rebase --continue         # picks up where it left off — done
-```
-
-Changed your mind? `--abort` cancels and restores the pre-operation state across all repos:
-
-```bash
-arb rebase --abort            # all repos back to where they were before the rebase
-```
+### Undo
 
 `arb undo` reverses the last operation across all repos — whether it's still in progress or already completed:
 
 ```bash
-arb reset --hard              # oops, reset 5 repos to remote HEAD
-arb undo                      # all 5 repos back exactly where they were, including uncommitted changes
+arb reset --hard              # oops — nuked uncommitted work across 5 repos
+arb undo                      # all 5 repos restored: commits, branches, and uncommitted changes
 ```
 
 This works for any tracked operation: rebase, merge, retarget, pull, reset, rename. Undo aborts in-progress git operations, resets HEADs, restores uncommitted changes, and rolls back config. It detects if you have done other changes, so it never silently discards work. It is as close to a magic wand as you can get!
