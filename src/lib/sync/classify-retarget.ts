@@ -30,6 +30,7 @@ export async function assessRetargetRepo(
   options: {
     autostash: boolean;
     includeWrongBranch: boolean;
+    repoBaseRemote?: string;
     cache: { getDefaultBranch(repoDir: string, remote: string): Promise<string | null> };
   },
   dependencies?: Partial<RetargetClassifierDeps>,
@@ -43,6 +44,7 @@ export async function assessRetargetRepo(
     branch,
     targetBranch: targetBranch ?? "",
     baseRemote: "",
+    baseResolvedLocally: undefined as boolean | undefined,
     oldBase: "",
     headSha,
     shallow: status.identity.shallow,
@@ -85,10 +87,12 @@ export async function assessRetargetRepo(
 
   // ── Resolve base remote ──
 
-  if (status.base === null || !status.base.remote) {
+  if (status.base === null || (!status.base.remote && status.base.resolvedVia !== "local")) {
     return { ...base, outcome: "skip", skipReason: "no base branch", skipFlag: "no-base-branch" };
   }
-  base.baseRemote = status.base.remote;
+  // For locally-resolved bases, use the repo's base remote name (from caller) for target checks.
+  base.baseRemote = status.base.remote ?? options.repoBaseRemote ?? "";
+  base.baseResolvedLocally = status.base.resolvedVia === "local";
 
   // ── Resolve target branch ──
 

@@ -46,7 +46,7 @@ export interface ResetAssessment {
   skipReason?: string;
   skipFlag?: SkipFlag;
   mode: "share" | "base";
-  baseRemote: string;
+  baseRemote: string | null;
   baseRef: string;
   target: string;
   dirtyFiles: number;
@@ -114,12 +114,13 @@ export function assessResetRepo(
   }
 
   // No base remote resolved
-  if (!status.base.remote) {
+  if (!status.base.remote && status.base.resolvedVia !== "local") {
     return { ...defaults, skipReason: "no base remote", skipFlag: "no-base-remote" };
   }
 
   const baseRemote = status.base.remote;
   const baseRef = status.base.ref;
+  const baseResolvedLocally = status.base.resolvedVia === "local";
   const dirtyFiles = status.local.staged + status.local.modified + status.local.conflicts;
 
   // Resolve target: prefer share ref (remote feature branch) unless --base or no share ref
@@ -158,7 +159,7 @@ export function assessResetRepo(
     }
   } else {
     // Reset to base branch (no share ref, --base flag, or gone/noRef)
-    target = `${baseRemote}/${baseRef}`;
+    target = baseResolvedLocally ? baseRef : `${baseRemote}/${baseRef}`;
     mode = "base";
 
     // Already merged into base — resetting to base would silently discard merge evidence
