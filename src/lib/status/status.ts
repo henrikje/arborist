@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, dirname } from "node:path";
 import { detectRebasedCommits, detectReplacedCommits, detectSquashedCommits } from "../analysis/commit-matching";
 import { detectBranchMerged, findMergeCommitForBranch, findTicketReferencedCommit } from "../analysis/merge-detection";
 import { analyzeReplayPlan } from "../analysis/replay-analysis";
@@ -85,6 +85,53 @@ export function computeMergeDetectionStrategy(
   }
 
   return { shouldCheckSquash, shouldCheckPrefixes, prefixLimit };
+}
+
+/** Resolve the base branch ref for a repo — local-primary for workspace branches, remote otherwise.
+ * Returns null when no base could be resolved at all. */
+async function resolveConfiguredBase(
+  repoPath: string,
+  configBase: string | null,
+  baseRemote: string,
+  cache: GitCache,
+): Promise<{
+  branch: string;
+  resolvedVia: "remote" | "local";
+  remote: string | null;
+  fellBack: boolean;
+  worktreePath: string | null;
+} | null> {
+  let branch: string | null = null;
+  let fellBack = false;
+  let resolvedVia: "remote" | "local" = "remote";
+  let remoteName: string | null = null;
+  let worktreePath: string | null = null;
+
+  if (configBase) {
+    // Step 1: Check if configBase is a workspace branch (local + in worktree)
+    worktreePath = await cache.findBranchWorktree(repoPath, configBase);
+    if (worktreePath) {
+      branch = configBase;
+      resolvedVia = "local";
+      const remoteExists = await cache.remoteBranchExists(repoPath, configBase, baseRemote);
+      remoteName = remoteExists ? baseRemote : null;
+    } else {
+      // Step 2: Check remote (existing behavior)
+      const remoteExists = await cache.remoteBranchExists(repoPath, configBase, baseRemote);
+      if (remoteExists) {
+        branch = configBase;
+        remoteName = baseRemote;
+      }
+    }
+  }
+  if (!branch && baseRemote) {
+    // Step 3: Fall back to default branch
+    branch = await cache.getDefaultBranch(repoPath, baseRemote);
+    if (configBase && branch) fellBack = true;
+    if (branch) remoteName = baseRemote;
+  }
+
+  return branch ? { branch, resolvedVia, remote: remoteName, fellBack, worktreePath } : null;
 }
 
 // ── Share Divergence Detection ──
@@ -191,30 +238,25 @@ export async function gatherRepoStatus(
   let baseStatus: RepoStatus["base"] = null;
   let compareRef: string | null = null;
   if (!detached) {
-    // Base branch resolution
-    let defaultBranch: string | null = null;
-    let fellBack = false;
-    if (configBase) {
-      const baseExists = await cache.remoteBranchExists(repoPath, configBase, baseRemote);
-      if (baseExists) {
-        defaultBranch = configBase;
-      }
-    }
-    if (!defaultBranch && baseRemote) {
-      defaultBranch = await cache.getDefaultBranch(repoPath, baseRemote);
-      if (configBase && defaultBranch) fellBack = true;
-    }
-
-    if (defaultBranch) {
-      compareRef = baseRemote ? `${baseRemote}/${defaultBranch}` : defaultBranch;
+    // Base branch resolution — local-primary for workspace branches, remote otherwise.
+    const resolved = await resolveConfiguredBase(repoPath, configBase, baseRemote, cache);
+    if (resolved) {
+      const sourceWorkspace = resolved.worktreePath ? basename(dirname(resolved.worktreePath)) : undefined;
+      compareRef =
+        resolved.resolvedVia === "local"
+          ? resolved.branch
+          : resolved.remote
+            ? `${resolved.remote}/${resolved.branch}`
+            : resolved.branch;
       const lr = await gitLocal(repoDir, "rev-list", "--left-right", "--count", `${compareRef}...HEAD`);
       if (lr.exitCode === 0) {
         const { left: behind, right: ahead } = parseLeftRight(lr.stdout);
         baseStatus = {
-          remote: baseRemote ?? null,
-          ref: defaultBranch,
-          configuredRef: fellBack ? configBase : null,
-          resolvedVia: "remote",
+          remote: resolved.remote,
+          ref: resolved.branch,
+          configuredRef: resolved.fellBack ? configBase : null,
+          resolvedVia: resolved.resolvedVia,
+          ...(sourceWorkspace && { sourceWorkspace }),
           ahead,
           behind,
           baseMergedIntoDefault: null,
@@ -366,7 +408,7 @@ export async function gatherRepoStatus(
 
       // Merge detection
       if (needsMergeDetection && baseStatus) {
-        const mergeCompareRef = baseRemote ? `${baseRemote}/${baseStatus.ref}` : baseStatus.ref;
+        const mergeCompareRef = baseRemoteRef(baseStatus) ?? baseRef(baseStatus);
         await runMergeDetection(repoDir, repoPath, baseStatus, shareStatus, mergeCompareRef, actualBranch, cache);
       }
 
@@ -389,7 +431,16 @@ export async function gatherRepoStatus(
   // has been merged into the repo's true default branch.
   // Not cached — cheap (2-3 calls) and depends on configBase which varies per workspace.
   if (configBase && baseStatus !== null && baseRemote && !detached) {
-    if (baseStatus.ref === configBase) {
+    if (baseStatus.resolvedVia === "local" && baseStatus.remote === null) {
+      // Local-only base (not on remote). Still detect squash-merge-and-delete:
+      // the base may have been pushed, squash-merged, and remote branch deleted.
+      const trueDefault = await cache.getDefaultBranch(repoPath, baseRemote);
+      if (trueDefault && trueDefault !== configBase) {
+        const defaultRef = `${baseRemote}/${trueDefault}`;
+        const result = await detectBranchMerged(repoDir, defaultRef, 200, configBase);
+        baseStatus.baseMergedIntoDefault = result?.kind ?? null;
+      }
+    } else if (baseStatus.ref === configBase && baseStatus.remote) {
       // Base branch exists on remote — use remote ref for detection
       const trueDefault = await cache.getDefaultBranch(repoPath, baseRemote);
       if (trueDefault && trueDefault !== configBase) {
@@ -609,22 +660,13 @@ export async function gatherRepoRefs(
   // Base: resolve ref identity only (no ahead/behind counts)
   let baseRefs: RepoRefs["base"] = null;
   if (!detached) {
-    let defaultBranch: string | null = null;
-    let fellBack = false;
-    if (configBase) {
-      const baseExists = await cache.remoteBranchExists(repoPath, configBase, baseRemote);
-      if (baseExists) defaultBranch = configBase;
-    }
-    if (!defaultBranch && baseRemote) {
-      defaultBranch = await cache.getDefaultBranch(repoPath, baseRemote);
-      if (configBase && defaultBranch) fellBack = true;
-    }
-    if (defaultBranch) {
+    const resolved = await resolveConfiguredBase(repoPath, configBase, baseRemote, cache);
+    if (resolved) {
       baseRefs = {
-        remote: baseRemote ?? null,
-        ref: defaultBranch,
-        configuredRef: fellBack ? configBase : null,
-        resolvedVia: "remote",
+        remote: resolved.remote,
+        ref: resolved.branch,
+        configuredRef: resolved.fellBack ? configBase : null,
+        resolvedVia: resolved.resolvedVia,
       };
     }
   }

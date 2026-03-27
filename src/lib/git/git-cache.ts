@@ -163,7 +163,6 @@ export class GitCache {
     this.defaultBranchCache.clear();
     this.remoteBranchExistsCache.clear();
     this.branchExistsLocallyCache.clear();
-    this.findBranchWorktreeCache.clear();
   }
 
   /** Build a remotes map from cached individual results. */
