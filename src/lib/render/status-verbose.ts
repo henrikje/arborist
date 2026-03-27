@@ -51,6 +51,11 @@ export function formatVerboseDetail(repo: RepoStatus, verbose: VerboseDetail | u
     sections.push(section);
   }
 
+  // Source workspace for locally-resolved base
+  if (repo.base?.resolvedVia === "local" && repo.base.sourceWorkspace) {
+    sections.push(`\n${SECTION_INDENT}Base workspace: ${repo.base.sourceWorkspace}\n`);
+  }
+
   // Ahead of base
   if (verbose?.aheadOfBase && repo.base) {
     const ref = baseRef(repo.base);
@@ -213,6 +218,14 @@ export function verboseDetailToNodes(repo: RepoStatus, verbose: VerboseDetail | 
         items: [],
       },
       { kind: "section", header: cell("Run 'arb rebase' to rebase onto the default branch"), items: [] },
+    );
+  }
+
+  // Source workspace for locally-resolved base
+  if (repo.base?.resolvedVia === "local" && repo.base.sourceWorkspace) {
+    nodes.push(
+      { kind: "gap" },
+      { kind: "section", header: cell(`Base workspace: ${repo.base.sourceWorkspace}`), items: [] },
     );
   }
 

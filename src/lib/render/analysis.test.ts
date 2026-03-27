@@ -4,6 +4,7 @@ import { makeRepo } from "../status/test-helpers";
 import {
   analyzeBaseDiff,
   analyzeBaseName,
+  analyzeBaseSource,
   analyzeBranch,
   analyzeLocal,
   analyzeRemoteDiff,
@@ -97,6 +98,54 @@ describe("analyzeBaseName", () => {
     const result = analyzeBaseName(repo, flags);
     expect(result.plain).toBe("origin/main");
     expect(result.spans[0]?.attention).toBe("attention");
+  });
+});
+
+// ── analyzeBaseSource ──
+
+describe("analyzeBaseSource", () => {
+  test("returns empty cell when base is null", () => {
+    const repo = makeRepo({ base: null });
+    expect(analyzeBaseSource(repo)).toEqual({ plain: "", spans: [] });
+  });
+
+  test("returns empty cell when resolvedVia is remote", () => {
+    const repo = makeRepo();
+    expect(analyzeBaseSource(repo)).toEqual({ plain: "", spans: [] });
+  });
+
+  test("returns 'local' for locally-resolved base in compact mode", () => {
+    const repo = makeRepo({
+      base: {
+        remote: null,
+        ref: "feat/base",
+        configuredRef: null,
+        resolvedVia: "local",
+        sourceWorkspace: "base-ws",
+        ahead: 1,
+        behind: 0,
+        baseMergedIntoDefault: null,
+      },
+    });
+    const result = analyzeBaseSource(repo);
+    expect(result.plain).toBe("local");
+  });
+
+  test("returns 'local' even when sourceWorkspace is set (workspace name is for verbose detail)", () => {
+    const repo = makeRepo({
+      base: {
+        remote: null,
+        ref: "feat/base",
+        configuredRef: null,
+        resolvedVia: "local",
+        sourceWorkspace: "base-ws",
+        ahead: 1,
+        behind: 0,
+        baseMergedIntoDefault: null,
+      },
+    });
+    const result = analyzeBaseSource(repo);
+    expect(result.plain).toBe("local");
   });
 });
 

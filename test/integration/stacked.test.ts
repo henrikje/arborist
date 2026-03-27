@@ -401,12 +401,14 @@ describe("local base branch resolution", () => {
       expect(result.output).toContain("local");
     }));
 
-  test("arb status shows workspace name in verbose output", () =>
+  test("arb status verbose shows workspace name in detail section", () =>
     withEnv(async (env) => {
       await setupLocalStack(env);
 
       const result = await arb(env, ["status", "-v", "-N"], { cwd: join(env.projectDir, "stacked-ws") });
-      expect(result.output).toContain("base-ws");
+      expect(result.output).toContain("Base workspace: base-ws");
+      // Sub-column should still show "local", not the workspace name
+      expect(result.output).toContain("local");
     }));
 
   test("ahead/behind updates live when base workspace commits", () =>
@@ -482,6 +484,22 @@ describe("local base branch resolution", () => {
       expect(result.exitCode).toBe(0);
 
       // After rebase, the stacked workspace should have the base commit
+      expect(existsSync(join(env.projectDir, "stacked-ws/repo-a/new-base.txt"))).toBe(true);
+    }));
+
+  test("arb merge works with locally-resolved base", () =>
+    withEnv(async (env) => {
+      await setupLocalStack(env);
+
+      // Add a commit to the base workspace that the stacked workspace doesn't have
+      await write(join(env.projectDir, "base-ws/repo-a/new-base.txt"), "new");
+      await git(join(env.projectDir, "base-ws/repo-a"), ["add", "new-base.txt"]);
+      await git(join(env.projectDir, "base-ws/repo-a"), ["commit", "-m", "new base commit"]);
+
+      const result = await arb(env, ["merge", "--yes", "-N"], { cwd: join(env.projectDir, "stacked-ws") });
+      expect(result.exitCode).toBe(0);
+
+      // After merge, the stacked workspace should have the base commit
       expect(existsSync(join(env.projectDir, "stacked-ws/repo-a/new-base.txt"))).toBe(true);
     }));
 

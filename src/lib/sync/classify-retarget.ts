@@ -44,7 +44,7 @@ export async function assessRetargetRepo(
     branch,
     targetBranch: targetBranch ?? "",
     baseRemote: "",
-    baseResolvedLocally: undefined as boolean | undefined,
+    baseResolvedLocally: false,
     oldBase: "",
     headSha,
     shallow: status.identity.shallow,

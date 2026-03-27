@@ -94,7 +94,7 @@ export function buildStatusView(summary: WorkspaceSummary, ctx: StatusViewContex
         branch: analyzeBranch(repo, ctx.expectedBranch),
         baseName: analyzeBaseName(repo, flags),
         baseDiff: analyzeBaseDiff(repo, flags, hasBaseConflict),
-        baseSource: analyzeBaseSource(repo, !!ctx.verboseData),
+        baseSource: analyzeBaseSource(repo),
         remoteName: analyzeRemoteName(repo, flags),
         remoteDiff: analyzeRemoteDiff(repo, flags, hasPullConflict),
         local: analyzeLocal(repo),

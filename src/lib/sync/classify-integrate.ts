@@ -37,7 +37,7 @@ export function classifyRepo(
     behind: 0,
     ahead: 0,
     baseRemote: "",
-    baseResolvedLocally: undefined as boolean | undefined,
+    baseResolvedLocally: false,
     headSha,
     shallow: status.identity.shallow,
     wrongBranch: undefined as boolean | undefined,

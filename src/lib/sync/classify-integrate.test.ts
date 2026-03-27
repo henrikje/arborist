@@ -169,6 +169,30 @@ describe("classifyRepo", () => {
     expect(a.skipFlag).toBe("no-base-remote");
   });
 
+  test("does not skip when base resolved locally with null remote", () => {
+    const a = classifyRepo(
+      makeRepo({
+        base: {
+          remote: null,
+          ref: "feat/base",
+          configuredRef: null,
+          resolvedVia: "local",
+          ahead: 3,
+          behind: 1,
+          baseMergedIntoDefault: null,
+        },
+      }),
+      DIR,
+      "feature",
+      [],
+      false,
+      SHA,
+    );
+    expect(a.outcome).toBe("will-operate");
+    expect(a.baseResolvedLocally).toBe(true);
+    expect(a.baseBranch).toBe("feat/base");
+  });
+
   test("skips when already merged", () => {
     const a = classifyRepo(
       makeRepo({
