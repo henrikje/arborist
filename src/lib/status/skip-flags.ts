@@ -22,7 +22,9 @@ export type SkipFlag =
   | "retarget-target-not-found"
   | "retarget-base-not-found"
   | "retarget-no-default"
-  | "retarget-same-base";
+  | "retarget-same-base"
+  // Extract-specific
+  | "extract-target-exists";
 
 export const BENIGN_SKIPS: ReadonlySet<SkipFlag> = new Set([
   "already-merged",
@@ -32,3 +34,5 @@ export const BENIGN_SKIPS: ReadonlySet<SkipFlag> = new Set([
 ]);
 
 export const RETARGET_EXEMPT_SKIPS: ReadonlySet<SkipFlag> = new Set(["no-base-branch", "retarget-target-not-found"]);
+
+export const EXTRACT_EXEMPT_SKIPS: ReadonlySet<SkipFlag> = new Set(["no-base-branch"]);

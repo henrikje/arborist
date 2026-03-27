@@ -142,6 +142,8 @@ export async function runUndoFlow(params: {
         skipDirectoryRename: isPartialRenameUndo,
       });
       break;
+    case "extract":
+      throw new ArbError("Undo for extract is not yet implemented");
     default: {
       const _exhaustive: never = record;
       throw new ArbError("Undo is not yet supported for this operation");
