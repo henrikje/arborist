@@ -10,7 +10,7 @@ export {
 } from "./flags";
 export { extractPrNumber } from "./pr-detection";
 export { type SkipFlag, BENIGN_SKIPS, RETARGET_EXEMPT_SKIPS } from "./skip-flags";
-export { baseRef, gatherRepoRefs, gatherRepoStatus, gatherWorkspaceSummary } from "./status";
+export { baseRef, baseRemoteRef, gatherRepoRefs, gatherRepoStatus, gatherWorkspaceSummary } from "./status";
 export { makeRepo } from "./test-helpers";
 export { type VerboseDetail, gatherVerboseDetail, toJsonVerbose } from "./verbose-detail";
 export { detectTicketFromName } from "./ticket-detection";

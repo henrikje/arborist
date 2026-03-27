@@ -32,6 +32,8 @@ export const StatusJsonRepoSchema = z.object({
       remote: z.string().nullable(),
       ref: z.string(),
       configuredRef: z.string().nullable(),
+      resolvedVia: z.enum(["remote", "local"]),
+      sourceWorkspace: z.string().optional(),
       ahead: z.number(),
       behind: z.number(),
       merge: z

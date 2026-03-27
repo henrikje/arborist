@@ -14,6 +14,7 @@ export interface RepoRefs {
     remote: string | null;
     ref: string;
     configuredRef: string | null;
+    resolvedVia: "remote" | "local";
   } | null;
   share: {
     remote: string;
@@ -33,6 +34,8 @@ export interface RepoStatus extends RepoRefs {
     remote: string | null;
     ref: string;
     configuredRef: string | null;
+    resolvedVia: "remote" | "local";
+    sourceWorkspace?: string;
     ahead: number;
     behind: number;
     merge?: {

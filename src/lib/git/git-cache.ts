@@ -1,5 +1,6 @@
 import {
   branchExistsLocally as _branchExistsLocally,
+  findBranchWorktree as _findBranchWorktree,
   getDefaultBranch as _getDefaultBranch,
   remoteBranchExists as _remoteBranchExists,
   assertMinimumGitVersion,
@@ -22,6 +23,7 @@ export type BasePatchIdCache = Map<string, Map<string, string>>;
 
 export interface GitCacheDeps {
   branchExistsLocally: (repoDir: string, branch: string) => Promise<boolean>;
+  findBranchWorktree: (repoDir: string, branch: string) => Promise<string | null>;
   getDefaultBranch: (repoDir: string, remote: string) => Promise<string | null>;
   getRemoteNames: (repoDir: string) => Promise<string[]>;
   getRemoteUrl: (repoDir: string, remote: string) => Promise<string | null>;
@@ -31,6 +33,7 @@ export interface GitCacheDeps {
 
 const defaultDeps: GitCacheDeps = {
   branchExistsLocally: _branchExistsLocally,
+  findBranchWorktree: _findBranchWorktree,
   getDefaultBranch: _getDefaultBranch,
   getRemoteNames: _getRemoteNames,
   getRemoteUrl: _getRemoteUrl,
@@ -55,6 +58,7 @@ export class GitCache {
   private remoteUrlCache = new Map<string, Promise<string | null>>();
   private remoteBranchExistsCache = new Map<string, Promise<boolean>>();
   private branchExistsLocallyCache = new Map<string, Promise<boolean>>();
+  private findBranchWorktreeCache = new Map<string, Promise<string | null>>();
   private gitVersionCache: Promise<GitVersion> | null = null;
   private deps: GitCacheDeps;
 
@@ -130,6 +134,17 @@ export class GitCache {
     return cached;
   }
 
+  /** Find the worktree path for a branch. Returns the path or null. Cached per repo+branch. */
+  findBranchWorktree(repoDir: string, branch: string): Promise<string | null> {
+    const key = `${repoDir}\0${branch}`;
+    let cached = this.findBranchWorktreeCache.get(key);
+    if (!cached) {
+      cached = this.deps.findBranchWorktree(repoDir, branch);
+      this.findBranchWorktreeCache.set(key, cached);
+    }
+    return cached;
+  }
+
   getGitVersion(): Promise<GitVersion> {
     if (!this.gitVersionCache) {
       this.gitVersionCache = gitLocal(".", "--version").then((result) => {
@@ -148,6 +163,7 @@ export class GitCache {
     this.defaultBranchCache.clear();
     this.remoteBranchExistsCache.clear();
     this.branchExistsLocallyCache.clear();
+    this.findBranchWorktreeCache.clear();
   }
 
   /** Build a remotes map from cached individual results. */

@@ -151,6 +151,7 @@ describe("buildStatusView", () => {
         remote: "origin",
         ref: "main",
         configuredRef: null,
+        resolvedVia: "remote",
         ahead: 2,
         behind: 3,
         baseMergedIntoDefault: null,
@@ -248,7 +249,15 @@ describe("buildStatusView", () => {
     const repos = [
       makeRepo({
         name: "a",
-        base: { remote: "origin", ref: "main", configuredRef: null, ahead: 0, behind: 0, baseMergedIntoDefault: null },
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: null,
+          resolvedVia: "remote",
+          ahead: 0,
+          behind: 0,
+          baseMergedIntoDefault: null,
+        },
       }),
       makeRepo({
         name: "b",
@@ -256,6 +265,7 @@ describe("buildStatusView", () => {
           remote: "origin",
           ref: "develop",
           configuredRef: null,
+          resolvedVia: "remote",
           ahead: 0,
           behind: 0,
           baseMergedIntoDefault: null,
@@ -272,6 +282,7 @@ describe("buildStatusView", () => {
         remote: "origin",
         ref: "feat-auth",
         configuredRef: "feat-auth",
+        resolvedVia: "remote",
         ahead: 0,
         behind: 0,
         baseMergedIntoDefault: null,
@@ -369,6 +380,7 @@ describe("buildRefParenthetical", () => {
         remote: "origin",
         ref: "feat-auth",
         configuredRef: "feat-auth",
+        resolvedVia: "remote",
         ahead: 0,
         behind: 0,
         baseMergedIntoDefault: null,
