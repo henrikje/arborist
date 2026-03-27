@@ -1,10 +1,12 @@
 import { type RelativeTimeParts, formatRelativeTimeParts } from "../core/time";
 import { computeFlags } from "../status/flags";
+import { baseRef } from "../status/status";
 import type { WorkspaceSummary } from "../status/types";
 import type { VerboseDetail } from "../status/verbose-detail";
 import {
   analyzeBaseDiff,
   analyzeBaseName,
+  analyzeBaseSource,
   analyzeBranch,
   analyzeLocal,
   analyzeRemoteDiff,
@@ -51,19 +53,16 @@ export function buildStatusView(summary: WorkspaceSummary, ctx: StatusViewContex
       (r.identity.headMode.kind === "attached" && r.identity.headMode.branch !== ctx.expectedBranch),
   );
 
-  // Hide baseName column when all repos share the same rendered base ref
+  // Hide baseName column when all repos share the same base branch name.
+  // Compares branch names only — a mix of local/remote resolution for the same
+  // branch doesn't force the column visible (the baseSource sub-column shows that).
   const showBaseRef = (() => {
     const bases = repos.map((r) => r.base).filter((b) => b !== null);
     if (bases.length <= 1) {
       // Single repo (or none): hide if base is the default (no configuredRef)
       return bases.some((b) => b.configuredRef !== null);
     }
-    const refs = new Set(
-      bases.map((b) => {
-        const branch = b.configuredRef ?? b.ref;
-        return b.remote ? `${b.remote}/${branch}` : branch;
-      }),
-    );
+    const refs = new Set(bases.map((b) => b.configuredRef ?? b.ref));
     return refs.size > 1;
   })();
 
@@ -95,6 +94,7 @@ export function buildStatusView(summary: WorkspaceSummary, ctx: StatusViewContex
         branch: analyzeBranch(repo, ctx.expectedBranch),
         baseName: analyzeBaseName(repo, flags),
         baseDiff: analyzeBaseDiff(repo, flags, hasBaseConflict),
+        baseSource: analyzeBaseSource(repo, !!ctx.verboseData),
         remoteName: analyzeRemoteName(repo, flags),
         remoteDiff: analyzeRemoteDiff(repo, flags, hasPullConflict),
         local: analyzeLocal(repo),
@@ -126,6 +126,7 @@ export function buildStatusView(summary: WorkspaceSummary, ctx: StatusViewContex
     { header: "", key: "lastCommitUnit", group: "LAST COMMIT" },
     { header: "", key: "baseName", group: "BASE", truncate: { min: 13 }, show: showBaseRef },
     { header: "", key: "baseDiff", group: "BASE" },
+    { header: "", key: "baseSource", group: "BASE", show: "auto" },
     { header: "", key: "remoteName", group: "SHARE", truncate: { min: 13 }, show: showShareRef },
     { header: "", key: "remoteDiff", group: "SHARE" },
     { header: "LOCAL", key: "local" },
@@ -153,9 +154,7 @@ export function buildRefParenthetical(
   if (!showBaseRef) {
     const firstBase = summary.repos.find((r) => r.base)?.base;
     if (firstBase) {
-      const branch = firstBase.configuredRef ?? firstBase.ref;
-      const ref = firstBase.remote ? `${firstBase.remote}/${branch}` : branch;
-      parts.push(`base ${ref}`);
+      parts.push(`base ${baseRef(firstBase)}`);
     }
   }
 

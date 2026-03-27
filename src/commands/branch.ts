@@ -9,7 +9,13 @@ import { type RenderContext, render } from "../lib/render";
 import { cell, suffix } from "../lib/render";
 import type { OutputNode } from "../lib/render";
 import { runPhasedRender } from "../lib/render";
-import { type RepoRefs, computeFlags, gatherRepoRefs, gatherWorkspaceSummary } from "../lib/status";
+import {
+  type RepoRefs,
+  computeFlags,
+  gatherRepoRefs,
+  gatherWorkspaceSummary,
+  baseRef as statusBaseRef,
+} from "../lib/status";
 import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures, resolveDefaultFetch } from "../lib/sync";
 import { error, info, isTTY, listenForAbortSignal, shouldColor, stderr } from "../lib/terminal";
 import {
@@ -37,10 +43,10 @@ interface VerboseRow {
 function deriveWorkspaceSummary(repos: RepoRefs[]): { resolvedBase: string | null; share: string } {
   const first = repos[0];
 
-  // Base: format as remote/ref
+  // Base: format as remote/ref (or bare branch for local-primary)
   let resolvedBase: string | null = null;
   if (first?.base) {
-    resolvedBase = first.base.remote ? `${first.base.remote}/${first.base.ref}` : first.base.ref;
+    resolvedBase = statusBaseRef(first.base);
   }
 
   // Share: derive from first repo's share state
@@ -353,10 +359,10 @@ function buildVerboseRows(repos: RepoRefs[], branch: string): VerboseRow[] {
     const actualBranch = headMode.kind === "attached" ? headMode.branch : "(detached)";
     const isWrongBranch = headMode.kind === "attached" && headMode.branch !== branch;
 
-    // Base column: show the resolved base ref (e.g. "origin/main")
+    // Base column: show the resolved base ref (e.g. "origin/main" or bare branch for local)
     let base = "";
     if (!detached && repo.base) {
-      base = repo.base.remote ? `${repo.base.remote}/${repo.base.ref}` : repo.base.ref;
+      base = statusBaseRef(repo.base);
     }
 
     // Share column: show the share tracking ref or status
@@ -395,9 +401,9 @@ function formatVerboseJson(repos: RepoRefs[], branch: string, base: string | nul
     const repoBranch = headMode.kind === "attached" ? headMode.branch : null;
 
     // Base ref
-    let baseRef: string | null = null;
+    let baseRefStr: string | null = null;
     if (headMode.kind === "attached" && repo.base) {
-      baseRef = repo.base.remote ? `${repo.base.remote}/${repo.base.ref}` : repo.base.ref;
+      baseRefStr = statusBaseRef(repo.base);
     }
 
     // Share ref
@@ -414,7 +420,7 @@ function formatVerboseJson(repos: RepoRefs[], branch: string, base: string | nul
     return {
       name: repo.name,
       branch: repoBranch,
-      base: baseRef,
+      base: baseRefStr,
       share,
       refMode: repo.share.refMode,
     };

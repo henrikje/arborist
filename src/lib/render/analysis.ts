@@ -19,13 +19,21 @@ export function analyzeBranch(repo: RepoStatus, expectedBranch: string): Cell {
   return cell(branch, wrongBranch ? "attention" : "default");
 }
 
-/** Analyze the BASE name cell — attention when isBaseMissing or baseMerged */
+/** Analyze the BASE name cell — attention when isBaseMissing or baseMerged.
+ * Local-primary shows just the branch name (no remote prefix). */
 export function analyzeBaseName(repo: RepoStatus, flags: RepoFlags): Cell {
   if (!repo.base) return EMPTY_CELL;
   const branch = repo.base.configuredRef ?? repo.base.ref;
-  const name = repo.base.remote ? `${repo.base.remote}/${branch}` : branch;
+  const name = repo.base.resolvedVia === "local" ? branch : repo.base.remote ? `${repo.base.remote}/${branch}` : branch;
   const baseMerged = repo.base.baseMergedIntoDefault != null;
   return cell(name, flags.isBaseMissing || baseMerged ? "attention" : "default");
+}
+
+/** Analyze the BASE source cell — shows "local" or workspace name for locally-resolved bases. */
+export function analyzeBaseSource(repo: RepoStatus, verbose?: boolean): Cell {
+  if (!repo.base || repo.base.resolvedVia !== "local") return EMPTY_CELL;
+  const text = verbose && repo.base.sourceWorkspace ? repo.base.sourceWorkspace : "local";
+  return cell(text);
 }
 
 /** Analyze the BASE diff cell — attention when conflict predicted, baseMerged, or isBaseMissing */

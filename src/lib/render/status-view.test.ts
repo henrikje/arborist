@@ -94,12 +94,12 @@ describe("buildStatusView", () => {
     expect(table.rows[1]?.marked).toBe(true);
   });
 
-  test("grouped columns: BASE has two sub-columns", () => {
+  test("grouped columns: BASE has three sub-columns", () => {
     const { nodes } = buildStatusView(makeSummary(), defaultCtx());
     const table = nodes[0] as TableNode;
     const baseCols = table.columns.filter((c) => c.group === "BASE");
-    expect(baseCols).toHaveLength(2);
-    expect(baseCols.map((c) => c.key)).toEqual(["baseName", "baseDiff"]);
+    expect(baseCols).toHaveLength(3);
+    expect(baseCols.map((c) => c.key)).toEqual(["baseName", "baseDiff", "baseSource"]);
   });
 
   test("grouped columns: SHARE has two sub-columns", () => {
