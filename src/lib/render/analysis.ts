@@ -29,11 +29,10 @@ export function analyzeBaseName(repo: RepoStatus, flags: RepoFlags): Cell {
   return cell(name, flags.isBaseMissing || baseMerged ? "attention" : "default");
 }
 
-/** Analyze the BASE source cell — shows "local" or workspace name for locally-resolved bases. */
-export function analyzeBaseSource(repo: RepoStatus, verbose?: boolean): Cell {
+/** Analyze the BASE source cell — shows "local" for locally-resolved bases. */
+export function analyzeBaseSource(repo: RepoStatus): Cell {
   if (!repo.base || repo.base.resolvedVia !== "local") return EMPTY_CELL;
-  const text = verbose && repo.base.sourceWorkspace ? repo.base.sourceWorkspace : "local";
-  return cell(text);
+  return cell("local");
 }
 
 /** Analyze the BASE diff cell — attention when conflict predicted, baseMerged, or isBaseMissing */

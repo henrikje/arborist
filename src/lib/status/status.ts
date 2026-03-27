@@ -437,6 +437,8 @@ export async function gatherRepoStatus(
     if (baseStatus.resolvedVia === "local" && baseStatus.remote === null) {
       // Local-only base (not on remote). Still detect squash-merge-and-delete:
       // the base may have been pushed, squash-merged, and remote branch deleted.
+      // Uses the bare local branch name (not a remote ref) — the local ref points to
+      // the pre-merge state, which is what squash detection needs for patch-id matching.
       const trueDefault = await cache.getDefaultBranch(repoPath, baseRemote);
       if (trueDefault && trueDefault !== configBase) {
         const defaultRef = `${baseRemote}/${trueDefault}`;
