@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
-import type { Command } from "commander";
+import { type Command, Option } from "commander";
 import { z } from "zod";
 import { ArbError, type RelativeTimeParts, arbAction, formatRelativeTimeParts, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
@@ -69,15 +69,16 @@ export function registerListCommand(program: Command): void {
     .option("-w, --where <filter>", "Filter workspaces by repo status flags (comma = OR, + = AND, ^ = negate)")
     .option("--older-than <duration>", "Only list workspaces not touched in the given duration (e.g. 30d, 2w, 3m, 1y)")
     .option("--newer-than <duration>", "Only list workspaces touched within the given duration (e.g. 7d, 2w)")
-    .option("-q, --quiet", "Output one workspace name per line")
-    .option("--json", "Output structured JSON")
-    .option("--schema", "Print JSON Schema for this command's --json output and exit")
+    .addOption(new Option("-q, --quiet", "Output one workspace name per line").conflicts("json"))
+    .addOption(new Option("--json", "Output structured JSON").conflicts("quiet"))
+    .addOption(
+      new Option("--schema", "Print JSON Schema for this command's --json output and exit").conflicts([
+        "json",
+        "quiet",
+      ]),
+    )
     .action(async (options, command) => {
       if (options.schema) {
-        if (options.json || options.quiet) {
-          error("Cannot combine --schema with --json or --quiet.");
-          throw new ArbError("Cannot combine --schema with --json or --quiet.");
-        }
         printSchema(z.array(ListJsonEntrySchema));
         return;
       }
@@ -85,12 +86,6 @@ export function registerListCommand(program: Command): void {
         const cache = ctx.cache;
         const aCache = ctx.analysisCache;
         {
-          // Conflict checks
-          if (options.quiet && options.json) {
-            error("Cannot combine --quiet with --json.");
-            throw new ArbError("Cannot combine --quiet with --json.");
-          }
-
           const whereFilter = resolveWhereFilter(options);
           const ageFilter = resolveAgeFilter(options);
           if ((whereFilter || ageFilter) && options.status === false) {

@@ -574,7 +574,7 @@ describe("reset", () => {
 
       const result = await arb(env, ["reset", "--soft", "--hard"], { cwd: join(env.projectDir, "my-feature") });
       expect(result.exitCode).toBe(1);
-      expect(result.output).toContain("Cannot combine --soft, --mixed, and --hard");
+      expect(result.output).toContain("cannot be used with");
     }));
 
   test("--soft plan shows non-destructive language", () =>

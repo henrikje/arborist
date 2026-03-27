@@ -56,8 +56,8 @@ export function registerPullCommand(program: Command): void {
     .option("--reset", "Reset to remote tip instead of pulling (overrides rebased-locally skip)")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("--dry-run", "Show what would happen without executing")
-    .option("--rebase", "Pull with rebase")
-    .option("--merge", "Pull with merge")
+    .addOption(new Option("--rebase", "Pull with rebase").conflicts("merge"))
+    .addOption(new Option("--merge", "Pull with merge").conflicts("rebase"))
     .option("--autostash", "Stash uncommitted changes before pull, re-apply after")
     .option("--include-wrong-branch", "Include repos on a different branch than the workspace")
     .option("-v, --verbose", "Show incoming commits in the plan")
@@ -74,10 +74,6 @@ export function registerPullCommand(program: Command): void {
           const flag = options.continue ? "--continue" : "--abort";
           error(`${flag} does not accept repo arguments`);
           throw new ArbError(`${flag} does not accept repo arguments`);
-        }
-        if (options.rebase && options.merge) {
-          error("Cannot use both --rebase and --merge");
-          throw new ArbError("Cannot use both --rebase and --merge");
         }
         const { wsDir } = requireWorkspace(ctx);
         const repoNames = await resolveReposFromArgsOrStdin(wsDir, repoArgs);

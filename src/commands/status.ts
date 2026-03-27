@@ -1,7 +1,7 @@
 import { basename, resolve } from "node:path";
-import type { Command } from "commander";
+import { type Command, Option } from "commander";
 import { predictMergeConflict } from "../lib/analysis";
-import { ArbError, type CommandContext, arbAction, readOperationRecord, readWorkspaceConfig } from "../lib/core";
+import { type CommandContext, arbAction, readOperationRecord, readWorkspaceConfig } from "../lib/core";
 import { localTimeout } from "../lib/git/git";
 import { printSchema } from "../lib/json";
 import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
@@ -38,7 +38,6 @@ import {
 } from "../lib/sync";
 import {
   clearScanProgress,
-  error,
   hintsEnabled,
   isTTY,
   listenForAbortSignal,
@@ -55,20 +54,26 @@ export function registerStatusCommand(program: Command): void {
     .option("-w, --where <filter>", "Filter repos by status flags (comma = OR, + = AND, ^ = negate)")
     .option("--fetch", "Fetch from all remotes before showing status (default)")
     .option("-N, --no-fetch", "Skip fetching")
-    .option("-v, --verbose", "Show file-level detail for each repo")
-    .option("-q, --quiet", "Output one repo name per line")
-    .option("--json", "Output structured JSON (combine with --verbose for commit and file detail)")
-    .option("--schema", "Print JSON Schema for this command's --json output and exit")
+    .addOption(new Option("-v, --verbose", "Show file-level detail for each repo").conflicts("quiet"))
+    .addOption(new Option("-q, --quiet", "Output one repo name per line").conflicts(["json", "verbose"]))
+    .addOption(
+      new Option("--json", "Output structured JSON (combine with --verbose for commit and file detail)").conflicts(
+        "quiet",
+      ),
+    )
+    .addOption(
+      new Option("--schema", "Print JSON Schema for this command's --json output and exit").conflicts([
+        "json",
+        "quiet",
+        "verbose",
+      ]),
+    )
     .summary("Show repo branches, sync status, and local changes")
     .description(
       "Examples:\n\n  arb status                               Show all repos\n  arb status --dirty                       Only repos with local changes\n  arb status api web --verbose             File-level detail for specific repos\n\nShow each repo's position relative to the base branch, push status against the share remote, and local changes (staged, modified, untracked). The summary includes the workspace's last commit date (most recent author date across all repos).\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line), enabling composition like: arb status -q --where dirty | arb log.\n\nUse --dirty to only show repos with uncommitted changes. Use --where <filter> to filter by status flags. See 'arb help filtering' for filter syntax. Fetches from all remotes by default for fresh data (skip with -N/--no-fetch). Press Ctrl+C during the fetch to cancel and use stale data. Quiet mode (-q) skips fetching by default for scripting speed. Use --verbose for file-level detail. Use --json for machine-readable output. Combine --json --verbose to include commit lists and file-level detail in JSON output.\n\nFor a live dashboard with sync commands, use 'arb watch'.\n\nMerged branches show the detected PR number when available (e.g. 'merged (#123), gone'), extracted from merge or squash commit subjects. JSON output includes detectedPr fields.\n\nSee 'arb help stacked' for stacked workspace status flags. See 'arb help scripting' for output modes and piping.",
     )
     .action(async (repoArgs: string[], options, command) => {
       if (options.schema) {
-        if (options.json || options.quiet || options.verbose) {
-          error("Cannot combine --schema with --json, --quiet, or --verbose.");
-          throw new ArbError("Cannot combine --schema with --json, --quiet, or --verbose.");
-        }
         printSchema(StatusJsonOutputSchema);
         return;
       }
@@ -95,16 +100,6 @@ async function runStatus(
   const cache = ctx.cache;
   const aCache = ctx.analysisCache;
   const where = resolveWhereFilter(options);
-
-  // Conflict checks
-  if (options.quiet && options.json) {
-    error("Cannot combine --quiet with --json.");
-    throw new ArbError("Cannot combine --quiet with --json.");
-  }
-  if (options.quiet && options.verbose) {
-    error("Cannot combine --quiet with --verbose.");
-    throw new ArbError("Cannot combine --quiet with --verbose.");
-  }
 
   // Resolve repo selection: positional args > stdin > all
   const selectedRepos = await resolveReposFromArgsOrStdin(wsDir, repoArgs);

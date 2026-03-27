@@ -531,7 +531,7 @@ describe("list quiet", () => {
       await arb(env, ["create", "ws-one", "repo-a"]);
       const result = await arb(env, ["list", "--quiet", "--json"]);
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("Cannot combine --quiet with --json");
+      expect(result.output).toContain("cannot be used with");
     }));
 });
 

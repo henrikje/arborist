@@ -1,7 +1,6 @@
 import { basename } from "node:path";
-import type { Command } from "commander";
+import { type Command, Option } from "commander";
 import {
-  ArbError,
   type OperationRecord,
   type RepoOperationState,
   arbAction,
@@ -33,17 +32,7 @@ import {
   runPlanFlow,
 } from "../lib/sync";
 import type { CommitDisplayEntry } from "../lib/sync/types";
-import {
-  dryRunNotice,
-  error,
-  info,
-  inlineResult,
-  inlineStart,
-  plural,
-  shouldColor,
-  warn,
-  yellow,
-} from "../lib/terminal";
+import { dryRunNotice, info, inlineResult, inlineStart, plural, shouldColor, warn, yellow } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
 
 export type ResetMode = "soft" | "mixed" | "hard";
@@ -375,9 +364,16 @@ export function registerResetCommand(program: Command): void {
     .option("--fetch", "Fetch from all remotes before reset (default)")
     .option("-N, --no-fetch", "Skip fetching before reset")
     .option("--base", "Always reset to the base branch, even when a remote share branch exists")
-    .option("--soft", "Move HEAD only; commits become staged changes")
-    .option("--mixed", "Move HEAD and reset index; changes become unstaged (default)")
-    .option("--hard", "Move HEAD, reset index and working tree; discards all local changes")
+    .addOption(new Option("--soft", "Move HEAD only; commits become staged changes").conflicts(["mixed", "hard"]))
+    .addOption(
+      new Option("--mixed", "Move HEAD and reset index; changes become unstaged (default)").conflicts(["soft", "hard"]),
+    )
+    .addOption(
+      new Option("--hard", "Move HEAD, reset index and working tree; discards all local changes").conflicts([
+        "soft",
+        "mixed",
+      ]),
+    )
     .option("-y, --yes", "Skip confirmation prompt")
     .option("--dry-run", "Show what would happen without executing")
     .option("-v, --verbose", "Show commits to be reset in the plan")
@@ -389,11 +385,6 @@ export function registerResetCommand(program: Command): void {
     )
     .action(
       arbAction(async (ctx, repoArgs: string[], options) => {
-        const modeFlags = [options.soft, options.mixed, options.hard].filter(Boolean);
-        if (modeFlags.length > 1) {
-          error("Cannot combine --soft, --mixed, and --hard");
-          throw new ArbError("Cannot combine --soft, --mixed, and --hard");
-        }
         const resetMode: ResetMode = options.soft ? "soft" : options.hard ? "hard" : "mixed";
 
         const where = resolveWhereFilter(options);
