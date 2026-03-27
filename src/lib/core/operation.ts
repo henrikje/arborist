@@ -58,6 +58,12 @@ const OperationRecordSchema = z.discriminatedUnion("command", [
     newName: z.string(),
   }),
   OperationBaseSchema.extend({ command: z.literal("reset") }),
+  OperationBaseSchema.extend({
+    command: z.literal("extract"),
+    direction: z.enum(["prefix", "suffix"]),
+    targetWorkspace: z.string(),
+    targetBranch: z.string(),
+  }),
 ]);
 
 // ── Types ──

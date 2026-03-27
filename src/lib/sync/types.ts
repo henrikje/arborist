@@ -248,3 +248,43 @@ export interface RetargetWillRetargetAssessment extends RetargetAssessmentBase {
 }
 
 export type RetargetAssessment = RetargetSkipAssessment | RetargetUpToDateAssessment | RetargetWillRetargetAssessment;
+
+// ── Extract types ──────────────────────────────────────────────
+
+interface ExtractAssessmentBase {
+  repo: string;
+  repoDir: string;
+  branch: string;
+  direction: "prefix" | "suffix";
+  targetBranch: string;
+  boundary: string | null;
+  mergeBase: string;
+  commitsExtracted: number;
+  commitsRemaining: number;
+  headSha: string;
+  shallow: boolean;
+  needsStash?: boolean;
+  wrongBranch?: boolean;
+  baseRemote: string;
+  baseResolvedLocally?: boolean;
+}
+
+export interface ExtractSkipAssessment extends ExtractAssessmentBase {
+  outcome: "skip";
+  skipReason: string;
+  skipFlag: SkipFlag;
+}
+
+export interface ExtractNoOpAssessment extends ExtractAssessmentBase {
+  outcome: "no-op";
+  skipReason?: never;
+  skipFlag?: never;
+}
+
+export interface ExtractWillExtractAssessment extends ExtractAssessmentBase {
+  outcome: "will-extract";
+  skipReason?: never;
+  skipFlag?: never;
+}
+
+export type ExtractAssessment = ExtractSkipAssessment | ExtractNoOpAssessment | ExtractWillExtractAssessment;
