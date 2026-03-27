@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { arb, fetchAllRepos, git, withEnv, write } from "./helpers/env";
+import { arb, fetchAllRepos, git, gitBelow238, withEnv, write } from "./helpers/env";
 
 // ── rebase ───────────────────────────────────────────────────────
 
@@ -745,6 +745,76 @@ describe("--graph flag", () => {
       expect(result.exitCode).toBe(0);
       expect(result.output).toContain("merge-base");
       expect(result.output).toContain("origin/main");
+    }));
+});
+
+// ── --verbose conflict files ────────────────────────────────────
+
+describe.skipIf(gitBelow238)("--verbose conflict files", () => {
+  test("arb merge --verbose --dry-run shows conflicting files", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+
+      // Create a shared file on main and pull it into the feature branch
+      const mainRepoA = join(env.projectDir, ".arb/repos/repo-a");
+      await write(join(mainRepoA, "shared.txt"), "original");
+      await git(mainRepoA, ["add", "shared.txt"]);
+      await git(mainRepoA, ["commit", "-m", "add shared file"]);
+      await git(mainRepoA, ["push"]);
+      await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+
+      // Diverge: upstream changes shared.txt
+      await write(join(mainRepoA, "shared.txt"), "main version");
+      await git(mainRepoA, ["add", "shared.txt"]);
+      await git(mainRepoA, ["commit", "-m", "upstream edit shared"]);
+      await git(mainRepoA, ["push"]);
+
+      // Diverge: local changes shared.txt
+      const wt = join(env.projectDir, "my-feature/repo-a");
+      await write(join(wt, "shared.txt"), "feature version");
+      await git(wt, ["add", "shared.txt"]);
+      await git(wt, ["commit", "-m", "local edit shared"]);
+
+      const result = await arb(env, ["merge", "--verbose", "--dry-run"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("will conflict");
+      expect(result.output).toContain("Conflicting files:");
+      expect(result.output).toContain("shared.txt");
+    }));
+
+  test("arb rebase --verbose --dry-run shows per-commit conflict annotation", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a"]);
+
+      // Create a shared file and pull into feature
+      const mainRepoA = join(env.projectDir, ".arb/repos/repo-a");
+      await write(join(mainRepoA, "shared.txt"), "original");
+      await git(mainRepoA, ["add", "shared.txt"]);
+      await git(mainRepoA, ["commit", "-m", "add shared file"]);
+      await git(mainRepoA, ["push"]);
+      await arb(env, ["rebase", "--yes"], { cwd: join(env.projectDir, "my-feature") });
+
+      // Diverge: upstream changes shared.txt
+      await write(join(mainRepoA, "shared.txt"), "main version");
+      await git(mainRepoA, ["add", "shared.txt"]);
+      await git(mainRepoA, ["commit", "-m", "upstream edit shared"]);
+      await git(mainRepoA, ["push"]);
+
+      // Diverge: local changes shared.txt
+      const wt = join(env.projectDir, "my-feature/repo-a");
+      await write(join(wt, "shared.txt"), "feature version");
+      await git(wt, ["add", "shared.txt"]);
+      await git(wt, ["commit", "-m", "local edit shared"]);
+
+      const result = await arb(env, ["rebase", "--verbose", "--dry-run"], {
+        cwd: join(env.projectDir, "my-feature"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("conflict likely");
+      expect(result.output).toContain("(conflict)");
+      expect(result.output).toContain("shared.txt");
     }));
 });
 

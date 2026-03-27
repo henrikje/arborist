@@ -505,6 +505,7 @@ export function buildIntegratePlanNodes(
         afterRow = verboseCommitsToNodes(a.verbose.commits, a.verbose.totalCommits ?? a.verbose.commits.length, label, {
           diffStats: a.verbose.diffStats,
           conflictCommits: a.verbose.conflictCommits,
+          conflictFiles: a.conflictFiles,
         });
       }
     }
@@ -583,6 +584,7 @@ async function predictIntegrateConflicts(assessments: RepoAssessment[], mode: In
         if (!a.retarget?.from && a.ahead > 0 && a.behind > 0) {
           const prediction = await predictMergeConflict(a.repoDir, ref);
           a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
+          if (prediction?.hasConflict) a.conflictFiles = prediction.files;
           // Per-commit conflict detail for rebase mode
           if (prediction?.hasConflict && mode === "rebase") {
             const conflictCommits = await predictRebaseConflictCommits(a.repoDir, ref);

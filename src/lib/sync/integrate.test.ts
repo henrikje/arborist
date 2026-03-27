@@ -1205,7 +1205,8 @@ describe("formatVerboseCommits", () => {
     );
     expect(out).toContain("abc1234");
     expect(out).toContain("(conflict)");
-    expect(out).toContain("src/auth.ts, src/middleware.ts");
+    expect(out).toContain("src/auth.ts");
+    expect(out).toContain("src/middleware.ts");
     expect(out).toContain("ghi9012");
     expect(out).toContain("src/routes.ts");
     // Non-conflicting commit should not have (conflict)

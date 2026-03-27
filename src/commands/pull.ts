@@ -606,6 +606,7 @@ export function buildPullPlanNodes(
       afterRow = verboseCommitsToNodes(a.verbose.commits, a.verbose.totalCommits ?? a.verbose.commits.length, label, {
         diffStats: a.verbose.diffStats,
         conflictCommits: a.verbose.conflictCommits,
+        conflictFiles: a.conflictFiles,
       });
     }
 
@@ -847,10 +848,12 @@ async function predictPullConflicts(
       if (!shareRemote) return a;
       const ref = `${shareRemote}/${a.branch}`;
       let conflictPrediction: PullAssessment["conflictPrediction"];
+      let conflictFiles: string[] | undefined;
       let verbose = a.verbose;
       if (a.behind > 0 && a.toPush > 0) {
         const prediction = await predictMergeConflict(a.repoDir, ref);
         conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
+        if (prediction?.hasConflict) conflictFiles = prediction.files;
         if (prediction?.hasConflict && a.pullMode === "rebase") {
           const conflictCommits = await predictRebaseConflictCommits(a.repoDir, ref);
           if (conflictCommits.length > 0) {
@@ -865,7 +868,7 @@ async function predictPullConflicts(
         const stashPrediction = await predictStashPopConflict(a.repoDir, ref);
         stashPopConflictFiles = stashPrediction.overlapping;
       }
-      return { ...a, conflictPrediction, stashPopConflictFiles, verbose };
+      return { ...a, conflictPrediction, conflictFiles, stashPopConflictFiles, verbose };
     }),
   );
 }

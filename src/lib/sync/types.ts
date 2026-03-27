@@ -56,6 +56,7 @@ interface IntegrateAssessmentBase {
   headSha: string;
   shallow: boolean;
   conflictPrediction?: ConflictPrediction;
+  conflictFiles?: string[];
   retarget?: IntegrateRetargetInfo;
   baseFallback?: string;
   needsStash?: boolean;
@@ -101,6 +102,7 @@ interface PullAssessmentBase {
   shallow: boolean;
   safeReset?: PullSafeResetInfo;
   conflictPrediction?: ConflictPrediction;
+  conflictFiles?: string[];
   needsStash?: boolean;
   stashPopConflictFiles?: string[];
   verbose?: PullVerboseInfo;
@@ -220,6 +222,7 @@ interface RetargetAssessmentBase {
   baseMerged: boolean;
   warning?: string;
   conflictPrediction?: ConflictPrediction;
+  conflictFiles?: string[];
   needsStash?: boolean;
   stashPopConflictFiles?: string[];
   wrongBranch?: boolean;
