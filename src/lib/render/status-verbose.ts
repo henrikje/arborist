@@ -367,6 +367,7 @@ export function formatVerboseCommits(
   options?: {
     diffStats?: { files: number; insertions: number; deletions: number };
     conflictCommits?: { shortHash: string; files: string[] }[];
+    conflictFiles?: string[];
   },
 ): string {
   let displayLabel = label;
@@ -398,12 +399,28 @@ export function formatVerboseCommits(
     }
     out += `${ITEM_INDENT}${dim(c.shortHash)} ${c.subject}${tag}\n`;
     if (conflictFiles && conflictFiles.length > 0) {
-      out += `${ITEM_INDENT}    ${dim(conflictFiles.join(", "))}\n`;
+      for (const f of conflictFiles) {
+        out += `${ITEM_INDENT}    ${dim(f)}\n`;
+      }
     }
   }
   if (totalCommits > commits.length) {
     out += `${ITEM_INDENT}${dim(`... and ${totalCommits - commits.length} more`)}\n`;
   }
+
+  // Overall conflict files (shown when no per-commit data, e.g. merge mode)
+  if (options?.conflictFiles && options.conflictFiles.length > 0 && conflictMap.size === 0) {
+    const MAX_FILES = 10;
+    const shown = options.conflictFiles.slice(0, MAX_FILES);
+    out += `\n${SECTION_INDENT}${dim("Conflicting files:")}\n`;
+    for (const f of shown) {
+      out += `${ITEM_INDENT}${dim(f)}\n`;
+    }
+    if (options.conflictFiles.length > MAX_FILES) {
+      out += `${ITEM_INDENT}${dim(`... and ${options.conflictFiles.length - MAX_FILES} more`)}\n`;
+    }
+  }
+
   out += "\n";
   return out;
 }
@@ -422,6 +439,7 @@ export function verboseCommitsToNodes(
   options?: {
     diffStats?: { files: number; insertions: number; deletions: number };
     conflictCommits?: { shortHash: string; files: string[] }[];
+    conflictFiles?: string[];
   },
 ): OutputNode[] {
   // Build header cell
@@ -459,9 +477,11 @@ export function verboseCommitsToNodes(
     }
     items.push(commitCell);
 
-    // Conflict file sub-item
+    // Conflict file sub-items
     if (conflictFiles && conflictFiles.length > 0) {
-      items.push(cell(`    ${conflictFiles.join(", ")}`, "muted"));
+      for (const f of conflictFiles) {
+        items.push(cell(`    ${f}`, "muted"));
+      }
     }
   }
 
@@ -469,5 +489,18 @@ export function verboseCommitsToNodes(
     items.push(cell(`... and ${totalCommits - commits.length} more`, "muted"));
   }
 
-  return [{ kind: "gap" }, { kind: "section", header, items }, { kind: "gap" }];
+  // Overall conflict files (shown when no per-commit data, e.g. merge mode)
+  const nodes: OutputNode[] = [{ kind: "gap" }, { kind: "section", header, items }];
+  if (options?.conflictFiles && options.conflictFiles.length > 0 && conflictMap.size === 0) {
+    const MAX_FILES = 10;
+    const shown = options.conflictFiles.slice(0, MAX_FILES);
+    const fileItems: Cell[] = shown.map((f) => cell(f, "muted"));
+    if (options.conflictFiles.length > MAX_FILES) {
+      fileItems.push(cell(`... and ${options.conflictFiles.length - MAX_FILES} more`, "muted"));
+    }
+    nodes.push({ kind: "section", header: cell("Conflicting files:", "muted"), items: fileItems });
+  }
+  nodes.push({ kind: "gap" });
+
+  return nodes;
 }

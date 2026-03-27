@@ -3,7 +3,12 @@ import { makeRepo } from "../status/test-helpers";
 import { toJsonVerbose } from "../status/verbose-detail";
 import { dim } from "../terminal/output";
 import type { SectionNode } from "./model";
-import { formatVerboseCommits, formatVerboseDetail, verboseDetailToNodes } from "./status-verbose";
+import {
+  formatVerboseCommits,
+  formatVerboseDetail,
+  verboseCommitsToNodes,
+  verboseDetailToNodes,
+} from "./status-verbose";
 
 describe("formatVerboseDetail", () => {
   test("annotates already-merged commits with merge commit hash", () => {
@@ -1044,7 +1049,9 @@ describe("formatVerboseCommits — additional branches", () => {
       { conflictCommits: [{ shortHash: "abc1234", files: ["src/app.ts", "src/index.ts"] }] },
     );
     expect(out).toContain("(conflict)");
-    expect(out).toContain("src/app.ts, src/index.ts");
+    expect(out).toContain("src/app.ts");
+    expect(out).toContain("src/index.ts");
+    expect(out).not.toContain("src/app.ts, src/index.ts");
   });
 
   test("multiple conflict commits", () => {
@@ -1067,6 +1074,74 @@ describe("formatVerboseCommits — additional branches", () => {
     // Both should have conflict annotation
     const conflictCount = (out.match(/\(conflict\)/g) || []).length;
     expect(conflictCount).toBe(2);
+  });
+
+  test("conflictFiles shown when no per-commit data (merge mode)", () => {
+    const out = formatVerboseCommits([{ shortHash: "abc1234", subject: "some change" }], 1, "Incoming:", {
+      conflictFiles: ["src/app.ts", "src/index.ts"],
+    });
+    expect(out).toContain("Conflicting files:");
+    expect(out).toContain("src/app.ts");
+    expect(out).toContain("src/index.ts");
+    expect(out).not.toContain("(conflict)");
+  });
+
+  test("conflictFiles hidden when per-commit data exists", () => {
+    const out = formatVerboseCommits([{ shortHash: "abc1234", subject: "conflicting" }], 1, "Incoming:", {
+      conflictCommits: [{ shortHash: "abc1234", files: ["src/app.ts"] }],
+      conflictFiles: ["src/app.ts", "src/index.ts"],
+    });
+    expect(out).not.toContain("Conflicting files:");
+    expect(out).toContain("(conflict)");
+  });
+
+  test("conflictFiles truncated beyond 10 files", () => {
+    const files = Array.from({ length: 15 }, (_, i) => `file${i}.ts`);
+    const out = formatVerboseCommits([{ shortHash: "abc1234", subject: "change" }], 1, "Incoming:", {
+      conflictFiles: files,
+    });
+    expect(out).toContain("Conflicting files:");
+    expect(out).toContain("file0.ts");
+    expect(out).toContain("file9.ts");
+    expect(out).not.toContain("file10.ts");
+    expect(out).toContain("... and 5 more");
+  });
+});
+
+// ── verboseCommitsToNodes — conflictFiles ──
+
+describe("verboseCommitsToNodes — conflictFiles", () => {
+  test("conflictFiles rendered as section when no per-commit data", () => {
+    const nodes = verboseCommitsToNodes([{ shortHash: "abc1234", subject: "some change" }], 1, "Incoming:", {
+      conflictFiles: ["src/app.ts", "src/index.ts"],
+    });
+    const secs = nodes.filter((n): n is SectionNode => n.kind === "section");
+    expect(secs).toHaveLength(2);
+    expect(secs[1]?.header.plain).toBe("Conflicting files:");
+    expect(secs[1]?.items).toHaveLength(2);
+    expect(secs[1]?.items[0]?.plain).toBe("src/app.ts");
+    expect(secs[1]?.items[1]?.plain).toBe("src/index.ts");
+  });
+
+  test("conflictFiles hidden when per-commit data exists", () => {
+    const nodes = verboseCommitsToNodes([{ shortHash: "abc1234", subject: "conflicting" }], 1, "Incoming:", {
+      conflictCommits: [{ shortHash: "abc1234", files: ["src/app.ts"] }],
+      conflictFiles: ["src/app.ts"],
+    });
+    const secs = nodes.filter((n): n is SectionNode => n.kind === "section");
+    expect(secs).toHaveLength(1); // Only the commits section, no conflictFiles section
+  });
+
+  test("conflictFiles truncated beyond 10", () => {
+    const files = Array.from({ length: 12 }, (_, i) => `file${i}.ts`);
+    const nodes = verboseCommitsToNodes([{ shortHash: "abc1234", subject: "change" }], 1, "Incoming:", {
+      conflictFiles: files,
+    });
+    const secs = nodes.filter((n): n is SectionNode => n.kind === "section");
+    const fileSec = secs.find((s) => s.header.plain === "Conflicting files:");
+    expect(fileSec).toBeDefined();
+    expect(fileSec?.items).toHaveLength(11); // 10 files + "... and 2 more"
+    expect(fileSec?.items[10]?.plain).toContain("... and 2 more");
   });
 });
 

@@ -1,7 +1,11 @@
 import { basename, dirname } from "node:path";
 import { type Command, Option } from "commander";
-import { detectBranchMerged, predictMergeConflict } from "../lib/analysis";
-import { predictStashPopConflict } from "../lib/analysis/conflict-prediction";
+import {
+  detectBranchMerged,
+  predictMergeConflict,
+  predictRebaseConflictCommits,
+  predictStashPopConflict,
+} from "../lib/analysis";
 import {
   ArbError,
   type OperationRecord,
@@ -493,7 +497,10 @@ function buildRetargetPlanNodes(
     let afterRow: OutputNode[] | undefined;
     if (verbose && a.outcome === "will-retarget" && a.verbose?.commits && a.verbose.commits.length > 0) {
       const label = `Incoming from ${a.baseRemote}/${a.targetBranch}:`;
-      afterRow = verboseCommitsToNodes(a.verbose.commits, a.verbose.totalCommits ?? a.verbose.commits.length, label);
+      afterRow = verboseCommitsToNodes(a.verbose.commits, a.verbose.totalCommits ?? a.verbose.commits.length, label, {
+        conflictCommits: a.verbose.conflictCommits,
+        conflictFiles: a.conflictFiles,
+      });
     }
 
     return {
@@ -624,6 +631,11 @@ async function predictRetargetConflicts(assessments: RetargetAssessment[]): Prom
         const targetRef = `${a.baseRemote}/${a.targetBranch}`;
         const prediction = await predictMergeConflict(a.repoDir, targetRef);
         a.conflictPrediction = prediction === null ? null : prediction.hasConflict ? "conflict" : "clean";
+        if (prediction?.hasConflict) {
+          a.conflictFiles = prediction.files;
+          const conflictCommits = await predictRebaseConflictCommits(a.repoDir, targetRef);
+          if (conflictCommits.length > 0) a.verbose = { ...a.verbose, conflictCommits };
+        }
         if (a.needsStash) {
           const stashPrediction = await predictStashPopConflict(a.repoDir, targetRef);
           a.stashPopConflictFiles = stashPrediction.overlapping;
