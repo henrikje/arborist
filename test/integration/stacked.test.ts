@@ -359,3 +359,221 @@ describe("stacked base merge detection (branch deleted)", () => {
       expect(result.output).toContain("skipped");
     }));
 });
+
+// ── local base branch resolution ──────────────────────────────────
+
+describe("local base branch resolution", () => {
+  /** Helper: create a base workspace with a commit, then a stacked workspace on top. */
+  async function setupLocalStack(env: { projectDir: string; testDir: string; originDir: string }) {
+    // Create base workspace with a commit (NOT pushed)
+    await arb(env, ["create", "base-ws", "-b", "feat/base", "--all-repos"]);
+    await write(join(env.projectDir, "base-ws/repo-a/base.txt"), "base-content");
+    await git(join(env.projectDir, "base-ws/repo-a"), ["add", "base.txt"]);
+    await git(join(env.projectDir, "base-ws/repo-a"), ["commit", "-m", "base commit"]);
+
+    // Create stacked workspace on the base workspace's branch
+    await arb(env, ["create", "stacked-ws", "--base", "feat/base", "-b", "feat/stacked", "--all-repos"]);
+    await write(join(env.projectDir, "stacked-ws/repo-a/stacked.txt"), "stacked-content");
+    await git(join(env.projectDir, "stacked-ws/repo-a"), ["add", "stacked.txt"]);
+    await git(join(env.projectDir, "stacked-ws/repo-a"), ["commit", "-m", "stacked commit"]);
+  }
+
+  test("arb status resolves unpushed base branch locally", () =>
+    withEnv(async (env) => {
+      await setupLocalStack(env);
+
+      const result = await arb(env, ["status", "--json", "-N"], { cwd: join(env.projectDir, "stacked-ws") });
+      const json = JSON.parse(result.stdout);
+      const repoA = json.repos.find((r: { name: string }) => r.name === "repo-a");
+
+      expect(repoA.base.resolvedVia).toBe("local");
+      expect(repoA.base.sourceWorkspace).toBe("base-ws");
+      expect(repoA.base.ref).toBe("feat/base");
+      expect(repoA.base.remote).toBeNull(); // not pushed
+      expect(repoA.base.ahead).toBeGreaterThan(0);
+    }));
+
+  test("arb status shows 'local' in compact output", () =>
+    withEnv(async (env) => {
+      await setupLocalStack(env);
+
+      const result = await arb(env, ["status", "-N"], { cwd: join(env.projectDir, "stacked-ws") });
+      expect(result.output).toContain("local");
+    }));
+
+  test("arb status shows workspace name in verbose output", () =>
+    withEnv(async (env) => {
+      await setupLocalStack(env);
+
+      const result = await arb(env, ["status", "-v", "-N"], { cwd: join(env.projectDir, "stacked-ws") });
+      expect(result.output).toContain("base-ws");
+    }));
+
+  test("ahead/behind updates live when base workspace commits", () =>
+    withEnv(async (env) => {
+      await setupLocalStack(env);
+
+      const before = await arb(env, ["status", "--json", "-N"], { cwd: join(env.projectDir, "stacked-ws") });
+      const beforeJson = JSON.parse(before.stdout);
+      const beforeBehind = beforeJson.repos.find((r: { name: string }) => r.name === "repo-a").base.behind;
+
+      // Commit in the base workspace (no fetch needed)
+      await write(join(env.projectDir, "base-ws/repo-a/extra.txt"), "extra");
+      await git(join(env.projectDir, "base-ws/repo-a"), ["add", "extra.txt"]);
+      await git(join(env.projectDir, "base-ws/repo-a"), ["commit", "-m", "extra commit"]);
+
+      const after = await arb(env, ["status", "--json", "-N"], { cwd: join(env.projectDir, "stacked-ws") });
+      const afterJson = JSON.parse(after.stdout);
+      const afterBehind = afterJson.repos.find((r: { name: string }) => r.name === "repo-a").base.behind;
+
+      // Stacked workspace should see the new base commit as "behind" — without fetch
+      expect(afterBehind).toBeGreaterThan(beforeBehind);
+    }));
+
+  test("local resolution persists after base workspace pushes", () =>
+    withEnv(async (env) => {
+      await setupLocalStack(env);
+
+      // Push the base workspace
+      await arb(env, ["push", "--yes"], { cwd: join(env.projectDir, "base-ws") });
+
+      // Fetch in stacked workspace so it sees the remote ref
+      await fetchAllRepos(env);
+
+      const result = await arb(env, ["status", "--json", "-N"], { cwd: join(env.projectDir, "stacked-ws") });
+      const json = JSON.parse(result.stdout);
+      const repoA = json.repos.find((r: { name: string }) => r.name === "repo-a");
+
+      // Still local-primary (workspace exists), but remote is now set
+      expect(repoA.base.resolvedVia).toBe("local");
+      expect(repoA.base.remote).toBe("origin");
+    }));
+
+  test("switches to remote after base workspace deleted", () =>
+    withEnv(async (env) => {
+      await setupLocalStack(env);
+
+      // Push base workspace first so the remote ref exists
+      await arb(env, ["push", "--yes"], { cwd: join(env.projectDir, "base-ws") });
+      await fetchAllRepos(env);
+
+      // Delete the base workspace
+      await arb(env, ["delete", "base-ws", "--yes"]);
+
+      const result = await arb(env, ["status", "--json"], { cwd: join(env.projectDir, "stacked-ws") });
+      const json = JSON.parse(result.stdout);
+      const repoA = json.repos.find((r: { name: string }) => r.name === "repo-a");
+
+      // Now resolves via remote (no worktree for feat/base)
+      expect(repoA.base.resolvedVia).toBe("remote");
+      expect(repoA.base.remote).toBe("origin");
+    }));
+
+  test("arb rebase works with locally-resolved base", () =>
+    withEnv(async (env) => {
+      await setupLocalStack(env);
+
+      // Add a commit to the base workspace that the stacked workspace doesn't have
+      await write(join(env.projectDir, "base-ws/repo-a/new-base.txt"), "new");
+      await git(join(env.projectDir, "base-ws/repo-a"), ["add", "new-base.txt"]);
+      await git(join(env.projectDir, "base-ws/repo-a"), ["commit", "-m", "new base commit"]);
+
+      const result = await arb(env, ["rebase", "--yes", "-N"], { cwd: join(env.projectDir, "stacked-ws") });
+      expect(result.exitCode).toBe(0);
+
+      // After rebase, the stacked workspace should have the base commit
+      expect(existsSync(join(env.projectDir, "stacked-ws/repo-a/new-base.txt"))).toBe(true);
+    }));
+
+  test("non-stacking workspace is unaffected", () =>
+    withEnv(async (env) => {
+      // Create a plain workspace (no --base)
+      await arb(env, ["create", "plain-ws", "-b", "feat/plain", "--all-repos"]);
+
+      const result = await arb(env, ["status", "--json", "-N"], { cwd: join(env.projectDir, "plain-ws") });
+      const json = JSON.parse(result.stdout);
+      const repoA = json.repos.find((r: { name: string }) => r.name === "repo-a");
+
+      expect(repoA.base.resolvedVia).toBe("remote");
+      expect(repoA.base.sourceWorkspace).toBeUndefined();
+    }));
+
+  test("arb retarget works with locally-resolved base as old base", () =>
+    withEnv(async (env) => {
+      await setupLocalStack(env);
+
+      // Push base workspace so the retarget TARGET (main) exists on remote
+      // but the OLD base (feat/base) is locally resolved
+      await arb(env, ["push", "--yes"], { cwd: join(env.projectDir, "base-ws") });
+      await fetchAllRepos(env);
+
+      // Verify stacked workspace still resolves locally
+      const before = await arb(env, ["status", "--json", "-N"], { cwd: join(env.projectDir, "stacked-ws") });
+      const beforeJson = JSON.parse(before.stdout);
+      expect(beforeJson.repos.find((r: { name: string }) => r.name === "repo-a").base.resolvedVia).toBe("local");
+
+      // Retarget from feat/base to main
+      const result = await arb(env, ["retarget", "main", "--yes", "-N"], {
+        cwd: join(env.projectDir, "stacked-ws"),
+      });
+      expect(result.exitCode).toBe(0);
+
+      // After retarget, base should be main (remote)
+      const after = await arb(env, ["status", "--json", "-N"], { cwd: join(env.projectDir, "stacked-ws") });
+      const afterJson = JSON.parse(after.stdout);
+      const repoA = afterJson.repos.find((r: { name: string }) => r.name === "repo-a");
+      expect(repoA.base.ref).toBe("main");
+      expect(repoA.base.resolvedVia).toBe("remote");
+    }));
+
+  test("baseMergedIntoDefault detected for locally-resolved base after squash-merge-and-delete", () =>
+    withEnv(async (env) => {
+      await setupLocalStack(env);
+
+      // Push the base workspace
+      await arb(env, ["push", "--yes"], { cwd: join(env.projectDir, "base-ws") });
+      await fetchAllRepos(env);
+
+      // Squash-merge feat/base into main and delete the remote branch
+      const tmpMerge = join(env.testDir, "tmp-merge");
+      await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpMerge]);
+      await git(tmpMerge, ["merge", "--squash", "origin/feat/base"]);
+      await git(tmpMerge, ["commit", "-m", "squash: base feature"]);
+      await git(tmpMerge, ["push"]);
+      await git(tmpMerge, ["push", "origin", "--delete", "feat/base"]);
+
+      await fetchAllRepos(env);
+
+      // The stacked workspace should detect baseMergedIntoDefault
+      // even though the base branch was locally resolved (workspace still exists)
+      const result = await arb(env, ["status", "--json", "-N"], { cwd: join(env.projectDir, "stacked-ws") });
+      const json = JSON.parse(result.stdout);
+      const repoA = json.repos.find((r: { name: string }) => r.name === "repo-a");
+      expect(repoA.base.baseMergedIntoDefault).toBe("squash");
+
+      // Human-readable output should show "base merged"
+      const humanResult = await arb(env, ["status", "-N"], { cwd: join(env.projectDir, "stacked-ws") });
+      expect(humanResult.output).toContain("base merged");
+    }));
+
+  test("arb log shows commits relative to local base", () =>
+    withEnv(async (env) => {
+      await setupLocalStack(env);
+
+      const result = await arb(env, ["log", "-N"], { cwd: join(env.projectDir, "stacked-ws") });
+      expect(result.exitCode).toBe(0);
+      // Should show the stacked commit, not all commits since main
+      expect(result.output).toContain("stacked commit");
+      // Should NOT show the base commit (it's on the base branch, not ahead of it)
+      expect(result.output).not.toContain("base commit");
+    }));
+
+  test("baseSource column hidden for non-stacking workspace", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "plain-ws", "-b", "feat/plain", "--all-repos"]);
+
+      const result = await arb(env, ["status", "-N"], { cwd: join(env.projectDir, "plain-ws") });
+      // "local" should not appear in the compact output — no baseSource column
+      expect(result.output).not.toContain("local");
+    }));
+});
