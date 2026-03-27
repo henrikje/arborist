@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import type { Command } from "commander";
+import { type Command, Option } from "commander";
 import { ArbError, arbAction } from "../lib/core";
 import { getCommitsBetweenFull, gitLocal } from "../lib/git";
 import { printSchema } from "../lib/json";
@@ -56,18 +56,14 @@ export function registerLogCommand(program: Command): void {
     .option("-d, --dirty", "Only log dirty repos (shorthand for --where dirty)")
     .option("-w, --where <filter>", "Only log repos matching status filter (comma = OR, + = AND, ^ = negate)")
     .option("-v, --verbose", "Show commit bodies and changed files")
-    .option("--json", "Output structured JSON to stdout")
-    .option("--schema", "Print JSON Schema for this command's --json output and exit")
+    .addOption(new Option("--json", "Output structured JSON to stdout").conflicts("schema"))
+    .addOption(new Option("--schema", "Print JSON Schema for this command's --json output and exit").conflicts("json"))
     .summary("Show feature branch commits across repos")
     .description(
       "Examples:\n\n  arb log                                  Show feature commits across repos\n  arb log api --verbose                    Include commit bodies and files\n  arb log -n 5 --where dirty               Limit commits, filter repos\n\nShow commits on the feature branch since diverging from the base branch across all repos in the workspace. Answers 'what have I done in this workspace?' by showing only the commits that belong to the current feature.\n\nShows commits in the range base..HEAD for each repo. Use --fetch to fetch before showing log (default is no fetch). Use -n to limit how many commits are shown per repo. Use -v/--verbose to also show commit bodies and changed files. Use --json for machine-readable output.\n\nRepos are positional arguments — name specific repos to filter, or omit to show all. Reads repo names from stdin when piped (one per line). Use --where to filter by status flags. See 'arb help filtering' for filter syntax. Skipped repos (detached HEAD, wrong branch) are explained in the output, never silently omitted.\n\nSee 'arb help scripting' for output modes and piping.",
     )
     .action(async (repoArgs: string[], options, command) => {
       if (options.schema) {
-        if (options.json) {
-          error("Cannot combine --schema with --json.");
-          throw new ArbError("Cannot combine --schema with --json.");
-        }
         printSchema(LogJsonOutputSchema);
         return;
       }

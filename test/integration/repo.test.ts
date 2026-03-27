@@ -247,20 +247,20 @@ describe("repo list quiet/json", () => {
     withEnv(async (env) => {
       const result = await arb(env, ["repo", "list", "--quiet", "--json"]);
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("Cannot combine --quiet with --json");
+      expect(result.output).toContain("cannot be used with");
     }));
 
   test("arb repo list --verbose --quiet conflicts", () =>
     withEnv(async (env) => {
       const result = await arb(env, ["repo", "list", "--verbose", "--quiet"]);
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("Cannot combine --quiet with --verbose");
+      expect(result.output).toContain("cannot be used with");
     }));
 
   test("arb repo list --verbose --json conflicts", () =>
     withEnv(async (env) => {
       const result = await arb(env, ["repo", "list", "--verbose", "--json"]);
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("Cannot combine --verbose with --json");
+      expect(result.output).toContain("cannot be used with");
     }));
 });

@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
-import type { Command } from "commander";
+import { type Command, Option } from "commander";
 import { ArbError, arbAction } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import type { GitCache } from "../lib/git";
@@ -105,8 +105,13 @@ export function registerTemplateCommand(program: Command): void {
 
   template
     .command("add <path>")
-    .option("--repo <name>", "Target repo scope (repeatable)", collectRepo, [])
-    .option("--workspace", "Target workspace scope")
+    .addOption(
+      new Option("--repo <name>", "Target repo scope (repeatable)")
+        .argParser(collectRepo)
+        .default([])
+        .conflicts("workspace"),
+    )
+    .addOption(new Option("--workspace", "Target workspace scope").conflicts("repo"))
     .option("-f, --force", "Overwrite existing template")
     .summary("Capture a file or directory as a template")
     .description(
@@ -128,11 +133,6 @@ export function registerTemplateCommand(program: Command): void {
         let repos: string[] | undefined;
         const hasRepoFlag = options.repo && options.repo.length > 0;
         const hasWsFlag = options.workspace === true;
-
-        if (hasRepoFlag && hasWsFlag) {
-          error("Cannot use both --repo and --workspace.");
-          throw new ArbError("Cannot use both --repo and --workspace.");
-        }
 
         if (hasRepoFlag) {
           scope = "repo";

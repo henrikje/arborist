@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import type { Command } from "commander";
+import { type Command, Option } from "commander";
 import { ArbError, arbAction, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
 import { GitCache, branchNameError } from "../lib/git";
@@ -173,22 +173,24 @@ export function registerBranchCommand(program: Command): void {
 
   branch
     .command("show", { isDefault: true })
-    .option("-q, --quiet", "Output just the branch name")
-    .option("-v, --verbose", "Show per-repo branch and remote tracking detail")
+    .addOption(new Option("-q, --quiet", "Output just the branch name").conflicts(["json", "verbose"]))
+    .addOption(new Option("-v, --verbose", "Show per-repo branch and remote tracking detail").conflicts("quiet"))
     .option("--fetch", "Fetch remotes before displaying (default in verbose mode)")
     .option("-N, --no-fetch", "Skip fetching")
-    .option("--json", "Output structured JSON")
-    .option("--schema", "Print JSON Schema for this command's --json output and exit")
+    .addOption(new Option("--json", "Output structured JSON").conflicts("quiet"))
+    .addOption(
+      new Option("--schema", "Print JSON Schema for this command's --json output and exit").conflicts([
+        "json",
+        "quiet",
+        "verbose",
+      ]),
+    )
     .summary("Show the workspace branch (default)")
     .description(
       "Examples:\n\n  arb branch show                          Show branch, base, and share\n  arb branch show -v                       Per-repo tracking detail\n  arb branch show -q                       Just the branch name\n\nShow the workspace branch, base branch, share (remote tracking) branch, and any per-repo deviations. Use --verbose to show a per-repo table with branch and remote tracking info (fetches by default; use -N to skip). Press Ctrl+C during the fetch to cancel and use stale data. Use --quiet to output just the branch name (useful for scripting). Use --json for machine-readable output.\n\nSee 'arb help scripting' for output modes and piping.",
     )
     .action(async (options, command) => {
       if (options.schema) {
-        if (options.json || options.quiet || options.verbose) {
-          error("Cannot combine --schema with --json, --quiet, or --verbose.");
-          throw new ArbError("Cannot combine --schema with --json, --quiet, or --verbose.");
-        }
         printSchema(BranchJsonOutputSchema);
         return;
       }
@@ -208,16 +210,6 @@ async function runBranch(
 ): Promise<void> {
   const wsDir = `${ctx.arbRootDir}/${ctx.currentWorkspace}`;
   const configFile = `${wsDir}/.arbws/config.json`;
-
-  if (options.quiet && options.json) {
-    error("Cannot combine --quiet with --json.");
-    throw new ArbError("Cannot combine --quiet with --json.");
-  }
-
-  if (options.quiet && options.verbose) {
-    error("Cannot combine --quiet with --verbose.");
-    throw new ArbError("Cannot combine --quiet with --verbose.");
-  }
 
   const wb = await workspaceBranch(wsDir);
   const branch = wb?.branch ?? (ctx.currentWorkspace as string);

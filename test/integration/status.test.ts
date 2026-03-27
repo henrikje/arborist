@@ -1085,7 +1085,7 @@ describe("quiet output", () => {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("Cannot combine --quiet with --json");
+      expect(result.output).toContain("cannot be used with");
     }));
 
   test("arb status --quiet --verbose conflicts", () =>
@@ -1095,7 +1095,7 @@ describe("quiet output", () => {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("Cannot combine --quiet with --verbose");
+      expect(result.output).toContain("cannot be used with");
     }));
 
   test("arb status --schema outputs valid JSON Schema without requiring workspace", () =>
@@ -1112,7 +1112,7 @@ describe("quiet output", () => {
     withEnv(async (env) => {
       const result = await arb(env, ["status", "--schema", "--json"]);
       expect(result.exitCode).toBe(1);
-      expect(result.output).toContain("Cannot combine");
+      expect(result.output).toContain("cannot be used with");
     }));
 });
 

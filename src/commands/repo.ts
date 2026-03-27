@@ -1,6 +1,6 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
-import type { Command } from "commander";
+import { type Command, Option } from "commander";
 import { z } from "zod";
 import { ArbError, arbAction, readProjectConfig, writeProjectConfig } from "../lib/core";
 import { gitLocal, gitNetwork, networkTimeout } from "../lib/git";
@@ -157,37 +157,26 @@ export function registerRepoCommand(program: Command): void {
 
   repo
     .command("list", { isDefault: true })
-    .option("-q, --quiet", "Output one repo name per line")
-    .option("-v, --verbose", "Show remote URLs alongside names")
-    .option("--json", "Output structured JSON")
-    .option("--schema", "Print JSON Schema for this command's --json output and exit")
+    .addOption(new Option("-q, --quiet", "Output one repo name per line").conflicts(["json", "verbose"]))
+    .addOption(new Option("-v, --verbose", "Show remote URLs alongside names").conflicts(["quiet", "json"]))
+    .addOption(new Option("--json", "Output structured JSON").conflicts(["quiet", "verbose"]))
+    .addOption(
+      new Option("--schema", "Print JSON Schema for this command's --json output and exit").conflicts([
+        "json",
+        "quiet",
+        "verbose",
+      ]),
+    )
     .summary("List cloned repos (default)")
     .description(
       "Examples:\n\n  arb repo list                            List repos with remote roles\n  arb repo list -v                         Include remote URLs\n  arb repo list -q                         One name per line\n\nList all repositories that have been cloned into .arb/repos/. Shows resolved SHARE and BASE remote names for each repo. Use --verbose to include remote URLs alongside names. Use --quiet for plain enumeration (one name per line). Use --json for machine-readable output.",
     )
     .action(async (options, command) => {
       if (options.schema) {
-        if (options.json || options.quiet || options.verbose) {
-          error("Cannot combine --schema with --json, --quiet, or --verbose.");
-          throw new ArbError("Cannot combine --schema with --json, --quiet, or --verbose.");
-        }
         printSchema(z.array(RepoListJsonEntrySchema));
         return;
       }
       await arbAction(async (ctx, options) => {
-        if (options.quiet && options.json) {
-          error("Cannot combine --quiet with --json.");
-          throw new ArbError("Cannot combine --quiet with --json.");
-        }
-        if (options.quiet && options.verbose) {
-          error("Cannot combine --quiet with --verbose.");
-          throw new ArbError("Cannot combine --quiet with --verbose.");
-        }
-        if (options.verbose && options.json) {
-          error("Cannot combine --verbose with --json.");
-          throw new ArbError("Cannot combine --verbose with --json.");
-        }
-
         const repos = listRepos(ctx.reposDir);
         if (repos.length === 0) return;
 

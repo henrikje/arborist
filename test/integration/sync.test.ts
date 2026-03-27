@@ -931,7 +931,7 @@ describe("pull --rebase / --merge", () => {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("Cannot use both --rebase and --merge");
+      expect(result.output).toContain("cannot be used with");
     }));
 });
 

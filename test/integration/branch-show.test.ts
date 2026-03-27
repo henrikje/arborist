@@ -177,14 +177,14 @@ describe("verbose mode", () => {
       expect("share" in json.repos[0]).toBe(true);
     }));
 
-  test("arb branch -q -v errors with Cannot combine", () =>
+  test("arb branch -q -v errors with cannot be used with", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       const result = await arb(env, ["branch", "-q", "-v"], {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(1);
-      expect(result.output).toContain("Cannot combine");
+      expect(result.output).toContain("cannot be used with");
     }));
 });
 
@@ -205,7 +205,7 @@ describe("schema mode", () => {
     withEnv(async (env) => {
       const result = await arb(env, ["branch", "--schema", "--json"]);
       expect(result.exitCode).toBe(1);
-      expect(result.output).toContain("Cannot combine");
+      expect(result.output).toContain("cannot be used with");
     }));
 });
 
