@@ -10,6 +10,7 @@ function makeMockDeps() {
     getRemoteUrl: mock(() => Promise.resolve("https://github.com/org/repo.git" as string | null)),
     remoteBranchExists: mock(() => Promise.resolve(true)),
     resolveRemotes: mock(() => Promise.resolve({ base: "origin", share: "origin" })),
+    findBranchWorktree: mock(() => Promise.resolve(null)),
   } satisfies GitCacheDeps;
 }
 

@@ -13,6 +13,7 @@ export function makeRepo(overrides: Partial<RepoStatus> = {}): RepoStatus {
       remote: "origin",
       ref: "main",
       configuredRef: null,
+      resolvedVia: "remote",
       ahead: 0,
       behind: 0,
       baseMergedIntoDefault: null,

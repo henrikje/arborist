@@ -7,6 +7,7 @@ export {
   branchIsInWorktree,
   checkBranchMatch,
   detectOperation,
+  findBranchWorktree,
   getCommitsBetween,
   getCommitsBetweenFull,
   getDefaultBranch,

@@ -259,6 +259,22 @@ export async function branchIsInWorktree(repoDir: string, branch: string): Promi
   return result.stdout.split("\n").some((line) => line === target);
 }
 
+/** Find the worktree path for a branch (case-sensitive). Returns the path or null. */
+export async function findBranchWorktree(repoDir: string, branch: string): Promise<string | null> {
+  const result = await gitLocal(repoDir, "worktree", "list", "--porcelain");
+  if (result.exitCode !== 0) return null;
+  const branchPrefix = "branch refs/heads/";
+  let currentWorktree = "";
+  for (const line of result.stdout.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      currentWorktree = line.slice("worktree ".length);
+    } else if (line === `${branchPrefix}${branch}`) {
+      return currentWorktree;
+    }
+  }
+  return null;
+}
+
 /**
  * Find a branch in any worktree using case-insensitive matching.
  * Returns the actual branch name and worktree path if found, or null.
