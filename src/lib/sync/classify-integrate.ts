@@ -37,6 +37,7 @@ export function classifyRepo(
     behind: 0,
     ahead: 0,
     baseRemote: "",
+    baseResolvedLocally: undefined as boolean | undefined,
     headSha,
     shallow: status.identity.shallow,
     wrongBranch: undefined as boolean | undefined,
@@ -77,10 +78,11 @@ export function classifyRepo(
     return { ...base, outcome: "skip", skipReason: "no base branch", skipFlag: "no-base-branch" };
   }
 
-  if (!status.base.remote) {
+  if (!status.base.remote && status.base.resolvedVia !== "local") {
     return { ...base, outcome: "skip", skipReason: "no base remote", skipFlag: "no-base-remote" };
   }
-  base.baseRemote = status.base.remote;
+  base.baseRemote = status.base.remote ?? "";
+  base.baseResolvedLocally = status.base.resolvedVia === "local";
 
   if (status.base.merge != null) {
     const strategy = status.base.merge.kind === "squash" ? "squash-merged" : "merged";

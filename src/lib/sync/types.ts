@@ -50,6 +50,7 @@ interface IntegrateAssessmentBase {
   branch: string;
   baseBranch?: string;
   baseRemote: string;
+  baseResolvedLocally?: boolean;
   behind: number;
   ahead: number;
   headSha: string;
@@ -210,6 +211,7 @@ interface RetargetAssessmentBase {
   branch: string;
   targetBranch: string;
   baseRemote: string;
+  baseResolvedLocally?: boolean;
   oldBase: string;
   headSha: string;
   shallow: boolean;

@@ -166,7 +166,7 @@ export function registerRetargetCommand(program: Command): void {
           remotesMap,
           cache,
           analysisCache: ctx.analysisCache,
-          classify: ({ repoDir, status, fetchFailed }) => {
+          classify: ({ repo, repoDir, status, fetchFailed }) => {
             const repoPath = `${ctx.reposDir}/${basename(repoDir)}`;
             return assessRetargetRepo(
               status,
@@ -177,6 +177,7 @@ export function registerRetargetCommand(program: Command): void {
               {
                 autostash,
                 includeWrongBranch,
+                repoBaseRemote: remotesMap.get(repo)?.base,
                 cache,
               },
               {

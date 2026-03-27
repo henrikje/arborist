@@ -41,6 +41,11 @@ import { runUndoFlow } from "./undo";
 export type { RepoAssessment } from "./types";
 import type { RepoAssessment } from "./types";
 
+/** Build the git ref for the base branch, respecting local resolution. */
+function resolvedBaseRef(a: RepoAssessment): string {
+  return a.baseResolvedLocally ? (a.baseBranch ?? "") : `${a.baseRemote}/${a.baseBranch}`;
+}
+
 export async function integrate(
   ctx: CommandContext,
   mode: IntegrateMode,
@@ -229,7 +234,7 @@ export async function integrate(
   const stashPopFailed: RepoAssessment[] = [];
   await withReflogAction(`arb-${mode}`, async () => {
     for (const a of willOperate) {
-      const ref = `${a.baseRemote}/${a.baseBranch}`;
+      const ref = resolvedBaseRef(a);
 
       let result: { exitCode: number; stdout: string; stderr: string };
       if (a.retarget?.from) {
@@ -402,7 +407,7 @@ function classifyConflictRisk(
 }
 
 export function describeIntegrateAction(a: RepoAssessment, mode: IntegrateMode): IntegrateActionDesc {
-  const baseRef = `${a.baseRemote}/${a.baseBranch}`;
+  const baseRef = resolvedBaseRef(a);
   const stash = classifyStash(a);
 
   if (a.retarget?.from && a.retarget.reason === "branch-merged") {
@@ -496,7 +501,7 @@ export function buildIntegratePlanNodes(
         const graphText = formatBranchGraph(a, a.branch, !!verbose);
         if (graphText) afterRow = [{ kind: "rawText", text: graphText }];
       } else if (verbose && a.verbose?.commits && a.verbose.commits.length > 0) {
-        const label = `Incoming from ${a.baseRemote}/${a.baseBranch}:`;
+        const label = `Incoming from ${resolvedBaseRef(a)}:`;
         afterRow = verboseCommitsToNodes(a.verbose.commits, a.verbose.totalCommits ?? a.verbose.commits.length, label, {
           diffStats: a.verbose.diffStats,
           conflictCommits: a.verbose.conflictCommits,
@@ -573,7 +578,7 @@ async function predictIntegrateConflicts(assessments: RepoAssessment[], mode: In
     assessments
       .filter((a) => a.outcome === "will-operate")
       .map(async (a) => {
-        const ref = `${a.baseRemote}/${a.baseBranch}`;
+        const ref = resolvedBaseRef(a);
         // Skip conflict prediction for branch-merged replay (--onto semantics don't match merge-tree)
         if (!a.retarget?.from && a.ahead > 0 && a.behind > 0) {
           const prediction = await predictMergeConflict(a.repoDir, ref);
@@ -599,7 +604,7 @@ async function gatherIntegrateVerboseCommits(assessments: RepoAssessment[]): Pro
     assessments
       .filter((a) => a.outcome === "will-operate")
       .map(async (a) => {
-        const ref = `${a.baseRemote}/${a.baseBranch}`;
+        const ref = resolvedBaseRef(a);
         const incomingCommits = await getCommitsBetweenFull(a.repoDir, "HEAD", ref);
         const total = incomingCommits.length;
 
@@ -668,7 +673,7 @@ async function gatherIntegrateGraphData(
           const oldBaseRemoteExists = await cache.remoteBranchExists(repoPath, a.retarget.from, a.baseRemote);
           mergeBaseRef = oldBaseRemoteExists ? `${a.baseRemote}/${a.retarget.from}` : a.retarget.from;
         } else {
-          mergeBaseRef = `${a.baseRemote}/${a.baseBranch}`;
+          mergeBaseRef = resolvedBaseRef(a);
         }
 
         a.verbose = { ...a.verbose, mergeBaseSha: (await getMergeBase(a.repoDir, "HEAD", mergeBaseRef)) ?? undefined };
