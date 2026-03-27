@@ -25,15 +25,18 @@ import { extractPrNumber } from "./pr-detection";
 import { detectTicketFromName } from "./ticket-detection";
 import type { RepoRefs, RepoStatus, WorkspaceSummary } from "./types";
 
+type BaseRefInput = { remote: string | null; ref: string; resolvedVia: "remote" | "local" };
+
 /** Build the git ref for a base section, respecting resolvedVia.
- * Local-primary returns the bare branch name; remote returns "origin/main". */
-export function baseRef(base: NonNullable<RepoStatus["base"]>): string {
+ * Local-primary returns the bare branch name; remote returns "origin/main".
+ * Accepts both RepoStatus["base"] and RepoRefs["base"]. */
+export function baseRef(base: BaseRefInput): string {
   if (base.resolvedVia === "local") return base.ref;
   return base.remote ? `${base.remote}/${base.ref}` : base.ref;
 }
 
 /** Build the remote git ref for a base section, or null if base is not on a remote. */
-export function baseRemoteRef(base: NonNullable<RepoStatus["base"]>): string | null {
+export function baseRemoteRef(base: BaseRefInput): string | null {
   return base.remote ? `${base.remote}/${base.ref}` : null;
 }
 
