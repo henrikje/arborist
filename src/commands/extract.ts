@@ -6,6 +6,8 @@ import {
   type OperationRecord,
   type RepoOperationState,
   arbAction,
+  assertNoInProgressOperation,
+  readInProgressOperation,
   readWorkspaceConfig,
   withReflogAction,
   writeOperationRecord,
@@ -20,6 +22,7 @@ import { buildConflictReport } from "../lib/render/conflict-report";
 import { EXTRACT_EXEMPT_SKIPS } from "../lib/status";
 import { buildCachedStatusAssess, confirmOrExit, resolveDefaultFetch, runPlanFlow } from "../lib/sync";
 import { assessExtractRepo } from "../lib/sync/classify-extract";
+import { runContinueFlow } from "../lib/sync/continue-flow";
 import { parseSplitPoints, resolveSplitPoints } from "../lib/sync/parse-split-points";
 import type { ExtractAssessment } from "../lib/sync/types";
 import { dryRunNotice, error, inlineResult, inlineStart, plural, yellow } from "../lib/terminal";
@@ -51,13 +54,97 @@ export function registerExtractCommand(program: Command): void {
     .option("-v, --verbose", "Show per-commit details in the plan")
     .option("--autostash", "Stash uncommitted changes before operation")
     .option("--include-wrong-branch", "Include repos on a different branch than the workspace")
+    .addOption(new Option("--continue", "Resume after resolving conflicts").conflicts("abort"))
+    .addOption(
+      new Option("--abort", "Cancel the in-progress extract and restore pre-extract state").conflicts("continue"),
+    )
     .summary("Extract commits into a new workspace")
     .description(
       "Examples:\n\n  arb extract prereq --to abc123             Extract prefix into 'prereq'\n  arb extract cont --from abc123              Extract suffix into 'cont'\n  arb extract cont --from-merge               Extract post-merge commits\n  arb extract prereq --to abc123,def456       Multiple repos (auto-detect)\n  arb extract prereq --to api:HEAD~3          Per-repo with explicit prefix\n\nSplits the current workspace's branch at a boundary commit, creating a new stacked workspace.\n\nWith --to, extracts the prefix (base through boundary) into a new lower workspace. The original workspace is rebased to stack on top.\n\nWith --from, extracts the suffix (boundary through tip) into a new upper workspace. The original workspace is reset to the boundary.\n\nWith --from-merge, auto-detects the merge point for repos where the branch was merged.\n\nSplit points are specified as commit SHAs (auto-detect repo), <repo>:<commit-ish> (explicit), or tags. Multiple values can be comma-separated.\n\nRepos without an explicit split point have zero commits extracted — they are included in both workspaces but just track the base.",
     )
     .action(
       arbAction(async (ctx, workspaceName: string, options) => {
-        // TODO Phase 6: add --continue/--abort gates and assertNoInProgressOperation(wsDir)
+        const { wsDir, workspace } = requireWorkspace(ctx);
+
+        // ── Operation lifecycle: --continue, --abort, gate ──
+        if ((options.continue || options.abort) && (options.to || options.from || options.fromMerge)) {
+          const flag = options.continue ? "--continue" : "--abort";
+          error(`${flag} does not accept --to, --from, or --from-merge`);
+          throw new ArbError(`${flag} does not accept --to, --from, or --from-merge`);
+        }
+
+        const inProgress = readInProgressOperation(wsDir, "extract") as
+          | (OperationRecord & { command: "extract" })
+          | null;
+
+        if (options.abort) {
+          if (!inProgress) {
+            error("No extract in progress. Nothing to abort.");
+            throw new ArbError("No extract in progress. Nothing to abort.");
+          }
+          // Clean up branches created in canonical repos, then delegate to sync undo
+          await cleanupExtractBranches(ctx.reposDir, inProgress);
+          const { runUndoFlow } = await import("../lib/sync/undo");
+          await runUndoFlow({
+            wsDir,
+            arbRootDir: ctx.arbRootDir,
+            reposDir: ctx.reposDir,
+            options,
+            verb: "abort",
+          });
+          return;
+        }
+
+        if (options.continue) {
+          if (!inProgress) {
+            error("No extract in progress. Nothing to continue.");
+            throw new ArbError("No extract in progress. Nothing to continue.");
+          }
+          const configFile = `${wsDir}/.arbws/config.json`;
+          const branch = await requireBranch(wsDir, workspace);
+          await runContinueFlow({
+            record: inProgress,
+            wsDir,
+            mode: "extract",
+            gitContinueCmd: "rebase",
+            options,
+            onComplete: async () => {
+              // Create the new workspace (wasn't created because rebase conflicted)
+              const allRepos = workspaceRepoDirs(wsDir).map((d) => basename(d));
+              const newWsDir = `${ctx.arbRootDir}/${inProgress.targetWorkspace}`;
+              if (!existsSync(newWsDir)) {
+                mkdirSync(`${newWsDir}/.arbws`, { recursive: true });
+                const configBase = readWorkspaceConfig(configFile)?.base ?? null;
+                if (inProgress.direction === "prefix") {
+                  writeWorkspaceConfig(`${newWsDir}/.arbws/config.json`, {
+                    branch: inProgress.targetBranch,
+                    ...(configBase && { base: configBase }),
+                  });
+                } else {
+                  writeWorkspaceConfig(`${newWsDir}/.arbws/config.json`, {
+                    branch: inProgress.targetBranch,
+                    base: branch,
+                  });
+                }
+                await addWorktrees(
+                  inProgress.targetWorkspace,
+                  inProgress.targetBranch,
+                  allRepos,
+                  ctx.reposDir,
+                  ctx.arbRootDir,
+                );
+              }
+              // Apply deferred config
+              if (inProgress.configAfter) {
+                writeWorkspaceConfig(configFile, inProgress.configAfter);
+              }
+              inlineResult(workspace, `extract completed — new workspace: ${inProgress.targetWorkspace}`);
+            },
+          });
+          return;
+        }
+
+        await assertNoInProgressOperation(wsDir);
 
         // ── Validation ──
 
@@ -87,7 +174,6 @@ export function registerExtractCommand(program: Command): void {
 
         // ── Current workspace context ──
 
-        const { wsDir, workspace } = requireWorkspace(ctx);
         const branch = await requireBranch(wsDir, workspace);
         const configFile = `${wsDir}/.arbws/config.json`;
         const configBase = readWorkspaceConfig(configFile)?.base ?? null;
@@ -601,4 +687,19 @@ function buildExtractPlanNodes(
 
   nodes.push({ kind: "gap" });
   return nodes;
+}
+
+// ── Helpers ──
+
+/** Delete branches created in canonical repos during extract (for abort/undo). */
+async function cleanupExtractBranches(
+  reposDir: string,
+  record: OperationRecord & { command: "extract" },
+): Promise<void> {
+  for (const repoName of Object.keys(record.repos)) {
+    const repoPath = `${reposDir}/${repoName}`;
+    if (await branchExistsLocally(repoPath, record.targetBranch)) {
+      await gitLocal(repoPath, "branch", "-D", record.targetBranch).catch(() => {});
+    }
+  }
 }

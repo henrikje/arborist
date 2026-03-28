@@ -280,7 +280,7 @@ export async function assessUndo(
     case "rename":
       return assessRenameUndo(record, wsDir, arbRootDir);
     case "extract":
-      throw new ArbError("Undo for extract is not yet implemented");
+      return assessSyncUndo(record, wsDir);
     default: {
       const _exhaustive: never = record;
       throw new ArbError("Undo is not yet supported for this operation");
