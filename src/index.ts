@@ -9,6 +9,7 @@ import { registerDeleteCommand } from "./commands/delete";
 import { registerDetachCommand } from "./commands/detach";
 import { registerDumpCommand } from "./commands/dump";
 import { registerExecCommand } from "./commands/exec";
+import { registerExtractCommand } from "./commands/extract";
 import { registerHelpCommand } from "./commands/help";
 import { registerInitCommand } from "./commands/init";
 import { registerListCommand } from "./commands/list";
@@ -307,6 +308,7 @@ registerPushCommand(program);
 registerRebaseCommand(program);
 registerMergeCommand(program);
 registerRetargetCommand(program);
+registerExtractCommand(program);
 registerResetCommand(program);
 registerUndoCommand(program);
 

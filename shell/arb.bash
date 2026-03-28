@@ -533,6 +533,14 @@ __arb_complete_merge() {
     COMPREPLY=($(compgen -W "$(__arb_workspace_repo_names "$base_dir")" -- "$cur"))
 }
 
+__arb_complete_extract() {
+    local base_dir="$1" cur="$2"
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "--to --from --from-merge -b --branch --fetch -N --no-fetch -y --yes --dry-run -v --verbose --autostash --include-wrong-branch" -- "$cur"))
+        return
+    fi
+}
+
 __arb_complete_reset() {
     local base_dir="$1" cur="$2"
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
@@ -652,7 +660,7 @@ __arb_complete_template() {
 __arb_complete_help() {
     local base_dir="$1" cur="$2"
     local topics="filtering remotes stacked templates scripting"
-    local commands="init repo create delete rename list path cd attach detach status watch branch pull push rebase retarget merge reset undo log exec open template"
+    local commands="init repo create delete rename list path cd attach detach status watch branch pull push rebase retarget extract merge reset undo log exec open template"
     COMPREPLY=($(compgen -W "$topics $commands" -- "$cur"))
 }
 
@@ -708,6 +716,7 @@ _arb() {
         push)     __arb_complete_push "$base_dir" "$cur" ;;
         rebase)   __arb_complete_rebase "$base_dir" "$cur" ;;
         retarget) __arb_complete_retarget "$base_dir" "$cur" ;;
+        extract)  __arb_complete_extract "$base_dir" "$cur" ;;
         merge)    __arb_complete_merge "$base_dir" "$cur" ;;
         reset)    __arb_complete_reset "$base_dir" "$cur" ;;
         undo)     __arb_complete_undo "$base_dir" "$cur" ;;

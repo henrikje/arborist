@@ -103,20 +103,10 @@ export async function assessExtractRepo(
     }
   }
 
-  // ── Compute commit counts ──
-
-  // commitsExtracted = commits from merge-base to boundary (prefix) or boundary to HEAD (suffix)
-  // commitsRemaining = the rest
-  // These are computed by the command using rev-list counts passed via the assessment.
-  // For now, set from the status: we know total = aheadOfBase, and the boundary position
-  // determines the split. The exact counts are computed during assessment in the command,
-  // since we need git rev-list to count commits between boundary and HEAD/merge-base.
-  // The classifier receives pre-computed counts from the command.
-
-  // For the classifier, we trust that if a boundary was resolved, the command has validated
-  // it and will provide counts. We set placeholders that the command will fill.
-  base.commitsExtracted = 0; // Filled by command after rev-list
-  base.commitsRemaining = aheadOfBase; // Adjusted by command
+  // Commit counts are computed in the command's postAssess step via git rev-list.
+  // The classifier sets placeholders; postAssess overwrites them with accurate values.
+  base.commitsExtracted = 0;
+  base.commitsRemaining = aheadOfBase;
 
   return { ...base, outcome: "will-extract" };
 }
