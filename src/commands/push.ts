@@ -33,12 +33,12 @@ export function registerPushCommand(program: Command): void {
     .command("push [repos...]")
     .option("-f, --force", "Force push with lease")
     .option("--include-merged", "Include branches already merged into base")
-    .option("--include-wrong-branch", "Include repos on a different branch than the workspace")
     .option("--fetch", "Fetch from all remotes before push (default)")
     .option("-N, --no-fetch", "Skip fetching before push")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("--dry-run", "Show what would happen without executing")
     .option("-v, --verbose", "Show outgoing commits in the plan")
+    .option("--include-wrong-branch", "Include repos on a different branch than the workspace")
     .option("-w, --where <filter>", "Only push repos matching status filter (comma = OR, + = AND, ^ = negate)")
     .summary("Push feature branches to the remote")
     .description(

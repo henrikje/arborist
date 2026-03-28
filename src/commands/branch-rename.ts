@@ -541,8 +541,8 @@ export function registerBranchRenameSubcommand(parent: Command): void {
     .option("-r, --delete-remote", "Delete old branch on remote after rename")
     .option("--fetch", "Fetch from all remotes before rename (default)")
     .option("-N, --no-fetch", "Skip fetching before rename")
-    .option("--dry-run", "Show what would happen without executing")
     .option("-y, --yes", "Skip confirmation prompt")
+    .option("--dry-run", "Show what would happen without executing")
     .option("--include-in-progress", "Rename repos even if they have an in-progress git operation")
     .addOption(new Option("--continue", "Resume a partial branch rename").conflicts("abort"))
     .addOption(
@@ -550,7 +550,7 @@ export function registerBranchRenameSubcommand(parent: Command): void {
     )
     .summary("Rename the workspace branch across all repos")
     .description(
-      "Examples:\n\n  arb branch rename feat/PROJ-209          Rename across all repos\n  arb branch rename feat/PROJ-209 --delete-remote\n  arb branch rename                        Resume after partial failure\n\nRenames the workspace branch locally across all repos and updates .arbws/config.json. The workspace directory is not renamed — use 'arb rename' to rename both the workspace and branch together.\n\nFetches before assessing to get fresh remote state (use -N/--no-fetch to skip). Shows a plan and asks for confirmation before proceeding. Repos with an in-progress git operation (rebase, merge, cherry-pick) are skipped by default — use --include-in-progress to override.\n\nBranch rename is tracked as an operation in .arbws/operation.json. If it fails partway, use 'arb branch rename --continue' to retry remaining repos, or 'arb branch rename --abort' to roll back. After rename, tracking is cleared so 'arb push' treats the branch as new and pushes under the new name. Use --delete-remote to also delete the old remote branch during rename.",
+      "Examples:\n\n  arb branch rename feat/PROJ-209          Rename across all repos\n  arb branch rename feat/PROJ-209 -r       Also delete old remote branch\n  arb branch rename --continue             Resume after partial failure\n\nRenames the workspace branch locally across all repos and updates .arbws/config.json. The workspace directory is not renamed — use 'arb rename' to rename both the workspace and branch together.\n\nFetches before assessing to get fresh remote state (use -N/--no-fetch to skip). Shows a plan and asks for confirmation before proceeding. Repos with an in-progress git operation (rebase, merge, cherry-pick) are skipped by default — use --include-in-progress to override.\n\nBranch rename is tracked as an operation in .arbws/operation.json. If it fails partway, use 'arb branch rename --continue' to retry remaining repos, or 'arb branch rename --abort' to roll back. After rename, tracking is cleared so 'arb push' treats the branch as new and pushes under the new name. Use --delete-remote to also delete the old remote branch during rename.",
     )
     .action(
       arbAction(async (ctx, newNameArg: string | undefined, options: RenameOptions) => {

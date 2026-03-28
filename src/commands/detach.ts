@@ -77,10 +77,10 @@ export function registerDetachCommand(program: Command): void {
     .option("-f, --force", "Force detach even with at-risk repos (uncommitted changes, unpushed commits, etc.)")
     .option("-a, --all-repos", "Detach all repos from the workspace")
     .option("--delete-branch", "Delete the local branch from the canonical repo")
-    .option("-y, --yes", "Skip confirmation prompt")
-    .option("--dry-run", "Show what would happen without executing")
     .option("--fetch", "Fetch before detaching (default)")
     .option("-N, --no-fetch", "Skip pre-fetch")
+    .option("-y, --yes", "Skip confirmation prompt")
+    .option("--dry-run", "Show what would happen without executing")
     .summary("Detach repos from the workspace")
     .description(
       "Examples:\n\n  arb detach api                           Detach a single repo\n  arb detach api web --delete-branch       Detach and delete local branch\n  arb detach --all-repos --force           Detach all, skip safety checks\n\nDetach one or more repos from the current workspace without deleting the workspace itself. Shows a plan and asks for confirmation before proceeding. Regenerates templates that reference the repo list (those using {% for repo in workspace.repos %}) to reflect the updated repo list. Skips repos with at-risk state (uncommitted changes, unpushed commits, operation in progress, detached HEAD, wrong branch) unless --force is used. Use --all-repos to detach all repos. Use --delete-branch to also delete the local branch from the canonical repo. Fetches the selected repos before detaching for fresh state (skip with -N/--no-fetch). Use --yes to skip the confirmation prompt. Use --dry-run to see what would happen without executing.",

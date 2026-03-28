@@ -88,7 +88,7 @@ export function registerRepoCommand(program: Command): void {
     .option("--upstream <url>", "Add an upstream remote (for fork workflows)")
     .summary("Clone a repo into .arb/repos/")
     .description(
-      "Examples:\n\n  arb repo clone git@github.com:org/api\n  arb repo clone git@github.com:org/api backend\n  arb repo clone git@github.com:me/api --upstream git@github.com:org/api\n\nClone a git repository into .arb/repos/<name> as a canonical copy. These permanent clones are never worked in directly — instead, arb creates worktrees that point back to them. The repo name is derived from the URL if not specified.\n\nFor fork workflows, use --upstream to add the canonical repo as an upstream remote. This sets remote.pushDefault so arb knows to push to origin (your fork) and rebase onto upstream.",
+      "Examples:\n\n  arb repo clone git@github.com:org/api                                   Clone a repo\n  arb repo clone git@github.com:org/api backend                           Clone with custom name\n  arb repo clone git@github.com:me/api --upstream git@github.com:org/api  Clone fork with upstream\n\nClone a git repository into .arb/repos/<name> as a canonical copy. These permanent clones are never worked in directly — instead, arb creates worktrees that point back to them. The repo name is derived from the URL if not specified.\n\nFor fork workflows, use --upstream to add the canonical repo as an upstream remote. This sets remote.pushDefault so arb knows to push to origin (your fork) and rebase onto upstream.",
     )
     .action(
       arbAction(async (ctx, url: string, nameArg: string | undefined, options) => {
