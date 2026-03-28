@@ -572,7 +572,7 @@ describe("--verbose", () => {
 // ── diverged commit matching in plan ─────────────────────────────
 
 describe("diverged commit matching in plan", () => {
-  test("arb rebase --verbose --dry-run skips cherry-picked commit (detected as squash-merged)", () =>
+  test("arb rebase --verbose --dry-run plans reset for cherry-picked commit (detected as squash-merged)", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       await write(join(env.projectDir, "my-feature/repo-a/feature.txt"), "feature");
@@ -594,10 +594,11 @@ describe("diverged commit matching in plan", () => {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("already squash-merged into main");
+      expect(result.output).toContain("reset to origin/main");
+      expect(result.output).toContain("merged");
     }));
 
-  test("arb rebase skips repo that was squash-merged onto base", () =>
+  test("arb rebase plans reset for repo that was squash-merged onto base", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a"]);
       await write(join(env.projectDir, "my-feature/repo-a/first.txt"), "first");
@@ -619,10 +620,11 @@ describe("diverged commit matching in plan", () => {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("already squash-merged into main");
+      expect(result.output).toContain("reset to origin/main");
+      expect(result.output).toContain("commits merged");
     }));
 
-  test("arb rebase skips squash-merged repo and rebases others", () =>
+  test("arb rebase resets squash-merged repo and rebases others", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "my-feature", "repo-a", "repo-b"]);
 
@@ -650,12 +652,16 @@ describe("diverged commit matching in plan", () => {
         cwd: join(env.projectDir, "my-feature"),
       });
       expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("already squash-merged into main");
+      expect(result.output).toContain("reset to origin/main (merged)");
       expect(result.output).toContain("rebased my-feature onto origin/main");
 
       // Verify repo-b actually has the upstream commit after rebase
       const logB = await git(join(env.projectDir, "my-feature/repo-b"), ["log", "--oneline"]);
       expect(logB).toContain("upstream change");
+
+      // Verify repo-a was reset to origin/main (squash commit is in history)
+      const logA = await git(join(env.projectDir, "my-feature/repo-a"), ["log", "--oneline"]);
+      expect(logA).toContain("squash: feature");
     }));
 
   test("arb rebase --verbose --dry-run shows no match annotations for genuinely different commits", () =>
