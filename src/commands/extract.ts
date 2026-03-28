@@ -126,12 +126,16 @@ export function registerExtractCommand(program: Command): void {
                     base: branch,
                   });
                 }
+                const remotesForContinue = await ctx.cache.resolveRemotesMap(allRepos, ctx.reposDir);
                 await addWorktrees(
                   inProgress.targetWorkspace,
                   inProgress.targetBranch,
                   allRepos,
                   ctx.reposDir,
                   ctx.arbRootDir,
+                  undefined,
+                  remotesForContinue,
+                  ctx.cache,
                 );
               }
               // Apply deferred config
@@ -419,15 +423,15 @@ export function registerExtractCommand(program: Command): void {
                 // Prefix: new branch at the boundary (lower workspace gets commits up to boundary)
                 startPoint = a.boundary;
               } else {
-                // Suffix: new branch at HEAD (upper workspace gets commits from boundary onward)
-                startPoint = "HEAD";
+                // Suffix: new branch at worktree HEAD (upper workspace gets commits from boundary onward)
+                startPoint = a.headSha;
               }
             } else {
-              // No-op repo
+              // No-op repo: use merge-base for prefix, worktree HEAD for suffix
               if (direction === "prefix") {
-                startPoint = mergeBaseMap.get(a.repo) ?? "HEAD";
+                startPoint = mergeBaseMap.get(a.repo) ?? a.headSha;
               } else {
-                startPoint = "HEAD";
+                startPoint = a.headSha;
               }
             }
             const result = await gitLocal(repoPath, "branch", targetBranch, startPoint);
@@ -551,7 +555,16 @@ export function registerExtractCommand(program: Command): void {
           }
 
           // Create worktrees (branches already exist from step 1)
-          await addWorktrees(workspaceName, targetBranch, allRepos, ctx.reposDir, ctx.arbRootDir);
+          await addWorktrees(
+            workspaceName,
+            targetBranch,
+            allRepos,
+            ctx.reposDir,
+            ctx.arbRootDir,
+            undefined,
+            remotesMap,
+            cache,
+          );
 
           // Update original workspace config (prefix only — suffix leaves it unchanged)
           if (direction === "prefix") {

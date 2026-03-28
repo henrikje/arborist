@@ -70,3 +70,55 @@ arb delete auth              # the merged workspace
 ```
 
 At each step, `arb status` shows where you stand relative to the base, and conflict predictions help you decide when to retarget.
+
+## Retroactively creating a stack with `arb extract`
+
+Sometimes you realize after committing that your work should have been on separate branches. `arb extract` splits a branch into two stacked workspaces at a boundary commit.
+
+### Extracting a prefix (infrastructure before feature)
+
+If the first few commits on your feature branch are generic infrastructure that should be a separate, earlier PR:
+
+```bash
+arb extract prereq --to abc123 --yes
+```
+
+This extracts everything from the base through commit `abc123` into a new workspace `prereq`. The original workspace is rebased to stack on top. You end up with two workspaces — exactly as if you'd planned the stack upfront.
+
+### Extracting a suffix (accidental feature bleed)
+
+If you accidentally started implementing the next feature on the current branch:
+
+```bash
+arb extract continuation --from abc123 --yes
+```
+
+This extracts everything from commit `abc123` through the tip into a new workspace `continuation`. The original workspace is reset to just before the boundary.
+
+### Post-merge continuation
+
+If your branch was merged but you kept committing:
+
+```bash
+arb extract next-feature --from-merge --yes
+```
+
+This auto-detects the merge point and extracts the post-merge commits into a new workspace.
+
+### Split points across repos
+
+In multi-repo workspaces, split points are per-repo. Use bare SHAs (auto-detected to the correct repo) or explicit `<repo>:<commit-ish>` syntax:
+
+```bash
+arb extract prereq --to abc123,def456        # Two SHAs from different repos
+arb extract prereq --to api:HEAD~3           # Explicit repo prefix
+```
+
+Repos without a specified split point have zero commits extracted — they're included in both workspaces but just track the base.
+
+### Undoing an extract
+
+```bash
+arb undo --yes                              # Reverses the last extract
+arb extract <name> --abort                  # Aborts a conflicted extract
+```
