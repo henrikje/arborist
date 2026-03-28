@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { arb, git, withEnv, write } from "./helpers/env";
+import { arb, fetchAllRepos, git, withEnv, write } from "./helpers/env";
 
 // ── Helpers ──
 
@@ -516,5 +516,91 @@ describe("extract --verbose", () => {
       expect(result.output).toContain("Extracted to prereq:");
       expect(result.output).toContain("Stays in ws:");
       expect(result.output).toContain("Dry run");
+    }));
+});
+
+// ── Merge-point floor validation ──
+
+/**
+ * Set up a workspace whose branch has been squash-merged into the base,
+ * with additional post-merge commits.
+ *
+ * Returns { preMergeShas, postMergeShas } — the SHAs of commits before/after the merge point.
+ */
+async function setupMergedWithNewCommits(
+  env: { projectDir: string; testDir: string },
+  wsName: string,
+  preMergeCount: number,
+  postMergeCount: number,
+): Promise<{ preMergeShas: string[]; postMergeShas: string[] }> {
+  await arb(env, ["create", wsName, "-b", wsName, "repo-a"]);
+  const wt = join(env.projectDir, `${wsName}/repo-a`);
+
+  // Make pre-merge commits and push
+  const preMergeShas: string[] = [];
+  for (let i = 1; i <= preMergeCount; i++) {
+    await write(join(wt, `pre${i}.txt`), `pre ${i}`);
+    await git(wt, ["add", `pre${i}.txt`]);
+    await git(wt, ["commit", "-m", `pre-merge commit ${i}`]);
+    preMergeShas.push((await git(wt, ["rev-parse", "HEAD"])).trim());
+  }
+  await git(wt, ["push", "-u", "origin", wsName]);
+
+  // Squash-merge the branch into main on the canonical repo
+  const mainRepo = join(env.projectDir, ".arb/repos/repo-a");
+  await git(mainRepo, ["merge", "--squash", `origin/${wsName}`]);
+  await git(mainRepo, ["commit", "-m", `squash: ${wsName}`]);
+  await git(mainRepo, ["push"]);
+
+  // Make post-merge commits on the branch
+  const postMergeShas: string[] = [];
+  for (let i = 1; i <= postMergeCount; i++) {
+    await write(join(wt, `post${i}.txt`), `post ${i}`);
+    await git(wt, ["add", `post${i}.txt`]);
+    await git(wt, ["commit", "-m", `post-merge commit ${i}`]);
+    postMergeShas.push((await git(wt, ["rev-parse", "HEAD"])).trim());
+  }
+
+  // Fetch so merge detection picks up the squash
+  await fetchAllRepos(env);
+
+  return { preMergeShas, postMergeShas };
+}
+
+describe("extract merge-point floor validation", () => {
+  test("rejects --starting-with pointing to a pre-merge commit", () =>
+    withEnv(async (env) => {
+      const { preMergeShas } = await setupMergedWithNewCommits(env, "ws", 2, 2);
+      const result = await arb(
+        env,
+        ["extract", "cont", "--starting-with", preMergeShas[0] ?? "", "--dry-run", "--no-fetch"],
+        { cwd: join(env.projectDir, "ws") },
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("before the merge point");
+    }));
+
+  test("rejects --ending-with pointing to a pre-merge commit", () =>
+    withEnv(async (env) => {
+      const { preMergeShas } = await setupMergedWithNewCommits(env, "ws", 2, 2);
+      const result = await arb(
+        env,
+        ["extract", "prereq", "--ending-with", preMergeShas[0] ?? "", "--dry-run", "--no-fetch"],
+        { cwd: join(env.projectDir, "ws") },
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("before the merge point");
+    }));
+
+  test("accepts --starting-with pointing to a post-merge commit", () =>
+    withEnv(async (env) => {
+      const { postMergeShas } = await setupMergedWithNewCommits(env, "ws", 2, 3);
+      const result = await arb(
+        env,
+        ["extract", "cont", "--starting-with", postMergeShas[1] ?? "", "--yes", "--no-fetch"],
+        { cwd: join(env.projectDir, "ws") },
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Created workspace");
     }));
 });

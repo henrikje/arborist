@@ -87,8 +87,7 @@ export const stackedTopic: HelpTopic = {
     out("    Extract the suffix (commit through tip) into a new upper workspace.");
     out("    The original workspace keeps the prefix.");
     out("");
-    out(`  ${dim("arb extract cont --after-merge")}`);
-    out("    Extract post-merge commits into a new workspace (auto-detects merge point).");
+    out("  In base-merged workspaces, split points must be at or after the merge point.");
     out("");
     out("  See 'arb extract --help' for split point syntax and multi-repo options.");
   },

@@ -24,7 +24,8 @@ export type SkipFlag =
   | "retarget-no-default"
   | "retarget-same-base"
   // Extract-specific
-  | "extract-target-exists";
+  | "extract-target-exists"
+  | "below-merge-point";
 
 export const BENIGN_SKIPS: ReadonlySet<SkipFlag> = new Set([
   "already-merged",
