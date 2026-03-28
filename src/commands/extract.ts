@@ -269,18 +269,15 @@ export function registerExtractCommand(program: Command): void {
           message: `Extract ${willExtract.length} ${plural(willExtract.length, "repo", "repos")}?`,
         });
 
-        // ── Execution: prefix extraction ──
-
-        if (direction !== "prefix") {
-          error("Suffix extraction (--from) is not yet implemented. Use --to for prefix extraction.");
-          throw new ArbError("Suffix extraction not yet implemented");
-        }
+        // ── Execution ──
 
         process.stderr.write("\n");
 
         // Capture state and write operation record
         const configBefore = readWorkspaceConfig(configFile) ?? { branch };
-        const configAfter = { branch, base: targetBranch };
+        // Prefix: original workspace's base changes to the new branch
+        // Suffix: original workspace's config is unchanged
+        const configAfter = direction === "prefix" ? { branch, base: targetBranch } : configBefore;
 
         const repoStates: Record<string, RepoOperationState> = {};
         for (const a of willExtract) {
@@ -309,7 +306,7 @@ export function registerExtractCommand(program: Command): void {
           startedAt: new Date().toISOString(),
           status: "in-progress",
           repos: repoStates,
-          direction: "prefix",
+          direction,
           targetWorkspace: workspaceName,
           targetBranch,
           configBefore,
@@ -323,18 +320,28 @@ export function registerExtractCommand(program: Command): void {
 
         await withReflogAction("arb-extract", async () => {
           // Step 1: Create new branches in canonical repos
-          const createdBranches: string[] = []; // track for cleanup on failure
+          const createdBranches: string[] = [];
           for (const a of [...willExtract, ...noOps]) {
             const repoPath = `${ctx.reposDir}/${a.repo}`;
             let startPoint: string;
             if (a.outcome === "will-extract" && a.boundary) {
-              startPoint = a.boundary;
+              if (direction === "prefix") {
+                // Prefix: new branch at the boundary (lower workspace gets commits up to boundary)
+                startPoint = a.boundary;
+              } else {
+                // Suffix: new branch at HEAD (upper workspace gets commits from boundary onward)
+                startPoint = "HEAD";
+              }
             } else {
-              startPoint = mergeBaseMap.get(a.repo) ?? "HEAD";
+              // No-op repo
+              if (direction === "prefix") {
+                startPoint = mergeBaseMap.get(a.repo) ?? "HEAD";
+              } else {
+                startPoint = "HEAD";
+              }
             }
             const result = await gitLocal(repoPath, "branch", targetBranch, startPoint);
             if (result.exitCode !== 0) {
-              // Clean up branches already created
               for (const created of createdBranches) {
                 await gitLocal(`${ctx.reposDir}/${created}`, "branch", "-D", targetBranch).catch(() => {});
               }
@@ -345,74 +352,127 @@ export function registerExtractCommand(program: Command): void {
             createdBranches.push(a.repo);
           }
 
-          // Step 2: Rebase original branch onto new branch for will-extract repos
+          // Step 2: Modify the original branch
           for (const a of willExtract) {
             if (!a.boundary) continue;
-            const n = a.commitsRemaining;
-            inlineStart(a.repo, `rebasing ${n} ${plural(n, "commit", "commits")} onto ${targetBranch}`);
 
-            const rebaseArgs = ["rebase"];
-            if (a.needsStash) rebaseArgs.push("--autostash");
-            rebaseArgs.push("--onto", targetBranch, a.boundary);
+            if (direction === "prefix") {
+              // Prefix: rebase original onto new branch (replay post-boundary commits)
+              const n = a.commitsRemaining;
+              inlineStart(a.repo, `rebasing ${n} ${plural(n, "commit", "commits")} onto ${targetBranch}`);
 
-            const result = await gitLocal(a.repoDir, ...rebaseArgs);
+              const rebaseArgs = ["rebase"];
+              if (a.needsStash) rebaseArgs.push("--autostash");
+              rebaseArgs.push("--onto", targetBranch, a.boundary);
 
-            if (result.exitCode === 0) {
-              const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
-              const existing = record.repos[a.repo];
-              if (existing) {
-                record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+              const result = await gitLocal(a.repoDir, ...rebaseArgs);
+
+              if (result.exitCode === 0) {
+                const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+                const existing = record.repos[a.repo];
+                if (existing) {
+                  record.repos[a.repo] = {
+                    ...existing,
+                    status: "completed",
+                    postHead: postHeadResult.stdout.trim(),
+                  };
+                }
+                writeOperationRecord(wsDir, record);
+                inlineResult(a.repo, `rebased ${n} ${plural(n, "commit", "commits")} onto ${targetBranch}`);
+                succeeded++;
+              } else {
+                const existing = record.repos[a.repo];
+                if (existing) {
+                  const errorOutput = result.stderr.trim().slice(0, 4000) || undefined;
+                  record.repos[a.repo] = { ...existing, status: "conflicting", errorOutput };
+                }
+                writeOperationRecord(wsDir, record);
+                inlineResult(a.repo, yellow("conflict"));
+                conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
               }
-              writeOperationRecord(wsDir, record);
-              inlineResult(a.repo, `rebased ${n} ${plural(n, "commit", "commits")} onto ${targetBranch}`);
-              succeeded++;
             } else {
-              const existing = record.repos[a.repo];
-              if (existing) {
-                const errorOutput = result.stderr.trim().slice(0, 4000) || undefined;
-                record.repos[a.repo] = { ...existing, status: "conflicting", errorOutput };
+              // Suffix: reset original to just before the boundary
+              const n = a.commitsExtracted;
+              inlineStart(a.repo, `resetting to before ${plural(n, "commit", "commits")} extracted`);
+
+              // Reset to the parent of the boundary commit
+              const resetTarget = `${a.boundary}~1`;
+              const result = await gitLocal(a.repoDir, "reset", "--hard", resetTarget);
+
+              if (result.exitCode === 0) {
+                const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+                const existing = record.repos[a.repo];
+                if (existing) {
+                  record.repos[a.repo] = {
+                    ...existing,
+                    status: "completed",
+                    postHead: postHeadResult.stdout.trim(),
+                  };
+                }
+                writeOperationRecord(wsDir, record);
+                inlineResult(a.repo, `reset — ${n} ${plural(n, "commit", "commits")} moved to ${targetBranch}`);
+                succeeded++;
+              } else {
+                // reset --hard shouldn't fail, but handle it anyway
+                const existing = record.repos[a.repo];
+                if (existing) {
+                  const errorOutput = result.stderr.trim().slice(0, 4000) || undefined;
+                  record.repos[a.repo] = { ...existing, status: "conflicting", errorOutput };
+                }
+                writeOperationRecord(wsDir, record);
+                inlineResult(a.repo, yellow("failed"));
+                conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
               }
-              writeOperationRecord(wsDir, record);
-              inlineResult(a.repo, yellow("conflict"));
-              conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
             }
           }
         });
 
-        // Conflict report
-        const conflictNodes = buildConflictReport(
-          conflicted.map((c) => ({
-            repo: c.assessment.repo,
-            stdout: c.stdout,
-            stderr: c.stderr,
-            mode: "extract",
-          })),
-        );
-        const reportCtx = { tty: shouldColor() };
-        if (conflictNodes.length > 0) process.stderr.write(render(conflictNodes, reportCtx));
+        // Conflict report (only possible for prefix extraction)
+        if (conflicted.length > 0) {
+          const conflictNodes = buildConflictReport(
+            conflicted.map((c) => ({
+              repo: c.assessment.repo,
+              stdout: c.stdout,
+              stderr: c.stderr,
+              mode: "extract",
+            })),
+          );
+          const reportCtx = { tty: shouldColor() };
+          if (conflictNodes.length > 0) process.stderr.write(render(conflictNodes, reportCtx));
+        }
 
         // Create new workspace and finalize
         if (conflicted.length === 0) {
-          // Create the new workspace directory and config
           const newWsDir = `${ctx.arbRootDir}/${workspaceName}`;
           mkdirSync(`${newWsDir}/.arbws`, { recursive: true });
-          writeWorkspaceConfig(`${newWsDir}/.arbws/config.json`, {
-            branch: targetBranch,
-            ...(configBase && { base: configBase }),
-          });
+
+          if (direction === "prefix") {
+            // New workspace (lower) gets the original's base
+            writeWorkspaceConfig(`${newWsDir}/.arbws/config.json`, {
+              branch: targetBranch,
+              ...(configBase && { base: configBase }),
+            });
+          } else {
+            // New workspace (upper) stacks on the original's branch
+            writeWorkspaceConfig(`${newWsDir}/.arbws/config.json`, {
+              branch: targetBranch,
+              base: branch,
+            });
+          }
 
           // Create worktrees (branches already exist from step 1)
           await addWorktrees(workspaceName, targetBranch, allRepos, ctx.reposDir, ctx.arbRootDir);
 
-          // Update original workspace config: base → new branch
-          writeWorkspaceConfig(configFile, configAfter);
+          // Update original workspace config (prefix only — suffix leaves it unchanged)
+          if (direction === "prefix") {
+            writeWorkspaceConfig(configFile, configAfter);
+            inlineResult(workspace, `base: ${configBase ?? "default"} → ${targetBranch}`);
+          }
 
           // Mark operation complete
           record.status = "completed";
           record.completedAt = new Date().toISOString();
           writeOperationRecord(wsDir, record);
-
-          inlineResult(workspace, `base: ${configBase ?? "default"} → ${targetBranch}`);
         }
 
         // Summary
