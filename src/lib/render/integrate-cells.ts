@@ -23,10 +23,18 @@ export function integrateActionCell(desc: IntegrateActionDesc): Cell {
   if (desc.kind === "retarget-merged") {
     const n = desc.replayCount ?? 0;
     const merged = desc.skipCount ?? 0;
-    const commitWord = n === 1 ? "commit" : "commits";
-    let text = `rebase onto ${desc.baseRef} (merged) \u2014 rebase ${n} new ${commitWord}`;
-    if (merged > 0) text += `, skip ${merged} already merged`;
-    result = cell(text);
+    if (n === 0) {
+      const text =
+        merged > 0
+          ? `reset to ${desc.baseRef} (all ${merged} commits merged)`
+          : `reset to ${desc.baseRef} (merged)`;
+      result = cell(text);
+    } else {
+      const commitWord = n === 1 ? "commit" : "commits";
+      let text = `rebase onto ${desc.baseRef} (merged) \u2014 rebase ${n} new ${commitWord}`;
+      if (merged > 0) text += `, skip ${merged} already merged`;
+      result = cell(text);
+    }
   } else if (desc.kind === "retarget-config") {
     let text = `rebase onto ${desc.baseRef} from ${desc.retargetFrom} (retarget)`;
     if (desc.skipCount != null && desc.skipCount > 0) {

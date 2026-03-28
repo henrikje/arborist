@@ -164,8 +164,9 @@ export async function assessIntegrateRepo(
   const base = status.base;
   const isMergedNewWork =
     classified.skipFlag === "already-merged" && base?.merge?.newCommitsAfter != null && base.merge.newCommitsAfter > 0;
+  const isFullyMerged = classified.skipFlag === "already-merged" && !isMergedNewWork;
 
-  if (classified.outcome === "skip" && !isMergedNewWork) {
+  if (classified.outcome === "skip" && !isMergedNewWork && !isFullyMerged) {
     return classified;
   }
 
@@ -178,6 +179,64 @@ export async function assessIntegrateRepo(
     deps,
   });
   if (mergedNewWorkAssessment) return mergedNewWorkAssessment;
+
+  // Fully-merged branches: reset to base instead of skipping.
+  // For rebase mode, use --onto to move the branch pointer to the base (0 commits replayed).
+  // For merge mode, fast-forward merge to the base.
+  if (isFullyMerged && base) {
+    const behind = base.behind;
+    const ahead = base.ahead;
+
+    if (behind === 0 && ahead === 0) {
+      return { ...withoutSkipFields(classified), outcome: "up-to-date", baseBranch: base.ref, behind: 0, ahead: 0 };
+    }
+
+    const flags = computeFlags(status, branch);
+    if (flags.isDirty && !options.autostash) {
+      return {
+        ...classified,
+        outcome: "skip" as const,
+        skipReason: "uncommitted changes (use --autostash)",
+        skipFlag: "dirty" as const,
+      };
+    }
+    const needsStash =
+      flags.isDirty && options.autostash && (status.local.staged > 0 || status.local.modified > 0)
+        ? true
+        : undefined;
+
+    if (options.mode === "rebase") {
+      return {
+        ...withoutSkipFields(classified),
+        outcome: "will-operate",
+        baseBranch: base.ref,
+        behind,
+        ahead: 0,
+        needsStash,
+        retarget: {
+          from: headSha,
+          to: base.ref,
+          replayCount: 0,
+          alreadyOnTarget: ahead,
+          reason: "branch-merged",
+        },
+      };
+    }
+
+    // Merge mode
+    if (behind > 0) {
+      return {
+        ...withoutSkipFields(classified),
+        outcome: "will-operate",
+        baseBranch: base.ref,
+        behind,
+        ahead,
+        needsStash,
+      };
+    }
+
+    return { ...withoutSkipFields(classified), outcome: "up-to-date", baseBranch: base.ref, behind: 0, ahead };
+  }
 
   // Auto-replay-plan optimization: when the base branch has squash-merged some of
   // the feature branch's commits, detect contiguous replay plans and use --onto
