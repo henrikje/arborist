@@ -1,5 +1,6 @@
 import { ArbError } from "../core/errors";
 import { gitLocal } from "../git/git";
+import { error } from "../terminal/output";
 
 // ── Types ──
 
@@ -24,7 +25,9 @@ export function parseSplitPointValue(value: string): SplitPointSpec {
   const repo = value.slice(0, colonIdx);
   const commitish = value.slice(colonIdx + 1);
   if (!repo || !commitish) {
-    throw new ArbError(`Invalid split point "${value}" — expected "<repo>:<commit-ish>" or a bare commit-ish`);
+    const msg = `Invalid split point "${value}" — expected "<repo>:<commit-ish>" or a bare commit-ish`;
+    error(msg);
+    throw new ArbError(msg);
   }
   return { repo, commitish };
 }
@@ -64,7 +67,9 @@ export async function resolveSplitPoints(
     if (spec.repo) {
       // Explicit repo — validate and resolve
       if (!repos.includes(spec.repo)) {
-        throw new ArbError(`repo "${spec.repo}" is not in this workspace`);
+        const msg = `repo "${spec.repo}" is not in this workspace`;
+        error(msg);
+        throw new ArbError(msg);
       }
       const sha = await resolveCommitInRepo(wsDir, spec.repo, spec.commitish);
       checkDuplicate(resolved, spec.repo);
@@ -88,7 +93,9 @@ async function resolveCommitInRepo(wsDir: string, repo: string, commitish: strin
   const repoDir = `${wsDir}/${repo}`;
   const result = await gitLocal(repoDir, "rev-parse", "--verify", commitish);
   if (result.exitCode !== 0 || !result.stdout.trim()) {
-    throw new ArbError(`cannot resolve "${commitish}" in repo "${repo}"`);
+    const msg = `cannot resolve "${commitish}" in repo "${repo}"`;
+    error(msg);
+    throw new ArbError(msg);
   }
   return result.stdout.trim();
 }
@@ -105,13 +112,15 @@ async function autoDetectRepo(wsDir: string, repos: string[], commitish: string)
   }
 
   if (matches.length === 0) {
-    throw new ArbError(`cannot resolve "${commitish}" in any repo in this workspace`);
+    const msg = `cannot resolve "${commitish}" in any repo in this workspace`;
+    error(msg);
+    throw new ArbError(msg);
   }
   if (matches.length > 1) {
     const repoNames = matches.map((m) => m.repo).join(", ");
-    throw new ArbError(
-      `"${commitish}" found in multiple repos (${repoNames}) — use "<repo>:${commitish}" to disambiguate`,
-    );
+    const msg = `"${commitish}" found in multiple repos (${repoNames}) — use "<repo>:${commitish}" to disambiguate`;
+    error(msg);
+    throw new ArbError(msg);
   }
   // Safe: we checked matches.length === 1 above
   const match = matches[0];
@@ -121,7 +130,9 @@ async function autoDetectRepo(wsDir: string, repos: string[], commitish: string)
 
 function checkDuplicate(resolved: Map<string, ResolvedSplitPoint>, repo: string): void {
   if (resolved.has(repo)) {
-    throw new ArbError(`duplicate split point for repo "${repo}"`);
+    const msg = `duplicate split point for repo "${repo}"`;
+    error(msg);
+    throw new ArbError(msg);
   }
 }
 
@@ -139,8 +150,8 @@ async function checkMergeBaseFloor(
   // If not, the split point is below the merge-base.
   const result = await gitLocal(repoDir, "merge-base", "--is-ancestor", mergeBase, sha);
   if (result.exitCode !== 0) {
-    throw new ArbError(
-      `commit ${sha.slice(0, 7)} is already on the base branch in repo '${repo}' — only your branch's own commits can be extracted`,
-    );
+    const msg = `commit ${sha.slice(0, 7)} is already on the base branch in repo '${repo}' — only your branch's own commits can be extracted`;
+    error(msg);
+    throw new ArbError(msg);
   }
 }

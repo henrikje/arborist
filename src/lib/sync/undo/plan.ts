@@ -31,7 +31,7 @@ export function formatUndoPlan(
         case "needs-undo": {
           actionCell = a.forced ? cell(a.detail ?? "undo", "attention") : cell(a.detail ?? "undo");
           if (a.stats?.hasStash) {
-            actionCell = suffix(actionCell, `, restore stash${stashFilesSuffix(a.stats)}`, "muted");
+            actionCell = suffix(actionCell, `, restore stash${stashFilesSuffix(a.stats)}`, "default");
           }
           if (verbose && a.verbose?.commits && a.verbose.commits.length > 0) {
             afterRow = verboseCommitsToNodes(a.verbose.commits, a.verbose.totalCommits, "Rolling back:", {

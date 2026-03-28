@@ -91,6 +91,8 @@ Exception types:
 
 The only `process.exit()` calls live in `index.ts`: the top-level catch handler and the SIGINT signal handler. Signal handlers must call `process.exit()` directly because they cannot throw into an async context. See `decisions/0036-exception-based-exit-handling.md`.
 
+**`gitLocal()` return convention.** `gitLocal()` returns `{ exitCode, stdout, stderr }` — it does not throw on non-zero exit. Use `result.exitCode !== 0` to detect failures. `try/catch` only catches spawn failures and timeouts, not git errors. This is a common footgun: wrapping `gitLocal()` in `try/catch` to detect non-zero exit silently succeeds, treating empty stdout as a valid result.
+
 ### Declarative render model
 
 Table output is built as a tree of `OutputNode` values (`render/model.ts`), then rendered to an ANSI string by `render()` in a single pass. This separates structure from presentation. `TableColumnDef` defines each column's `key`, `header`, optional `show` (data-driven visibility: `true`, `false`, or `"auto"`), `truncate` (width-driven value shortening with a `min` floor), and `align`. `Cell` carries both `plain` text (for width measurement) and styled `Span[]` (for ANSI rendering). Analysis functions in `render/analysis.ts` produce `Cell` values from `RepoStatus`; view builders like `buildStatusView()` assemble them into `TableNode`; `render()` resolves column widths, applies truncation if the table exceeds terminal width, and emits the final string. `height-fit.ts` handles vertical truncation when `maxLines` is provided (used by watch mode). `createRenderContext()` detects terminal width (`process.stdout.columns` → `COLUMNS` env → `undefined`) and TTY status.

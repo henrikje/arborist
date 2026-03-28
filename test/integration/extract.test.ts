@@ -397,4 +397,38 @@ describe("arb undo (extract)", () => {
       const branchList = await git(join(env.projectDir, ".arb/repos/repo-a"), ["branch", "--list", "cont"]);
       expect(branchList.trim()).toBe("");
     }));
+
+  test("undo reverses suffix extraction with autostash", () =>
+    withEnv(async (env) => {
+      const shas = await setupWithCommits(env, "ws", 4);
+      const wt = join(env.projectDir, "ws/repo-a");
+
+      // Make the workspace dirty
+      await write(join(wt, "dirty.txt"), "uncommitted work");
+      const preSha = (await git(wt, ["rev-parse", "HEAD"])).trim();
+
+      // Extract with autostash
+      const extractResult = await arb(
+        env,
+        ["extract", "cont", "--starting-with", shas[2] ?? "", "--yes", "--no-fetch", "--autostash"],
+        { cwd: join(env.projectDir, "ws") },
+      );
+      expect(extractResult.exitCode).toBe(0);
+
+      // After extract, original should be reset (dirty file stashed)
+      const wsAhead = await git(wt, ["rev-list", "--count", "origin/main..HEAD"]);
+      expect(Number.parseInt(wsAhead.trim(), 10)).toBe(2); // commits 1-2
+
+      // Undo
+      const undoResult = await arb(env, ["undo", "--yes"], { cwd: join(env.projectDir, "ws") });
+      expect(undoResult.exitCode).toBe(0);
+
+      // HEAD restored
+      const postSha = (await git(wt, ["rev-parse", "HEAD"])).trim();
+      expect(postSha).toBe(preSha);
+
+      // Branch cleaned up
+      const branchList = await git(join(env.projectDir, ".arb/repos/repo-a"), ["branch", "--list", "cont"]);
+      expect(branchList.trim()).toBe("");
+    }));
 });

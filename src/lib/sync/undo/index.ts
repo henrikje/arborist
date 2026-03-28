@@ -93,7 +93,7 @@ export async function runUndoFlow(params: {
     throw new ArbError(msg);
   }
 
-  // Nothing to do (for non-extract commands)
+  // Nothing to do
   const actionable = assessments.filter((a) => a.action === "needs-undo" || a.action === "needs-abort");
   if (actionable.length === 0 && record.command !== "extract") {
     // Check if ALL repos (not just selected) are resolved

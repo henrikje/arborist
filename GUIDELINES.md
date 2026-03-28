@@ -46,7 +46,7 @@ A command earns its place when it encapsulates domain knowledge (multi-repo coor
 
 When a new operation is proposed — whether it becomes a command, a flag, a subcommand, or nothing at all — work through these questions in order.
 
-**1. Coordination or authoring?** The authoring boundary (DR-0023) is the first gate. If the operation belongs to the developer's role as author — how they present their work — it belongs in `arb exec` or outside Arborist entirely. The commit-message problem is a useful tell: if any automated choice is likely wrong and will need manual correction, the operation is on the authoring side.
+**1. Coordination or authoring?** The authoring boundary (DR-0023) is the first gate. If the operation belongs to the developer's role as author — how they present their work — it belongs in `arb exec` or outside Arborist entirely. The commit-message problem is a useful tell: if any automated choice is likely wrong and will need manual correction, the operation is on the authoring side. Example: `arb extract` restructures existing commits into two stacked workspaces without creating new content — coordination, not authoring (DR-0099).
 
 **2. New operation or variant of an existing one?** If the mechanism is fundamentally the same as an existing command applied differently, it is a variant and belongs as a flag on that command. Detection logic for the variant case typically lives in the parent command already — splitting it out would mean detection in one place and recovery in another.
 
