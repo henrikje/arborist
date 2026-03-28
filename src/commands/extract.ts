@@ -1,20 +1,30 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { basename } from "node:path";
 import { type Command, Option } from "commander";
-import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
+import {
+  ArbError,
+  type OperationRecord,
+  type RepoOperationState,
+  arbAction,
+  readWorkspaceConfig,
+  withReflogAction,
+  writeOperationRecord,
+  writeWorkspaceConfig,
+} from "../lib/core";
 import { branchExistsLocally, gitLocal } from "../lib/git";
-import { render } from "../lib/render";
+import { finishSummary, render } from "../lib/render";
 import type { RenderContext } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
 import { cell, skipCell } from "../lib/render";
+import { buildConflictReport } from "../lib/render/conflict-report";
 import { EXTRACT_EXEMPT_SKIPS } from "../lib/status";
 import { buildCachedStatusAssess, confirmOrExit, resolveDefaultFetch, runPlanFlow } from "../lib/sync";
 import { assessExtractRepo } from "../lib/sync/classify-extract";
 import { parseSplitPoints, resolveSplitPoints } from "../lib/sync/parse-split-points";
 import type { ExtractAssessment } from "../lib/sync/types";
-import { dryRunNotice, error, plural } from "../lib/terminal";
+import { dryRunNotice, error, inlineResult, inlineStart, plural, yellow } from "../lib/terminal";
 import { shouldColor } from "../lib/terminal/tty";
-import { requireBranch, requireWorkspace, workspaceRepoDirs } from "../lib/workspace";
+import { addWorktrees, requireBranch, requireWorkspace, workspaceRepoDirs } from "../lib/workspace";
 import { validateWorkspaceName } from "../lib/workspace/validation";
 
 export function registerExtractCommand(program: Command): void {
@@ -259,10 +269,164 @@ export function registerExtractCommand(program: Command): void {
           message: `Extract ${willExtract.length} ${plural(willExtract.length, "repo", "repos")}?`,
         });
 
-        // ── Execution (Phase 3+) ──
+        // ── Execution: prefix extraction ──
 
-        error("Execution is not yet implemented. Use --dry-run to preview the plan.");
-        throw new ArbError("Extract execution not yet implemented");
+        if (direction !== "prefix") {
+          error("Suffix extraction (--from) is not yet implemented. Use --to for prefix extraction.");
+          throw new ArbError("Suffix extraction not yet implemented");
+        }
+
+        process.stderr.write("\n");
+
+        // Capture state and write operation record
+        const configBefore = readWorkspaceConfig(configFile) ?? { branch };
+        const configAfter = { branch, base: targetBranch };
+
+        const repoStates: Record<string, RepoOperationState> = {};
+        for (const a of willExtract) {
+          const headResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+          const preHead = headResult.stdout.trim();
+          if (!preHead) throw new ArbError(`Cannot capture HEAD for ${a.repo}`);
+          const stashResult = await gitLocal(a.repoDir, "stash", "create");
+          repoStates[a.repo] = {
+            preHead,
+            stashSha: stashResult.stdout.trim() || null,
+            status: "skipped",
+          };
+        }
+        // Also capture no-op repos for undo (they get new branches too)
+        const noOps = assessments.filter((a) => a.outcome === "no-op");
+        for (const a of noOps) {
+          const headResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+          repoStates[a.repo] = {
+            preHead: headResult.stdout.trim(),
+            status: "skipped",
+          };
+        }
+
+        const record: OperationRecord = {
+          command: "extract",
+          startedAt: new Date().toISOString(),
+          status: "in-progress",
+          repos: repoStates,
+          direction: "prefix",
+          targetWorkspace: workspaceName,
+          targetBranch,
+          configBefore,
+          configAfter,
+        };
+        writeOperationRecord(wsDir, record);
+
+        // Execute git operations
+        let succeeded = 0;
+        const conflicted: { assessment: ExtractAssessment; stdout: string; stderr: string }[] = [];
+
+        await withReflogAction("arb-extract", async () => {
+          // Step 1: Create new branches in canonical repos
+          const createdBranches: string[] = []; // track for cleanup on failure
+          for (const a of [...willExtract, ...noOps]) {
+            const repoPath = `${ctx.reposDir}/${a.repo}`;
+            let startPoint: string;
+            if (a.outcome === "will-extract" && a.boundary) {
+              startPoint = a.boundary;
+            } else {
+              startPoint = mergeBaseMap.get(a.repo) ?? "HEAD";
+            }
+            const result = await gitLocal(repoPath, "branch", targetBranch, startPoint);
+            if (result.exitCode !== 0) {
+              // Clean up branches already created
+              for (const created of createdBranches) {
+                await gitLocal(`${ctx.reposDir}/${created}`, "branch", "-D", targetBranch).catch(() => {});
+              }
+              throw new ArbError(
+                `Failed to create branch '${targetBranch}' in repo '${a.repo}': ${result.stderr.trim()}`,
+              );
+            }
+            createdBranches.push(a.repo);
+          }
+
+          // Step 2: Rebase original branch onto new branch for will-extract repos
+          for (const a of willExtract) {
+            if (!a.boundary) continue;
+            const n = a.commitsRemaining;
+            inlineStart(a.repo, `rebasing ${n} ${plural(n, "commit", "commits")} onto ${targetBranch}`);
+
+            const rebaseArgs = ["rebase"];
+            if (a.needsStash) rebaseArgs.push("--autostash");
+            rebaseArgs.push("--onto", targetBranch, a.boundary);
+
+            const result = await gitLocal(a.repoDir, ...rebaseArgs);
+
+            if (result.exitCode === 0) {
+              const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+              const existing = record.repos[a.repo];
+              if (existing) {
+                record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
+              }
+              writeOperationRecord(wsDir, record);
+              inlineResult(a.repo, `rebased ${n} ${plural(n, "commit", "commits")} onto ${targetBranch}`);
+              succeeded++;
+            } else {
+              const existing = record.repos[a.repo];
+              if (existing) {
+                const errorOutput = result.stderr.trim().slice(0, 4000) || undefined;
+                record.repos[a.repo] = { ...existing, status: "conflicting", errorOutput };
+              }
+              writeOperationRecord(wsDir, record);
+              inlineResult(a.repo, yellow("conflict"));
+              conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
+            }
+          }
+        });
+
+        // Conflict report
+        const conflictNodes = buildConflictReport(
+          conflicted.map((c) => ({
+            repo: c.assessment.repo,
+            stdout: c.stdout,
+            stderr: c.stderr,
+            mode: "extract",
+          })),
+        );
+        const reportCtx = { tty: shouldColor() };
+        if (conflictNodes.length > 0) process.stderr.write(render(conflictNodes, reportCtx));
+
+        // Create new workspace and finalize
+        if (conflicted.length === 0) {
+          // Create the new workspace directory and config
+          const newWsDir = `${ctx.arbRootDir}/${workspaceName}`;
+          mkdirSync(`${newWsDir}/.arbws`, { recursive: true });
+          writeWorkspaceConfig(`${newWsDir}/.arbws/config.json`, {
+            branch: targetBranch,
+            ...(configBase && { base: configBase }),
+          });
+
+          // Create worktrees (branches already exist from step 1)
+          await addWorktrees(workspaceName, targetBranch, allRepos, ctx.reposDir, ctx.arbRootDir);
+
+          // Update original workspace config: base → new branch
+          writeWorkspaceConfig(configFile, configAfter);
+
+          // Mark operation complete
+          record.status = "completed";
+          record.completedAt = new Date().toISOString();
+          writeOperationRecord(wsDir, record);
+
+          inlineResult(workspace, `base: ${configBase ?? "default"} → ${targetBranch}`);
+        }
+
+        // Summary
+        process.stderr.write("\n");
+        const parts: string[] = [];
+        if (succeeded > 0) parts.push(`Extracted ${plural(succeeded, "repo")}`);
+        if (conflicted.length > 0) parts.push(`${conflicted.length} conflicted`);
+        if (noOps.length > 0) parts.push(`${noOps.length} unchanged`);
+        if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
+        finishSummary(parts, conflicted.length > 0);
+
+        if (conflicted.length === 0 && succeeded > 0) {
+          process.stderr.write(`\nNew workspace: ${workspaceName}\n`);
+        }
       }),
     );
 }
