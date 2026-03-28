@@ -178,11 +178,26 @@ describe("create", () => {
       expect(result.output).toContain("already exists");
     }));
 
-  test("arb create --branch without value fails", () =>
+  test("arb create --branch without value in non-TTY fails with guidance", () =>
     withEnv(async (env) => {
       const result = await arb(env, ["create", "foo", "--branch"]);
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("argument missing");
+      expect(result.output).toContain("--branch requires a value in non-interactive mode");
+    }));
+
+  test("arb create -b without value in non-TTY fails with same guidance", () =>
+    withEnv(async (env) => {
+      const result = await arb(env, ["create", "foo", "-b"]);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("--branch requires a value in non-interactive mode");
+    }));
+
+  test("arb create --branch without value combined with --yes fails", () =>
+    withEnv(async (env) => {
+      const result = await arb(env, ["create", "foo", "--branch", "--yes"]);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("--branch without a value");
+      expect(result.output).toContain("--yes");
     }));
 
   test("arb create with invalid branch name fails", () =>

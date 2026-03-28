@@ -258,7 +258,7 @@ __arb_complete_create() {
         return
     fi
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
-    if [[ "$prev" == "-b" || "$prev" == "--branch" || "$prev" == "--base" ]]; then
+    if [[ "$prev" == "--base" ]]; then
         return  # branch name, no completion
     fi
     # Complete repo names
