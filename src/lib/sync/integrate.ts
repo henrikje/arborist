@@ -240,8 +240,12 @@ export async function integrate(
       if (a.retarget?.from) {
         // Branch-merged replay: use --onto to skip already-merged commits
         const n = a.retarget.replayCount ?? a.ahead;
-        const progressMsg = `rebasing ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`;
-        inlineStart(a.repo, progressMsg);
+        if (n === 0) {
+          inlineStart(a.repo, `resetting to ${ref} (merged)`);
+        } else {
+          const progressMsg = `rebasing ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`;
+          inlineStart(a.repo, progressMsg);
+        }
         const rebaseArgs = ["rebase"];
         if (a.needsStash) rebaseArgs.push("--autostash");
         rebaseArgs.push("--onto", ref, a.retarget.from);
@@ -276,7 +280,10 @@ export async function integrate(
         let doneMsg: string;
         if (a.retarget?.from) {
           const n = a.retarget.replayCount ?? a.ahead;
-          doneMsg = `rebased ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`;
+          doneMsg =
+            n === 0
+              ? `reset to ${ref} (merged)`
+              : `rebased ${n} new ${n === 1 ? "commit" : "commits"} onto ${ref} (merged)`;
         } else {
           doneMsg = mode === "rebase" ? `rebased ${a.branch} onto ${ref}` : `merged ${ref} into ${a.branch}`;
         }
