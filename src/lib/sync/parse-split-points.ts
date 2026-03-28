@@ -86,12 +86,11 @@ export async function resolveSplitPoints(
 
 async function resolveCommitInRepo(wsDir: string, repo: string, commitish: string): Promise<string> {
   const repoDir = `${wsDir}/${repo}`;
-  try {
-    const { stdout } = await gitLocal(repoDir, "rev-parse", "--verify", commitish);
-    return stdout.trim();
-  } catch {
+  const result = await gitLocal(repoDir, "rev-parse", "--verify", commitish);
+  if (result.exitCode !== 0 || !result.stdout.trim()) {
     throw new ArbError(`cannot resolve "${commitish}" in repo "${repo}"`);
   }
+  return result.stdout.trim();
 }
 
 async function autoDetectRepo(wsDir: string, repos: string[], commitish: string): Promise<ResolvedSplitPoint> {
@@ -99,11 +98,9 @@ async function autoDetectRepo(wsDir: string, repos: string[], commitish: string)
 
   for (const repo of repos) {
     const repoDir = `${wsDir}/${repo}`;
-    try {
-      const { stdout } = await gitLocal(repoDir, "rev-parse", "--verify", commitish);
-      matches.push({ repo, commitSha: stdout.trim() });
-    } catch {
-      // Not found in this repo — continue
+    const result = await gitLocal(repoDir, "rev-parse", "--verify", commitish);
+    if (result.exitCode === 0 && result.stdout.trim()) {
+      matches.push({ repo, commitSha: result.stdout.trim() });
     }
   }
 
@@ -138,11 +135,10 @@ async function checkMergeBaseFloor(
   if (!mergeBase) return; // No merge-base available — skip check (repo may have no base)
 
   const repoDir = `${wsDir}/${repo}`;
-  try {
-    // Check: is the merge-base an ancestor of the split point?
-    // If not, the split point is below the merge-base.
-    await gitLocal(repoDir, "merge-base", "--is-ancestor", mergeBase, sha);
-  } catch {
+  // Check: is the merge-base an ancestor of the split point?
+  // If not, the split point is below the merge-base.
+  const result = await gitLocal(repoDir, "merge-base", "--is-ancestor", mergeBase, sha);
+  if (result.exitCode !== 0) {
     throw new ArbError(`split point is below the merge-base in repo "${repo}"`);
   }
 }

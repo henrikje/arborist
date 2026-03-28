@@ -259,6 +259,60 @@ describe("extract split point syntax", () => {
       expect(prereqLog).toContain("commit 2");
       expect(prereqLog).not.toContain("commit 3");
     }));
+
+  test("bare SHA auto-detects repo", () =>
+    withEnv(async (env) => {
+      const shas = await setupWithCommits(env, "ws", 3);
+      // Use a full SHA without repo prefix — should auto-detect repo-a
+      const result = await arb(env, ["extract", "prereq", "--ending-with", shas[0] ?? "", "--dry-run", "--no-fetch"], {
+        cwd: join(env.projectDir, "ws"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("EXTRACTED (prereq)");
+    }));
+
+  test("non-existent SHA gives clear error", () =>
+    withEnv(async (env) => {
+      await setupWithCommits(env, "ws", 3);
+      const result = await arb(
+        env,
+        ["extract", "prereq", "--ending-with", "deadbeef00000000", "--dry-run", "--no-fetch"],
+        { cwd: join(env.projectDir, "ws") },
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("cannot resolve");
+    }));
+
+  test("non-existent repo prefix gives clear error", () =>
+    withEnv(async (env) => {
+      const shas = await setupWithCommits(env, "ws", 3);
+      const result = await arb(
+        env,
+        ["extract", "prereq", "--ending-with", `nonexistent:${shas[0] ?? ""}`, "--dry-run", "--no-fetch"],
+        { cwd: join(env.projectDir, "ws") },
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("not in this workspace");
+    }));
+
+  test("duplicate repo in split points gives clear error", () =>
+    withEnv(async (env) => {
+      const shas = await setupWithCommits(env, "ws", 3);
+      const result = await arb(
+        env,
+        [
+          "extract",
+          "prereq",
+          "--ending-with",
+          `repo-a:${shas[0] ?? ""},repo-a:${shas[1] ?? ""}`,
+          "--dry-run",
+          "--no-fetch",
+        ],
+        { cwd: join(env.projectDir, "ws") },
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(result.output).toContain("duplicate");
+    }));
 });
 
 // ── Abort / continue validation ──

@@ -236,10 +236,17 @@ export function registerExtractCommand(program: Command): void {
         }
 
         // Resolve split points to per-repo SHAs
-        const resolvedSplitPoints =
-          specs.length > 0
-            ? await resolveSplitPoints(specs, allRepos, wsDir, mergeBaseMap)
-            : new Map<string, { repo: string; commitSha: string }>();
+        let resolvedSplitPoints = new Map<string, { repo: string; commitSha: string }>();
+        if (specs.length > 0) {
+          try {
+            resolvedSplitPoints = await resolveSplitPoints(specs, allRepos, wsDir, mergeBaseMap);
+          } catch (err) {
+            if (err instanceof ArbError) {
+              error(err.message);
+            }
+            throw err;
+          }
+        }
 
         // ── Assessment ──
 
