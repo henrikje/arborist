@@ -15,7 +15,7 @@ import {
   withReflogAction,
   writeOperationRecord,
 } from "../core/operation";
-import { getCommitsBetweenFull, getDiffShortstat, getMergeBase, gitLocal } from "../git/git";
+import { getCommitsBetweenFull, getDiffShortstat, getMergeBase, gitLocal, parseGitStatus } from "../git/git";
 import type { GitCache } from "../git/git-cache";
 import { buildConflictReport, buildStashPopFailureReport } from "../render/conflict-report";
 import { type IntegrateActionDesc, integrateActionCell } from "../render/integrate-cells";
@@ -273,6 +273,16 @@ export async function integrate(
         if (a.needsStash && mode === "merge") {
           const popResult = await gitLocal(a.repoDir, "stash", "pop");
           if (popResult.exitCode !== 0) {
+            stashPopOk = false;
+            stashPopFailed.push(a);
+          }
+        }
+        // Detect autostash pop conflict in rebase mode.
+        // git rebase --autostash exits 0 even when the stash apply conflicts,
+        // leaving unmerged paths in the working tree.
+        if (a.needsStash && mode === "rebase") {
+          const postStatus = await parseGitStatus(a.repoDir);
+          if (postStatus.conflicts > 0) {
             stashPopOk = false;
             stashPopFailed.push(a);
           }

@@ -48,7 +48,7 @@ export function buildStashPopFailureReport(repos: { repo: string }[], verb: stri
     {
       kind: "message",
       level: "default",
-      text: `${repos.length === 1 ? "1 repo needs" : `${repos.length} repos need`} manual stash application:`,
+      text: `${repos.length === 1 ? "1 repo needs" : `${repos.length} repos need`} manual stash resolution:`,
     },
   ];
   for (const r of repos) {
@@ -59,9 +59,10 @@ export function buildStashPopFailureReport(repos: { repo: string }[], verb: stri
         header: cell(r.repo),
         items: [
           cell(`${verb} succeeded, but stash pop conflicted.`),
-          cell(`cd ${r.repo}`),
-          cell("git stash pop    # re-apply and resolve conflicts"),
-          cell("# or: git stash show  # inspect stashed changes"),
+          cell("Resolve the conflict markers, then:"),
+          cell(`  cd ${r.repo}`),
+          cell("  git add <resolved files>"),
+          cell("  git stash drop         # remove the preserved stash entry"),
         ],
       },
     );

@@ -117,15 +117,16 @@ describe("buildStashPopFailureReport", () => {
 
     expect(nodes[0]).toEqual({ kind: "gap" });
     const msg = nodes[1] as MessageNode;
-    expect(msg.text).toBe("1 repo needs manual stash application:");
+    expect(msg.text).toBe("1 repo needs manual stash resolution:");
 
     expect(nodes[2]).toEqual({ kind: "gap" });
     const section = nodes[3] as SectionNode;
     expect(section.header.plain).toBe("api");
     expect(section.items[0]?.plain).toBe("Rebase succeeded, but stash pop conflicted.");
-    expect(section.items[1]?.plain).toBe("cd api");
-    expect(section.items[2]?.plain).toBe("git stash pop    # re-apply and resolve conflicts");
-    expect(section.items[3]?.plain).toBe("# or: git stash show  # inspect stashed changes");
+    expect(section.items[1]?.plain).toBe("Resolve the conflict markers, then:");
+    expect(section.items[2]?.plain).toBe("  cd api");
+    expect(section.items[3]?.plain).toBe("  git add <resolved files>");
+    expect(section.items[4]?.plain).toBe("  git stash drop         # remove the preserved stash entry");
   });
 
   test("uses provided verb in description", () => {

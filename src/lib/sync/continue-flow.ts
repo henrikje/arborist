@@ -2,8 +2,8 @@ import { basename } from "node:path";
 import { ArbError } from "../core/errors";
 import type { OperationRecord } from "../core/operation";
 import { classifyContinueRepo, withReflogAction, writeOperationRecord } from "../core/operation";
-import { gitLocal } from "../git/git";
-import { buildConflictReport } from "../render/conflict-report";
+import { gitLocal, parseGitStatus } from "../git/git";
+import { buildConflictReport, buildStashPopFailureReport } from "../render/conflict-report";
 import type { Cell, OutputNode } from "../render/model";
 import { cell } from "../render/model";
 import { type RenderContext, finishSummary, render } from "../render/render";
@@ -156,7 +156,16 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
     record.completedAt = new Date().toISOString();
     writeOperationRecord(wsDir, record);
     process.stderr.write("\n");
-    finishSummary([`${capitalize(mode)} completed`], false);
+
+    const abortedCount = classifications.filter((c) => c.classification.action === "manually-aborted").length;
+    const alreadyDoneCount = classifications.filter((c) => c.classification.action === "already-done").length;
+    const resolvedCount = classifications.filter((c) => c.classification.action === "manually-continued").length;
+
+    const summaryParts: string[] = [];
+    if (alreadyDoneCount > 0) summaryParts.push(`${alreadyDoneCount} already done`);
+    if (resolvedCount > 0) summaryParts.push(`${resolvedCount} already resolved`);
+    if (abortedCount > 0) summaryParts.push(`${abortedCount} aborted`);
+    finishSummary(summaryParts.length > 0 ? summaryParts : [`${capitalize(mode)} completed`], false);
     return;
   }
 
@@ -171,6 +180,7 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
   // Step 8: Execute continues with -c core.editor=true (B1 fix)
   let succeeded = 0;
   const newConflicts: { repo: string; stdout: string; stderr: string }[] = [];
+  const stashPopFailed: { repo: string }[] = [];
 
   await withReflogAction(`arb-${mode}-continue`, async () => {
     for (const c of willContinue) {
@@ -178,13 +188,21 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
       const cmd = typeof gitContinueCmd === "string" ? gitContinueCmd : await gitContinueCmd(c.repoDir);
       const result = await gitLocal(c.repoDir, "-c", "core.editor=true", cmd, "--continue");
       if (result.exitCode === 0) {
+        // Detect autostash pop conflict: git rebase --continue exits 0 even
+        // when the autostash apply conflicts, leaving unmerged paths.
+        const postStatus = await parseGitStatus(c.repoDir);
+        const hasStashPopConflict = postStatus.conflicts > 0;
+        if (hasStashPopConflict) {
+          stashPopFailed.push({ repo: c.repo });
+        }
         const postHeadResult = await gitLocal(c.repoDir, "rev-parse", "HEAD");
         const existing = record.repos[c.repo];
         if (existing) {
           record.repos[c.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
         }
         writeOperationRecord(wsDir, record);
-        inlineResult(c.repo, `${mode} continued`);
+        const doneMsg = hasStashPopConflict ? `${mode} continued ${yellow("(stash pop failed)")}` : `${mode} continued`;
+        inlineResult(c.repo, doneMsg);
         succeeded++;
       } else {
         const existing = record.repos[c.repo];
@@ -210,6 +228,10 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
     info(`Fix conflicts, then: arb ${mode} --continue`);
   }
 
+  // Step 9a: Show stash pop failure report
+  const stashNodes = buildStashPopFailureReport(stashPopFailed, capitalize(mode));
+  if (stashNodes.length > 0) process.stderr.write(render(stashNodes, rCtx));
+
   // Step 10: Finalize
   const allCompleted = Object.values(record.repos).every((s) => s.status === "completed" || s.status === "skipped");
 
@@ -228,7 +250,8 @@ export async function runContinueFlow(params: ContinueFlowParams): Promise<void>
   if (succeeded > 0) parts.push(`Continued ${plural(succeeded, "repo")}`);
   if (stillConflicting.length > 0) parts.push(`${stillConflicting.length} still conflicting`);
   if (newConflicts.length > 0) parts.push(`${newConflicts.length} new conflict`);
-  finishSummary(parts, stillConflicting.length > 0 || newConflicts.length > 0);
+  if (stashPopFailed.length > 0) parts.push(`${stashPopFailed.length} stash pop failed`);
+  finishSummary(parts, stillConflicting.length > 0 || newConflicts.length > 0 || stashPopFailed.length > 0);
 }
 
 function capitalize(s: string): string {
