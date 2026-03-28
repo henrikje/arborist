@@ -74,5 +74,22 @@ export const stackedTopic: HelpTopic = {
     out("");
     out(`  ${dim("arb retarget feat/auth-api")}`);
     out("    In a deeper stack (C on B on A), retarget C onto A.");
+    out("");
+    out(bold("RETROACTIVE STACKING WITH EXTRACT"));
+    out("");
+    out("  Use 'arb extract' to split an existing branch into a stack after the fact:");
+    out("");
+    out(`  ${dim("arb extract prereq --ending-with <commit>")}`);
+    out("    Extract the prefix (base through commit) into a new lower workspace.");
+    out("    The original workspace stacks on top.");
+    out("");
+    out(`  ${dim("arb extract cont --starting-with <commit>")}`);
+    out("    Extract the suffix (commit through tip) into a new upper workspace.");
+    out("    The original workspace keeps the prefix.");
+    out("");
+    out(`  ${dim("arb extract cont --after-merge")}`);
+    out("    Extract post-merge commits into a new workspace (auto-detects merge point).");
+    out("");
+    out("  See 'arb extract --help' for split point syntax and multi-repo options.");
   },
 };

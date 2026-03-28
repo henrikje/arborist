@@ -10,12 +10,12 @@ The question: should Arborist treat mistaken branch structure as a first-class o
 
 ## Options
 
-### Single command with directional flags (`arb extract --to/--from`)
+### Single command with directional flags
 
-One command that handles both prefix extraction (infrastructure into lower workspace) and suffix extraction (continuation into upper workspace). Direction is determined by the flag: `--to` for prefix, `--from` for suffix, `--from-merge` for auto-detected post-merge continuation.
+One command that handles both prefix extraction (infrastructure into lower workspace) and suffix extraction (continuation into upper workspace). Direction is determined by the flag: `--ending-with` for prefix, `--starting-with` for suffix, `--after-merge` for auto-detected post-merge continuation.
 
-- **Pros:** One verb to learn. Direction encoded in the flag. `--from`/`--to` are simple, universal words.
-- **Cons:** Mild target/source ambiguity ("extract TO this place?"). The plan visualization resolves this.
+- **Pros:** One verb to learn. Direction and boundary inclusion encoded in the flag name. `--ending-with` and `--starting-with` are unambiguous about which commits are extracted.
+- **Cons:** Longer flag names than `--to`/`--from`. Acceptable for a rare, high-stakes command.
 
 ### Two separate verbs (`arb split` + `arb cut`)
 
@@ -33,15 +33,15 @@ Handle this entirely in a Claude skill. The skill uses git primitives directly f
 
 ## Decision
 
-Single command `arb extract` with `--to`/`--from`/`--from-merge` directional flags. Both directions share implementation (like `arb rebase` and `arb merge` share `integrate.ts`). The plan visualization is the safety net for boundary clarity.
+Single command `arb extract` with `--ending-with`/`--starting-with`/`--after-merge` directional flags. Both directions share implementation (like `arb rebase` and `arb merge` share `integrate.ts`). The plan visualization is the safety net for boundary clarity.
 
 ## Reasoning
 
 Restructuring existing commits is coordination, not authoring, as long as no new content is created. Rebase moves commits — Arborist already does this. Extract moves commits between branches — same operation, different topology. The creative decisions (where to split, what to name the workspace) are the user's. Arborist handles multi-repo coordination, atomicity, conflict prediction, and recovery.
 
-The single-command approach was chosen over two verbs because the operations share 90% of their logic (state capture, branch creation, workspace creation, plan formatting, operation records). The directional flags (`--to`/`--from`) are the simplest possible English words. The plan visualization resolves any doubt about which commits go where.
+The single-command approach was chosen over two verbs because the operations share 90% of their logic (state capture, branch creation, workspace creation, plan formatting, operation records). The directional flags (`--ending-with`/`--starting-with`) make boundary inclusion unambiguous. The plan visualization confirms exactly which commits go where.
 
-The `--from-merge` mode addresses the most common suffix case (post-merge continuation) without requiring the user to manually identify the merge boundary.
+The `--after-merge` mode addresses the most common suffix case (post-merge continuation) without requiring the user to manually identify the merge boundary.
 
 ## Consequences
 

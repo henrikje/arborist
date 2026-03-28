@@ -266,7 +266,7 @@ arb undo payments         # undo only payments, leave the rest
 arb undo                  # later: undo any remaining repos
 ```
 
-This works for any tracked operation: rebase, merge, retarget, pull, reset, rename. Undo aborts in-progress git operations, resets HEADs, and rolls back config — even uncommitted changes. It detects if you have done other changes, so it never silently discards work. It is as close to a magic wand as you can get!
+This works for any tracked operation: rebase, merge, retarget, extract, pull, reset, rename. Undo aborts in-progress git operations, resets HEADs, and rolls back config — even uncommitted changes. It detects if you have done other changes, so it never silently discards work. It is as close to a magic wand as you can get!
 
 ### Commit matching
 
@@ -335,7 +335,10 @@ Need to build a feature on top of another in-progress feature? Use `--base` to b
 arb create auth-ui --base feat/auth --all-repos
 ```
 
-When the base branch is later merged (e.g. via a PR), `arb status` detects this and shows "base merged" — preventing the painful mistake of rebasing onto a branch that's already gone. Run `arb retarget` to cleanly rebase onto the default branch and update the workspace config. For deeper stacks (A → B → C), use `arb retarget feat/A` to retarget to a specific branch.
+When the base branch is later merged (e.g. via a PR), `arb status` detects this and shows "base merged" — preventing the painful mistake of rebasing onto a branch that's already gone. Run `arb retarget` to cleanly rebase onto the default branch and update the workspace config.
+
+Already committed everything to one branch? `arb extract` splits it into a stack
+after the fact — see `arb help stacked`.
 
 ### Fork-based development
 
