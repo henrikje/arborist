@@ -432,3 +432,89 @@ describe("arb undo (extract)", () => {
       expect(branchList.trim()).toBe("");
     }));
 });
+
+// ── Verbose mode ──
+
+describe("extract --verbose", () => {
+  test("prefix verbose shows extracted and stays commit subjects", () =>
+    withEnv(async (env) => {
+      const shas = await setupWithCommits(env, "ws", 5);
+      const boundary = shas[2] ?? "";
+      const result = await arb(env, ["extract", "prereq", "--ending-with", boundary, "--verbose", "--dry-run", "-N"], {
+        cwd: join(env.projectDir, "ws"),
+      });
+      expect(result.exitCode).toBe(0);
+      // Extracted commits (1..3)
+      expect(result.output).toContain("Extracted to prereq:");
+      expect(result.output).toContain("commit 1");
+      expect(result.output).toContain("commit 2");
+      expect(result.output).toContain("commit 3");
+      // Stays commits (4..5)
+      expect(result.output).toContain("Stays in ws:");
+      expect(result.output).toContain("commit 4");
+      expect(result.output).toContain("commit 5");
+    }));
+
+  test("suffix verbose shows stays and extracted commit subjects", () =>
+    withEnv(async (env) => {
+      const shas = await setupWithCommits(env, "ws", 5);
+      const boundary = shas[2] ?? "";
+      const result = await arb(env, ["extract", "cont", "--starting-with", boundary, "--verbose", "--dry-run", "-N"], {
+        cwd: join(env.projectDir, "ws"),
+      });
+      expect(result.exitCode).toBe(0);
+      // Stays commits (1..2)
+      expect(result.output).toContain("Stays in ws:");
+      expect(result.output).toContain("commit 1");
+      expect(result.output).toContain("commit 2");
+      // Extracted commits (3..5)
+      expect(result.output).toContain("Extracted to cont:");
+      expect(result.output).toContain("commit 3");
+      expect(result.output).toContain("commit 4");
+      expect(result.output).toContain("commit 5");
+    }));
+
+  test("verbose does not show commits for no-op repos", () =>
+    withEnv(async (env) => {
+      // Create workspace with two repos
+      await arb(env, ["create", "ws", "-b", "ws", "repo-a", "repo-b"]);
+      const wt = join(env.projectDir, "ws", "repo-a");
+      const shas: string[] = [];
+      for (let i = 1; i <= 3; i++) {
+        await write(join(wt, `file${i}.txt`), `content ${i}`);
+        await git(wt, ["add", `file${i}.txt`]);
+        await git(wt, ["commit", "-m", `commit ${i}`]);
+        shas.push((await git(wt, ["rev-parse", "HEAD"])).trim());
+      }
+      // repo-b has no commits — will be no-op
+      const boundary = shas[1] ?? "";
+      const result = await arb(
+        env,
+        ["extract", "prereq", "--ending-with", `repo-a:${boundary}`, "--verbose", "--dry-run", "-N"],
+        {
+          cwd: join(env.projectDir, "ws"),
+        },
+      );
+      expect(result.exitCode).toBe(0);
+      // repo-a should have verbose sections
+      expect(result.output).toContain("Extracted to prereq:");
+      // repo-b is no-op — output should show "no commits" but no verbose section for it
+      expect(result.output).toContain("repo-b");
+      // Only one "Extracted to prereq:" label (for repo-a, not repo-b)
+      const extractedCount = result.output.split("Extracted to prereq:").length - 1;
+      expect(extractedCount).toBe(1);
+    }));
+
+  test("verbose with --dry-run still shows verbose output", () =>
+    withEnv(async (env) => {
+      const shas = await setupWithCommits(env, "ws", 3);
+      const boundary = shas[1] ?? "";
+      const result = await arb(env, ["extract", "prereq", "--ending-with", boundary, "--verbose", "--dry-run", "-N"], {
+        cwd: join(env.projectDir, "ws"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Extracted to prereq:");
+      expect(result.output).toContain("Stays in ws:");
+      expect(result.output).toContain("Dry run");
+    }));
+});

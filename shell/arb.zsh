@@ -525,6 +525,7 @@ _arb() {
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before extract]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '--dry-run[Show what would happen without executing]' \
+                        '(-v --verbose)'{-v,--verbose}'[Show per-commit details in the plan]' \
                         '--autostash[Stash uncommitted changes before operation]' \
                         '--include-wrong-branch[Include repos on a different branch than the workspace]' \
                         '--continue[Resume after resolving conflicts]' \

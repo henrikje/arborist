@@ -116,6 +116,8 @@ arb extract prereq --ending-with api:HEAD~3           # Explicit repo prefix
 
 Repos without a specified split point have zero commits extracted — they're included in both workspaces but just track the base.
 
+Use `--verbose` to see the individual commits that will be extracted and those that will stay in the original workspace.
+
 ### Undoing an extract
 
 ```bash
