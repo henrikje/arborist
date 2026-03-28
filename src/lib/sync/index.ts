@@ -30,3 +30,4 @@ export {
 export { VERBOSE_COMMIT_LIMIT } from "./constants";
 export { runUndoFlow } from "./undo";
 export { type ChainWalkDeps, type ChainWalkResult, walkRetargetChain } from "./retarget-chain";
+export { selectExtractBoundaries } from "./interactive-extract";
