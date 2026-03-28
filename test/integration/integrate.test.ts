@@ -470,7 +470,7 @@ describe("autostash", () => {
       });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("stash pop failed");
-      expect(result.output).toContain("manual stash application");
+      expect(result.output).toContain("manual stash resolution");
     }));
 
   test("arb merge --autostash reports stash pop failure", () =>
@@ -501,8 +501,8 @@ describe("autostash", () => {
       });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("stash pop failed");
-      expect(result.output).toContain("manual stash application");
-      expect(result.output).toContain("git stash pop");
+      expect(result.output).toContain("manual stash resolution");
+      expect(result.output).toContain("git stash drop");
     }));
 });
 

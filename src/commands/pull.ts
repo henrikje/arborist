@@ -20,6 +20,7 @@ import {
   gitLocal,
   gitNetwork,
   networkTimeout,
+  parseGitStatus,
 } from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
 import { createRenderContext, finishSummary, render } from "../lib/render";
@@ -286,8 +287,22 @@ export async function runPull(
           : ["pull", "--rebase", pullRemote, a.branch];
         const pullResult = await gitNetwork(a.repoDir, pullTimeout, pullArgs);
         if (pullResult.exitCode === 0) {
+          // Detect autostash pop conflict: git pull --rebase --autostash exits 0
+          // even when the stash apply conflicts, leaving unmerged paths.
+          let stashPopOk = true;
+          if (a.needsStash) {
+            const postStatus = await parseGitStatus(a.repoDir);
+            if (postStatus.conflicts > 0) {
+              stashPopOk = false;
+              stashPopFailed.push(a);
+            }
+          }
           await markCompleted(a.repo);
-          inlineResult(a.repo, `pulled ${plural(a.behind, "commit")} (${a.pullMode})`);
+          let doneMsg = `pulled ${plural(a.behind, "commit")} (${a.pullMode})`;
+          if (!stashPopOk) {
+            doneMsg += ` ${yellow("(stash pop failed)")}`;
+          }
+          inlineResult(a.repo, doneMsg);
           pullOk++;
         } else {
           if (isConflictResult(pullResult.stdout, pullResult.stderr)) {
