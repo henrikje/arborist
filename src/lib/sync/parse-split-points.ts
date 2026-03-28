@@ -139,6 +139,8 @@ async function checkMergeBaseFloor(
   // If not, the split point is below the merge-base.
   const result = await gitLocal(repoDir, "merge-base", "--is-ancestor", mergeBase, sha);
   if (result.exitCode !== 0) {
-    throw new ArbError(`split point is below the merge-base in repo "${repo}"`);
+    throw new ArbError(
+      `commit ${sha.slice(0, 7)} is already on the base branch in repo '${repo}' — only your branch's own commits can be extracted`,
+    );
   }
 }

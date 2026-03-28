@@ -79,6 +79,7 @@ export function registerAttachCommand(program: Command): void {
           reportFetchFailures(repos, fetchResults);
         }
 
+        process.stderr.write("Creating worktrees...\n");
         const result = await addWorktrees(
           workspace,
           branch,

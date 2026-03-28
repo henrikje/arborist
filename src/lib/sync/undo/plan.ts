@@ -30,11 +30,8 @@ export function formatUndoPlan(
       switch (a.action) {
         case "needs-undo": {
           actionCell = a.forced ? cell(a.detail ?? "undo", "attention") : cell(a.detail ?? "undo");
-          if (a.targetSubject) {
-            actionCell = suffix(actionCell, ` "${truncate(a.targetSubject, 50)}"`, "muted");
-          }
           if (a.stats?.hasStash) {
-            actionCell = suffix(actionCell, ` — + restore stash${stashFilesSuffix(a.stats)}`, "muted");
+            actionCell = suffix(actionCell, `, restore stash${stashFilesSuffix(a.stats)}`, "muted");
           }
           if (verbose && a.verbose?.commits && a.verbose.commits.length > 0) {
             afterRow = verboseCommitsToNodes(a.verbose.commits, a.verbose.totalCommits, "Rolling back:", {
@@ -86,10 +83,6 @@ function formatTime(iso: string): string {
   } catch {
     return iso;
   }
-}
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
 function stashFilesSuffix(stats: UndoStats): string {
