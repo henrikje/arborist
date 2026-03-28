@@ -1,5 +1,6 @@
 export type { RepoUndoAssessment, UndoAction, UndoResult, UndoStats, UndoVerboseInfo } from "./types";
 
+import { rm } from "node:fs/promises";
 import { basename } from "node:path";
 import { writeWorkspaceConfig } from "../../core/config";
 import { ArbError } from "../../core/errors";
@@ -143,14 +144,19 @@ export async function runUndoFlow(params: {
         skipDirectoryRename: isPartialRenameUndo,
       });
       break;
-    case "extract":
+    case "extract": {
       result = await executeSyncUndo(record, assessments);
-      // Clean up branches created in canonical repos during extract
+      // Remove worktrees and workspace directory created during extract
+      const extractWsDir = `${arbRootDir}/${record.targetWorkspace}`;
       for (const repoName of Object.keys(record.repos)) {
         const repoDir = `${reposDir}/${repoName}`;
+        const worktreePath = `${extractWsDir}/${repoName}`;
+        await gitLocal(repoDir, "worktree", "remove", "--force", worktreePath).catch(() => {});
         await gitLocal(repoDir, "branch", "-D", record.targetBranch).catch(() => {});
       }
+      await rm(extractWsDir, { recursive: true, force: true }).catch(() => {});
       break;
+    }
     default: {
       const _exhaustive: never = record;
       throw new ArbError("Undo is not yet supported for this operation");
