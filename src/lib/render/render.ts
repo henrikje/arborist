@@ -217,7 +217,7 @@ function resolveColumns(defs: TableColumnDef[], rows: TableRow[]): ResolvedColum
     for (let i = firstIdx; i < resolved.length; i++) {
       const r = resolved[i] as ResolvedColumn;
       if (r.groupName !== groupName) continue;
-      if (subColCount > 0) groupContentWidth += DEFAULT_SUB_GAP;
+      if (subColCount > 0) groupContentWidth += r.def.subGap ?? DEFAULT_SUB_GAP;
       groupContentWidth += r.width;
       subColCount++;
       lastIdx = i;
@@ -254,7 +254,7 @@ function renderTableHeader(resolved: ResolvedColumn[], ctx: RenderContext): stri
       let subCount = 0;
       for (const r of resolved) {
         if (r.groupName === col.groupName) {
-          if (subCount > 0) groupWidth += DEFAULT_SUB_GAP;
+          if (subCount > 0) groupWidth += r.def.subGap ?? DEFAULT_SUB_GAP;
           groupWidth += r.width;
           subCount++;
         }
@@ -292,7 +292,7 @@ function renderTableRow(row: TableRow, resolved: ResolvedColumn[], ctx: RenderCo
     // Determine gap before this column
     if (!isFirst) {
       if (col.isSubColumn && !col.isFirstInGroup) {
-        out += " ".repeat(DEFAULT_SUB_GAP);
+        out += " ".repeat(col.def.subGap ?? DEFAULT_SUB_GAP);
       } else {
         out += " ".repeat(GROUP_GAP);
       }
@@ -356,7 +356,7 @@ function applyTruncation(resolved: ResolvedColumn[], rows: TableRow[], terminalW
         if (!isFirst) totalWidth += GROUP_GAP;
         isFirst = false;
       } else {
-        totalWidth += DEFAULT_SUB_GAP;
+        totalWidth += col.def.subGap ?? DEFAULT_SUB_GAP;
       }
     } else {
       if (!isFirst) totalWidth += GROUP_GAP;

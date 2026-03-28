@@ -82,6 +82,8 @@ export interface TableColumnDef {
   group?: string;
   align?: "left" | "right";
   truncate?: { min: number };
+  /** Gap before this sub-column when inside a group (overrides DEFAULT_SUB_GAP) */
+  subGap?: number;
 }
 
 export interface TableRow {
