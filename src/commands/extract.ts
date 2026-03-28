@@ -647,7 +647,8 @@ export function registerExtractCommand(program: Command): void {
 
 // ── Plan formatting ──
 
-function formatExtractPlan(
+/** @internal Exported for testing. */
+export function formatExtractPlan(
   assessments: ExtractAssessment[],
   workspace: string,
   targetWorkspace: string,
@@ -703,30 +704,40 @@ function buildExtractPlanNodes(
     if (a.outcome === "will-extract") {
       const stashNote = a.needsStash ? " (autostash)" : "";
       const ep = endpoints?.get(a.repo);
+      const allExtracted = a.commitsRemaining === 0;
+      const allRemaining = a.commitsExtracted === 0;
       let extractedText: string;
       let remainingText: string;
       if (direction === "prefix") {
-        // Prefix: extracted ends at boundary, remaining starts after boundary. Stash on "stays" (rebased).
         const endNote = ep?.extractEnd ? `, ending with ${ep.extractEnd}` : "";
         const startNote = ep?.remainEnd ? `, starting with ${ep.remainEnd}` : "";
-        extractedText = a.commitsExtracted > 0 ? `${plural(a.commitsExtracted, "commit", "commits")}${endNote}` : "–";
+        extractedText =
+          a.commitsExtracted > 0
+            ? `${allExtracted ? "all " : ""}${plural(a.commitsExtracted, "commit", "commits")}${endNote}`
+            : "no commits";
         remainingText =
           a.commitsRemaining > 0
-            ? `${plural(a.commitsRemaining, "commit", "commits")}${startNote}${stashNote}`
-            : `–${stashNote}`;
+            ? `${allRemaining ? "all " : ""}${plural(a.commitsRemaining, "commit", "commits")}${startNote}${stashNote}`
+            : `no commits${stashNote}`;
       } else {
-        // Suffix: extracted starts at boundary, remaining ends before boundary. Stash on "new" (original is reset).
         const startNote = ep?.extractEnd ? `, starting with ${ep.extractEnd}` : "";
         const endNote = ep?.remainEnd ? `, ending with ${ep.remainEnd}` : "";
         extractedText =
-          a.commitsExtracted > 0 ? `${plural(a.commitsExtracted, "commit", "commits")}${startNote}${stashNote}` : "–";
-        remainingText = a.commitsRemaining > 0 ? `${plural(a.commitsRemaining, "commit", "commits")}${endNote}` : "–";
+          a.commitsExtracted > 0
+            ? `${allExtracted ? "all " : ""}${plural(a.commitsExtracted, "commit", "commits")}${startNote}${stashNote}`
+            : "no commits";
+        remainingText =
+          a.commitsRemaining > 0
+            ? `${allRemaining ? "all " : ""}${plural(a.commitsRemaining, "commit", "commits")}${endNote}`
+            : "no commits";
       }
       newCell = cell(extractedText);
       origCell = cell(remainingText);
     } else if (a.outcome === "no-op") {
-      const remainingText = a.commitsRemaining > 0 ? `${plural(a.commitsRemaining, "commit", "commits")}` : "–";
-      newCell = cell("–", "muted");
+      const allPrefix = a.commitsRemaining > 0 ? "all " : "";
+      const remainingText =
+        a.commitsRemaining > 0 ? `${allPrefix}${plural(a.commitsRemaining, "commit", "commits")}` : "no commits";
+      newCell = cell("no commits", "muted");
       origCell = cell(remainingText, "muted");
     } else {
       // skip
