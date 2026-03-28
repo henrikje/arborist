@@ -1,6 +1,6 @@
-import { basename } from "node:path";
+import { basename, dirname } from "node:path";
 import { type Command, Option } from "commander";
-import { predictMergeConflict } from "../lib/analysis";
+import { detectBranchMerged, predictMergeConflict } from "../lib/analysis";
 import { predictStashPopConflict } from "../lib/analysis/conflict-prediction";
 import {
   ArbError,
@@ -27,15 +27,19 @@ import {
   VERBOSE_COMMIT_LIMIT,
   buildCachedStatusAssess,
   confirmOrExit,
+  getUnchangedRepos,
+  parallelFetch,
+  reportFetchFailures,
   resolveDefaultFetch,
   runPlanFlow,
+  walkRetargetChain,
 } from "../lib/sync";
 import { assessRetargetRepo } from "../lib/sync/classify-retarget";
 import { runContinueFlow } from "../lib/sync/continue-flow";
 import type { RetargetAssessment } from "../lib/sync/types";
 import { dryRunNotice, error, info, inlineResult, inlineStart, plural, yellow } from "../lib/terminal";
 import { shouldColor } from "../lib/terminal/tty";
-import { requireBranch, requireWorkspace, workspaceRepoDirs } from "../lib/workspace";
+import { listWorkspaces, requireBranch, requireWorkspace, workspaceRepoDirs } from "../lib/workspace";
 import { rejectExplicitBaseRemotePrefix, resolveWorkspaceBaseResolution } from "../lib/workspace/base";
 import { workspaceBranch } from "../lib/workspace/branch";
 
@@ -56,7 +60,7 @@ export function registerRetargetCommand(program: Command): void {
     )
     .summary("Change the base branch and rebase onto it")
     .description(
-      "Examples:\n\n  arb retarget feature1                    Retarget onto feature1\n  arb retarget                             Retarget onto the default branch\n  arb retarget feature1 --verbose          Show commits in the plan\n\nChanges the workspace's base branch and rebases all repos onto the new base. This is the \"I want to change what my workspace is based on\" command.\n\nWith a branch argument, retargets onto that branch — useful for stacking onto a feature branch, switching between base branches, or retargeting after the base branch has been merged. Without a branch argument, retargets onto each repo's default branch (e.g. main) and removes the configured base.\n\nWhen the old base was merged (squash or regular), uses 'git rebase --onto' to replay only your commits. When the old base was not merged, uses the same mechanism to graft your commits onto the new base.\n\nRequires a configured base branch or an explicit branch argument. If no base is configured and no branch is given, this is an error — use 'arb retarget <branch>' to set a base.\n\nAll-or-nothing: if any repo is blocked (dirty, wrong branch, etc.), the entire retarget is refused so the workspace config stays consistent. Use --autostash to stash uncommitted changes before rebasing.\n\nAlways operates on all repos in the workspace — retarget is a structural change to the workspace, not a per-repo operation. To change the base config without rebasing, or to rebase selectively, use 'arb branch base <branch>' then 'arb rebase [repos...]'.\n\nUse --verbose to show the incoming commits for each repo in the plan. Use --graph to show a branch divergence diagram. See 'arb help stacked' for stacked workspace workflows.",
+      "Examples:\n\n  arb retarget feature1                    Retarget onto feature1\n  arb retarget                             Retarget onto the default branch\n  arb retarget feature1 --verbose          Show commits in the plan\n\nChanges the workspace's base branch and rebases all repos onto the new base. This is the \"I want to change what my workspace is based on\" command.\n\nWith a branch argument, retargets onto that branch — useful for stacking onto a feature branch, switching between base branches, or retargeting after the base branch has been merged. Without a branch argument, walks the stack chain to find the nearest non-merged ancestor (e.g. if B is merged in A←B←C, retargets C onto A). If no non-merged ancestor exists, retargets onto each repo's default branch (e.g. main) and removes the configured base.\n\nWhen the old base was merged (squash or regular), uses 'git rebase --onto' to replay only your commits. When the old base was not merged, uses the same mechanism to graft your commits onto the new base.\n\nRequires a configured base branch or an explicit branch argument. If no base is configured and no branch is given, this is an error — use 'arb retarget <branch>' to set a base.\n\nAll-or-nothing: if any repo is blocked (dirty, wrong branch, etc.), the entire retarget is refused so the workspace config stays consistent. Use --autostash to stash uncommitted changes before rebasing.\n\nAlways operates on all repos in the workspace — retarget is a structural change to the workspace, not a per-repo operation. To change the base config without rebasing, or to rebase selectively, use 'arb branch base <branch>' then 'arb rebase [repos...]'.\n\nUse --verbose to show the incoming commits for each repo in the plan. Use --graph to show a branch divergence diagram. See 'arb help stacked' for stacked workspace workflows.",
     )
     .action(
       arbAction(async (ctx, branchArg: string | undefined, options) => {
@@ -153,6 +157,37 @@ export function registerRetargetCommand(program: Command): void {
         const allFetchDirs = workspaceRepoDirs(wsDir);
         const allRepos = allFetchDirs.map((d) => basename(d));
 
+        // Chain walk requires fresh refs for merge detection. When chain walking
+        // is possible (no explicit target + configured base), fetch manually before
+        // the chain walk and pass shouldFetch: false to runPlanFlow. Otherwise,
+        // let runPlanFlow handle fetching normally (preserving phased render).
+        const chainWalkPossible = targetBranch === null && configBase !== null;
+
+        let fetchFailed: string[] = [];
+        let unchangedRepos = new Set<string>();
+        let chainWalkPath: string[] = [];
+
+        if (chainWalkPossible && shouldFetch && allFetchDirs.length > 0) {
+          const fetchResults = await parallelFetch(allFetchDirs, undefined, remotesMap);
+          cache.invalidateAfterFetch();
+          unchangedRepos = getUnchangedRepos(fetchResults);
+          fetchFailed = reportFetchFailures(allRepos, fetchResults);
+
+          const chainResult = await resolveChainWalkTarget(
+            configBase,
+            allFetchDirs,
+            ctx.reposDir,
+            ctx.arbRootDir,
+            remotesMap,
+            cache,
+          );
+          if (chainResult) {
+            targetBranch = chainResult.targetBranch;
+            chainWalkPath = chainResult.walkedPath;
+            info(`base branch ${configBase} was merged; following stack chain to ${targetBranch}`);
+          }
+        }
+
         // Phase 2: assess
         const autostash = options.autostash === true;
         const includeWrongBranch = options.includeWrongBranch === true;
@@ -166,14 +201,14 @@ export function registerRetargetCommand(program: Command): void {
           remotesMap,
           cache,
           analysisCache: ctx.analysisCache,
-          classify: ({ repo, repoDir, status, fetchFailed }) => {
+          classify: ({ repo, repoDir, status, fetchFailed: repoFetchFailed }) => {
             const repoPath = `${ctx.reposDir}/${basename(repoDir)}`;
             return assessRetargetRepo(
               status,
               repoDir,
               branch,
               targetBranch,
-              fetchFailed,
+              repoFetchFailed,
               {
                 autostash,
                 includeWrongBranch,
@@ -196,15 +231,19 @@ export function registerRetargetCommand(program: Command): void {
           return nextAssessments;
         };
 
+        // When chain walk fetched manually, skip fetch in runPlanFlow.
+        // Otherwise, let runPlanFlow handle fetching normally (phased render preserved).
+        const fetchedManually = chainWalkPossible && shouldFetch && allFetchDirs.length > 0;
         const assessments = await runPlanFlow({
-          shouldFetch,
+          shouldFetch: fetchedManually ? false : shouldFetch,
           fetchDirs: allFetchDirs,
           reposForFetchReport: allRepos,
           remotesMap,
-          assess,
+          assess: fetchedManually ? (_ff, _unch) => assess(fetchFailed, unchangedRepos) : assess,
           postAssess,
-          formatPlan: (nextAssessments) => formatRetargetPlan(nextAssessments, workspace, options.verbose),
-          onPostFetch: () => cache.invalidateAfterFetch(),
+          formatPlan: (nextAssessments) =>
+            formatRetargetPlan(nextAssessments, workspace, options.verbose, chainWalkPath),
+          ...(fetchedManually ? {} : { onPostFetch: () => cache.invalidateAfterFetch() }),
         });
 
         // Phase 3: all-or-nothing check
@@ -228,6 +267,12 @@ export function registerRetargetCommand(program: Command): void {
 
         // When all repos are skipped, ensure at least one could retarget
         if (willRetarget.length === 0 && upToDate.length === 0 && skipped.length > 0) {
+          if (chainWalkPath.length > 0) {
+            error(`Stack chain walk resolved to ${targetBranch}, but that branch was not found on any repo's remote.`);
+            throw new ArbError(
+              `Stack chain walk resolved to ${targetBranch}, but that branch was not found on any repo's remote.`,
+            );
+          }
           error("Cannot retarget: target branch not found on any repo.");
           throw new ArbError("Cannot retarget: target branch not found on any repo.");
         }
@@ -414,15 +459,25 @@ async function buildRetargetConfigAfter(
 
 // ── Plan rendering ──
 
-function formatRetargetPlan(assessments: RetargetAssessment[], workspace: string, verbose?: boolean): string {
-  const nodes = buildRetargetPlanNodes(assessments, workspace, verbose);
+function formatRetargetPlan(
+  assessments: RetargetAssessment[],
+  workspace: string,
+  verbose?: boolean,
+  chainWalkPath?: string[],
+): string {
+  const nodes = buildRetargetPlanNodes(assessments, workspace, verbose, chainWalkPath);
   const envCols = Number(process.env.COLUMNS);
   const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
   const ctx: RenderContext = { tty: shouldColor(), terminalWidth: termCols > 0 ? termCols : undefined };
   return render(nodes, ctx);
 }
 
-function buildRetargetPlanNodes(assessments: RetargetAssessment[], workspace: string, verbose?: boolean): OutputNode[] {
+function buildRetargetPlanNodes(
+  assessments: RetargetAssessment[],
+  workspace: string,
+  verbose?: boolean,
+  chainWalkPath?: string[],
+): OutputNode[] {
   const nodes: OutputNode[] = [{ kind: "gap" }];
 
   const rows = assessments.map((a) => {
@@ -457,7 +512,7 @@ function buildRetargetPlanNodes(assessments: RetargetAssessment[], workspace: st
   });
 
   // Config action hint
-  const configAction = computeRetargetConfigAction(assessments, workspace);
+  const configAction = computeRetargetConfigAction(assessments, workspace, chainWalkPath);
   if (configAction) {
     nodes.push({ kind: "gap" });
     nodes.push({
@@ -542,6 +597,7 @@ function retargetActionCell(a: RetargetAssessment): Cell {
 function computeRetargetConfigAction(
   assessments: RetargetAssessment[],
   workspace: string,
+  chainWalkPath?: string[],
 ): { workspace: string; description: string } | null {
   const retargetable = assessments.filter((a) => a.outcome === "will-retarget" || a.outcome === "up-to-date");
   if (retargetable.length === 0) return null;
@@ -551,7 +607,11 @@ function computeRetargetConfigAction(
 
   const from = first.oldBase || "default";
   const to = first.targetBranch;
-  return { workspace, description: `change base branch from ${from} to ${to}` };
+  let description = `change base branch from ${from} to ${to}`;
+  if (chainWalkPath && chainWalkPath.length > 0) {
+    description += ` (via stack: ${chainWalkPath.join(" → ")} merged)`;
+  }
+  return { workspace, description };
 }
 
 // ── Post-assess helpers ──
@@ -623,4 +683,68 @@ async function maybeWriteRetargetConfig(options: {
     writeWorkspaceConfig(configFile, { branch: wsBranch });
   }
   return true;
+}
+
+// ── Chain walk ──
+
+async function resolveChainWalkTarget(
+  configBase: string,
+  allFetchDirs: string[],
+  reposDir: string,
+  arbRootDir: string,
+  remotesMap: Map<string, { base?: string }>,
+  cache: {
+    findBranchWorktree(repoDir: string, branch: string): Promise<string | null>;
+    getDefaultBranch(repoDir: string, remote: string): Promise<string | null>;
+    remoteBranchExists(repoDir: string, branch: string, remote: string): Promise<boolean>;
+    branchExistsLocally(repoDir: string, branch: string): Promise<boolean>;
+  },
+): Promise<{ targetBranch: string; walkedPath: string[] } | null> {
+  const firstRepoDir = allFetchDirs[0];
+  if (!firstRepoDir) return null;
+
+  const repo = basename(firstRepoDir);
+  const repoPath = `${reposDir}/${repo}`;
+  const baseRemote = remotesMap.get(repo)?.base ?? "";
+  if (!baseRemote) return null;
+
+  // Find sourceWorkspace for configBase
+  const worktreePath = await cache.findBranchWorktree(repoPath, configBase);
+  if (!worktreePath) return null;
+  const sourceWorkspace = basename(dirname(worktreePath));
+
+  // Check if configBase is merged into default
+  const defaultBranch = await cache.getDefaultBranch(repoPath, baseRemote);
+  if (!defaultBranch) return null;
+
+  const defaultRef = `${baseRemote}/${defaultBranch}`;
+  const remoteExists = await cache.remoteBranchExists(repoPath, configBase, baseRemote);
+  const configBaseRef = remoteExists ? `${baseRemote}/${configBase}` : configBase;
+  const merged = await detectBranchMerged(firstRepoDir, defaultRef, 200, configBaseRef);
+  if (!merged) return null;
+
+  // Walk the chain
+  const result = await walkRetargetChain(configBase, sourceWorkspace, {
+    readWorkspaceBase: (wsName) => readWorkspaceConfig(`${arbRootDir}/${wsName}/.arbws/config.json`)?.base ?? null,
+    isBranchMerged: async (branchName) => {
+      const branchRemoteExists = await cache.remoteBranchExists(repoPath, branchName, baseRemote);
+      const branchRef = branchRemoteExists ? `${baseRemote}/${branchName}` : branchName;
+      const localExists = !branchRemoteExists ? await cache.branchExistsLocally(repoPath, branchName) : true;
+      if (!localExists) return false;
+      const detection = await detectBranchMerged(firstRepoDir, defaultRef, 200, branchRef);
+      return detection !== null;
+    },
+    findWorkspaceForBranch: (branchName) => {
+      for (const ws of listWorkspaces(arbRootDir)) {
+        const wsConfig = readWorkspaceConfig(`${arbRootDir}/${ws}/.arbws/config.json`);
+        if (wsConfig?.branch === branchName) return ws;
+      }
+      return null;
+    },
+  });
+
+  if (result.didWalk && result.targetBranch) {
+    return { targetBranch: result.targetBranch, walkedPath: result.walkedPath };
+  }
+  return null;
 }
