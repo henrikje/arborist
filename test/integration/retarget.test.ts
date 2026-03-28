@@ -1175,3 +1175,214 @@ describe("retarget blocker scenarios", () => {
       expect(result.output).toContain("skipped");
     }));
 });
+
+// ── retarget (deep stack chain walking) ─────────────────────────
+
+describe("retarget (deep stack chain walking)", () => {
+  test("arb retarget follows stack chain to non-merged ancestor", () =>
+    withEnv(async (env) => {
+      const repoA = join(env.projectDir, ".arb/repos/repo-a");
+
+      // Create feat/a branch and push
+      await git(repoA, ["checkout", "-b", "feat/a"]);
+      await write(join(repoA, "a.txt"), "a");
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "feat a"]);
+      await git(repoA, ["push", "-u", "origin", "feat/a"]);
+      await git(repoA, ["checkout", "--detach"]);
+
+      // Create workspace ws-a on feat/a
+      await arb(env, ["create", "ws-a", "-b", "feat/a", "repo-a"]);
+
+      // Create feat/b branch stacking on feat/a
+      await arb(env, ["create", "ws-b", "--base", "feat/a", "-b", "feat/b", "repo-a"]);
+      await write(join(env.projectDir, "ws-b/repo-a/b.txt"), "b");
+      await git(join(env.projectDir, "ws-b/repo-a"), ["add", "b.txt"]);
+      await git(join(env.projectDir, "ws-b/repo-a"), ["commit", "-m", "feat b"]);
+      await git(join(env.projectDir, "ws-b/repo-a"), ["push", "-u", "origin", "feat/b"]);
+
+      // Create feat/c branch stacking on feat/b
+      await arb(env, ["create", "ws-c", "--base", "feat/b", "-b", "feat/c", "repo-a"]);
+      await write(join(env.projectDir, "ws-c/repo-a/c.txt"), "c");
+      await git(join(env.projectDir, "ws-c/repo-a"), ["add", "c.txt"]);
+      await git(join(env.projectDir, "ws-c/repo-a"), ["commit", "-m", "feat c"]);
+
+      // Squash-merge feat/b into main (simulating GitHub merge)
+      const tmpMerge = join(env.testDir, "tmp-merge-chain");
+      await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpMerge]);
+      await git(tmpMerge, ["merge", "--squash", "origin/feat/b"]);
+      await git(tmpMerge, ["commit", "-m", "squash: feat b"]);
+      await git(tmpMerge, ["push"]);
+
+      // Retarget ws-c: should follow chain feat/b -> feat/a (not fall to main)
+      const result = await arb(env, ["retarget", "--yes"], {
+        cwd: join(env.projectDir, "ws-c"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("following stack chain to feat/a");
+      expect(result.output).toContain("base branch changed from feat/b to feat/a");
+      expect(result.output).toContain("via stack");
+
+      // Verify config has base: feat/a (not cleared)
+      const config = JSON.parse(await readFile(join(env.projectDir, "ws-c/.arbws/config.json"), "utf-8"));
+      expect(config.base).toBe("feat/a");
+    }));
+
+  test("arb retarget walks through multiple merged ancestors", () =>
+    withEnv(async (env) => {
+      const repoA = join(env.projectDir, ".arb/repos/repo-a");
+
+      // Create feat/a, push
+      await git(repoA, ["checkout", "-b", "feat/a"]);
+      await write(join(repoA, "a.txt"), "a");
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "feat a"]);
+      await git(repoA, ["push", "-u", "origin", "feat/a"]);
+      await git(repoA, ["checkout", "--detach"]);
+
+      // ws-a
+      await arb(env, ["create", "ws-a", "-b", "feat/a", "repo-a"]);
+
+      // feat/b stacking on feat/a
+      await arb(env, ["create", "ws-b", "--base", "feat/a", "-b", "feat/b", "repo-a"]);
+      await write(join(env.projectDir, "ws-b/repo-a/b.txt"), "b");
+      await git(join(env.projectDir, "ws-b/repo-a"), ["add", "b.txt"]);
+      await git(join(env.projectDir, "ws-b/repo-a"), ["commit", "-m", "feat b"]);
+      await git(join(env.projectDir, "ws-b/repo-a"), ["push", "-u", "origin", "feat/b"]);
+
+      // feat/c stacking on feat/b
+      await arb(env, ["create", "ws-c", "--base", "feat/b", "-b", "feat/c", "repo-a"]);
+      await write(join(env.projectDir, "ws-c/repo-a/c.txt"), "c");
+      await git(join(env.projectDir, "ws-c/repo-a"), ["add", "c.txt"]);
+      await git(join(env.projectDir, "ws-c/repo-a"), ["commit", "-m", "feat c"]);
+      await git(join(env.projectDir, "ws-c/repo-a"), ["push", "-u", "origin", "feat/c"]);
+
+      // feat/d stacking on feat/c
+      await arb(env, ["create", "ws-d", "--base", "feat/c", "-b", "feat/d", "repo-a"]);
+      await write(join(env.projectDir, "ws-d/repo-a/d.txt"), "d");
+      await git(join(env.projectDir, "ws-d/repo-a"), ["add", "d.txt"]);
+      await git(join(env.projectDir, "ws-d/repo-a"), ["commit", "-m", "feat d"]);
+
+      // Merge both feat/b and feat/c into main via merge commits
+      const tmpMerge = join(env.testDir, "tmp-merge-deep");
+      await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpMerge]);
+      await git(tmpMerge, ["merge", "origin/feat/b", "--no-ff", "-m", "merge feat/b"]);
+      await git(tmpMerge, ["merge", "origin/feat/c", "--no-ff", "-m", "merge feat/c"]);
+      await git(tmpMerge, ["push"]);
+
+      // Add a new commit to feat/a (so it's no longer fully merged — has work beyond main)
+      await write(join(env.projectDir, "ws-a/repo-a/a2.txt"), "a2");
+      await git(join(env.projectDir, "ws-a/repo-a"), ["add", "a2.txt"]);
+      await git(join(env.projectDir, "ws-a/repo-a"), ["commit", "-m", "feat a continued"]);
+      await git(join(env.projectDir, "ws-a/repo-a"), ["push", "origin", "feat/a"]);
+
+      // Retarget ws-d: should walk feat/c -> feat/b -> feat/a (not merged due to new commit)
+      const result = await arb(env, ["retarget", "--yes"], {
+        cwd: join(env.projectDir, "ws-d"),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("following stack chain to feat/a");
+
+      const config = JSON.parse(await readFile(join(env.projectDir, "ws-d/.arbws/config.json"), "utf-8"));
+      expect(config.base).toBe("feat/a");
+    }));
+
+  test("arb retarget falls back to default when intermediate workspace is deleted", () =>
+    withEnv(async (env) => {
+      const repoA = join(env.projectDir, ".arb/repos/repo-a");
+
+      // Create feat/a, push
+      await git(repoA, ["checkout", "-b", "feat/a"]);
+      await write(join(repoA, "a.txt"), "a");
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "feat a"]);
+      await git(repoA, ["push", "-u", "origin", "feat/a"]);
+      await git(repoA, ["checkout", "--detach"]);
+
+      // ws-a
+      await arb(env, ["create", "ws-a", "-b", "feat/a", "repo-a"]);
+
+      // feat/b stacking on feat/a
+      await arb(env, ["create", "ws-b", "--base", "feat/a", "-b", "feat/b", "repo-a"]);
+      await write(join(env.projectDir, "ws-b/repo-a/b.txt"), "b");
+      await git(join(env.projectDir, "ws-b/repo-a"), ["add", "b.txt"]);
+      await git(join(env.projectDir, "ws-b/repo-a"), ["commit", "-m", "feat b"]);
+      await git(join(env.projectDir, "ws-b/repo-a"), ["push", "-u", "origin", "feat/b"]);
+
+      // feat/c stacking on feat/b
+      await arb(env, ["create", "ws-c", "--base", "feat/b", "-b", "feat/c", "repo-a"]);
+      await write(join(env.projectDir, "ws-c/repo-a/c.txt"), "c");
+      await git(join(env.projectDir, "ws-c/repo-a"), ["add", "c.txt"]);
+      await git(join(env.projectDir, "ws-c/repo-a"), ["commit", "-m", "feat c"]);
+
+      // Squash-merge feat/b into main
+      const tmpMerge = join(env.testDir, "tmp-merge-deleted");
+      await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpMerge]);
+      await git(tmpMerge, ["merge", "--squash", "origin/feat/b"]);
+      await git(tmpMerge, ["commit", "-m", "squash: feat b"]);
+      await git(tmpMerge, ["push"]);
+
+      // Delete ws-b workspace (breaks the chain)
+      await arb(env, ["delete", "ws-b", "--yes"]);
+
+      // Retarget ws-c: chain is broken, should fall back to default (main)
+      const result = await arb(env, ["retarget", "--yes"], {
+        cwd: join(env.projectDir, "ws-c"),
+      });
+      expect(result.exitCode).toBe(0);
+      // Should NOT mention "following stack chain" since ws-b is deleted
+      expect(result.output).not.toContain("following stack chain");
+      expect(result.output).toContain("base branch changed from feat/b to main");
+
+      const config = JSON.parse(await readFile(join(env.projectDir, "ws-c/.arbws/config.json"), "utf-8"));
+      expect(config.base).toBeUndefined();
+    }));
+
+  test("explicit target overrides chain walk", () =>
+    withEnv(async (env) => {
+      const repoA = join(env.projectDir, ".arb/repos/repo-a");
+
+      // Create feat/a, push
+      await git(repoA, ["checkout", "-b", "feat/a"]);
+      await write(join(repoA, "a.txt"), "a");
+      await git(repoA, ["add", "a.txt"]);
+      await git(repoA, ["commit", "-m", "feat a"]);
+      await git(repoA, ["push", "-u", "origin", "feat/a"]);
+      await git(repoA, ["checkout", "--detach"]);
+
+      // ws-a
+      await arb(env, ["create", "ws-a", "-b", "feat/a", "repo-a"]);
+
+      // feat/b stacking on feat/a
+      await arb(env, ["create", "ws-b", "--base", "feat/a", "-b", "feat/b", "repo-a"]);
+      await write(join(env.projectDir, "ws-b/repo-a/b.txt"), "b");
+      await git(join(env.projectDir, "ws-b/repo-a"), ["add", "b.txt"]);
+      await git(join(env.projectDir, "ws-b/repo-a"), ["commit", "-m", "feat b"]);
+      await git(join(env.projectDir, "ws-b/repo-a"), ["push", "-u", "origin", "feat/b"]);
+
+      // feat/c stacking on feat/b
+      await arb(env, ["create", "ws-c", "--base", "feat/b", "-b", "feat/c", "repo-a"]);
+      await write(join(env.projectDir, "ws-c/repo-a/c.txt"), "c");
+      await git(join(env.projectDir, "ws-c/repo-a"), ["add", "c.txt"]);
+      await git(join(env.projectDir, "ws-c/repo-a"), ["commit", "-m", "feat c"]);
+
+      // Squash-merge feat/b into main
+      const tmpMerge = join(env.testDir, "tmp-merge-explicit");
+      await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpMerge]);
+      await git(tmpMerge, ["merge", "--squash", "origin/feat/b"]);
+      await git(tmpMerge, ["commit", "-m", "squash: feat b"]);
+      await git(tmpMerge, ["push"]);
+
+      // Explicit retarget to main (overrides chain walk)
+      const result = await arb(env, ["retarget", "main", "--yes"], {
+        cwd: join(env.projectDir, "ws-c"),
+      });
+      expect(result.exitCode).toBe(0);
+      // Should NOT mention "following stack chain" since target is explicit
+      expect(result.output).not.toContain("following stack chain");
+      expect(result.output).toContain("base branch changed from feat/b to main");
+
+      const config = JSON.parse(await readFile(join(env.projectDir, "ws-c/.arbws/config.json"), "utf-8"));
+      expect(config.base).toBeUndefined();
+    }));
+});
