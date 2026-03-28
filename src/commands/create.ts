@@ -31,7 +31,7 @@ export function deriveWorkspaceNameFromBranch(branch: string): string | null {
 
 export function shouldShowBranchPasteHint(
   nameArg: string | undefined,
-  branchOpt: string | undefined,
+  branchOpt: string | boolean | undefined,
   validationError: string,
 ): boolean {
   if (!nameArg || branchOpt) return false;
@@ -42,7 +42,7 @@ export function shouldShowBranchPasteHint(
 export function registerCreateCommand(program: Command): void {
   program
     .command("create [name] [repos...]")
-    .option("-b, --branch <branch>", "Branch name")
+    .option("-b, --branch [branch]", "Branch name (omit value for interactive picker)")
     .option("--base <branch>", "Base branch to branch from")
     .option("-a, --all-repos", "Include all repos")
     .option("-y, --yes", "Skip interactive prompts and use configured defaults")
@@ -50,11 +50,25 @@ export function registerCreateCommand(program: Command): void {
     .option("-N, --no-fetch", "Skip pre-fetch")
     .summary("Create a new workspace")
     .description(
-      "Examples:\n\n  arb create                               Interactive guided flow\n  arb create PROJ-208 api web              Create with branch and repos\n  arb create PROJ-208 --base feat/PROJ-200 --all-repos\n\nCreate a workspace for a feature or issue. Creates a working copy of each selected repo on a shared feature branch, with isolated working directories. Fetches the selected repos before creating worktrees for fresh remote state (skip with -N/--no-fetch). Automatically seeds files from .arb/templates/ into the new workspace. Running with no arguments opens a guided flow; providing args or flags uses sensible defaults and prompts only for missing required values.\n\nIf the branch already exists locally or on the share remote, arb checks it out instead of creating a new one. This lets you resume work on an existing feature, collaborate on a shared branch, or set up a local workspace for a branch someone else started.\n\nIf any repo fails to attach (for example, the branch is already checked out in another workspace), the entire operation is aborted and any partially created worktrees are rolled back. Use 'arb attach' to add repos individually if partial success is acceptable.\n\nSee 'arb help stacked' for stacking workspaces on feature branches.",
+      "Examples:\n\n  arb create                               Interactive guided flow\n  arb create --branch                      Interactive branch picker, derive name\n  arb create PROJ-208 api web              Create with branch and repos\n  arb create PROJ-208 --base feat/PROJ-200 --all-repos\n\nCreate a workspace for a feature or issue. Creates a working copy of each selected repo on a shared feature branch, with isolated working directories. Fetches the selected repos before creating worktrees for fresh remote state (skip with -N/--no-fetch). Automatically seeds files from .arb/templates/ into the new workspace. Running with no arguments opens a guided flow; providing args or flags uses sensible defaults and prompts only for missing required values.\n\nIf the branch already exists locally or on the share remote, arb checks it out instead of creating a new one. This lets you resume work on an existing feature, collaborate on a shared branch, or set up a local workspace for a branch someone else started.\n\nIf any repo fails to attach (for example, the branch is already checked out in another workspace), the entire operation is aborted and any partially created worktrees are rolled back. Use 'arb attach' to add repos individually if partial success is acceptable.\n\nSee 'arb help stacked' for stacking workspaces on feature branches.",
     )
     .action(
       arbAction(async (ctx, nameArg: string | undefined, repoArgs: string[], options) => {
         const isInteractive = process.stdin.isTTY === true;
+        const isBranchPickMode = options.branch === true;
+        const branchStr = typeof options.branch === "string" ? options.branch : undefined;
+
+        if (isBranchPickMode && options.yes) {
+          const msg = "--branch without a value (interactive picker) cannot be combined with --yes";
+          error(msg);
+          throw new ArbError(msg);
+        }
+        if (isBranchPickMode && !isInteractive) {
+          const msg = "--branch requires a value in non-interactive mode. Pass a branch name: --branch <name>";
+          error(msg);
+          throw new ArbError(msg);
+        }
+
         const isBareGuidedCreate =
           isInteractive && !nameArg && repoArgs.length === 0 && !options.branch && !options.yes;
         const allKnownRepos = listRepos(ctx.reposDir);
@@ -66,16 +80,16 @@ export function registerCreateCommand(program: Command): void {
         }
 
         // 1. Workspace name
-        const isDerivedFromBranch = !nameArg && !!options.branch;
-        const derivedName = options.branch ? deriveWorkspaceNameFromBranch(options.branch) : null;
+        const isDerivedFromBranch = !nameArg && !!branchStr;
+        const derivedName = branchStr ? deriveWorkspaceNameFromBranch(branchStr) : null;
         if (isDerivedFromBranch && !derivedName) {
-          const msg = `Could not derive workspace name from branch '${options.branch}'. Pass an explicit workspace name: arb create <workspace-name> --branch ${options.branch}`;
+          const msg = `Could not derive workspace name from branch '${branchStr}'. Pass an explicit workspace name: arb create <workspace-name> --branch ${branchStr}`;
           error(msg);
           throw new ArbError(msg);
         }
 
         let name = nameArg ?? derivedName ?? undefined;
-        if (!name) {
+        if (!name && !isBranchPickMode) {
           if (!process.stdin.isTTY || options.yes) {
             const msg = "Usage: arb create <name> [repos...]";
             error(msg);
@@ -95,49 +109,51 @@ export function registerCreateCommand(program: Command): void {
           );
         }
 
-        const validationError = validateWorkspaceName(name);
-        if (validationError) {
-          if (shouldShowBranchPasteHint(nameArg, options.branch, validationError)) {
+        if (name !== undefined) {
+          const validationError = validateWorkspaceName(name);
+          if (validationError) {
+            if (shouldShowBranchPasteHint(nameArg, branchStr, validationError)) {
+              error(validationError);
+              process.stderr.write("\n");
+              info("It looks like you may have pasted a branch name.");
+              process.stderr.write("\n");
+              info("Try:");
+              info(`  arb create --branch ${nameArg}`);
+              process.stderr.write("\n");
+              info("Or set an explicit workspace name:");
+              info(`  arb create <workspace-name> --branch ${nameArg}`);
+              throw new ArbError(validationError);
+            }
+            if (isDerivedFromBranch) {
+              const msg = `Derived workspace name '${name}' from branch '${branchStr}' is invalid.`;
+              error(msg);
+              info(`Pass an explicit workspace name: arb create <workspace-name> --branch ${branchStr}`);
+              throw new ArbError(msg);
+            }
             error(validationError);
-            process.stderr.write("\n");
-            info("It looks like you may have pasted a branch name.");
-            process.stderr.write("\n");
-            info("Try:");
-            info(`  arb create --branch ${nameArg}`);
-            process.stderr.write("\n");
-            info("Or set an explicit workspace name:");
-            info(`  arb create <workspace-name> --branch ${nameArg}`);
             throw new ArbError(validationError);
           }
-          if (isDerivedFromBranch) {
-            const msg = `Derived workspace name '${name}' from branch '${options.branch}' is invalid.`;
+
+          const wsDir = `${ctx.arbRootDir}/${name}`;
+          if (existsSync(wsDir)) {
+            // Resolve actual directory name (may differ in case on case-insensitive FS)
+            const entries = readdirSync(ctx.arbRootDir);
+            const actualName = entries.find((e) => e.toLowerCase() === name?.toLowerCase()) ?? name;
+            const caseNote = actualName !== name ? ` (did you mean '${actualName}'?)` : "";
+
+            if (isDerivedFromBranch) {
+              const msg = `Derived workspace name '${name}' from branch '${branchStr}' already exists${caseNote}.`;
+              error(msg);
+              info(`Pass an explicit workspace name: arb create <workspace-name> --branch ${branchStr}`);
+              throw new ArbError(msg);
+            }
+            const msg = `Workspace '${name}' already exists${caseNote}`;
             error(msg);
-            info(`Pass an explicit workspace name: arb create <workspace-name> --branch ${options.branch}`);
             throw new ArbError(msg);
           }
-          error(validationError);
-          throw new ArbError(validationError);
         }
-
-        const wsDir = `${ctx.arbRootDir}/${name}`;
-        if (existsSync(wsDir)) {
-          // Resolve actual directory name (may differ in case on case-insensitive FS)
-          const entries = readdirSync(ctx.arbRootDir);
-          const actualName = entries.find((e) => e.toLowerCase() === name.toLowerCase()) ?? name;
-          const caseNote = actualName !== name ? ` (did you mean '${actualName}'?)` : "";
-
-          if (isDerivedFromBranch) {
-            const msg = `Derived workspace name '${name}' from branch '${options.branch}' already exists${caseNote}.`;
-            error(msg);
-            info(`Pass an explicit workspace name: arb create <workspace-name> --branch ${options.branch}`);
-            throw new ArbError(msg);
-          }
-          const msg = `Workspace '${name}' already exists${caseNote}`;
-          error(msg);
-          throw new ArbError(msg);
-        }
-        const nameWasPrompted = !nameArg && !isDerivedFromBranch;
-        if (!isBareGuidedCreate) {
+        const nameWasPrompted = !nameArg && !isDerivedFromBranch && !isBranchPickMode;
+        if (!isBareGuidedCreate && !isBranchPickMode && name !== undefined) {
           // Workspace (skip if just prompted interactively)
           if (!nameWasPrompted) {
             if (isDerivedFromBranch) {
@@ -147,8 +163,8 @@ export function registerCreateCommand(program: Command): void {
             }
           }
           // Branch
-          if (options.branch) {
-            info(`${cyan("›")} ${bold("Branch")}: ${cyan(options.branch)}`);
+          if (branchStr) {
+            info(`${cyan("›")} ${bold("Branch")}: ${cyan(branchStr)}`);
           } else {
             info(`${cyan("›")} ${bold("Branch")}: ${cyan(name)} (same as workspace, use --branch to override)`);
           }
@@ -221,10 +237,10 @@ export function registerCreateCommand(program: Command): void {
 
         // 3. Branch selection
         const defaultBranch = name;
-        let branch = options.branch;
+        let branch = branchStr;
         let discoveredBranches: string[] = [];
         if (!branch) {
-          if (isBareGuidedCreate) {
+          if (isBareGuidedCreate || isBranchPickMode) {
             // Fetch selected repos so branch list is up-to-date
             remotesMap = await cache.resolveRemotesMap(repos, ctx.reposDir);
             if (resolveDefaultFetch(options.fetch)) {
@@ -250,17 +266,23 @@ export function registerCreateCommand(program: Command): void {
             discoveredBranches = allBranches;
 
             if (allBranches.length > 0) {
-              const defaultIsExisting = allBranches.includes(defaultBranch);
-              const defaultLabel = defaultIsExisting
-                ? `${defaultBranch} (existing branch)`
-                : `${defaultBranch} (new branch)`;
-              const remainingBranches = allBranches.filter((b) => b !== defaultBranch);
+              // Build choices: include default choice only when workspace name is known
+              const defaultChoices: { name: string; value: string }[] = [];
+              let remainingBranches = allBranches;
+              if (defaultBranch !== undefined) {
+                const defaultIsExisting = allBranches.includes(defaultBranch);
+                const defaultLabel = defaultIsExisting
+                  ? `${defaultBranch} (existing branch)`
+                  : `${defaultBranch} (new branch)`;
+                defaultChoices.push({ name: defaultLabel, value: CREATE_DEFAULT });
+                remainingBranches = allBranches.filter((b) => b !== defaultBranch);
+              }
 
               const selected = await select(
                 {
                   message: "Branch:",
                   choices: [
-                    { name: defaultLabel, value: CREATE_DEFAULT },
+                    ...defaultChoices,
                     { name: "Enter a different name...", value: CREATE_CUSTOM },
                     new Separator(),
                     ...remainingBranches.map((b) => ({ name: b, value: b })),
@@ -281,7 +303,7 @@ export function registerCreateCommand(program: Command): void {
           }
 
           if (!branch) {
-            if (isBareGuidedCreate) {
+            if (isBareGuidedCreate || isBranchPickMode) {
               branch = await input(
                 {
                   message: "Branch:",
@@ -290,7 +312,7 @@ export function registerCreateCommand(program: Command): void {
                 { output: process.stderr },
               );
             } else {
-              branch = defaultBranch;
+              branch = defaultBranch as string;
             }
           }
         }
@@ -301,9 +323,48 @@ export function registerCreateCommand(program: Command): void {
           throw new ArbError(msg);
         }
 
+        // Post-branch name resolution for branch pick mode
+        if (isBranchPickMode && name === undefined) {
+          const derived = deriveWorkspaceNameFromBranch(branch);
+          if (!derived) {
+            const msg = `Could not derive workspace name from branch '${branch}'. Pass an explicit workspace name: arb create <workspace-name> --branch ${branch}`;
+            error(msg);
+            throw new ArbError(msg);
+          }
+          const derivedValidation = validateWorkspaceName(derived);
+          if (derivedValidation) {
+            const msg = `Derived workspace name '${derived}' from branch '${branch}' is invalid.`;
+            error(msg);
+            info(`Pass an explicit workspace name: arb create <workspace-name> --branch ${branch}`);
+            throw new ArbError(msg);
+          }
+          const derivedWsDir = `${ctx.arbRootDir}/${derived}`;
+          if (existsSync(derivedWsDir)) {
+            const entries = readdirSync(ctx.arbRootDir);
+            const actualName = entries.find((e) => e.toLowerCase() === derived.toLowerCase()) ?? derived;
+            const caseNote = actualName !== derived ? ` (did you mean '${actualName}'?)` : "";
+            const msg = `Derived workspace name '${derived}' from branch '${branch}' already exists${caseNote}.`;
+            error(msg);
+            info(`Pass an explicit workspace name: arb create <workspace-name> --branch ${branch}`);
+            throw new ArbError(msg);
+          }
+          name = derived;
+          info(`${cyan("›")} ${bold("Workspace")}: ${cyan(name)} (derived from branch)`);
+          info(`${cyan("›")} ${bold("Branch")}: ${cyan(branch)}`);
+          if (options.base) info(`${cyan("›")} ${bold("Base")}: ${cyan(options.base)}`);
+          if (options.allRepos) info(`${cyan("›")} ${bold("Repos")}: ${cyan("all")}`);
+          else if (repoArgs.length > 0) info(`${cyan("›")} ${bold("Repos")}: ${cyan(repoArgs.join(", "))}`);
+        } else if (isBranchPickMode && name !== undefined) {
+          info(`${cyan("›")} ${bold("Workspace")}: ${cyan(name)}`);
+          info(`${cyan("›")} ${bold("Branch")}: ${cyan(branch)}`);
+          if (options.base) info(`${cyan("›")} ${bold("Base")}: ${cyan(options.base)}`);
+          if (options.allRepos) info(`${cyan("›")} ${bold("Repos")}: ${cyan("all")}`);
+          else if (repoArgs.length > 0) info(`${cyan("›")} ${bold("Repos")}: ${cyan(repoArgs.join(", "))}`);
+        }
+
         // 4. Base branch
         let base = options.base;
-        if (!base && isBareGuidedCreate) {
+        if (!base && (isBareGuidedCreate || isBranchPickMode)) {
           // Build workspace branch lookup for annotations
           const workspaceBranchMap = new Map<string, string>();
           for (const ws of listWorkspaces(ctx.arbRootDir)) {
@@ -389,6 +450,9 @@ export function registerCreateCommand(program: Command): void {
         }
 
         // 5. Create workspace
+        // name is always resolved by this point (set by arg, prompt, string derivation, or post-branch resolution)
+        if (!name) throw new ArbError("Workspace name not resolved");
+        const wsDir = `${ctx.arbRootDir}/${name}`;
         mkdirSync(`${wsDir}/.arbws`, { recursive: true });
         writeWorkspaceConfig(`${wsDir}/.arbws/config.json`, { branch, ...(base && { base }) });
 
@@ -421,7 +485,7 @@ export function registerCreateCommand(program: Command): void {
         displayOverlaySummary(wsTemplates, repoTemplates, (nodes) => render(nodes, { tty: shouldColor() }));
 
         process.stderr.write("\n");
-        const branchSuffix = branch === defaultBranch ? "" : ` on branch ${branch}`;
+        const branchSuffix = branch === name ? "" : ` on branch ${branch}`;
         if (result.skipped.length === 0) {
           success(`Created workspace ${name} (${plural(result.created.length, "repo")})${branchSuffix}`);
           info(`  ${dim(wsDir)}`);

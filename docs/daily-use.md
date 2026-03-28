@@ -23,6 +23,7 @@ arb create dark-mode --branch "feat/dark-mode" --base develop --all-repos
 - `arb create` (no args) runs a guided flow (name, repos, branch).
 - `arb create <name>` prompts for repos only and uses `<name>` as the branch by default.
 - `arb create --branch <branch>` derives the workspace name from the branch tail (text after the last `/`).
+- `arb create --branch` (no value) opens an interactive branch picker and derives the workspace name from the selected branch.
 
 If you've configured default repos with `arb repo default`, they are pre-selected in the interactive picker and used as the fallback when no repos are specified in non-interactive mode. See [Managing workspaces - Default repos](workspaces.md#default-repos) for details.
 

@@ -37,6 +37,16 @@ describe("create helpers", () => {
       ).toBe(false);
     });
 
+    test("returns false when --branch is used without value (boolean true)", () => {
+      expect(
+        shouldShowBranchPasteHint(
+          "claude/improve-arb-create-ux-Ipru1",
+          true,
+          "Invalid workspace name 'x': must not contain '/'",
+        ),
+      ).toBe(false);
+    });
+
     test("returns false for non-slash workspace validation errors", () => {
       expect(
         shouldShowBranchPasteHint("bad name", undefined, "Invalid workspace name 'x': must not contain whitespace"),

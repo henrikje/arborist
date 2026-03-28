@@ -295,7 +295,7 @@ _arb() {
                     ;;
                 create)
                     _arguments \
-                        '(-b --branch)'{-b,--branch}'[Branch name]:branch:' \
+                        '(-b --branch)'{-b,--branch}'[Branch name (omit value for interactive picker)]::branch:' \
                         '--base[Base branch to branch from]:branch:' \
                         '(-a --all-repos)'{-a,--all-repos}'[Include all repos in this root]' \
                         '(-y --yes)'{-y,--yes}'[Skip interactive prompts and use configured defaults]' \
