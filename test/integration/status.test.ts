@@ -709,8 +709,8 @@ describe("status rebased detection", () => {
 
       await fetchAllRepos(env);
       const result = await arb(env, ["status"], { cwd: join(env.projectDir, "my-feature") });
-      // Should show "from main" and "rebased" instead of misleading "to push, to pull"
-      expect(result.output).toContain("from main");
+      // Should show "from base" and "rebased" instead of misleading "to push, to pull"
+      expect(result.output).toContain("from base");
       expect(result.output).toContain("rebased");
       expect(result.output).not.toContain("to pull");
     }));

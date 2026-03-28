@@ -62,8 +62,7 @@ function remoteDiffDiverged(repo: RepoStatus): DiffResult {
     // Keep push-side breakdown anchored to share.toPush:
     // fromBase + rebased + new must not exceed what can actually be pushed.
     const newCount = Math.max(0, toPush - fromBase - rebased);
-    const baseLabel = repo.base?.ref ?? "base";
-    if (fromBase > 0) pushParts.push(`${fromBase} from ${baseLabel}`);
+    if (fromBase > 0) pushParts.push(`${fromBase} from base`);
     if (rebased > 0) pushParts.push(`${rebased} rebased`);
     if (newCount > 0) {
       pushNewText = `${newCount} new`;

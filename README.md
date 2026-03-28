@@ -278,7 +278,7 @@ When you rebase, squash-merge, or force-push, Git creates new commits that repla
 my-feature (base origin/main, share origin/my-feature)
 
   REPO     LAST COMMIT    BASE                 SHARE                                    LOCAL
-  api      1 hour         2 ahead              1 from main + 2 rebased → 2 outdated     clean
+  api      1 hour         2 ahead              1 from base + 2 rebased → 2 outdated     clean
   shared   2 hours        2 ahead, 3 behind    2 new → 1 new                            1 change
 ```
 

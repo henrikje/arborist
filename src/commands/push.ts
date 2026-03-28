@@ -331,7 +331,7 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
       const fromBase = Math.max(0, a.ahead - a.baseAhead);
       const newCount = Math.max(0, a.ahead - fromBase - a.rebased);
       const parts: string[] = [];
-      if (fromBase > 0) parts.push(`${fromBase} from ${a.baseRef}`);
+      if (fromBase > 0) parts.push(`${fromBase} from base`);
       if (a.rebased > 0) parts.push(`${a.rebased} rebased`);
       if (newCount > 0) parts.push(`${newCount} new`);
       desc = parts.length > 0 ? parts.join(" + ") : plural(a.ahead, "commit");
@@ -349,7 +349,7 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
       const fromBase = Math.max(0, a.ahead - a.baseAhead);
       const newCount = Math.max(0, a.ahead - fromBase - a.rebased);
       const parts: string[] = [];
-      if (fromBase > 0) parts.push(`${fromBase} from ${a.baseRef}`);
+      if (fromBase > 0) parts.push(`${fromBase} from base`);
       if (a.rebased > 0) parts.push(`${a.rebased} rebased`);
       if (newCount > 0) parts.push(`${newCount} new`);
       const desc = parts.length > 0 ? parts.join(" + ") : plural(a.ahead, "commit");
@@ -371,7 +371,7 @@ export function pushActionCell(a: PushAssessment, remotesMap: Map<string, RepoRe
     const fromBase = Math.max(0, a.ahead - a.baseAhead);
     const newCount = Math.max(0, a.ahead - fromBase - a.rebased);
     const parts: string[] = [];
-    if (fromBase > 0) parts.push(`${fromBase} from ${a.baseRef}`);
+    if (fromBase > 0) parts.push(`${fromBase} from base`);
     if (a.rebased > 0) parts.push(`${a.rebased} rebased`);
     if (newCount > 0) parts.push(`${newCount} new`);
     const desc = parts.length > 0 ? parts.join(" + ") : plural(a.ahead, "commit");
