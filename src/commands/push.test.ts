@@ -834,14 +834,14 @@ describe("formatPushPlan", () => {
 
   test("shows from-base + new breakdown for will-push when baseAhead > 0", () => {
     const plan = formatPushPlan([makeAssessment({ ahead: 3, baseAhead: 1 })], makeRemotesMap(["repo-a", {}]));
-    expect(plan).toContain("2 from main + 1 new");
+    expect(plan).toContain("2 from base + 1 new");
     expect(plan).toContain("to push");
   });
 
   test("shows only new for will-push when all commits are from base branch", () => {
     const plan = formatPushPlan([makeAssessment({ ahead: 2, baseAhead: 2 })], makeRemotesMap(["repo-a", {}]));
     expect(plan).toContain("2 new");
-    expect(plan).not.toContain("from main");
+    expect(plan).not.toContain("from base");
     expect(plan).toContain("to push");
   });
 
@@ -857,7 +857,7 @@ describe("formatPushPlan", () => {
       [makeAssessment({ ahead: 3, baseAhead: 1, newBranch: true })],
       makeRemotesMap(["repo-a", {}]),
     );
-    expect(plan).toContain("2 from main + 1 new");
+    expect(plan).toContain("2 from base + 1 new");
     expect(plan).toContain("(new branch: origin/feature)");
   });
 
@@ -866,7 +866,7 @@ describe("formatPushPlan", () => {
       [makeAssessment({ ahead: 3, baseAhead: 1, behindBase: 2 })],
       makeRemotesMap(["repo-a", {}]),
     );
-    expect(plan).toContain("2 from main + 1 new");
+    expect(plan).toContain("2 from base + 1 new");
     expect(plan).toContain("2 behind base");
   });
 
@@ -938,7 +938,7 @@ describe("formatPushPlan", () => {
       [makeAssessment({ outcome: "will-force-push", ahead: 4, behind: 2, rebased: 0, baseAhead: 2 })],
       makeRemotesMap(["repo-a", {}]),
     );
-    expect(plan).toContain("2 from main + 2 new");
+    expect(plan).toContain("2 from base + 2 new");
     expect(plan).toContain("(force)");
   });
 
@@ -947,7 +947,7 @@ describe("formatPushPlan", () => {
       [makeAssessment({ outcome: "will-force-push", ahead: 5, behind: 3, rebased: 1, baseAhead: 3 })],
       makeRemotesMap(["repo-a", {}]),
     );
-    expect(plan).toContain("2 from main + 1 rebased + 2 new");
+    expect(plan).toContain("2 from base + 1 rebased + 2 new");
     expect(plan).toContain("(force)");
   });
 
@@ -1014,7 +1014,7 @@ describe("formatPushPlan", () => {
       ],
       makeRemotesMap(["repo-a", {}]),
     );
-    expect(plan).toContain("2 from main + 1 new");
+    expect(plan).toContain("2 from base + 1 new");
     expect(plan).toContain("replaces 1 outdated on origin");
     expect(plan).not.toContain("force");
   });
@@ -1033,7 +1033,7 @@ describe("formatPushPlan", () => {
       ],
       makeRemotesMap(["repo-a", {}]),
     );
-    expect(plan).toContain("2 from main + 1 rebased + 2 new");
+    expect(plan).toContain("2 from base + 1 rebased + 2 new");
     expect(plan).toContain("replaces 2 outdated on origin");
   });
 
@@ -1369,7 +1369,7 @@ describe("pushActionCell", () => {
       makeAssessment({ outcome: "will-force-push-outdated", ahead: 5, behind: 2, baseAhead: 3, rebased: 1 }),
       makeRemotesMap(["repo-a", {}]),
     );
-    expect(result.plain).toContain("from main");
+    expect(result.plain).toContain("from base");
     expect(result.plain).toContain("1 rebased");
     expect(result.plain).toContain("replaces 2 outdated");
   });
@@ -1403,7 +1403,7 @@ describe("pushActionCell", () => {
       }),
       makeRemotesMap(["repo-a", {}]),
     );
-    expect(result.plain).toContain("from main");
+    expect(result.plain).toContain("from base");
     expect(result.plain).toContain("4 behind base");
     expect(result.plain).toContain("replaces 2 outdated");
   });
@@ -1413,7 +1413,7 @@ describe("pushActionCell", () => {
       makeAssessment({ outcome: "will-force-push", ahead: 4, behind: 1, baseAhead: 2, rebased: 1 }),
       makeRemotesMap(["repo-a", {}]),
     );
-    expect(result.plain).toContain("from main");
+    expect(result.plain).toContain("from base");
     expect(result.plain).toContain("1 rebased");
     expect(result.plain).toContain("(force)");
   });

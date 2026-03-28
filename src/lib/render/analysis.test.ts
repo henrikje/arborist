@@ -643,7 +643,7 @@ describe("plainRemoteDiff", () => {
       },
     });
     // fromBase = 7-4 = 3, rebased = 2, newCount = 4-2 = 2; pull: outdated = 2, newPull = 3-2 = 1
-    expect(plainRemoteDiff(repo)).toBe("3 from main + 2 rebased + 2 new → 2 outdated + 1 new");
+    expect(plainRemoteDiff(repo)).toBe("3 from base + 2 rebased + 2 new → 2 outdated + 1 new");
   });
 
   test("simple push count", () => {
@@ -717,7 +717,7 @@ describe("plainRemoteDiff", () => {
       },
     });
     // fromBase = 5-2 = 3, rebased = 2, newCount = 2-2 = 0; pull: outdated = 2
-    expect(plainRemoteDiff(repo)).toBe("3 from main + 2 rebased → 2 outdated");
+    expect(plainRemoteDiff(repo)).toBe("3 from base + 2 rebased → 2 outdated");
   });
 
   test("rebased + new (no fromBase)", () => {
@@ -900,7 +900,7 @@ describe("plainRemoteDiff", () => {
     expect(plainRemoteDiff(repo)).toBe("3 to push + 2 rebased → 2 outdated + 1 new");
   });
 
-  test("uses base ref name in from label", () => {
+  test("uses 'from base' regardless of base ref name", () => {
     const repo = makeRepo({
       base: {
         remote: "origin",
@@ -921,7 +921,7 @@ describe("plainRemoteDiff", () => {
       },
     });
     // pull: outdated = 2
-    expect(plainRemoteDiff(repo)).toBe("3 from develop + 2 rebased → 2 outdated");
+    expect(plainRemoteDiff(repo)).toBe("3 from base + 2 rebased → 2 outdated");
   });
 });
 
@@ -1078,7 +1078,7 @@ describe("analyzeRemoteDiff", () => {
     const flags = computeFlags(repo, "feature");
     // fromBase=3, rebased=2, newCount=2; pull: outdated=2, newPull=1
     const result = analyzeRemoteDiff(repo, flags, false);
-    expect(result.plain).toBe("3 from main + 2 rebased + 2 new → 2 outdated + 1 new");
+    expect(result.plain).toBe("3 from base + 2 rebased + 2 new → 2 outdated + 1 new");
     const pullNew = result.spans.filter((s) => s.text === "1 new").at(-1);
     expect(pullNew?.attention).toBe("default");
   });
@@ -1105,12 +1105,12 @@ describe("analyzeRemoteDiff", () => {
     });
     const flags = computeFlags(repo, "feature");
     const result = analyzeRemoteDiff(repo, flags, true);
-    expect(result.plain).toBe("3 from main + 2 rebased + 2 new → 2 outdated + 1 new");
+    expect(result.plain).toBe("3 from base + 2 rebased + 2 new → 2 outdated + 1 new");
     const pullNew = result.spans.filter((s) => s.text === "1 new").at(-1);
     expect(pullNew?.attention).toBe("attention");
   });
 
-  test("push-side highlights only n new (from main stays default)", () => {
+  test("push-side highlights only n new (from base stays default)", () => {
     const repo = makeRepo({
       base: {
         remote: "origin",
@@ -1132,10 +1132,10 @@ describe("analyzeRemoteDiff", () => {
     });
     const flags = computeFlags(repo, "feature");
     const result = analyzeRemoteDiff(repo, flags);
-    expect(result.plain).toBe("3 from main + 2 rebased + 2 new");
-    const fromMain = result.spans.find((s) => s.text.includes("from main"));
+    expect(result.plain).toBe("3 from base + 2 rebased + 2 new");
+    const fromBase = result.spans.find((s) => s.text.includes("from base"));
     const pushNew = result.spans.find((s) => s.text === "2 new");
-    expect(fromMain?.attention).toBe("default");
+    expect(fromBase?.attention).toBe("default");
     expect(pushNew?.attention).toBe("attention");
   });
 
@@ -1162,7 +1162,7 @@ describe("analyzeRemoteDiff", () => {
     const flags = computeFlags(repo, "feature");
     // fromBase=3, rebased=2, newCount=0 → push default; pull: 2 outdated
     const result = analyzeRemoteDiff(repo, flags);
-    expect(result.plain).toBe("3 from main + 2 rebased → 2 outdated");
+    expect(result.plain).toBe("3 from base + 2 rebased → 2 outdated");
     expect(result.spans[0]?.attention).toBe("default");
   });
 
