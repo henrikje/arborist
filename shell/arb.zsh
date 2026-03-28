@@ -519,7 +519,6 @@ _arb() {
                     _arguments \
                         '--ending-with[Extract prefix (base through boundary) into new workspace]:specs:' \
                         '--starting-with[Extract suffix (boundary through tip) into new workspace]:specs:' \
-                        '--after-merge[Extract suffix after merge point (auto-detect)]' \
                         '(-b --branch)'{-b,--branch}'[Branch name for new workspace]:branch:' \
                         '(-N --fetch --no-fetch)--fetch[Fetch before extract (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before extract]' \

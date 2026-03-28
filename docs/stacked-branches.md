@@ -97,13 +97,13 @@ This extracts everything from commit `abc123` through the tip into a new workspa
 
 ### Post-merge continuation
 
-If your branch was merged but you kept committing:
+If your branch was merged but you kept committing, use `arb log` or `arb status -v` to find the first post-merge commit SHA, then extract from there:
 
 ```bash
-arb extract next-feature --after-merge --yes
+arb extract next-feature --starting-with <first-post-merge-sha> --yes
 ```
 
-This auto-detects the merge point and extracts the post-merge commits into a new workspace.
+Split points in base-merged workspaces must be at or after the merge point — pre-merge commits are already on the default branch.
 
 ### Split points across repos
 

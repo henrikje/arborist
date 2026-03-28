@@ -267,7 +267,7 @@ export function buildPushPlanNodes(
     nodes.push({
       kind: "hint",
       cell: cell(
-        `  hint: ${plural(mergedNewWorkCount, "repo")} ${mergedNewWorkCount === 1 ? "was" : "were"} merged but ${mergedNewWorkCount === 1 ? "has" : "have"} new commits since — run 'arb rebase' or 'arb extract --after-merge <workspace>' to split`,
+        `  hint: ${plural(mergedNewWorkCount, "repo")} ${mergedNewWorkCount === 1 ? "was" : "were"} merged but ${mergedNewWorkCount === 1 ? "has" : "have"} new commits since — run 'arb rebase' or 'arb extract <workspace> --starting-with <sha>' to split`,
         "muted",
       ),
     });

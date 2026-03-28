@@ -31,7 +31,7 @@ import { assessExtractRepo } from "../lib/sync/classify-extract";
 import { runContinueFlow } from "../lib/sync/continue-flow";
 import { parseSplitPoints, resolveSplitPoints } from "../lib/sync/parse-split-points";
 import type { ExtractAssessment } from "../lib/sync/types";
-import { dryRunNotice, error, info, inlineResult, inlineStart, plural, yellow } from "../lib/terminal";
+import { dryRunNotice, error, inlineResult, inlineStart, plural, yellow } from "../lib/terminal";
 import { shouldColor } from "../lib/terminal/tty";
 import { addWorktrees, requireBranch, requireWorkspace, workspaceRepoDirs } from "../lib/workspace";
 import { validateWorkspaceName } from "../lib/workspace/validation";
@@ -40,19 +40,14 @@ export function registerExtractCommand(program: Command): void {
   program
     .command("extract <workspace>")
     .addOption(
-      new Option("--ending-with <specs...>", "Extract prefix (base through boundary) into new workspace")
-        .conflicts("startingWith")
-        .conflicts("afterMerge"),
+      new Option("--ending-with <specs...>", "Extract prefix (base through boundary) into new workspace").conflicts(
+        "startingWith",
+      ),
     )
     .addOption(
-      new Option("--starting-with <specs...>", "Extract suffix (boundary through tip) into new workspace")
-        .conflicts("endingWith")
-        .conflicts("afterMerge"),
-    )
-    .addOption(
-      new Option("--after-merge", "Extract suffix after merge point (auto-detect)")
-        .conflicts("endingWith")
-        .conflicts("startingWith"),
+      new Option("--starting-with <specs...>", "Extract suffix (boundary through tip) into new workspace").conflicts(
+        "endingWith",
+      ),
     )
     .option("-b, --branch <name>", "Branch name for new workspace (defaults to workspace name)")
     .option("--fetch", "Fetch from all remotes before extract (default)")
@@ -68,17 +63,17 @@ export function registerExtractCommand(program: Command): void {
     )
     .summary("Extract commits into a new workspace")
     .description(
-      "Examples:\n\n  arb extract prereq --ending-with abc123          Extract prefix into 'prereq'\n  arb extract cont --starting-with abc123           Extract suffix into 'cont'\n  arb extract cont --after-merge                    Extract post-merge commits\n  arb extract prereq --ending-with abc123,def456    Multiple repos (auto-detect)\n  arb extract prereq --ending-with api:HEAD~3       Per-repo with explicit prefix\n\nSplits the current workspace's branch at a boundary commit, creating a new stacked workspace.\n\nWith --ending-with, extracts the prefix (base through boundary, inclusive) into a new lower workspace. The original workspace is rebased to stack on top.\n\nWith --starting-with, extracts the suffix (boundary through tip, inclusive) into a new upper workspace. The original workspace is reset to before the boundary.\n\nWith --after-merge, auto-detects the merge point and extracts post-merge commits into a new workspace.\n\nSplit points are specified as commit SHAs (auto-detect repo), <repo>:<commit-ish> (explicit), or tags. Multiple values can be comma-separated.\n\nRepos without an explicit split point have zero commits extracted — they are included in both workspaces but just track the base.",
+      "Examples:\n\n  arb extract prereq --ending-with abc123          Extract prefix into 'prereq'\n  arb extract cont --starting-with abc123           Extract suffix into 'cont'\n  arb extract prereq --ending-with abc123,def456    Multiple repos (auto-detect)\n  arb extract prereq --ending-with api:HEAD~3       Per-repo with explicit prefix\n\nSplits the current workspace's branch at a boundary commit, creating a new stacked workspace.\n\nWith --ending-with, extracts the prefix (base through boundary, inclusive) into a new lower workspace. The original workspace is rebased to stack on top.\n\nWith --starting-with, extracts the suffix (boundary through tip, inclusive) into a new upper workspace. The original workspace is reset to before the boundary.\n\nSplit points are specified as commit SHAs (auto-detect repo), <repo>:<commit-ish> (explicit), or tags. Multiple values can be comma-separated.\n\nRepos without an explicit split point have zero commits extracted — they are included in both workspaces but just track the base.\n\nIn base-merged workspaces, split points must be at or after the merge point — pre-merge commits are already on the default branch.",
     )
     .action(
       arbAction(async (ctx, workspaceName: string, options) => {
         const { wsDir, workspace } = requireWorkspace(ctx);
 
         // ── Operation lifecycle: --continue, --abort, gate ──
-        if ((options.continue || options.abort) && (options.endingWith || options.startingWith || options.afterMerge)) {
+        if ((options.continue || options.abort) && (options.endingWith || options.startingWith)) {
           const flag = options.continue ? "--continue" : "--abort";
-          error(`${flag} does not accept --ending-with, --starting-with, or --after-merge`);
-          throw new ArbError(`${flag} does not accept --ending-with, --starting-with, or --after-merge`);
+          error(`${flag} does not accept --ending-with or --starting-with`);
+          throw new ArbError(`${flag} does not accept --ending-with or --starting-with`);
         }
 
         const inProgress = readInProgressOperation(wsDir, "extract") as
@@ -182,14 +177,12 @@ export function registerExtractCommand(program: Command): void {
         }
 
         // Direction from flags
-        if (!options.endingWith && !options.startingWith && !options.afterMerge) {
-          const msg =
-            "Specify --ending-with (prefix extraction), --starting-with (suffix extraction), or --after-merge";
+        if (!options.endingWith && !options.startingWith) {
+          const msg = "Specify --ending-with (prefix extraction) or --starting-with (suffix extraction)";
           error(msg);
           throw new ArbError(msg);
         }
         const direction: "prefix" | "suffix" = options.endingWith ? "prefix" : "suffix";
-        const afterMerge = options.afterMerge === true;
 
         const targetBranch = options.branch ?? workspaceName;
 
@@ -262,19 +255,38 @@ export function registerExtractCommand(program: Command): void {
           cache,
           analysisCache: ctx.analysisCache,
           classify: async ({ repo, repoDir, status, fetchFailed }) => {
-            let boundary = resolvedSplitPoints.get(repo)?.commitSha ?? null;
+            const boundary = resolvedSplitPoints.get(repo)?.commitSha ?? null;
 
-            // --from-merge: auto-detect boundary from merge detection
-            if (afterMerge && !boundary && status.base?.merge?.newCommitsAfter != null) {
+            // Merge-point floor: in merged repos, reject split points below the merge point
+            if (boundary && status.base?.merge?.newCommitsAfter) {
               const n = status.base.merge.newCommitsAfter;
-              if (n > 0) {
-                try {
-                  // The first post-merge commit is the boundary (inclusive in extracted set)
-                  const { stdout } = await gitLocal(repoDir, "rev-parse", `HEAD~${n - 1}`);
-                  boundary = stdout.trim();
-                } catch {
-                  // Cannot resolve merge boundary — treat as no-op for this repo
+              try {
+                // HEAD~(n-1) is the first post-merge commit (the inclusive floor)
+                const { stdout: floorStr } = await gitLocal(repoDir, "rev-parse", `HEAD~${n - 1}`);
+                const floor = floorStr.trim();
+                const { exitCode } = await gitLocal(repoDir, "merge-base", "--is-ancestor", floor, boundary);
+                if (exitCode !== 0) {
+                  return {
+                    repo,
+                    repoDir,
+                    branch,
+                    direction,
+                    targetBranch,
+                    boundary,
+                    mergeBase: mergeBaseMap.get(repo) ?? "",
+                    commitsExtracted: 0,
+                    commitsRemaining: 0,
+                    headSha: status.headSha ?? "",
+                    shallow: status.identity.shallow,
+                    baseRemote: status.base?.remote ?? "",
+                    baseResolvedLocally: status.base?.resolvedVia === "local",
+                    outcome: "skip" as const,
+                    skipReason: "split point is before the merge point — only post-merge commits can be extracted",
+                    skipFlag: "below-merge-point" as const,
+                  };
                 }
+              } catch {
+                // Cannot resolve merge point — fall through to normal assessment
               }
             }
 
@@ -386,9 +398,6 @@ export function registerExtractCommand(program: Command): void {
         if (willExtract.length === 0) {
           if (skipped.length > 0) {
             error("Cannot extract: all repos are blocked or have no commits to extract.");
-          } else if (afterMerge) {
-            error("Nothing to extract — no repos have been merged.");
-            info("Use --ending-with or --starting-with to specify a split point.");
           } else {
             error("Nothing to extract — no repos have commits at the specified split points.");
           }
