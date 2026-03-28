@@ -267,6 +267,12 @@ interface ExtractAssessmentBase {
   wrongBranch?: boolean;
   baseRemote: string;
   baseResolvedLocally?: boolean;
+  verbose?: {
+    extractedCommits?: CommitDisplayEntry[];
+    totalExtracted?: number;
+    remainingCommits?: CommitDisplayEntry[];
+    totalRemaining?: number;
+  };
 }
 
 export interface ExtractSkipAssessment extends ExtractAssessmentBase {

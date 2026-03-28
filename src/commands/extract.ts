@@ -13,14 +13,20 @@ import {
   writeOperationRecord,
   writeWorkspaceConfig,
 } from "../lib/core";
-import { branchExistsLocally, gitLocal } from "../lib/git";
-import { finishSummary, render } from "../lib/render";
+import { branchExistsLocally, getCommitsBetweenFull, gitLocal } from "../lib/git";
+import { finishSummary, render, verboseCommitsToNodes } from "../lib/render";
 import type { RenderContext } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
 import { cell, skipCell } from "../lib/render";
 import { buildConflictReport } from "../lib/render/conflict-report";
 import { EXTRACT_EXEMPT_SKIPS } from "../lib/status";
-import { buildCachedStatusAssess, confirmOrExit, resolveDefaultFetch, runPlanFlow } from "../lib/sync";
+import {
+  VERBOSE_COMMIT_LIMIT,
+  buildCachedStatusAssess,
+  confirmOrExit,
+  resolveDefaultFetch,
+  runPlanFlow,
+} from "../lib/sync";
 import { assessExtractRepo } from "../lib/sync/classify-extract";
 import { runContinueFlow } from "../lib/sync/continue-flow";
 import { parseSplitPoints, resolveSplitPoints } from "../lib/sync/parse-split-points";
@@ -53,8 +59,7 @@ export function registerExtractCommand(program: Command): void {
     .option("-N, --no-fetch", "Skip fetching before extract")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("--dry-run", "Show what would happen without executing")
-    // TODO: implement verbose plan with per-commit listing
-    // .option("-v, --verbose", "Show per-commit details in the plan")
+    .option("-v, --verbose", "Show per-commit details in the plan")
     .option("--autostash", "Stash uncommitted changes before operation")
     .option("--include-wrong-branch", "Include repos on a different branch than the workspace")
     .addOption(new Option("--continue", "Resume after resolving conflicts").conflicts("abort"))
@@ -346,6 +351,9 @@ export function registerExtractCommand(program: Command): void {
               // If counting fails, leave as 0
             }
           }
+          if (options.verbose) {
+            await gatherExtractVerboseCommits(nextAssessments, direction);
+          }
           return nextAssessments;
         };
 
@@ -365,6 +373,7 @@ export function registerExtractCommand(program: Command): void {
               direction,
               configBase,
               planEndpoints,
+              options.verbose,
             ),
           onPostFetch: () => cache.invalidateAfterFetch(),
         });
@@ -615,6 +624,7 @@ export function formatExtractPlan(
   direction: "prefix" | "suffix",
   configBase: string | null,
   endpoints?: Map<string, { extractEnd: string; remainEnd: string }>,
+  verbose?: boolean,
 ): string {
   const nodes = buildExtractPlanNodes(
     assessments,
@@ -624,6 +634,7 @@ export function formatExtractPlan(
     direction,
     configBase,
     endpoints,
+    verbose,
   );
   const envCols = Number(process.env.COLUMNS);
   const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
@@ -639,8 +650,8 @@ function buildExtractPlanNodes(
   direction: "prefix" | "suffix",
   configBase: string | null,
   endpoints?: Map<string, { extractEnd: string; remainEnd: string }>,
+  verbose?: boolean,
 ): OutputNode[] {
-  // TODO: add verbose plan with per-commit listing when --verbose is implemented
   const nodes: OutputNode[] = [{ kind: "gap" }];
 
   // Header
@@ -704,10 +715,41 @@ function buildExtractPlanNodes(
       origCell = cell("");
     }
 
-    if (direction === "prefix") {
-      return { cells: { repo: cell(a.repo), new: newCell, orig: origCell } };
+    let afterRow: OutputNode[] | undefined;
+    if (verbose && a.outcome === "will-extract" && a.verbose) {
+      const verboseNodes: OutputNode[] = [];
+      const extractedLabel = `Extracted to ${targetWorkspace}:`;
+      const staysLabel = `Stays in ${workspace}:`;
+
+      const extractedSection =
+        a.verbose.extractedCommits && a.verbose.extractedCommits.length > 0
+          ? verboseCommitsToNodes(
+              a.verbose.extractedCommits,
+              a.verbose.totalExtracted ?? a.verbose.extractedCommits.length,
+              extractedLabel,
+            )
+          : [];
+      const staysSection =
+        a.verbose.remainingCommits && a.verbose.remainingCommits.length > 0
+          ? verboseCommitsToNodes(
+              a.verbose.remainingCommits,
+              a.verbose.totalRemaining ?? a.verbose.remainingCommits.length,
+              staysLabel,
+            )
+          : [];
+
+      if (direction === "prefix") {
+        verboseNodes.push(...extractedSection, ...staysSection);
+      } else {
+        verboseNodes.push(...staysSection, ...extractedSection);
+      }
+      if (verboseNodes.length > 0) afterRow = verboseNodes;
     }
-    return { cells: { repo: cell(a.repo), orig: origCell, new: newCell } };
+
+    if (direction === "prefix") {
+      return { cells: { repo: cell(a.repo), new: newCell, orig: origCell }, afterRow };
+    }
+    return { cells: { repo: cell(a.repo), orig: origCell, new: newCell }, afterRow };
   });
 
   const columns =
@@ -750,6 +792,39 @@ function buildExtractPlanNodes(
 }
 
 // ── Helpers ──
+
+/** Gather per-commit details for the extract plan's verbose mode. */
+async function gatherExtractVerboseCommits(
+  assessments: ExtractAssessment[],
+  direction: "prefix" | "suffix",
+): Promise<void> {
+  await Promise.all(
+    assessments
+      .filter((a): a is ExtractAssessment & { boundary: string } => a.outcome === "will-extract" && a.boundary != null)
+      .map(async (a) => {
+        try {
+          const boundary = a.boundary;
+          let extracted: { shortHash: string; fullHash: string; subject: string }[];
+          let remaining: { shortHash: string; fullHash: string; subject: string }[];
+          if (direction === "prefix") {
+            extracted = await getCommitsBetweenFull(a.repoDir, a.mergeBase, boundary);
+            remaining = await getCommitsBetweenFull(a.repoDir, boundary, "HEAD");
+          } else {
+            remaining = await getCommitsBetweenFull(a.repoDir, a.mergeBase, `${boundary}^`);
+            extracted = await getCommitsBetweenFull(a.repoDir, `${boundary}^`, "HEAD");
+          }
+          a.verbose = {
+            extractedCommits: extracted.slice(0, VERBOSE_COMMIT_LIMIT),
+            totalExtracted: extracted.length,
+            remainingCommits: remaining.slice(0, VERBOSE_COMMIT_LIMIT),
+            totalRemaining: remaining.length,
+          };
+        } catch {
+          // If commit gathering fails, leave verbose empty
+        }
+      }),
+  );
+}
 
 /** Delete branches created in canonical repos during extract (for abort/undo). */
 async function cleanupExtractBranches(

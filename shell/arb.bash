@@ -536,7 +536,7 @@ __arb_complete_merge() {
 __arb_complete_extract() {
     local base_dir="$1" cur="$2"
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--ending-with --starting-with --after-merge -b --branch --fetch -N --no-fetch -y --yes --dry-run --autostash --include-wrong-branch --continue --abort" -- "$cur"))
+        COMPREPLY=($(compgen -W "--ending-with --starting-with --after-merge -b --branch --fetch -N --no-fetch -y --yes --dry-run -v --verbose --autostash --include-wrong-branch --continue --abort" -- "$cur"))
         return
     fi
 }
