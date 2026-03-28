@@ -34,17 +34,19 @@ export function registerExtractCommand(program: Command): void {
   program
     .command("extract <workspace>")
     .addOption(
-      new Option("--to <specs...>", "Extract prefix (base through boundary) into new workspace")
-        .conflicts("from")
-        .conflicts("fromMerge"),
+      new Option("--ending-with <specs...>", "Extract prefix (base through boundary) into new workspace")
+        .conflicts("startingWith")
+        .conflicts("afterMerge"),
     )
     .addOption(
-      new Option("--from <specs...>", "Extract suffix (boundary through tip) into new workspace")
-        .conflicts("to")
-        .conflicts("fromMerge"),
+      new Option("--starting-with <specs...>", "Extract suffix (boundary through tip) into new workspace")
+        .conflicts("endingWith")
+        .conflicts("afterMerge"),
     )
     .addOption(
-      new Option("--from-merge", "Extract suffix after merge point (auto-detect)").conflicts("to").conflicts("from"),
+      new Option("--after-merge", "Extract suffix after merge point (auto-detect)")
+        .conflicts("endingWith")
+        .conflicts("startingWith"),
     )
     .option("-b, --branch <name>", "Branch name for new workspace (defaults to workspace name)")
     .option("--fetch", "Fetch from all remotes before extract (default)")
@@ -61,17 +63,17 @@ export function registerExtractCommand(program: Command): void {
     )
     .summary("Extract commits into a new workspace")
     .description(
-      "Examples:\n\n  arb extract prereq --to abc123             Extract prefix into 'prereq'\n  arb extract cont --from abc123              Extract suffix into 'cont'\n  arb extract cont --from-merge               Extract post-merge commits\n  arb extract prereq --to abc123,def456       Multiple repos (auto-detect)\n  arb extract prereq --to api:HEAD~3          Per-repo with explicit prefix\n\nSplits the current workspace's branch at a boundary commit, creating a new stacked workspace.\n\nWith --to, extracts the prefix (base through boundary) into a new lower workspace. The original workspace is rebased to stack on top.\n\nWith --from, extracts the suffix (boundary through tip) into a new upper workspace. The original workspace is reset to the boundary.\n\nWith --from-merge, auto-detects the merge point for repos where the branch was merged.\n\nSplit points are specified as commit SHAs (auto-detect repo), <repo>:<commit-ish> (explicit), or tags. Multiple values can be comma-separated.\n\nRepos without an explicit split point have zero commits extracted — they are included in both workspaces but just track the base.",
+      "Examples:\n\n  arb extract prereq --ending-with abc123         Extract prefix into 'prereq'\n  arb extract cont --starting-with abc123          Extract suffix into 'cont'\n  arb extract cont --after-merge                   Extract post-merge commits\n  arb extract prereq --ending-with abc123,def456   Multiple repos (auto-detect)\n  arb extract prereq --ending-with api:HEAD~3      Per-repo with explicit prefix\n\nSplits the current workspace's branch at a boundary commit, creating a new stacked workspace.\n\nWith --ending-with, extracts the prefix (base through boundary, inclusive) into a new lower workspace. The original workspace is rebased to stack on top.\n\nWith --starting-with, extracts the suffix (boundary through tip, inclusive) into a new upper workspace. The original workspace is reset to before the boundary.\n\nWith --after-merge, auto-detects the merge point and extracts post-merge commits into a new workspace.\n\nSplit points are specified as commit SHAs (auto-detect repo), <repo>:<commit-ish> (explicit), or tags. Multiple values can be comma-separated.\n\nRepos without an explicit split point have zero commits extracted — they are included in both workspaces but just track the base.",
     )
     .action(
       arbAction(async (ctx, workspaceName: string, options) => {
         const { wsDir, workspace } = requireWorkspace(ctx);
 
         // ── Operation lifecycle: --continue, --abort, gate ──
-        if ((options.continue || options.abort) && (options.to || options.from || options.fromMerge)) {
+        if ((options.continue || options.abort) && (options.endingWith || options.startingWith || options.afterMerge)) {
           const flag = options.continue ? "--continue" : "--abort";
-          error(`${flag} does not accept --to, --from, or --from-merge`);
-          throw new ArbError(`${flag} does not accept --to, --from, or --from-merge`);
+          error(`${flag} does not accept --ending-with, --starting-with, or --after-merge`);
+          throw new ArbError(`${flag} does not accept --ending-with, --starting-with, or --after-merge`);
         }
 
         const inProgress = readInProgressOperation(wsDir, "extract") as
@@ -175,13 +177,14 @@ export function registerExtractCommand(program: Command): void {
         }
 
         // Direction from flags
-        if (!options.to && !options.from && !options.fromMerge) {
-          const msg = "Specify --to (prefix extraction), --from (suffix extraction), or --from-merge";
+        if (!options.endingWith && !options.startingWith && !options.afterMerge) {
+          const msg =
+            "Specify --ending-with (prefix extraction), --starting-with (suffix extraction), or --after-merge";
           error(msg);
           throw new ArbError(msg);
         }
-        const direction: "prefix" | "suffix" = options.to ? "prefix" : "suffix";
-        const fromMerge = options.fromMerge === true;
+        const direction: "prefix" | "suffix" = options.endingWith ? "prefix" : "suffix";
+        const afterMerge = options.afterMerge === true;
 
         const targetBranch = options.branch ?? workspaceName;
 
@@ -214,7 +217,7 @@ export function registerExtractCommand(program: Command): void {
 
         // ── Parse split points ──
 
-        const rawSpecs = options.to ?? options.from ?? [];
+        const rawSpecs = options.endingWith ?? options.startingWith ?? [];
         const specs = parseSplitPoints(Array.isArray(rawSpecs) ? rawSpecs : [rawSpecs]);
 
         // Compute merge-base per repo (needed for split point resolution and classifier)
@@ -257,7 +260,7 @@ export function registerExtractCommand(program: Command): void {
             let boundary = resolvedSplitPoints.get(repo)?.commitSha ?? null;
 
             // --from-merge: auto-detect boundary from merge detection
-            if (fromMerge && !boundary && status.base?.merge?.newCommitsAfter != null) {
+            if (afterMerge && !boundary && status.base?.merge?.newCommitsAfter != null) {
               const n = status.base.merge.newCommitsAfter;
               if (n > 0) {
                 try {
@@ -683,8 +686,8 @@ function buildExtractPlanNodes(
   nodes.push({ kind: "gap" });
 
   // Column names depend on direction
-  const newLabel = `${targetWorkspace} (new)`;
-  const origLabel = `${workspace} (stays)`;
+  const newLabel = `EXTRACTED (${targetWorkspace})`;
+  const origLabel = `STAYS (${workspace})`;
 
   const rows = assessments.map((a) => {
     let newCell: Cell;
@@ -734,13 +737,13 @@ function buildExtractPlanNodes(
     direction === "prefix"
       ? [
           { header: "REPO", key: "repo" },
-          { header: newLabel.toUpperCase(), key: "new" },
-          { header: origLabel.toUpperCase(), key: "orig" },
+          { header: newLabel, key: "new" },
+          { header: origLabel, key: "orig" },
         ]
       : [
           { header: "REPO", key: "repo" },
-          { header: origLabel.toUpperCase(), key: "orig" },
-          { header: newLabel.toUpperCase(), key: "new" },
+          { header: origLabel, key: "orig" },
+          { header: newLabel, key: "new" },
         ];
 
   nodes.push({ kind: "table", columns, rows });

@@ -33,19 +33,19 @@ async function logOneline(env: { projectDir: string }, wsName: string, repo: str
 // ── Validation ──
 
 describe("extract validation", () => {
-  test("errors when no --to/--from/--from-merge given", () =>
+  test("errors when no direction flag given", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "ws", "-b", "ws", "repo-a"]);
       const result = await arb(env, ["extract", "new-ws"], { cwd: join(env.projectDir, "ws") });
       expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("Specify --to");
+      expect(result.output).toContain("Specify --ending-with");
     }));
 
   test("errors when workspace name already exists", () =>
     withEnv(async (env) => {
       const shas = await setupWithCommits(env, "ws", 3);
       await arb(env, ["create", "existing", "-b", "existing", "repo-a"]);
-      const result = await arb(env, ["extract", "existing", "--to", shas[1] ?? ""], {
+      const result = await arb(env, ["extract", "existing", "--ending-with", shas[1] ?? ""], {
         cwd: join(env.projectDir, "ws"),
       });
       expect(result.exitCode).not.toBe(0);
@@ -56,7 +56,9 @@ describe("extract validation", () => {
     withEnv(async (env) => {
       const shas = await setupWithCommits(env, "ws", 3);
       await git(join(env.projectDir, ".arb/repos/repo-a"), ["branch", "prereq"]);
-      const result = await arb(env, ["extract", "prereq", "--to", shas[1] ?? ""], { cwd: join(env.projectDir, "ws") });
+      const result = await arb(env, ["extract", "prereq", "--ending-with", shas[1] ?? ""], {
+        cwd: join(env.projectDir, "ws"),
+      });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("already exists");
     }));
@@ -64,7 +66,7 @@ describe("extract validation", () => {
   test("errors when target branch matches workspace branch", () =>
     withEnv(async (env) => {
       const shas = await setupWithCommits(env, "ws", 3);
-      const result = await arb(env, ["extract", "other", "-b", "ws", "--to", shas[1] ?? ""], {
+      const result = await arb(env, ["extract", "other", "-b", "ws", "--ending-with", shas[1] ?? ""], {
         cwd: join(env.projectDir, "ws"),
       });
       expect(result.exitCode).not.toBe(0);
@@ -75,7 +77,7 @@ describe("extract validation", () => {
     withEnv(async (env) => {
       const shas = await setupWithCommits(env, "ws", 3);
       await write(join(env.projectDir, "ws/repo-a/dirty.txt"), "dirty");
-      const result = await arb(env, ["extract", "prereq", "--to", shas[1] ?? "", "--yes", "--no-fetch"], {
+      const result = await arb(env, ["extract", "prereq", "--ending-with", shas[1] ?? "", "--yes", "--no-fetch"], {
         cwd: join(env.projectDir, "ws"),
       });
       expect(result.exitCode).not.toBe(0);
@@ -86,7 +88,7 @@ describe("extract validation", () => {
     withEnv(async (env) => {
       const shas = await setupWithCommits(env, "ws", 3);
       await write(join(env.projectDir, "ws/repo-a/dirty.txt"), "dirty");
-      const result = await arb(env, ["extract", "prereq", "--to", shas[1] ?? "", "--dry-run", "--no-fetch"], {
+      const result = await arb(env, ["extract", "prereq", "--ending-with", shas[1] ?? "", "--dry-run", "--no-fetch"], {
         cwd: join(env.projectDir, "ws"),
       });
       expect(result.output).toContain("--autostash");
@@ -98,7 +100,7 @@ describe("extract validation", () => {
       await write(join(env.projectDir, "ws/repo-a/dirty.txt"), "dirty");
       const result = await arb(
         env,
-        ["extract", "prereq", "--to", shas[1] ?? "", "--yes", "--no-fetch", "--autostash"],
+        ["extract", "prereq", "--ending-with", shas[1] ?? "", "--yes", "--no-fetch", "--autostash"],
         { cwd: join(env.projectDir, "ws") },
       );
       expect(result.exitCode).toBe(0);
@@ -113,7 +115,7 @@ describe("extract --to (prefix)", () => {
     withEnv(async (env) => {
       const shas = await setupWithCommits(env, "ws", 5);
 
-      const result = await arb(env, ["extract", "prereq", "--to", shas[2] ?? "", "--yes", "--no-fetch"], {
+      const result = await arb(env, ["extract", "prereq", "--ending-with", shas[2] ?? "", "--yes", "--no-fetch"], {
         cwd: join(env.projectDir, "ws"),
       });
       expect(result.exitCode).toBe(0);
@@ -146,12 +148,12 @@ describe("extract --to (prefix)", () => {
   test("dry-run shows plan without executing", () =>
     withEnv(async (env) => {
       const shas = await setupWithCommits(env, "ws", 3);
-      const result = await arb(env, ["extract", "prereq", "--to", shas[1] ?? "", "--dry-run", "--no-fetch"], {
+      const result = await arb(env, ["extract", "prereq", "--ending-with", shas[1] ?? "", "--dry-run", "--no-fetch"], {
         cwd: join(env.projectDir, "ws"),
       });
       expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("PREREQ (NEW)");
-      expect(result.output).toContain("WS (STAYS)");
+      expect(result.output).toContain("EXTRACTED (prereq)");
+      expect(result.output).toContain("STAYS (ws)");
       expect(result.output).toContain("Dry run");
 
       // Workspace should NOT be created
@@ -163,7 +165,7 @@ describe("extract --to (prefix)", () => {
       const shas = await setupWithCommits(env, "ws", 3);
       const result = await arb(
         env,
-        ["extract", "prereq", "-b", "feat/prereq", "--to", shas[1] ?? "", "--yes", "--no-fetch"],
+        ["extract", "prereq", "-b", "feat/prereq", "--ending-with", shas[1] ?? "", "--yes", "--no-fetch"],
         { cwd: join(env.projectDir, "ws") },
       );
       expect(result.exitCode).toBe(0);
@@ -175,7 +177,7 @@ describe("extract --to (prefix)", () => {
     withEnv(async (env) => {
       const shas = await setupWithCommits(env, "ws", 3);
       // Extract all 3 commits (boundary = HEAD)
-      const result = await arb(env, ["extract", "prereq", "--to", shas[2] ?? "", "--yes", "--no-fetch"], {
+      const result = await arb(env, ["extract", "prereq", "--ending-with", shas[2] ?? "", "--yes", "--no-fetch"], {
         cwd: join(env.projectDir, "ws"),
       });
       expect(result.exitCode).toBe(0);
@@ -187,14 +189,14 @@ describe("extract --to (prefix)", () => {
     }));
 });
 
-// ── Suffix extraction (--from) ──
+// ── Suffix extraction (--starting-with) ──
 
-describe("extract --from (suffix)", () => {
+describe("extract --starting-with (suffix)", () => {
   test("extracts suffix commits into new workspace", () =>
     withEnv(async (env) => {
       const shas = await setupWithCommits(env, "ws", 5);
       // Extract commits 4 and 5 (boundary = shas[3], inclusive)
-      const result = await arb(env, ["extract", "cont", "--from", shas[3] ?? "", "--yes", "--no-fetch"], {
+      const result = await arb(env, ["extract", "cont", "--starting-with", shas[3] ?? "", "--yes", "--no-fetch"], {
         cwd: join(env.projectDir, "ws"),
       });
       expect(result.exitCode).toBe(0);
@@ -225,7 +227,7 @@ describe("extract --from (suffix)", () => {
   test("extracts single commit at tip", () =>
     withEnv(async (env) => {
       const shas = await setupWithCommits(env, "ws", 3);
-      const result = await arb(env, ["extract", "tip", "--from", shas[2] ?? "", "--yes", "--no-fetch"], {
+      const result = await arb(env, ["extract", "tip", "--starting-with", shas[2] ?? "", "--yes", "--no-fetch"], {
         cwd: join(env.projectDir, "ws"),
       });
       expect(result.exitCode).toBe(0);
@@ -243,9 +245,13 @@ describe("extract split point syntax", () => {
   test("repo:commit-ish syntax", () =>
     withEnv(async (env) => {
       const shas = await setupWithCommits(env, "ws", 3);
-      const result = await arb(env, ["extract", "prereq", "--to", `repo-a:${shas[1] ?? ""}`, "--yes", "--no-fetch"], {
-        cwd: join(env.projectDir, "ws"),
-      });
+      const result = await arb(
+        env,
+        ["extract", "prereq", "--ending-with", `repo-a:${shas[1] ?? ""}`, "--yes", "--no-fetch"],
+        {
+          cwd: join(env.projectDir, "ws"),
+        },
+      );
       expect(result.exitCode).toBe(0);
 
       const prereqLog = await logOneline(env, "prereq", "repo-a");
@@ -274,10 +280,12 @@ describe("extract --abort/--continue validation", () => {
       expect(result.output).toContain("No extract in progress");
     }));
 
-  test("--abort rejects --to flag", () =>
+  test("--abort rejects --ending-with flag", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "ws", "-b", "ws", "repo-a"]);
-      const result = await arb(env, ["extract", "x", "--abort", "--to", "abc"], { cwd: join(env.projectDir, "ws") });
+      const result = await arb(env, ["extract", "x", "--abort", "--ending-with", "abc"], {
+        cwd: join(env.projectDir, "ws"),
+      });
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("does not accept");
     }));
@@ -291,7 +299,7 @@ describe("arb undo (extract)", () => {
       const shas = await setupWithCommits(env, "ws", 4);
       const preSha = (await git(join(env.projectDir, "ws/repo-a"), ["rev-parse", "HEAD"])).trim();
 
-      await arb(env, ["extract", "prereq", "--to", shas[1] ?? "", "--yes", "--no-fetch"], {
+      await arb(env, ["extract", "prereq", "--ending-with", shas[1] ?? "", "--yes", "--no-fetch"], {
         cwd: join(env.projectDir, "ws"),
       });
 
@@ -320,7 +328,7 @@ describe("arb undo (extract)", () => {
       const shas = await setupWithCommits(env, "ws", 4);
       const preSha = (await git(join(env.projectDir, "ws/repo-a"), ["rev-parse", "HEAD"])).trim();
 
-      await arb(env, ["extract", "cont", "--from", shas[2] ?? "", "--yes", "--no-fetch"], {
+      await arb(env, ["extract", "cont", "--starting-with", shas[2] ?? "", "--yes", "--no-fetch"], {
         cwd: join(env.projectDir, "ws"),
       });
 
