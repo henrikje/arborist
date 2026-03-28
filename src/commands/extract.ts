@@ -80,12 +80,8 @@ export function registerExtractCommand(program: Command): void {
           error(msg);
           throw new ArbError(msg);
         }
-        if (options.fromMerge) {
-          const msg = "--from-merge is not yet implemented";
-          error(msg);
-          throw new ArbError(msg);
-        }
         const direction: "prefix" | "suffix" = options.to ? "prefix" : "suffix";
+        const fromMerge = options.fromMerge === true;
 
         const targetBranch = options.branch ?? workspaceName;
 
@@ -158,20 +154,28 @@ export function registerExtractCommand(program: Command): void {
           remotesMap,
           cache,
           analysisCache: ctx.analysisCache,
-          classify: ({ repo, repoDir, status, fetchFailed }) => {
-            const resolved = resolvedSplitPoints.get(repo);
+          classify: async ({ repo, repoDir, status, fetchFailed }) => {
+            let boundary = resolvedSplitPoints.get(repo)?.commitSha ?? null;
+
+            // --from-merge: auto-detect boundary from merge detection
+            if (fromMerge && !boundary && status.base?.merge?.newCommitsAfter != null) {
+              const n = status.base.merge.newCommitsAfter;
+              if (n > 0) {
+                try {
+                  // The first post-merge commit is the boundary (inclusive in extracted set)
+                  const { stdout } = await gitLocal(repoDir, "rev-parse", `HEAD~${n - 1}`);
+                  boundary = stdout.trim();
+                } catch {
+                  // Cannot resolve merge boundary — treat as no-op for this repo
+                }
+              }
+            }
+
             const mb = mergeBaseMap.get(repo) ?? "";
-            return assessExtractRepo(
-              status,
-              repoDir,
-              branch,
-              direction,
-              targetBranch,
-              resolved?.commitSha ?? null,
-              mb,
-              fetchFailed,
-              { autostash, includeWrongBranch },
-            );
+            return assessExtractRepo(status, repoDir, branch, direction, targetBranch, boundary, mb, fetchFailed, {
+              autostash,
+              includeWrongBranch,
+            });
           },
         });
 
