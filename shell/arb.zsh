@@ -196,6 +196,7 @@ _arb() {
                 'push:Push the feature branch to the share remote'
                 'rebase:Rebase feature branches onto the base branch'
                 'retarget:Change the base branch and rebase onto it'
+                'extract:Extract commits into a new workspace'
                 'merge:Merge the base branch into feature branches'
                 'reset:Reset all repos to the share branch (or base if not pushed)'
                 'undo:Undo the last workspace operation'
@@ -514,6 +515,22 @@ _arb() {
                         '(-h --help)'{-h,--help}'[Show help]' \
                         '1:branch:'
                     ;;
+                extract)
+                    _arguments \
+                        '--to[Extract prefix (base through boundary) into new workspace]:specs:' \
+                        '--from[Extract suffix (boundary through tip) into new workspace]:specs:' \
+                        '--from-merge[Extract suffix after merge point (auto-detect)]' \
+                        '(-b --branch)'{-b,--branch}'[Branch name for new workspace]:branch:' \
+                        '(-N --fetch --no-fetch)--fetch[Fetch before extract (default)]' \
+                        '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip fetching before extract]' \
+                        '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
+                        '--dry-run[Show what would happen without executing]' \
+                        '(-v --verbose)'{-v,--verbose}'[Show per-commit details in the plan]' \
+                        '--autostash[Stash uncommitted changes before operation]' \
+                        '--include-wrong-branch[Include repos on a different branch than the workspace]' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '1:workspace:'
+                    ;;
                 merge)
                     _arguments \
                         '(-N --fetch --no-fetch)--fetch[Fetch before merge (default)]' \
@@ -586,6 +603,7 @@ _arb() {
                         'push:Push the feature branch to the share remote'
                         'rebase:Rebase feature branches onto the base branch'
                         'retarget:Change the base branch and rebase onto it'
+                        'extract:Extract commits into a new workspace'
                         'merge:Merge the base branch into feature branches'
                         'reset:Reset all repos to the share branch (or base if not pushed)'
                         'log:Show feature branch commits across repos'

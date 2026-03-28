@@ -9,7 +9,7 @@ export {
   wouldLoseWork,
 } from "./flags";
 export { extractPrNumber } from "./pr-detection";
-export { type SkipFlag, BENIGN_SKIPS, RETARGET_EXEMPT_SKIPS } from "./skip-flags";
+export { type SkipFlag, BENIGN_SKIPS, EXTRACT_EXEMPT_SKIPS, RETARGET_EXEMPT_SKIPS } from "./skip-flags";
 export { baseRef, baseRemoteRef, gatherRepoRefs, gatherRepoStatus, gatherWorkspaceSummary } from "./status";
 export { makeRepo } from "./test-helpers";
 export { type VerboseDetail, gatherVerboseDetail, toJsonVerbose } from "./verbose-detail";
