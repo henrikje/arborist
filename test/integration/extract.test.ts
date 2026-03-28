@@ -104,7 +104,7 @@ describe("extract validation", () => {
         { cwd: join(env.projectDir, "ws") },
       );
       expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("Extracted");
+      expect(result.output).toContain("Created workspace");
     }));
 });
 
@@ -119,8 +119,8 @@ describe("extract --to (prefix)", () => {
         cwd: join(env.projectDir, "ws"),
       });
       expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("Extracted");
-      expect(result.output).toContain("New workspace: prereq");
+      expect(result.output).toContain("Created workspace");
+      expect(result.output).toContain("Created workspace 'prereq'");
 
       // New workspace exists
       expect(existsSync(join(env.projectDir, "prereq/.arbws/config.json"))).toBe(true);
@@ -200,8 +200,8 @@ describe("extract --starting-with (suffix)", () => {
         cwd: join(env.projectDir, "ws"),
       });
       expect(result.exitCode).toBe(0);
-      expect(result.output).toContain("Extracted");
-      expect(result.output).toContain("New workspace: cont");
+      expect(result.output).toContain("Created workspace");
+      expect(result.output).toContain("Created workspace 'cont'");
 
       // Original should have commits 1-3
       const wsLog = await logOneline(env, "ws", "repo-a");

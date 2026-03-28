@@ -403,6 +403,7 @@ export function registerCreateCommand(program: Command): void {
           reportFetchFailures(repos, fetchResults);
         }
 
+        process.stderr.write("Creating worktrees...\n");
         const result = await addWorktrees(name, branch, repos, ctx.reposDir, ctx.arbRootDir, base, remotesMap, cache);
 
         if (result.failed.length > 0) {

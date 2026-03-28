@@ -1,7 +1,7 @@
 export type { RepoUndoAssessment, UndoAction, UndoResult, UndoStats, UndoVerboseInfo } from "./types";
-
+import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import { writeWorkspaceConfig } from "../../core/config";
 import { ArbError } from "../../core/errors";
 import type { OperationRecord } from "../../core/operation";
@@ -13,7 +13,7 @@ import {
 } from "../../core/operation";
 import { gitLocal } from "../../git/git";
 import { finishSummary } from "../../render/render";
-import { dryRunNotice, error, info, plural, warn } from "../../terminal/output";
+import { dryRunNotice, error, info, inlineResult, plural, warn } from "../../terminal/output";
 import { workspaceRepoDirs } from "../../workspace/repos";
 import { confirmOrExit } from "../mutation-flow";
 import { assessUndo, gatherUndoVerboseCommits } from "./assess";
@@ -93,9 +93,9 @@ export async function runUndoFlow(params: {
     throw new ArbError(msg);
   }
 
-  // Nothing to do
+  // Nothing to do (for non-extract commands)
   const actionable = assessments.filter((a) => a.action === "needs-undo" || a.action === "needs-abort");
-  if (actionable.length === 0) {
+  if (actionable.length === 0 && record.command !== "extract") {
     // Check if ALL repos (not just selected) are resolved
     const fullyResolved = allReposResolved(allAssessments);
     if (fullyResolved) {
@@ -113,14 +113,32 @@ export async function runUndoFlow(params: {
 
   process.stderr.write(formatUndoPlan(record, assessments, verb, options.verbose));
 
+  // Add extract-specific plan details
+  if (record.command === "extract") {
+    const hints: string[] = [];
+    hints.push(`  Delete workspace '${record.targetWorkspace}' and branch '${record.targetBranch}'`);
+    if (record.configBefore?.base !== record.configAfter?.base) {
+      const fromBase = record.configAfter?.base ?? "default";
+      const toBase = record.configBefore?.base ?? "default";
+      hints.push(`  Restore base: ${fromBase} → ${toBase}`);
+    }
+    process.stderr.write(`${hints.join("\n")}\n\n`);
+  }
+
   if (options.dryRun) {
     dryRunNotice();
     return;
   }
 
+  // Confirm with a descriptive message for extract
+  const confirmMessage =
+    record.command === "extract"
+      ? `${verbLabel} extract? This will delete workspace '${record.targetWorkspace}'`
+      : `${verbLabel} ${record.command} in ${plural(actionable.length, "repo")}?`;
+
   await confirmOrExit({
     yes: options.yes,
-    message: `${verbLabel} ${record.command} in ${plural(actionable.length, "repo")}?`,
+    message: confirmMessage,
   });
 
   process.stderr.write("\n");
@@ -146,15 +164,31 @@ export async function runUndoFlow(params: {
       break;
     case "extract": {
       result = await executeSyncUndo(record, assessments);
-      // Remove worktrees and workspace directory created during extract
+      // Clean up workspace, worktrees, and branches created during extract
       const extractWsDir = `${arbRootDir}/${record.targetWorkspace}`;
+      // Remove worktree entries by matching gitdir paths, then delete branches
       for (const repoName of Object.keys(record.repos)) {
-        const repoDir = `${reposDir}/${repoName}`;
-        const worktreePath = `${extractWsDir}/${repoName}`;
-        await gitLocal(repoDir, "worktree", "remove", "--force", worktreePath).catch(() => {});
-        await gitLocal(repoDir, "branch", "-D", record.targetBranch).catch(() => {});
+        const canonicalRepo = `${reposDir}/${repoName}`;
+        const worktreesDir = join(canonicalRepo, ".git", "worktrees");
+        const targetGitPath = join(extractWsDir, repoName, ".git");
+        try {
+          for (const entry of readdirSync(worktreesDir)) {
+            const gitdirFile = join(worktreesDir, entry, "gitdir");
+            try {
+              const content = readFileSync(gitdirFile, "utf-8").trim();
+              if (content === targetGitPath || content.endsWith(`/${record.targetWorkspace}/${repoName}/.git`)) {
+                rmSync(join(worktreesDir, entry), { recursive: true });
+              }
+            } catch {}
+          }
+        } catch {}
+        const branchResult = await gitLocal(canonicalRepo, "branch", "-D", record.targetBranch);
+        if (branchResult.exitCode === 0) {
+          inlineResult(repoName, `branch '${record.targetBranch}' deleted`);
+        }
       }
       await rm(extractWsDir, { recursive: true, force: true }).catch(() => {});
+      inlineResult(record.targetWorkspace, "workspace deleted");
       break;
     }
     default: {
@@ -203,7 +237,12 @@ export async function runUndoFlow(params: {
       finalizeFull(record, effectiveWsDir, verb);
     }
     process.stderr.write("\n");
-    finishSummary([`${verbed} ${plural(result.undone, "repo")}`], false);
+    if (record.command === "extract") {
+      const baseRestored = record.configBefore?.base !== record.configAfter?.base;
+      finishSummary([`Deleted workspace '${record.targetWorkspace}'${baseRestored ? ", base restored" : ""}`], false);
+    } else {
+      finishSummary([`${verbed} ${plural(result.undone, "repo")}`], false);
+    }
   } else {
     // Partial undo — summarize with remaining count and hint
     const remaining = updatedAllAssessments.filter((a) => a.action === "needs-undo" || a.action === "needs-abort");

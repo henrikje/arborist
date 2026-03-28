@@ -25,7 +25,7 @@ import { assessExtractRepo } from "../lib/sync/classify-extract";
 import { runContinueFlow } from "../lib/sync/continue-flow";
 import { parseSplitPoints, resolveSplitPoints } from "../lib/sync/parse-split-points";
 import type { ExtractAssessment } from "../lib/sync/types";
-import { dryRunNotice, error, inlineResult, inlineStart, plural, yellow } from "../lib/terminal";
+import { dryRunNotice, error, info, inlineResult, inlineStart, plural, yellow } from "../lib/terminal";
 import { shouldColor } from "../lib/terminal/tty";
 import { addWorktrees, requireBranch, requireWorkspace, workspaceRepoDirs } from "../lib/workspace";
 import { validateWorkspaceName } from "../lib/workspace/validation";
@@ -63,7 +63,7 @@ export function registerExtractCommand(program: Command): void {
     )
     .summary("Extract commits into a new workspace")
     .description(
-      "Examples:\n\n  arb extract prereq --ending-with abc123         Extract prefix into 'prereq'\n  arb extract cont --starting-with abc123          Extract suffix into 'cont'\n  arb extract cont --after-merge                   Extract post-merge commits\n  arb extract prereq --ending-with abc123,def456   Multiple repos (auto-detect)\n  arb extract prereq --ending-with api:HEAD~3      Per-repo with explicit prefix\n\nSplits the current workspace's branch at a boundary commit, creating a new stacked workspace.\n\nWith --ending-with, extracts the prefix (base through boundary, inclusive) into a new lower workspace. The original workspace is rebased to stack on top.\n\nWith --starting-with, extracts the suffix (boundary through tip, inclusive) into a new upper workspace. The original workspace is reset to before the boundary.\n\nWith --after-merge, auto-detects the merge point and extracts post-merge commits into a new workspace.\n\nSplit points are specified as commit SHAs (auto-detect repo), <repo>:<commit-ish> (explicit), or tags. Multiple values can be comma-separated.\n\nRepos without an explicit split point have zero commits extracted — they are included in both workspaces but just track the base.",
+      "Examples:\n\n  arb extract prereq --ending-with abc123          Extract prefix into 'prereq'\n  arb extract cont --starting-with abc123           Extract suffix into 'cont'\n  arb extract cont --after-merge                    Extract post-merge commits\n  arb extract prereq --ending-with abc123,def456    Multiple repos (auto-detect)\n  arb extract prereq --ending-with api:HEAD~3       Per-repo with explicit prefix\n\nSplits the current workspace's branch at a boundary commit, creating a new stacked workspace.\n\nWith --ending-with, extracts the prefix (base through boundary, inclusive) into a new lower workspace. The original workspace is rebased to stack on top.\n\nWith --starting-with, extracts the suffix (boundary through tip, inclusive) into a new upper workspace. The original workspace is reset to before the boundary.\n\nWith --after-merge, auto-detects the merge point and extracts post-merge commits into a new workspace.\n\nSplit points are specified as commit SHAs (auto-detect repo), <repo>:<commit-ish> (explicit), or tags. Multiple values can be comma-separated.\n\nRepos without an explicit split point have zero commits extracted — they are included in both workspaces but just track the base.",
     )
     .action(
       arbAction(async (ctx, workspaceName: string, options) => {
@@ -384,6 +384,9 @@ export function registerExtractCommand(program: Command): void {
         if (willExtract.length === 0) {
           if (skipped.length > 0) {
             error("Cannot extract: all repos are blocked or have no commits to extract.");
+          } else if (afterMerge) {
+            error("Nothing to extract — no repos have been merged.");
+            info("Use --ending-with or --starting-with to specify a split point.");
           } else {
             error("Nothing to extract — no repos have commits at the specified split points.");
           }
@@ -425,25 +428,19 @@ export function registerExtractCommand(program: Command): void {
         const configAfter = direction === "prefix" ? { branch, base: targetBranch } : configBefore;
 
         const repoStates: Record<string, RepoOperationState> = {};
-        for (const a of willExtract) {
+        const noOps = assessments.filter((a) => a.outcome === "no-op");
+        for (const a of [...willExtract, ...noOps]) {
           const headResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
           const preHead = headResult.stdout.trim();
           if (!preHead) throw new ArbError(`Cannot capture HEAD for ${a.repo}`);
-          const stashResult = await gitLocal(a.repoDir, "stash", "create");
-          repoStates[a.repo] = {
-            preHead,
-            stashSha: stashResult.stdout.trim() || null,
-            status: "skipped",
-          };
-        }
-        // Also capture no-op repos for undo (they get new branches too)
-        const noOps = assessments.filter((a) => a.outcome === "no-op");
-        for (const a of noOps) {
-          const headResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
-          repoStates[a.repo] = {
-            preHead: headResult.stdout.trim(),
-            status: "skipped",
-          };
+          if (direction === "suffix" && a.outcome === "will-extract") {
+            // Suffix modifies the original branch (reset) — capture stash
+            const stashResult = await gitLocal(a.repoDir, "stash", "create");
+            repoStates[a.repo] = { preHead, stashSha: stashResult.stdout.trim() || null, status: "skipped" };
+          } else {
+            // Prefix doesn't modify the branch — no stash needed
+            repoStates[a.repo] = { preHead, status: "skipped" };
+          }
         }
 
         const record: OperationRecord = {
@@ -464,7 +461,7 @@ export function registerExtractCommand(program: Command): void {
         const conflicted: { assessment: ExtractAssessment; stdout: string; stderr: string }[] = [];
 
         await withReflogAction("arb-extract", async () => {
-          // Step 1: Create new branches in canonical repos
+          // Step 1: Create branches in canonical repos
           const createdBranches: string[] = [];
           for (const a of [...willExtract, ...noOps]) {
             const repoPath = `${ctx.reposDir}/${a.repo}`;
@@ -494,53 +491,17 @@ export function registerExtractCommand(program: Command): void {
                 `Failed to create branch '${targetBranch}' in repo '${a.repo}': ${result.stderr.trim()}`,
               );
             }
+            inlineResult(a.repo, `branch '${targetBranch}' created at ${startPoint.slice(0, 7)}`);
             createdBranches.push(a.repo);
           }
 
-          // Step 2: Modify the original branch
-          for (const a of willExtract) {
-            if (!a.boundary) continue;
-
-            if (direction === "prefix") {
-              // Prefix: rebase original onto new branch (replay post-boundary commits)
-              const n = a.commitsRemaining;
-              inlineStart(a.repo, `rebasing ${n} ${plural(n, "commit", "commits")} onto ${targetBranch}`);
-
-              const rebaseArgs = ["rebase"];
-              if (a.needsStash) rebaseArgs.push("--autostash");
-              rebaseArgs.push("--onto", targetBranch, a.boundary);
-
-              const result = await gitLocal(a.repoDir, ...rebaseArgs);
-
-              if (result.exitCode === 0) {
-                const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
-                const existing = record.repos[a.repo];
-                if (existing) {
-                  record.repos[a.repo] = {
-                    ...existing,
-                    status: "completed",
-                    postHead: postHeadResult.stdout.trim(),
-                  };
-                }
-                writeOperationRecord(wsDir, record);
-                inlineResult(a.repo, `rebased ${n} ${plural(n, "commit", "commits")} onto ${targetBranch}`);
-                succeeded++;
-              } else {
-                const existing = record.repos[a.repo];
-                if (existing) {
-                  const errorOutput = result.stderr.trim().slice(0, 4000) || undefined;
-                  record.repos[a.repo] = { ...existing, status: "conflicting", errorOutput };
-                }
-                writeOperationRecord(wsDir, record);
-                inlineResult(a.repo, yellow("conflict"));
-                conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
-              }
-            } else {
-              // Suffix: reset original to just before the boundary
+          // Step 2: Move commits (suffix only — prefix needs no rebase)
+          if (direction === "suffix") {
+            for (const a of willExtract) {
+              if (!a.boundary) continue;
               const n = a.commitsExtracted;
-              inlineStart(a.repo, `resetting to before ${plural(n, "commit", "commits")} extracted`);
+              inlineStart(a.repo, `moving ${plural(n, "commit", "commits")} to ${targetBranch}`);
 
-              // Reset to the parent of the boundary commit
               const resetTarget = `${a.boundary}~1`;
               const result = await gitLocal(a.repoDir, "reset", "--hard", resetTarget);
 
@@ -548,17 +509,12 @@ export function registerExtractCommand(program: Command): void {
                 const postHeadResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
                 const existing = record.repos[a.repo];
                 if (existing) {
-                  record.repos[a.repo] = {
-                    ...existing,
-                    status: "completed",
-                    postHead: postHeadResult.stdout.trim(),
-                  };
+                  record.repos[a.repo] = { ...existing, status: "completed", postHead: postHeadResult.stdout.trim() };
                 }
                 writeOperationRecord(wsDir, record);
-                inlineResult(a.repo, `reset — ${n} ${plural(n, "commit", "commits")} moved to ${targetBranch}`);
+                inlineResult(a.repo, `${plural(n, "commit", "commits")} moved to ${targetBranch}`);
                 succeeded++;
               } else {
-                // reset --hard shouldn't fail, but handle it anyway
                 const existing = record.repos[a.repo];
                 if (existing) {
                   const errorOutput = result.stderr.trim().slice(0, 4000) || undefined;
@@ -569,10 +525,21 @@ export function registerExtractCommand(program: Command): void {
                 conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
               }
             }
+          } else {
+            // Prefix: no rebase needed — commits are already children of the boundary.
+            // The new branch was created at the boundary; the remaining commits sit on top.
+            for (const a of willExtract) {
+              const existing = record.repos[a.repo];
+              if (existing) {
+                record.repos[a.repo] = { ...existing, status: "completed", postHead: a.headSha };
+              }
+              succeeded++;
+            }
+            writeOperationRecord(wsDir, record);
           }
         });
 
-        // Conflict report (only possible for prefix extraction)
+        // Conflict report (suffix only — prefix can't conflict)
         if (conflicted.length > 0) {
           const conflictNodes = buildConflictReport(
             conflicted.map((c) => ({
@@ -586,7 +553,7 @@ export function registerExtractCommand(program: Command): void {
           if (conflictNodes.length > 0) process.stderr.write(render(conflictNodes, reportCtx));
         }
 
-        // Create new workspace and finalize
+        // Step 3: Create new workspace
         if (conflicted.length === 0) {
           const newWsDir = `${ctx.arbRootDir}/${workspaceName}`;
           mkdirSync(`${newWsDir}/.arbws`, { recursive: true });
@@ -631,15 +598,14 @@ export function registerExtractCommand(program: Command): void {
 
         // Summary
         process.stderr.write("\n");
-        const parts: string[] = [];
-        if (succeeded > 0) parts.push(`Extracted ${plural(succeeded, "repo")}`);
-        if (conflicted.length > 0) parts.push(`${conflicted.length} conflicted`);
-        if (noOps.length > 0) parts.push(`${noOps.length} unchanged`);
-        if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
-        finishSummary(parts, conflicted.length > 0);
-
-        if (conflicted.length === 0 && succeeded > 0) {
-          process.stderr.write(`\nNew workspace: ${workspaceName}\n`);
+        if (conflicted.length > 0) {
+          finishSummary([`${conflicted.length} conflicted`], true);
+        } else {
+          const detail =
+            noOps.length > 0
+              ? `(extracted from ${plural(succeeded, "repo")}, ${noOps.length} unchanged)`
+              : `(extracted from ${plural(succeeded, "repo")})`;
+          finishSummary([`Created workspace '${workspaceName}' ${detail}`], false);
         }
       }),
     );

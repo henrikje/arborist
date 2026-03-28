@@ -35,8 +35,6 @@ export async function addWorktrees(
   const wsDir = `${arbRootDir}/${name}`;
   const result: AddWorktreesResult = { created: [], skipped: [], failed: [], createdBranches: [] };
 
-  process.stderr.write("Creating worktrees...\n");
-
   for (const repo of repos) {
     const repoPath = `${reposDir}/${repo}`;
 
