@@ -24,14 +24,17 @@ import {
   VERBOSE_COMMIT_LIMIT,
   buildCachedStatusAssess,
   confirmOrExit,
+  parallelFetch,
+  reportFetchFailures,
   resolveDefaultFetch,
   runPlanFlow,
+  selectExtractBoundaries,
 } from "../lib/sync";
 import { assessExtractRepo } from "../lib/sync/classify-extract";
 import { runContinueFlow } from "../lib/sync/continue-flow";
 import { parseSplitPoints, resolveSplitPoints } from "../lib/sync/parse-split-points";
 import type { ExtractAssessment } from "../lib/sync/types";
-import { dryRunNotice, error, inlineResult, inlineStart, plural, yellow } from "../lib/terminal";
+import { dryRunNotice, error, inlineResult, inlineStart, isTTY, plural, yellow } from "../lib/terminal";
 import { shouldColor } from "../lib/terminal/tty";
 import { addWorktrees, requireBranch, requireWorkspace, workspaceRepoDirs } from "../lib/workspace";
 import { validateWorkspaceName } from "../lib/workspace/validation";
@@ -63,7 +66,7 @@ export function registerExtractCommand(program: Command): void {
     )
     .summary("Extract commits into a new workspace")
     .description(
-      "Examples:\n\n  arb extract prereq --ending-with abc123          Extract prefix into 'prereq'\n  arb extract cont --starting-with abc123           Extract suffix into 'cont'\n  arb extract prereq --ending-with abc123,def456    Multiple repos (auto-detect)\n  arb extract prereq --ending-with api:HEAD~3       Per-repo with explicit prefix\n\nSplits the current workspace's branch at a boundary commit, creating a new stacked workspace.\n\nWith --ending-with, extracts the prefix (base through boundary, inclusive) into a new lower workspace. The original workspace is rebased to stack on top.\n\nWith --starting-with, extracts the suffix (boundary through tip, inclusive) into a new upper workspace. The original workspace is reset to before the boundary.\n\nSplit points are specified as commit SHAs (auto-detect repo), <repo>:<commit-ish> (explicit), or tags. Multiple values can be comma-separated.\n\nRepos without an explicit split point have zero commits extracted — they are included in both workspaces but just track the base.\n\nIn base-merged workspaces, split points must be at or after the merge point — pre-merge commits are already on the default branch.",
+      "Examples:\n\n  arb extract prereq                                Interactive split-point selection\n  arb extract prereq --ending-with abc123          Extract prefix into 'prereq'\n  arb extract cont --starting-with abc123           Extract suffix into 'cont'\n  arb extract prereq --ending-with abc123,def456    Multiple repos (auto-detect)\n  arb extract prereq --ending-with api:HEAD~3       Per-repo with explicit prefix\n\nSplits the current workspace's branch at a boundary commit, creating a new stacked workspace.\n\nWith no flags, launches an interactive selector to choose the extraction direction and per-repo split points.\n\nWith --ending-with, extracts the prefix (base through boundary, inclusive) into a new lower workspace. The original workspace is rebased to stack on top.\n\nWith --starting-with, extracts the suffix (boundary through tip, inclusive) into a new upper workspace. The original workspace is reset to before the boundary.\n\nSplit points are specified as commit SHAs (auto-detect repo), <repo>:<commit-ish> (explicit), or tags. Multiple values can be comma-separated.\n\nRepos without an explicit split point have zero commits extracted — they are included in both workspaces but just track the base.\n\nIn base-merged workspaces, split points must be at or after the merge point — pre-merge commits are already on the default branch.",
     )
     .action(
       arbAction(async (ctx, workspaceName: string, options) => {
@@ -176,14 +179,6 @@ export function registerExtractCommand(program: Command): void {
           throw new ArbError(msg);
         }
 
-        // Direction from flags
-        if (!options.endingWith && !options.startingWith) {
-          const msg = "Specify --ending-with (prefix extraction) or --starting-with (suffix extraction)";
-          error(msg);
-          throw new ArbError(msg);
-        }
-        const direction: "prefix" | "suffix" = options.endingWith ? "prefix" : "suffix";
-
         const targetBranch = options.branch ?? workspaceName;
 
         // ── Current workspace context ──
@@ -213,35 +208,76 @@ export function registerExtractCommand(program: Command): void {
           }
         }
 
-        // ── Parse split points ──
+        // ── Mode dispatch: interactive vs explicit ──
 
-        const rawSpecs = options.endingWith ?? options.startingWith ?? [];
-        const specs = parseSplitPoints(Array.isArray(rawSpecs) ? rawSpecs : [rawSpecs]);
+        const isInteractive = !options.endingWith && !options.startingWith;
+        const shouldFetch = resolveDefaultFetch(options.fetch);
 
-        // Compute merge-base per repo (needed for split point resolution and classifier)
+        let direction: "prefix" | "suffix";
+        let resolvedSplitPoints: Map<string, { repo: string; commitSha: string }>;
+        let earlyFetchFailed: string[] = [];
         const mergeBaseMap = new Map<string, string>();
-        for (const repo of allRepos) {
-          const repoDir = `${wsDir}/${repo}`;
-          try {
-            const baseRef = configBase
-              ? `origin/${configBase}`
-              : `origin/${(await cache.getDefaultBranch(`${ctx.reposDir}/${repo}`, "origin")) ?? "main"}`;
-            const { stdout } = await gitLocal(repoDir, "merge-base", "HEAD", baseRef);
-            mergeBaseMap.set(repo, stdout.trim());
-          } catch {
-            // No merge-base available — skip (repo may have no base)
-          }
-        }
 
-        // Resolve split points to per-repo SHAs
-        const resolvedSplitPoints =
-          specs.length > 0
-            ? await resolveSplitPoints(specs, allRepos, wsDir, mergeBaseMap)
-            : new Map<string, { repo: string; commitSha: string }>();
+        const computeMergeBases = async () => {
+          for (const repo of allRepos) {
+            const repoDir = `${wsDir}/${repo}`;
+            try {
+              const baseRef = configBase
+                ? `origin/${configBase}`
+                : `origin/${(await cache.getDefaultBranch(`${ctx.reposDir}/${repo}`, "origin")) ?? "main"}`;
+              const { stdout } = await gitLocal(repoDir, "merge-base", "HEAD", baseRef);
+              mergeBaseMap.set(repo, stdout.trim());
+            } catch {
+              // No merge-base available — skip (repo may have no base)
+            }
+          }
+        };
+
+        if (isInteractive) {
+          // Interactive mode: TTY required
+          if (!isTTY() || !process.stdin.isTTY) {
+            const msg = "Specify --ending-with (prefix extraction) or --starting-with (suffix extraction)";
+            error(msg);
+            throw new ArbError(msg);
+          }
+
+          // Fetch first so the selector has accurate commit data
+          let interactiveFetchFailed: string[] = [];
+          if (shouldFetch) {
+            const fetchResults = await parallelFetch(allFetchDirs, undefined, remotesMap);
+            interactiveFetchFailed = reportFetchFailures(allRepos, fetchResults);
+            cache.invalidateAfterFetch();
+          }
+
+          await computeMergeBases();
+
+          const result = await selectExtractBoundaries({
+            allRepos,
+            wsDir,
+            mergeBaseMap,
+            newWorkspace: workspaceName,
+          });
+          direction = result.direction;
+          resolvedSplitPoints = result.resolvedSplitPoints;
+          earlyFetchFailed = interactiveFetchFailed;
+        } else {
+          // Explicit mode (flags provided)
+          direction = options.endingWith ? "prefix" : "suffix";
+
+          const rawSpecs = options.endingWith ?? options.startingWith ?? [];
+          const specs = parseSplitPoints(Array.isArray(rawSpecs) ? rawSpecs : [rawSpecs]);
+
+          await computeMergeBases();
+
+          resolvedSplitPoints =
+            specs.length > 0
+              ? await resolveSplitPoints(specs, allRepos, wsDir, mergeBaseMap)
+              : new Map<string, { repo: string; commitSha: string }>();
+        }
 
         // ── Assessment ──
 
-        const shouldFetch = resolveDefaultFetch(options.fetch);
+        const assessmentShouldFetch = isInteractive ? false : shouldFetch;
         const autostash = options.autostash === true;
         const includeWrongBranch = options.includeWrongBranch === true;
 
@@ -255,6 +291,10 @@ export function registerExtractCommand(program: Command): void {
           cache,
           analysisCache: ctx.analysisCache,
           classify: async ({ repo, repoDir, status, fetchFailed }) => {
+            // Merge fetch failures from early interactive fetch with any from the plan flow
+            const allFetchFailed =
+              earlyFetchFailed.length > 0 ? [...new Set([...fetchFailed, ...earlyFetchFailed])] : fetchFailed;
+
             const boundary = resolvedSplitPoints.get(repo)?.commitSha ?? null;
 
             // Merge-point floor: in merged repos, reject split points below the merge point
@@ -291,7 +331,7 @@ export function registerExtractCommand(program: Command): void {
             }
 
             const mb = mergeBaseMap.get(repo) ?? "";
-            return assessExtractRepo(status, repoDir, branch, direction, targetBranch, boundary, mb, fetchFailed, {
+            return assessExtractRepo(status, repoDir, branch, direction, targetBranch, boundary, mb, allFetchFailed, {
               autostash,
               includeWrongBranch,
             });
@@ -370,7 +410,7 @@ export function registerExtractCommand(program: Command): void {
         };
 
         const assessments = await runPlanFlow({
-          shouldFetch,
+          shouldFetch: assessmentShouldFetch,
           fetchDirs: allFetchDirs,
           reposForFetchReport: allRepos,
           remotesMap,

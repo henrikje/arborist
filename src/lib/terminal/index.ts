@@ -36,6 +36,7 @@ export {
 } from "./output";
 export { readNamesFromStdin } from "./stdin";
 export { selectWithStatus } from "./select-with-status";
+export { splitPointSelector } from "./split-point-selector";
 export type { EchoSuppression } from "./suppress-echo";
 export { suppressEcho } from "./suppress-echo";
 export type { StdinSuppression } from "./suppress-stdin";
