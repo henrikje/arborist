@@ -156,6 +156,9 @@ describe("assessExtractRepo", () => {
     );
     expect(a.outcome).toBe("skip");
     expect(a.skipFlag).toBe("dirty");
+    if (a.outcome === "skip") {
+      expect(a.skipReason).toContain("--autostash");
+    }
   });
 
   test("sets needsStash with autostash and dirty", async () => {

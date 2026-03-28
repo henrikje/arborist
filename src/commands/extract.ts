@@ -51,7 +51,8 @@ export function registerExtractCommand(program: Command): void {
     .option("-N, --no-fetch", "Skip fetching before extract")
     .option("-y, --yes", "Skip confirmation prompt")
     .option("--dry-run", "Show what would happen without executing")
-    .option("-v, --verbose", "Show per-commit details in the plan")
+    // TODO: implement verbose plan with per-commit listing
+    // .option("-v, --verbose", "Show per-commit details in the plan")
     .option("--autostash", "Stash uncommitted changes before operation")
     .option("--include-wrong-branch", "Include repos on a different branch than the workspace")
     .addOption(new Option("--continue", "Resume after resolving conflicts").conflicts("abort"))
@@ -76,6 +77,14 @@ export function registerExtractCommand(program: Command): void {
         const inProgress = readInProgressOperation(wsDir, "extract") as
           | (OperationRecord & { command: "extract" })
           | null;
+
+        if ((options.continue || options.abort) && inProgress && workspaceName !== inProgress.targetWorkspace) {
+          const flag = options.continue ? "--continue" : "--abort";
+          error(
+            `${flag}: workspace name '${workspaceName}' does not match the in-progress extract target '${inProgress.targetWorkspace}'`,
+          );
+          throw new ArbError(`${flag}: workspace name mismatch`);
+        }
 
         if (options.abort) {
           if (!inProgress) {
@@ -269,11 +278,15 @@ export function registerExtractCommand(program: Command): void {
           },
         });
 
+        // Per-repo plan annotations (boundary endpoints for the "other" side)
+        const planEndpoints = new Map<string, { extractEnd: string; remainEnd: string }>();
+
         const postAssess = async (nextAssessments: ExtractAssessment[]) => {
-          // Compute commit counts for will-extract repos
+          // Compute commit counts and boundary endpoints for will-extract repos
           for (const a of nextAssessments) {
             if (a.outcome !== "will-extract" || !a.boundary) continue;
             try {
+              const shortBoundary = a.boundary.slice(0, 7);
               if (direction === "prefix") {
                 // Extracted = merge-base to boundary (inclusive)
                 const { stdout: extractedStr } = await gitLocal(
@@ -291,9 +304,22 @@ export function registerExtractCommand(program: Command): void {
                   `${a.boundary}..HEAD`,
                 );
                 a.commitsRemaining = Number.parseInt(remainingStr.trim(), 10);
+                // Endpoints: extracted ends at boundary, remaining starts at boundary's child
+                let remainStart = "";
+                if (a.commitsRemaining > 0) {
+                  const { stdout: childStr } = await gitLocal(
+                    a.repoDir,
+                    "rev-list",
+                    "--reverse",
+                    "--ancestry-path",
+                    `${a.boundary}..HEAD`,
+                  );
+                  const firstChild = childStr.trim().split("\n")[0];
+                  if (firstChild) remainStart = firstChild.slice(0, 7);
+                }
+                planEndpoints.set(a.repo, { extractEnd: shortBoundary, remainEnd: remainStart });
               } else {
                 // Extracted = boundary to HEAD (inclusive of boundary)
-                // rev-list boundary..HEAD gives commits after boundary, add 1 for boundary itself
                 const { stdout: afterStr } = await gitLocal(a.repoDir, "rev-list", "--count", `${a.boundary}..HEAD`);
                 const afterCount = Number.parseInt(afterStr.trim(), 10);
                 a.commitsExtracted = afterCount + 1; // +1 for the boundary commit itself
@@ -305,6 +331,13 @@ export function registerExtractCommand(program: Command): void {
                   `${a.mergeBase}..${a.boundary}^`,
                 );
                 a.commitsRemaining = Number.parseInt(beforeStr.trim(), 10);
+                // Endpoints: remaining ends at boundary's parent, extracted starts at boundary
+                let remainEnd = "";
+                if (a.commitsRemaining > 0) {
+                  const { stdout: parentStr } = await gitLocal(a.repoDir, "rev-parse", `${a.boundary}^`);
+                  remainEnd = parentStr.trim().slice(0, 7);
+                }
+                planEndpoints.set(a.repo, { extractEnd: shortBoundary, remainEnd });
               }
             } catch {
               // If counting fails, leave as 0
@@ -321,7 +354,15 @@ export function registerExtractCommand(program: Command): void {
           assess,
           postAssess,
           formatPlan: (nextAssessments) =>
-            formatExtractPlan(nextAssessments, workspace, workspaceName, targetBranch, direction, configBase),
+            formatExtractPlan(
+              nextAssessments,
+              workspace,
+              workspaceName,
+              targetBranch,
+              direction,
+              configBase,
+              planEndpoints,
+            ),
           onPostFetch: () => cache.invalidateAfterFetch(),
         });
 
@@ -360,7 +401,7 @@ export function registerExtractCommand(program: Command): void {
 
         await confirmOrExit({
           yes: options.yes,
-          message: `Extract ${willExtract.length} ${plural(willExtract.length, "repo", "repos")}?`,
+          message: `Extract ${plural(willExtract.length, "repo", "repos")}?`,
         });
 
         // ── Execution ──
@@ -603,8 +644,17 @@ function formatExtractPlan(
   targetBranch: string,
   direction: "prefix" | "suffix",
   configBase: string | null,
+  endpoints?: Map<string, { extractEnd: string; remainEnd: string }>,
 ): string {
-  const nodes = buildExtractPlanNodes(assessments, workspace, targetWorkspace, targetBranch, direction, configBase);
+  const nodes = buildExtractPlanNodes(
+    assessments,
+    workspace,
+    targetWorkspace,
+    targetBranch,
+    direction,
+    configBase,
+    endpoints,
+  );
   const envCols = Number(process.env.COLUMNS);
   const termCols = process.stdout.columns ?? (Number.isFinite(envCols) ? envCols : 0);
   const ctx: RenderContext = { tty: shouldColor(), terminalWidth: termCols > 0 ? termCols : undefined };
@@ -618,6 +668,7 @@ function buildExtractPlanNodes(
   targetBranch: string,
   direction: "prefix" | "suffix",
   configBase: string | null,
+  endpoints?: Map<string, { extractEnd: string; remainEnd: string }>,
 ): OutputNode[] {
   // TODO: add verbose plan with per-commit listing when --verbose is implemented
   const nodes: OutputNode[] = [{ kind: "gap" }];
@@ -640,15 +691,31 @@ function buildExtractPlanNodes(
     let origCell: Cell;
 
     if (a.outcome === "will-extract") {
-      const extractedText =
-        a.commitsExtracted > 0 ? `${a.commitsExtracted} ${plural(a.commitsExtracted, "commit", "commits")}` : "–";
-      const remainingText =
-        a.commitsRemaining > 0 ? `${a.commitsRemaining} ${plural(a.commitsRemaining, "commit", "commits")}` : "–";
+      const stashNote = a.needsStash ? " (autostash)" : "";
+      const ep = endpoints?.get(a.repo);
+      let extractedText: string;
+      let remainingText: string;
+      if (direction === "prefix") {
+        // Prefix: extracted ends at boundary, remaining starts after boundary. Stash on "stays" (rebased).
+        const endNote = ep?.extractEnd ? `, ending with ${ep.extractEnd}` : "";
+        const startNote = ep?.remainEnd ? `, starting with ${ep.remainEnd}` : "";
+        extractedText = a.commitsExtracted > 0 ? `${plural(a.commitsExtracted, "commit", "commits")}${endNote}` : "–";
+        remainingText =
+          a.commitsRemaining > 0
+            ? `${plural(a.commitsRemaining, "commit", "commits")}${startNote}${stashNote}`
+            : `–${stashNote}`;
+      } else {
+        // Suffix: extracted starts at boundary, remaining ends before boundary. Stash on "new" (original is reset).
+        const startNote = ep?.extractEnd ? `, starting with ${ep.extractEnd}` : "";
+        const endNote = ep?.remainEnd ? `, ending with ${ep.remainEnd}` : "";
+        extractedText =
+          a.commitsExtracted > 0 ? `${plural(a.commitsExtracted, "commit", "commits")}${startNote}${stashNote}` : "–";
+        remainingText = a.commitsRemaining > 0 ? `${plural(a.commitsRemaining, "commit", "commits")}${endNote}` : "–";
+      }
       newCell = cell(extractedText);
       origCell = cell(remainingText);
     } else if (a.outcome === "no-op") {
-      const remainingText =
-        a.commitsRemaining > 0 ? `${a.commitsRemaining} ${plural(a.commitsRemaining, "commit", "commits")}` : "–";
+      const remainingText = a.commitsRemaining > 0 ? `${plural(a.commitsRemaining, "commit", "commits")}` : "–";
       newCell = cell("–", "muted");
       origCell = cell(remainingText, "muted");
     } else {

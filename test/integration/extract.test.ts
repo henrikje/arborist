@@ -81,6 +81,29 @@ describe("extract validation", () => {
       expect(result.exitCode).not.toBe(0);
       expect(result.output).toContain("blocked");
     }));
+
+  test("dirty skip reason hints about --autostash", () =>
+    withEnv(async (env) => {
+      const shas = await setupWithCommits(env, "ws", 3);
+      await write(join(env.projectDir, "ws/repo-a/dirty.txt"), "dirty");
+      const result = await arb(env, ["extract", "prereq", "--to", shas[1] ?? "", "--dry-run", "--no-fetch"], {
+        cwd: join(env.projectDir, "ws"),
+      });
+      expect(result.output).toContain("--autostash");
+    }));
+
+  test("succeeds with --autostash when repo is dirty", () =>
+    withEnv(async (env) => {
+      const shas = await setupWithCommits(env, "ws", 3);
+      await write(join(env.projectDir, "ws/repo-a/dirty.txt"), "dirty");
+      const result = await arb(
+        env,
+        ["extract", "prereq", "--to", shas[1] ?? "", "--yes", "--no-fetch", "--autostash"],
+        { cwd: join(env.projectDir, "ws") },
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Extracted");
+    }));
 });
 
 // ── Prefix extraction (--to) ──

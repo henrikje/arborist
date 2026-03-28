@@ -96,7 +96,7 @@ export async function assessExtractRepo(
 
   if (flags.isDirty) {
     if (!options.autostash) {
-      return { ...base, outcome: "skip", skipReason: "uncommitted changes", skipFlag: "dirty" };
+      return { ...base, outcome: "skip", skipReason: "uncommitted changes (use --autostash)", skipFlag: "dirty" };
     }
     if (flags.hasStaged || flags.hasModified) {
       base.needsStash = true;
