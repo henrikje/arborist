@@ -123,7 +123,7 @@ export function buildStatusView(summary: WorkspaceSummary, ctx: StatusViewContex
     { header: "REPO", key: "repo" },
     { header: "BRANCH", key: "branch", show: showBranch },
     { header: "", key: "lastCommitNum", group: "LAST COMMIT", align: "right" as const },
-    { header: "", key: "lastCommitUnit", group: "LAST COMMIT" },
+    { header: "", key: "lastCommitUnit", group: "LAST COMMIT", subGap: 1 },
     { header: "", key: "baseName", group: "BASE", truncate: { min: 13 }, show: showBaseRef },
     { header: "", key: "baseDiff", group: "BASE" },
     { header: "", key: "baseSource", group: "BASE", show: "auto" },
