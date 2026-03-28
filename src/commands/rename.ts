@@ -398,16 +398,16 @@ export function registerRenameCommand(program: Command): void {
     .option("-r, --delete-remote", "Delete old branch on remote after rename")
     .option("--fetch", "Fetch from all remotes before rename (default)")
     .option("-N, --no-fetch", "Skip fetching before rename")
+    .option("-y, --yes", "Skip confirmation prompt")
+    .option("--dry-run", "Show what would happen without executing")
+    .option("--include-in-progress", "Rename repos even if they have an in-progress git operation")
     .addOption(new Option("--continue", "Resume a partial workspace rename").conflicts("abort"))
     .addOption(
       new Option("--abort", "Cancel the in-progress rename and restore pre-rename state").conflicts("continue"),
     )
-    .option("--dry-run", "Show what would happen without executing")
-    .option("-y, --yes", "Skip confirmation prompt")
-    .option("--include-in-progress", "Rename repos even if they have an in-progress git operation")
     .summary("Rename the workspace (directory + branch)")
     .description(
-      "Examples:\n\n  arb rename PROJ-209                      Rename workspace and branch\n  arb rename PROJ-209 --branch feat/PROJ-209\n  arb rename --branch feat/PROJ-209        Derive workspace name from branch\n\nRenames the workspace directory and branch across all repos. Completes the create/delete/rename lifecycle triad.\n\nThe positional <new-name> sets the workspace directory name and, by default, the branch name. Use --branch to set the branch name independently (e.g. 'arb rename PROJ-208 --branch feat/PROJ-208'). If only --branch is provided, the workspace name is derived from the last path segment.\n\nUse --base to change the base branch as part of the rename, completing the 'repurpose workspace' workflow.\n\nFetches before assessing to get fresh remote state (use -N/--no-fetch to skip). Shows a plan and asks for confirmation before proceeding. Repos with an in-progress git operation (rebase, merge, cherry-pick) are skipped.\n\nRename is tracked as an operation in .arbws/operation.json. If it fails partway, use 'arb rename --continue' to retry, or 'arb rename --abort' to roll back.",
+      "Examples:\n\n  arb rename PROJ-209                      Rename workspace and branch\n  arb rename PROJ-209 --branch feat/PROJ-209   Set branch independently\n  arb rename --branch feat/PROJ-209        Derive workspace name from branch\n\nRenames the workspace directory and branch across all repos. Completes the create/delete/rename lifecycle triad.\n\nThe positional <new-name> sets the workspace directory name and, by default, the branch name. Use --branch to set the branch name independently (e.g. 'arb rename PROJ-208 --branch feat/PROJ-208'). If only --branch is provided, the workspace name is derived from the last path segment.\n\nUse --base to change the base branch as part of the rename, completing the 'repurpose workspace' workflow.\n\nFetches before assessing to get fresh remote state (use -N/--no-fetch to skip). Shows a plan and asks for confirmation before proceeding. Repos with an in-progress git operation (rebase, merge, cherry-pick) are skipped.\n\nRename is tracked as an operation in .arbws/operation.json. If it fails partway, use 'arb rename --continue' to retry, or 'arb rename --abort' to roll back.",
     )
     .action(
       arbAction(async (ctx, newNameArg: string | undefined, options: RenameCommandOptions) => {

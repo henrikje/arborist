@@ -465,22 +465,22 @@ function buildConfirmMessage(count: number, deleteRemote: boolean): string {
 export function registerDeleteCommand(program: Command): void {
   program
     .command("delete [names...]")
-    .option("-y, --yes", "Skip confirmation prompt")
     .option("-f, --force", "Force deletion of at-risk workspaces")
     .option("-r, --delete-remote", "Delete remote branches")
     .option(
       "-a, --all-safe",
       "Delete all safe workspaces (no uncommitted changes, unpushed commits, or branch drift; behind base is fine)",
     )
-    .option("-w, --where <filter>", "Filter workspaces by repo status flags (comma = OR, + = AND, ^ = negate)")
     .option(
       "--older-than <duration>",
       "Only delete workspaces not touched in the given duration (e.g. 30d, 2w, 3m, 1y)",
     )
     .option("--newer-than <duration>", "Only delete workspaces touched within the given duration (e.g. 7d, 2w)")
-    .option("--dry-run", "Show what would happen without executing")
     .option("--fetch", "Fetch before assessing workspace status (default)")
     .option("-N, --no-fetch", "Skip fetching")
+    .option("-y, --yes", "Skip confirmation prompt")
+    .option("--dry-run", "Show what would happen without executing")
+    .option("-w, --where <filter>", "Filter workspaces by repo status flags (comma = OR, + = AND, ^ = negate)")
     .summary("Delete one or more workspaces")
     .description(
       "Examples:\n\n  arb delete PROJ-208                      Delete a workspace\n  arb delete --all-safe                    Delete all safe workspaces\n  arb delete --where gone --yes            Delete all merged workspaces\n\nDelete one or more workspaces and their repos. Fetches workspace repos before assessing for fresh remote state (skip with -N/--no-fetch). Shows the status of each repo (uncommitted changes, unpushed commits) and any modified template files before proceeding. Prompts with a workspace picker when run without arguments.\n\nUse --all-safe to batch-delete all workspaces with safe status (no uncommitted changes, unpushed commits, or branch drift). Use --where <filter> to filter by status flags. Use --older-than/--newer-than to filter by workspace activity age. When used without workspace names, these filters select from all matching workspaces (e.g. arb delete --where gone deletes all gone workspaces). In a TTY, --where, --older-than/--newer-than, and --all-safe show an interactive picker with all matches pre-selected, letting you deselect workspaces to keep. When combined with names, filters narrow the selection further (AND logic). Combine with --all-safe to narrow further (e.g. --all-safe --where gone for merged-and-safe workspaces). See 'arb help filtering' for filter syntax.\n\nUse --yes to skip confirmation (and interactive selection), --force to override at-risk safety checks, --delete-remote to also delete the remote branches.\n\nSee 'arb help stacked' for stacked workspace deletion.",
