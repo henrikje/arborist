@@ -10,6 +10,7 @@ import {
   readOperationRecord,
   writeOperationRecord,
 } from "../../core/operation";
+import { gitLocal } from "../../git/git";
 import { finishSummary } from "../../render/render";
 import { dryRunNotice, error, info, plural, warn } from "../../terminal/output";
 import { workspaceRepoDirs } from "../../workspace/repos";
@@ -143,7 +144,13 @@ export async function runUndoFlow(params: {
       });
       break;
     case "extract":
-      throw new ArbError("Undo for extract is not yet implemented");
+      result = await executeSyncUndo(record, assessments);
+      // Clean up branches created in canonical repos during extract
+      for (const repoName of Object.keys(record.repos)) {
+        const repoDir = `${reposDir}/${repoName}`;
+        await gitLocal(repoDir, "branch", "-D", record.targetBranch).catch(() => {});
+      }
+      break;
     default: {
       const _exhaustive: never = record;
       throw new ArbError("Undo is not yet supported for this operation");
