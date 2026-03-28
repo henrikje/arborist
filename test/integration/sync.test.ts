@@ -1611,7 +1611,7 @@ describe("--where filtering", () => {
       expect(result.output).not.toContain("already merged");
     }));
 
-  test("rebase skips when all local commits are already squash-equivalent on base", () =>
+  test("rebase resets when all local commits are already squash-equivalent on base", () =>
     withEnv(async (env) => {
       await arb(env, ["create", "rebase-squash-equivalent-test", "repo-a"]);
       const wt = join(env.projectDir, "rebase-squash-equivalent-test/repo-a");
@@ -1638,8 +1638,12 @@ describe("--where filtering", () => {
         cwd: join(env.projectDir, "rebase-squash-equivalent-test"),
       });
       expect(rebaseResult.exitCode).toBe(0);
-      expect(rebaseResult.output).toContain("already squash-merged");
+      expect(rebaseResult.output).toContain("reset to origin/main (merged)");
       expect(rebaseResult.output).not.toContain("conflict");
+
+      // Verify the branch was reset — squash-equivalent commit is in history
+      const log = await git(wt, ["log", "--oneline"]);
+      expect(log).toContain("squash-equivalent on main");
     }));
 });
 

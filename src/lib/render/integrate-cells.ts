@@ -25,9 +25,7 @@ export function integrateActionCell(desc: IntegrateActionDesc): Cell {
     const merged = desc.skipCount ?? 0;
     if (n === 0) {
       const text =
-        merged > 0
-          ? `reset to ${desc.baseRef} (all ${merged} commits merged)`
-          : `reset to ${desc.baseRef} (merged)`;
+        merged > 0 ? `reset to ${desc.baseRef} (all ${merged} commits merged)` : `reset to ${desc.baseRef} (merged)`;
       result = cell(text);
     } else {
       const commitWord = n === 1 ? "commit" : "commits";

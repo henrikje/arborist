@@ -201,9 +201,7 @@ export async function assessIntegrateRepo(
       };
     }
     const needsStash =
-      flags.isDirty && options.autostash && (status.local.staged > 0 || status.local.modified > 0)
-        ? true
-        : undefined;
+      flags.isDirty && options.autostash && (status.local.staged > 0 || status.local.modified > 0) ? true : undefined;
 
     if (options.mode === "rebase") {
       return {
