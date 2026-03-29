@@ -212,7 +212,7 @@ _arb() {
             case "${words[1]}" in
                 delete)
                     _arguments \
-                        '*:workspace:($ws_names)' \
+                        '*:workspace:{compadd -a ws_names}' \
                         '(-f --force)'{-f,--force}'[Force removal]' \
                         '(-r --delete-remote)'{-r,--delete-remote}'[Delete remote branches]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
@@ -234,6 +234,8 @@ _arb() {
                         '--dry-run[Show what would happen without executing]' \
                         '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                         '--include-in-progress[Rename repos even if they have an in-progress git operation]' \
+                        '--continue[Resume a partial workspace rename]' \
+                        '--abort[Cancel the in-progress rename and restore state]' \
                         '1:new-name:'
                     ;;
                 path)
@@ -255,7 +257,7 @@ _arb() {
                         compadd -a git_wt
                         compadd -S '/' -a ws_names
                     else
-                        _arguments '1:workspace:($ws_names)'
+                        _arguments '1:workspace:{compadd -a ws_names}'
                     fi
                     ;;
                 cd)
@@ -289,7 +291,7 @@ _arb() {
                             compadd -S '/' -a ws_names
                         else
                             # Before slash: complete workspace names
-                            _arguments '1:workspace:($ws_names)'
+                            _arguments '1:workspace:{compadd -a ws_names}'
                         fi
                     fi
                     ;;
@@ -302,14 +304,14 @@ _arb() {
                         '(-N --fetch --no-fetch)--fetch[Fetch before creating (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-fetch]' \
                         '1:name:' \
-                        '*:repo:($repo_names)'
+                        '*:repo:{compadd -a repo_names}'
                     ;;
                 attach)
                     _arguments \
                         '(-a --all-repos)'{-a,--all-repos}'[Add all remaining repos]' \
                         '(-N --fetch --no-fetch)--fetch[Fetch before attaching (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-fetch]' \
-                        '*:repo:($repo_names)'
+                        '*:repo:{compadd -a repo_names}'
                     ;;
                 detach)
                     _arguments \
@@ -320,7 +322,7 @@ _arb() {
                         '--dry-run[Show what would happen without executing]' \
                         '(-N --fetch --no-fetch)--fetch[Fetch before detaching (default)]' \
                         '(-N --fetch --no-fetch)'{-N,--no-fetch}'[Skip pre-fetch]' \
-                        '*:repo:($ws_repo_names)'
+                        '*:repo:{compadd -a ws_repo_names}'
                     ;;
                 repo)
                     shift words; (( CURRENT-- ))
@@ -347,7 +349,7 @@ _arb() {
                                     '(-a --all-repos)'{-a,--all-repos}'[Remove all canonical repos]' \
                                     '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                                     '--dry-run[Show what would be removed without removing]' \
-                                    '*:repo:($repo_names)'
+                                    '*:repo:{compadd -a repo_names}'
                                 ;;
                             list)
                                 shift words; (( CURRENT-- ))
@@ -361,7 +363,7 @@ _arb() {
                                 shift words; (( CURRENT-- ))
                                 _arguments \
                                     '--remove[Remove repos from defaults]' \
-                                    '*:repo:($repo_names)'
+                                    '*:repo:{compadd -a repo_names}'
                                 ;;
                         esac
                     fi
@@ -392,7 +394,7 @@ _arb() {
                         '(-q --quiet --json -v --verbose --schema)'{-q,--quiet}'[Output one repo name per line]' \
                         '(--json -q --quiet --schema)--json[Output structured JSON]' \
                         '(--schema --json -q --quiet -v --verbose)--schema[Print JSON Schema for --json output]' \
-                        '*:repo:($ws_repo_names)'
+                        '*:repo:{compadd -a ws_repo_names}'
                     ;;
                 watch)
                     _arguments \
@@ -436,6 +438,8 @@ _arb() {
                                     '--dry-run[Show what would happen without executing]' \
                                     '(-y --yes)'{-y,--yes}'[Skip confirmation prompt]' \
                                     '--include-in-progress[Rename repos even if they have an in-progress git operation]' \
+                                    '--continue[Resume a partial branch rename]' \
+                                    '--abort[Cancel the in-progress branch rename and restore state]' \
                                     '1:new-name:'
                                 ;;
                             base)
@@ -450,7 +454,7 @@ _arb() {
                     ;;
                 exec)
                     _arguments \
-                        '*--repo[Only run in specified repos]:repo:($ws_repo_names)' \
+                        '*--repo[Only run in specified repos]:repo:{compadd -a ws_repo_names}' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only run in dirty repos]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
                         '(-p --parallel)'{-p,--parallel}'[Run concurrently across repos]' \
@@ -458,7 +462,7 @@ _arb() {
                     ;;
                 open)
                     _arguments \
-                        '*--repo[Only open specified repos]:repo:($ws_repo_names)' \
+                        '*--repo[Only open specified repos]:repo:{compadd -a ws_repo_names}' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only open dirty worktrees]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter worktrees by status flags]:filter:_arb_where_filter' \
                         '1:editor:(code cursor zed subl)'
@@ -474,7 +478,9 @@ _arb() {
                         '--autostash[Stash uncommitted changes before pull, re-apply after]' \
                         '--include-wrong-branch[Include repos on a different branch than the workspace]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '*:repo:($ws_repo_names)'
+                        '--continue[Resume after resolving conflicts]' \
+                        '--abort[Cancel the in-progress pull and restore state]' \
+                        '*:repo:{compadd -a ws_repo_names}'
                     ;;
 				push)
 					_arguments \
@@ -487,7 +493,7 @@ _arb() {
                         '--dry-run[Show what would happen without executing]' \
                         '(-v --verbose)'{-v,--verbose}'[Show outgoing commits in the plan]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '*:repo:($ws_repo_names)'
+                        '*:repo:{compadd -a ws_repo_names}'
                     ;;
                 rebase)
                     _arguments \
@@ -500,7 +506,9 @@ _arb() {
                         '--autostash[Stash uncommitted changes before rebase, re-apply after]' \
                         '--include-wrong-branch[Include repos on a different branch than the workspace]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '*:repo:($ws_repo_names)'
+                        '--continue[Resume after resolving conflicts]' \
+                        '--abort[Cancel the in-progress rebase and restore state]' \
+                        '*:repo:{compadd -a ws_repo_names}'
                     ;;
                 retarget)
                     _arguments \
@@ -512,7 +520,8 @@ _arb() {
                         '(-g --graph)'{-g,--graph}'[Show branch divergence graph in the plan]' \
                         '--autostash[Stash uncommitted changes before retarget, re-apply after]' \
                         '--include-wrong-branch[Include repos on a different branch than the workspace]' \
-                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '--continue[Resume after resolving conflicts]' \
+                        '--abort[Cancel the in-progress retarget and restore state]' \
                         '1:branch:'
                     ;;
                 extract)
@@ -529,7 +538,6 @@ _arb() {
                         '--include-wrong-branch[Include repos on a different branch than the workspace]' \
                         '--continue[Resume after resolving conflicts]' \
                         '--abort[Cancel in-progress extract and restore state]' \
-                        '(-h --help)'{-h,--help}'[Show help]' \
                         '1:workspace:'
                     ;;
                 merge)
@@ -543,7 +551,9 @@ _arb() {
                         '--autostash[Stash uncommitted changes before merge, re-apply after]' \
                         '--include-wrong-branch[Include repos on a different branch than the workspace]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '*:repo:($ws_repo_names)'
+                        '--continue[Resume after resolving conflicts]' \
+                        '--abort[Cancel the in-progress merge and restore state]' \
+                        '*:repo:{compadd -a ws_repo_names}'
                     ;;
                 reset)
                     _arguments \
@@ -558,7 +568,7 @@ _arb() {
                         '(-v --verbose)'{-v,--verbose}'[Show commits to be reset in the plan]' \
                         '--include-wrong-branch[Include repos on a different branch than the workspace]' \
                         '(-w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '*:repo:($ws_repo_names)'
+                        '*:repo:{compadd -a ws_repo_names}'
                     ;;
                 undo)
                     _arguments \
@@ -567,7 +577,7 @@ _arb() {
                         '(-v --verbose)'{-v,--verbose}'[Show commits being rolled back]' \
                         '(-f --force)'{-f,--force}'[Force undo even when repos have drifted]' \
                         '--discard[Delete corrupted operation record without undo]' \
-                        '*:repo:($ws_repo_names)'
+                        '*:repo:{compadd -a ws_repo_names}'
                     ;;
                 log)
                     _arguments \
@@ -579,7 +589,7 @@ _arb() {
                         '(--schema --json)--schema[Print JSON Schema for --json output]' \
                         '(-d --dirty -w --where)'{-d,--dirty}'[Only log dirty repos]' \
                         '(-d --dirty -w --where)'{-w,--where}'[Filter repos by status flags]:filter:_arb_where_filter' \
-                        '*:repo:($ws_repo_names)'
+                        '*:repo:{compadd -a ws_repo_names}'
                     ;;
                 help)
                     local -a help_completions=(
@@ -629,7 +639,7 @@ _arb() {
                             add)
                                 shift words; (( CURRENT-- ))
                                 _arguments \
-                                    '*--repo[Target repo scope]:repo:($repo_names)' \
+                                    '*--repo[Target repo scope]:repo:{compadd -a repo_names}' \
                                     '--workspace[Target workspace scope]' \
                                     '(-f --force)'{-f,--force}'[Overwrite existing template]' \
                                     '1:file:_files'
@@ -638,14 +648,14 @@ _arb() {
                             diff)
                                 shift words; (( CURRENT-- ))
                                 _arguments \
-                                    '*--repo[Filter to specific repo]:repo:($repo_names)' \
+                                    '*--repo[Filter to specific repo]:repo:{compadd -a repo_names}' \
                                     '--workspace[Filter to workspace templates only]' \
                                     '1:template:{ _arb_template_names "$base_dir" }'
                                 ;;
                             apply)
                                 shift words; (( CURRENT-- ))
                                 _arguments \
-                                    '*--repo[Apply only to specific repo]:repo:($repo_names)' \
+                                    '*--repo[Apply only to specific repo]:repo:{compadd -a repo_names}' \
                                     '--workspace[Apply only workspace templates]' \
                                     '(-f --force)'{-f,--force}'[Overwrite drifted files]' \
                                     '--dry-run[Show what would happen without executing]' \
