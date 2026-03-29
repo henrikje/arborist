@@ -28,7 +28,7 @@ import {
 } from "../lib/git";
 import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
-import { EMPTY_CELL, cell, suffix } from "../lib/render";
+import { EMPTY_CELL, cell, skipCell, suffix } from "../lib/render";
 import { confirmOrExit, resolveDefaultFetch, runPlanFlow } from "../lib/sync";
 import {
   dryRunNotice,
@@ -232,15 +232,15 @@ export function buildRenamePlanNodes(
         remoteCell = a.shareRemote ? cell("no remote branch") : EMPTY_CELL;
         break;
       case "skip-missing":
-        localCell = cell("skip — branch not found", "attention");
+        localCell = skipCell("branch not found");
         remoteCell = a.shareRemote ? cell("no remote branch") : EMPTY_CELL;
         break;
       case "skip-wrong-branch":
-        localCell = cell(`skip — on branch ${a.currentBranch ?? "?"}, expected ${oldBranch}`, "attention");
+        localCell = skipCell(`on branch ${a.currentBranch ?? "?"}, expected ${oldBranch}`);
         remoteCell = a.shareRemote ? cell("no remote branch") : EMPTY_CELL;
         break;
       case "skip-in-progress":
-        localCell = cell(`skip — ${a.operationType} in progress (use --include-in-progress)`, "attention");
+        localCell = skipCell(`${a.operationType} in progress (use --include-in-progress)`);
         remoteCell = a.shareRemote ? cell("no remote branch") : EMPTY_CELL;
         break;
       default:
