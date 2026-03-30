@@ -125,13 +125,44 @@ describe("detectBranchMerged", () => {
       expect(result).toBeNull();
     }));
 
-  test("returns merge for empty branch (no commits ahead of base)", () =>
+  test("returns null for branch at same commit as base (no divergence)", () =>
     withRepo(async ({ repoDir }) => {
       const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
 
+      // Branch created from default with no additional commits — same SHA as default.
+      // This is NOT a merge; the branch simply hasn't diverged yet.
       Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
 
       const result = await detectBranchMerged(repoDir, defaultBranch);
+      expect(result).toBeNull();
+    }));
+
+  test("returns null for branch at same commit as base via explicit branchRef", () =>
+    withRepo(async ({ repoDir }) => {
+      const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+      // Same scenario but using an explicit branchRef (like the stacked base detection does)
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+
+      const result = await detectBranchMerged(repoDir, defaultBranch, 200, "feature");
+      expect(result).toBeNull();
+    }));
+
+  test("returns merge for branch that is strictly behind base (ancestor but different commit)", () =>
+    withRepo(async ({ repoDir }) => {
+      const defaultBranch = (await getDefaultBranch(repoDir, "origin")) ?? "main";
+
+      // Create branch, then advance default past it — branch is ancestor of default
+      // but at a different commit. This is the legitimate "branch was merged" or
+      // "branch fell behind" case.
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", "-b", "feature"]);
+      Bun.spawnSync(["git", "-C", repoDir, "checkout", defaultBranch]);
+      writeFileSync(join(repoDir, "main-work.txt"), "main work");
+      Bun.spawnSync(["git", "-C", repoDir, "add", "main-work.txt"]);
+      Bun.spawnSync(["git", "-C", repoDir, "commit", "-m", "advance main"]);
+
+      const result = await detectBranchMerged(repoDir, defaultBranch, 200, "feature");
       expect(result?.kind).toBe("merge");
     }));
 
