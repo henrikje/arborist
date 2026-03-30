@@ -363,8 +363,13 @@ export function registerRetargetCommand(program: Command): void {
             const oldBaseRef = oldBaseRemoteExists ? `${a.baseRemote}/${a.oldBase}` : a.oldBase;
 
             const n = a.replayCount ?? 0;
+            const merged = a.alreadyOnTarget ?? 0;
             const progressMsg = a.baseMerged
-              ? `rebasing ${n} new ${n === 1 ? "commit" : "commits"} onto ${targetRef} (merged)`
+              ? n === 0
+                ? merged > 0
+                  ? `resetting to ${targetRef} (all ${merged} ${merged === 1 ? "commit" : "commits"} merged)`
+                  : `resetting to ${targetRef} (merged)`
+                : `rebasing ${n} new ${n === 1 ? "commit" : "commits"} onto ${targetRef} (merged)`
               : `rebasing ${a.branch} onto ${targetRef} from ${a.oldBase} (retarget)`;
             inlineStart(a.repo, progressMsg);
 
@@ -383,7 +388,11 @@ export function registerRetargetCommand(program: Command): void {
               writeOperationRecord(wsDir, record);
 
               const doneMsg = a.baseMerged
-                ? `rebased ${n} new ${n === 1 ? "commit" : "commits"} onto ${targetRef} (merged)`
+                ? n === 0
+                  ? merged > 0
+                    ? `reset to ${targetRef} (all ${merged} ${merged === 1 ? "commit" : "commits"} merged)`
+                    : `reset to ${targetRef} (merged)`
+                  : `rebased ${n} new ${n === 1 ? "commit" : "commits"} onto ${targetRef} (merged)`
                 : `rebased ${a.branch} onto ${targetRef} from ${a.oldBase} (retarget)`;
               inlineResult(a.repo, doneMsg);
               succeeded++;
