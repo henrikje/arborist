@@ -122,6 +122,50 @@ describe("retarget (merged base, auto-detect)", () => {
       const config = await readFile(join(env.projectDir, "stacked/.arbws/config.json"), "utf-8");
       expect(JSON.parse(config).base).toBeUndefined();
     }));
+
+  test("noop rebase when all local commits are already on target", () =>
+    withEnv(async (env) => {
+      const repoA = join(env.projectDir, ".arb/repos/repo-a");
+      await git(repoA, ["checkout", "-b", "feat/auth"]);
+      await write(join(repoA, "auth.txt"), "auth");
+      await git(repoA, ["add", "auth.txt"]);
+      await git(repoA, ["commit", "-m", "auth feature"]);
+      await git(repoA, ["push", "-u", "origin", "feat/auth"]);
+      await git(repoA, ["checkout", "--detach"]);
+
+      await arb(env, ["create", "stacked", "--base", "feat/auth", "-b", "feat/auth-ui", "repo-a"]);
+
+      // Add a commit on the stacked workspace
+      const wsRepo = join(env.projectDir, "stacked/repo-a");
+      await write(join(wsRepo, "ui.txt"), "ui");
+      await git(wsRepo, ["add", "ui.txt"]);
+      await git(wsRepo, ["commit", "-m", "ui feature"]);
+
+      // Merge feat/auth into main via merge commit, then add the same change as the
+      // workspace's commit (same diff = same patch-id) so it's already on target.
+      const tmpMerge = join(env.testDir, "tmp-merge-noop");
+      await git(env.testDir, ["clone", join(env.originDir, "repo-a.git"), tmpMerge]);
+      await git(tmpMerge, ["merge", "origin/feat/auth", "--no-ff", "-m", "merge feat/auth"]);
+      await write(join(tmpMerge, "ui.txt"), "ui");
+      await git(tmpMerge, ["add", "ui.txt"]);
+      await git(tmpMerge, ["commit", "-m", "ui feature (cherry-picked)"]);
+      await git(tmpMerge, ["push"]);
+
+      const result = await arb(env, ["retarget", "--yes"], {
+        cwd: join(env.projectDir, "stacked"),
+      });
+      expect(result.exitCode).toBe(0);
+      // Plan should show "reset to" (noop: all commits merged)
+      expect(result.output).toContain("reset to");
+      expect(result.output).toContain("merged");
+      // Execution message should also use "reset to" framing, not "rebased 0 new commits"
+      expect(result.output).not.toContain("rebased 0");
+      // Config updated
+      expect(result.output).toContain("base branch changed from feat/auth to main");
+
+      const config = await readFile(join(env.projectDir, "stacked/.arbws/config.json"), "utf-8");
+      expect(JSON.parse(config).base).toBeUndefined();
+    }));
 });
 
 // ── retarget (merged base, branch deleted) ───────────────────────
