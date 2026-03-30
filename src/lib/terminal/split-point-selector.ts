@@ -1,10 +1,10 @@
 import { cursorHide } from "@inquirer/ansi";
 import {
-  type KeypressEvent,
   createPrompt,
   isDownKey,
   isEnterKey,
   isUpKey,
+  type KeypressEvent,
   makeTheme,
   useEffect,
   useKeypress,

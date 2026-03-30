@@ -2,24 +2,21 @@ import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { type Command, Option } from "commander";
 import { z } from "zod";
-import { ArbError, type RelativeTimeParts, arbAction, formatRelativeTimeParts, readWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
+import { ArbError, arbAction, formatRelativeTimeParts, type RelativeTimeParts, readWorkspaceConfig } from "../lib/core";
 import type { GitCache } from "../lib/git";
 import { localTimeout } from "../lib/git/git";
-import { printSchema } from "../lib/json";
-import { type ListJsonEntry, ListJsonEntrySchema } from "../lib/json";
-import { createRenderContext, render, runPhasedRender } from "../lib/render";
+import { type ListJsonEntry, ListJsonEntrySchema, printSchema } from "../lib/json";
 import type { Cell, OutputNode } from "../lib/render";
-import { EMPTY_CELL, cell } from "../lib/render";
-import { buildStatusCountsCell } from "../lib/render";
+import { buildStatusCountsCell, cell, createRenderContext, EMPTY_CELL, render, runPhasedRender } from "../lib/render";
 import {
   type AgeFilter,
   type AnalysisCache,
-  type WorkspaceSummary,
   gatherWorkspaceSummary,
   matchesAge,
   resolveAgeFilter,
   resolveWhereFilter,
+  type WorkspaceSummary,
   workspaceMatchesWhere,
 } from "../lib/status";
 import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures, resolveDefaultFetch } from "../lib/sync";

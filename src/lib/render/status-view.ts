@@ -1,4 +1,4 @@
-import { type RelativeTimeParts, formatRelativeTimeParts } from "../core/time";
+import { formatRelativeTimeParts, type RelativeTimeParts } from "../core/time";
 import { computeFlags } from "../status/flags";
 import { baseRef } from "../status/status";
 import type { WorkspaceSummary } from "../status/types";
@@ -12,7 +12,7 @@ import {
   analyzeRemoteDiff,
   analyzeRemoteName,
 } from "./analysis";
-import { EMPTY_CELL, type OutputNode, type TableColumnDef, type TableNode, type TableRow, cell } from "./model";
+import { cell, EMPTY_CELL, type OutputNode, type TableColumnDef, type TableNode, type TableRow } from "./model";
 import { verboseDetailToNodes } from "./status-verbose";
 
 export interface StatusViewContext {

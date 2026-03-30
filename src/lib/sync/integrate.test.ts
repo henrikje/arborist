@@ -6,10 +6,10 @@ import { formatVerboseCommits } from "../render/status-verbose";
 import { makeRepo } from "../status/test-helpers";
 import { classifyRepo } from "./classify-integrate";
 import {
-  type RepoAssessment,
   describeIntegrateAction,
   formatIntegratePlan,
   maybeWriteBaseFallbackConfig,
+  type RepoAssessment,
 } from "./integrate";
 
 const DIR = "/tmp/test-repo";

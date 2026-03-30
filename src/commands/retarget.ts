@@ -8,10 +8,10 @@ import {
 } from "../lib/analysis";
 import {
   ArbError,
-  type OperationRecord,
-  type RepoOperationState,
   arbAction,
   assertNoInProgressOperation,
+  type OperationRecord,
+  type RepoOperationState,
   readInProgressOperation,
   readWorkspaceConfig,
   withReflogAction,
@@ -19,16 +19,12 @@ import {
   writeWorkspaceConfig,
 } from "../lib/core";
 import { getCommitsBetweenFull, gitLocal } from "../lib/git";
-import { finishSummary, render } from "../lib/render";
-import type { RenderContext } from "../lib/render";
-import type { Cell, OutputNode } from "../lib/render";
-import { skipCell, upToDateCell, verboseCommitsToNodes } from "../lib/render";
-import { cell } from "../lib/render";
+import type { Cell, OutputNode, RenderContext } from "../lib/render";
+import { cell, finishSummary, render, skipCell, upToDateCell, verboseCommitsToNodes } from "../lib/render";
 import { buildConflictReport } from "../lib/render/conflict-report";
 import { type IntegrateActionDesc, integrateActionCell } from "../lib/render/integrate-cells";
 import { RETARGET_EXEMPT_SKIPS } from "../lib/status";
 import {
-  VERBOSE_COMMIT_LIMIT,
   buildCachedStatusAssess,
   confirmOrExit,
   getUnchangedRepos,
@@ -36,6 +32,7 @@ import {
   reportFetchFailures,
   resolveDefaultFetch,
   runPlanFlow,
+  VERBOSE_COMMIT_LIMIT,
   walkRetargetChain,
 } from "../lib/sync";
 import { assessRetargetRepo } from "../lib/sync/classify-retarget";

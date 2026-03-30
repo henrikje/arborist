@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join, resolve } from "node:path";
-import { type TestEnv, arb, withEnv } from "./helpers/env";
+import { arb, type TestEnv, withEnv } from "./helpers/env";
 
 const SHELL_FILE = resolve(join(import.meta.dir, "../../shell/arb.bash"));
 const DIST_DIR = resolve(join(import.meta.dir, "../../dist"));

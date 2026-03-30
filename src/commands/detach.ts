@@ -3,10 +3,9 @@ import { basename, join } from "node:path";
 import type { Command } from "commander";
 import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
 import { branchExistsLocally, detectOperation, gitLocal, isRepoDirty } from "../lib/git";
-import { createRenderContext, finishSummary, render, skipCell } from "../lib/render";
-import { cell } from "../lib/render";
 import type { OutputNode } from "../lib/render";
-import { LOSE_WORK_FLAGS, type RepoFlags, computeFlags, gatherRepoStatus, wouldLoseWork } from "../lib/status";
+import { cell, createRenderContext, finishSummary, render, skipCell } from "../lib/render";
+import { computeFlags, gatherRepoStatus, LOSE_WORK_FLAGS, type RepoFlags, wouldLoseWork } from "../lib/status";
 import { confirmOrExit, resolveDefaultFetch, runPlanFlow } from "../lib/sync";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
 import {

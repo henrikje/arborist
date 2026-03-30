@@ -2,15 +2,13 @@ import { basename } from "node:path";
 import { type Command, Option } from "commander";
 import { ArbError, arbAction } from "../lib/core";
 import { getCommitsBetweenFull, gitLocal } from "../lib/git";
-import { printSchema } from "../lib/json";
-import { type LogJsonOutput, LogJsonOutputSchema, type LogJsonRepo } from "../lib/json";
-import { type RenderContext, render } from "../lib/render";
-import { buildRepoSkipHeader, repoHeaderNode } from "../lib/render";
+import { type LogJsonOutput, LogJsonOutputSchema, type LogJsonRepo, printSchema } from "../lib/json";
+import { buildRepoSkipHeader, type RenderContext, render, repoHeaderNode } from "../lib/render";
 import {
-  type RepoStatus,
   baseRef,
   computeFlags,
   gatherWorkspaceSummary,
+  type RepoStatus,
   repoMatchesWhere,
   resolveWhereFilter,
 } from "../lib/status";

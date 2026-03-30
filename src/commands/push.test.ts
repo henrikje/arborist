@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { RepoRemotes } from "../lib/git";
 import { makeRepo } from "../lib/status";
-import { type PushAssessment, applyForcePushPolicy, assessPushRepo, formatPushPlan, pushActionCell } from "./push";
+import { applyForcePushPolicy, assessPushRepo, formatPushPlan, type PushAssessment, pushActionCell } from "./push";
 
 const DIR = "/tmp/test-repo";
 const SHA = "abc1234";

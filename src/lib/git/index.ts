@@ -1,13 +1,14 @@
 export {
-  type GitOperation,
-  type GitWithTimeoutOptions,
   assertMinimumGitVersion,
   branchExistsLocally,
   branchInWorktreeCaseInsensitive,
   branchIsInWorktree,
+  branchNameError,
   checkBranchMatch,
   detectOperation,
   findBranchWorktree,
+  type GitOperation,
+  type GitWithTimeoutOptions,
   getCommitsBetween,
   getCommitsBetweenFull,
   getDefaultBranch,
@@ -17,29 +18,28 @@ export {
   getShortHead,
   gitLocal,
   gitNetwork,
-  killActiveGitProcesses,
-  localTimeout,
   isCaseInsensitiveFS,
   isLinkedWorktree,
   isRepoDirty,
   isShallowRepo,
+  killActiveGitProcesses,
   listRemoteBranches,
+  localTimeout,
   networkTimeout,
   parseGitStatus,
   parseGitStatusFiles,
   parseStatusPorcelain,
   remoteBranchExists,
   renameBranch,
-  branchNameError,
   validateBranchName,
 } from "./git";
 export { GitCache } from "./git-cache";
 export {
   type FileChange,
   type GitVersion,
+  parseDiffShortstat,
   parseGitNumstat,
   parseGitVersion,
-  parseDiffShortstat,
 } from "./parsing";
-export { type ParsedRemoteUrl, type RemoteProvider, buildPrUrl, parseRemoteUrl } from "./remote-url";
-export { type RepoRemotes, getRemoteNames, getRemoteUrl, resolveRemotes, resolveRemotesMap } from "./remotes";
+export { buildPrUrl, type ParsedRemoteUrl, parseRemoteUrl, type RemoteProvider } from "./remote-url";
+export { getRemoteNames, getRemoteUrl, type RepoRemotes, resolveRemotes, resolveRemotesMap } from "./remotes";

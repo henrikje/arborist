@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 import { GitCache } from "../git/git-cache";
 import { hashContent, manifestKey, readManifest } from "./manifest";

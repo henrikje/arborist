@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseSplitPointValue, parseSplitPoints } from "./parse-split-points";
+import { parseSplitPoints, parseSplitPointValue } from "./parse-split-points";
 
 describe("parseSplitPointValue", () => {
   test("bare SHA", () => {

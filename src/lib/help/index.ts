@@ -2,7 +2,9 @@ import { remotesTopic } from "./remotes";
 import { scriptingTopic } from "./scripting";
 import { stackedTopic } from "./stacked";
 import { templatesTopic } from "./templates";
+
 export type { HelpTopic } from "./types";
+
 import type { HelpTopic } from "./types";
 import { whereFilterTopic } from "./where";
 

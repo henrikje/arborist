@@ -1,5 +1,5 @@
-import { cell } from "./model";
 import type { OutputNode } from "./model";
+import { cell } from "./model";
 
 export interface ConflictEntry {
   repo: string;

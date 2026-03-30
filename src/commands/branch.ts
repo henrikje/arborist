@@ -1,19 +1,16 @@
 import { basename } from "node:path";
 import { type Command, Option } from "commander";
-import { ArbError, arbAction, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
 import type { ArbContext } from "../lib/core";
-import { GitCache, branchNameError } from "../lib/git";
-import { printSchema } from "../lib/json";
-import { type BranchJsonOutput, BranchJsonOutputSchema, type BranchJsonRepo } from "../lib/json";
-import { type RenderContext, render } from "../lib/render";
-import { cell, suffix } from "../lib/render";
+import { ArbError, arbAction, readWorkspaceConfig, writeWorkspaceConfig } from "../lib/core";
+import { branchNameError, GitCache } from "../lib/git";
+import { type BranchJsonOutput, BranchJsonOutputSchema, type BranchJsonRepo, printSchema } from "../lib/json";
 import type { OutputNode } from "../lib/render";
-import { runPhasedRender } from "../lib/render";
+import { cell, type RenderContext, render, runPhasedRender, suffix } from "../lib/render";
 import {
-  type RepoRefs,
   computeFlags,
   gatherRepoRefs,
   gatherWorkspaceSummary,
+  type RepoRefs,
   baseRef as statusBaseRef,
 } from "../lib/status";
 import { type FetchResult, fetchSuffix, parallelFetch, reportFetchFailures, resolveDefaultFetch } from "../lib/sync";

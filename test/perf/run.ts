@@ -12,7 +12,7 @@
 
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { type PerfEnvConfig, cleanupPerfEnv, createPerfEnv } from "./helpers/env";
+import { cleanupPerfEnv, createPerfEnv, type PerfEnvConfig } from "./helpers/env";
 import { type BenchmarkResult, benchmark } from "./helpers/measure";
 
 // ── Scale tiers ──────────────────────────────────────────────────

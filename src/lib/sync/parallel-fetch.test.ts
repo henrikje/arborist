@@ -159,7 +159,6 @@ describe("resolveDefaultFetch", () => {
 
   function setEnv(value: string | undefined): void {
     if (value === undefined) {
-      // biome-ignore lint/performance/noDelete: process.env requires delete to remove keys
       delete process.env.ARB_NO_FETCH;
     } else {
       process.env.ARB_NO_FETCH = value;

@@ -1,5 +1,5 @@
-export { AnalysisCache } from "./analysis-cache";
 export { plainBaseDiff, plainLocal, plainRemoteDiff } from "./analysis";
+export { AnalysisCache } from "./analysis-cache";
 export {
   computeFlags,
   computeSummaryAggregates,
@@ -9,14 +9,13 @@ export {
   wouldLoseWork,
 } from "./flags";
 export { extractPrNumber } from "./pr-detection";
-export { type SkipFlag, BENIGN_SKIPS, EXTRACT_EXEMPT_SKIPS, RETARGET_EXEMPT_SKIPS } from "./skip-flags";
+export { BENIGN_SKIPS, EXTRACT_EXEMPT_SKIPS, RETARGET_EXEMPT_SKIPS, type SkipFlag } from "./skip-flags";
 export { baseRef, baseRemoteRef, gatherRepoRefs, gatherRepoStatus, gatherWorkspaceSummary } from "./status";
 export { makeRepo } from "./test-helpers";
-export { type VerboseDetail, gatherVerboseDetail, toJsonVerbose } from "./verbose-detail";
 export { detectTicketFromName } from "./ticket-detection";
 export {
-  AT_RISK_FLAGS,
   type AgeFilter,
+  AT_RISK_FLAGS,
   FLAG_LABELS,
   LOSE_WORK_FLAGS,
   MERGED_IMPLIED_FLAGS,
@@ -26,6 +25,7 @@ export {
   STALE_FLAGS,
   type WorkspaceSummary,
 } from "./types";
+export { gatherVerboseDetail, toJsonVerbose, type VerboseDetail } from "./verbose-detail";
 export {
   matchesAge,
   repoMatchesWhere,

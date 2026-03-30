@@ -3,9 +3,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  type WorkspaceConfig,
   readProjectConfig,
   readWorkspaceConfig,
+  type WorkspaceConfig,
   writeProjectConfig,
   writeWorkspaceConfig,
 } from "./config";

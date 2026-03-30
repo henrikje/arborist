@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { makeRepo } from "../status/test-helpers";
 import type { RepoStatus } from "../status/types";
-import { type RetargetClassifierDeps, assessRetargetRepo } from "./classify-retarget";
+import { assessRetargetRepo, type RetargetClassifierDeps } from "./classify-retarget";
 
 const DIR = "/tmp/test-repo";
 

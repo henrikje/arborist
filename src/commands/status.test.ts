@@ -10,8 +10,7 @@ import {
   plainLocal,
   plainRemoteDiff,
 } from "../lib/render";
-import { computeFlags } from "../lib/status";
-import { makeRepo } from "../lib/status";
+import { computeFlags, makeRepo } from "../lib/status";
 
 describe("plainBaseDiff", () => {
   test("shows equal when no ahead/behind", () => {

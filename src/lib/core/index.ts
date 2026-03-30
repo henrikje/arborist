@@ -1,37 +1,37 @@
+export { arbAction, type CommandContext } from "./command-action";
 export {
   type ProjectConfig,
-  type WorkspaceConfig,
   readProjectConfig,
   readWorkspaceConfig,
+  type WorkspaceConfig,
   writeProjectConfig,
   writeWorkspaceConfig,
 } from "./config";
-export { type CommandContext, arbAction } from "./command-action";
 export { ArbAbort, ArbError } from "./errors";
-export {
-  type LastCommitWidths,
-  type RelativeTimeParts,
-  computeLastCommitWidths,
-  formatLastCommitCell,
-  formatRelativeTime,
-  formatRelativeTimeParts,
-  latestCommitDate,
-} from "./time";
-export type { ArbContext } from "./types";
-export { type UpdateCheckResult, checkForUpdate } from "./update";
 export { atomicWriteFileSync } from "./fs";
 export {
-  type ContinueClassification,
-  type OperationOutcome,
-  type OperationRecord,
-  type RepoOperationState,
   assertNoInProgressOperation,
+  type ContinueClassification,
   captureRepoState,
   classifyContinueRepo,
   deleteOperationRecord,
   finalizeOperationRecord,
+  type OperationOutcome,
+  type OperationRecord,
+  type RepoOperationState,
   readInProgressOperation,
-  withReflogAction,
   readOperationRecord,
+  withReflogAction,
   writeOperationRecord,
 } from "./operation";
+export {
+  computeLastCommitWidths,
+  formatLastCommitCell,
+  formatRelativeTime,
+  formatRelativeTimeParts,
+  type LastCommitWidths,
+  latestCommitDate,
+  type RelativeTimeParts,
+} from "./time";
+export type { ArbContext } from "./types";
+export { checkForUpdate, type UpdateCheckResult } from "./update";

@@ -1,13 +1,13 @@
 import { styleText } from "node:util";
 import { cursorHide } from "@inquirer/ansi";
 import {
-  type KeypressEvent,
   createPrompt,
   isDownKey,
   isEnterKey,
   isNumberKey,
   isSpaceKey,
   isUpKey,
+  type KeypressEvent,
   makeTheme,
   useEffect,
   useKeypress,
@@ -18,9 +18,9 @@ import {
 import figures from "@inquirer/figures";
 import { countLines } from "./output";
 import {
-  MIN_PAGE_SIZE,
   computePaginationWindow,
   formatPaginationStatus,
+  MIN_PAGE_SIZE,
   resolvePromptPageSize,
 } from "./pagination-status";
 

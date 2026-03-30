@@ -1,9 +1,9 @@
 export { type ActivityResult, getRepoActivityDate, getWorkspaceActivityDate } from "./activity";
 export { detectArbRoot, detectWorkspace } from "./arb-root";
 export {
-  type WorkspaceBaseResolution,
   rejectExplicitBaseRemotePrefix,
   resolveWorkspaceBaseResolution,
+  type WorkspaceBaseResolution,
 } from "./base";
 export { type WorkspaceBranchResult, workspaceBranch } from "./branch";
 export {
@@ -19,12 +19,12 @@ export {
   listDefaultRepos,
   listRepos,
   listWorkspaces,
+  resolveRepoSelection,
+  resolveReposFromArgsOrStdin,
   selectInteractive,
   selectReposInteractive,
   validateRepoNames,
   workspaceRepoDirs,
-  resolveRepoSelection,
-  resolveReposFromArgsOrStdin,
 } from "./repos";
 export { validateWorkspaceName } from "./validation";
 export {

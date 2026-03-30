@@ -14,13 +14,12 @@
  */
 
 import { expect } from "bun:test";
-import { rm } from "node:fs/promises";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AsyncCommand } from "fast-check";
 import { arb, git, write } from "../../integration/helpers/env";
-import { type RealSystem, type WorkspaceModel, predictRepoStatus } from "./model";
+import { predictRepoStatus, type RealSystem, type WorkspaceModel } from "./model";
 
 const REPOS = ["repo-a", "repo-b"] as const;
 

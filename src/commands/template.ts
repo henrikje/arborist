@@ -3,31 +3,24 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { type Command, Option } from "commander";
-import { ArbError, arbAction } from "../lib/core";
 import type { ArbContext } from "../lib/core";
+import { ArbError, arbAction } from "../lib/core";
 import type { GitCache } from "../lib/git";
-import { type RenderContext, finishSummary, render } from "../lib/render";
-import { cell, join as joinCells } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
+import { cell, finishSummary, join as joinCells, type RenderContext, render } from "../lib/render";
 import {
   ARBTEMPLATE_EXT,
-  type ConflictInfo,
-  type ForceOverlayResult,
-  type OverlayResult,
-  type TemplateContext,
-  type TemplateDiff,
-  type TemplateEntry,
-  type UnknownVariable,
   applyRepoTemplates,
   applyWorkspaceTemplates,
+  type ConflictInfo,
   checkAllTemplateVariables,
   checkUnknownVariables,
   checkWorkspaceTemplateRepoWarnings,
@@ -36,14 +29,20 @@ import {
   displayRepoDirectoryWarnings,
   displayTemplateConflicts,
   displayUnknownVariables,
+  type ForceOverlayResult,
   forceApplyRepoTemplates,
   forceApplyWorkspaceTemplates,
   hashContent,
   listTemplates,
   manifestKey,
   mergeManifest,
+  type OverlayResult,
   renderTemplate,
+  type TemplateContext,
+  type TemplateDiff,
+  type TemplateEntry,
   templateFilePath,
+  type UnknownVariable,
   workspaceFilePath,
   workspaceRepoList,
 } from "../lib/templates";

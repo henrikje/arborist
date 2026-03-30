@@ -1,24 +1,24 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { type Command, Option } from "commander";
+import type { ArbContext } from "../lib/core";
 import {
   ArbError,
-  type OperationRecord,
-  type RepoOperationState,
   arbAction,
   assertNoInProgressOperation,
   finalizeOperationRecord,
+  type OperationRecord,
+  type RepoOperationState,
   readInProgressOperation,
   readWorkspaceConfig,
   withReflogAction,
   writeOperationRecord,
   writeWorkspaceConfig,
 } from "../lib/core";
-import type { ArbContext } from "../lib/core";
 import {
-  GitCache,
   branchExistsLocally,
   detectOperation,
+  GitCache,
   gitLocal,
   gitNetwork,
   networkTimeout,
@@ -26,9 +26,8 @@ import {
   renameBranch,
   validateBranchName,
 } from "../lib/git";
-import { type RenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
-import { EMPTY_CELL, cell, skipCell, suffix } from "../lib/render";
+import { cell, EMPTY_CELL, finishSummary, type RenderContext, render, skipCell, suffix } from "../lib/render";
 import { confirmOrExit, resolveDefaultFetch, runPlanFlow } from "../lib/sync";
 import {
   dryRunNotice,

@@ -82,11 +82,7 @@ export async function runPlanFlow<TAssessment>(options: PlanFlowOptions<TAssessm
   return assessments;
 }
 
-export async function confirmOrExit(options: {
-  yes?: boolean;
-  message: string;
-  skipFlag?: string;
-}): Promise<void> {
+export async function confirmOrExit(options: { yes?: boolean; message: string; skipFlag?: string }): Promise<void> {
   if (!options.yes) {
     if (!isTTY() || !process.stdin.isTTY) {
       error("Not a terminal. Use --yes to skip confirmation.");

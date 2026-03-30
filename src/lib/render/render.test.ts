@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { ArbError } from "../core/errors";
 import type { MessageNode, SectionNode, SummaryNode, TableNode } from "./model";
 import { cell, spans } from "./model";
-import { type RenderContext, finishSummary, render, renderCell } from "./render";
+import { finishSummary, type RenderContext, render, renderCell } from "./render";
 
 const TTY: RenderContext = { tty: true };
 const NO_TTY: RenderContext = { tty: false };

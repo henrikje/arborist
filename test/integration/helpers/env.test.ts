@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFile, readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { cleanupTestEnv, createTestEnv, git, withEnv } from "./env";
 

@@ -3,27 +3,36 @@ import type { Command } from "commander";
 import { predictMergeConflict } from "../lib/analysis";
 import {
   ArbError,
-  type CommandContext,
   arbAction,
   assertNoInProgressOperation,
+  type CommandContext,
   readWorkspaceConfig,
 } from "../lib/core";
-import { getCommitsBetweenFull, gitNetwork, networkTimeout } from "../lib/git";
 import type { RepoRemotes } from "../lib/git";
-import { createRenderContext, finishSummary, render } from "../lib/render";
+import { getCommitsBetweenFull, gitNetwork, networkTimeout } from "../lib/git";
 import type { Cell, OutputNode } from "../lib/render";
-import { skipCell, upToDateCell, verboseCommitsToNodes } from "../lib/render";
-import { cell, suffix } from "../lib/render";
+import {
+  cell,
+  createRenderContext,
+  finishSummary,
+  render,
+  skipCell,
+  suffix,
+  upToDateCell,
+  verboseCommitsToNodes,
+} from "../lib/render";
 import { type RepoStatus, resolveWhereFilter } from "../lib/status";
 import {
-  VERBOSE_COMMIT_LIMIT,
   buildCachedStatusAssess,
   classifyNetworkError,
   confirmOrExit,
   resolveDefaultFetch,
   runPlanFlow,
+  VERBOSE_COMMIT_LIMIT,
 } from "../lib/sync";
+
 export type { PushAssessment } from "../lib/sync";
+
 import type { PushAssessment } from "../lib/sync";
 import { dryRunNotice, info, inlineResult, inlineStart, plural, red } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";
