@@ -364,7 +364,7 @@ Color output is additionally disabled when the `NO_COLOR` environment variable i
 
 ### Exception-based exit handling
 
-**Never call `process.exit()` directly in commands or library code.** Throw `ArbError` (exit 1) for errors or `ArbAbort` (exit 130) for user cancellations. A single try/catch in `index.ts` maps these to exit codes.
+Commands and library code signal errors by throwing `ArbError` (exit 1) or `ArbAbort` (exit 130); a single catch in `index.ts` maps these to exit codes.
 
 **Always call `error()` or `warn()` before throwing `ArbError`.** The catch handler does not print the exception message — it only maps the type to an exit code. If you throw without logging first, the user sees nothing on stderr: just a silent exit 1.
 
@@ -380,8 +380,6 @@ throw new ArbError(`Cannot capture HEAD for ${repo}`);
 Exception types:
 - `ArbError` — error condition → `process.exit(1)`.
 - `ArbAbort` — user cancellation (declined prompt, Ctrl-C during inquirer) → prints `info(err.message)` (default: "Aborted.") then `process.exit(130)`.
-
-The only `process.exit()` calls live in `index.ts`: the top-level catch handler and the SIGINT signal handler. Signal handlers must call `process.exit()` directly because they cannot throw into an async context. See `decisions/0036-exception-based-exit-handling.md`.
 
 ### gitLocal() return convention
 
