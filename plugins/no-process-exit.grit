@@ -1,0 +1,3 @@
+language js
+
+`process.exit($code)` as $match where { $filename <: r"src/", $filename <: not r"src/index\.ts$" }
