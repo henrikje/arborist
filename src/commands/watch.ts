@@ -1,22 +1,20 @@
 import { basename, dirname, resolve } from "node:path";
 import type { Command } from "commander";
 import { predictMergeConflict } from "../lib/analysis";
-import { ArbError, type CommandContext, arbAction } from "../lib/core";
+import { ArbError, arbAction, type CommandContext } from "../lib/core";
 import { gitLocal } from "../lib/git/git";
-import { createRenderContext, fitToHeight, render } from "../lib/render";
-import { buildStatusView } from "../lib/render";
+import { buildStatusView, createRenderContext, fitToHeight, render } from "../lib/render";
 import {
-  type RepoStatus,
-  type VerboseDetail,
-  type WorkspaceSummary,
   baseRef,
   computeSummaryAggregates,
   gatherVerboseDetail,
   gatherWorkspaceSummary,
+  type RepoStatus,
+  type VerboseDetail,
+  type WorkspaceSummary,
 } from "../lib/status";
-import { parallelFetch } from "../lib/sync";
-import { integrate } from "../lib/sync";
-import { type WatchCommand, type WatchEntry, bold, dim, error, isTTY, runWatchLoop } from "../lib/terminal";
+import { integrate, parallelFetch } from "../lib/sync";
+import { bold, dim, error, isTTY, runWatchLoop, type WatchCommand, type WatchEntry } from "../lib/terminal";
 import { readGitdirFromWorktree, requireWorkspace, workspaceRepoDirs } from "../lib/workspace";
 import { runPull } from "./pull";
 import { runPush } from "./push";

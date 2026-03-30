@@ -1,40 +1,47 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import type { Command } from "commander";
+import type { ArbContext } from "../lib/core";
 import {
   ArbError,
-  type LastCommitWidths,
-  type RelativeTimeParts,
   arbAction,
   computeLastCommitWidths,
   formatLastCommitCell,
   formatRelativeTimeParts,
+  type LastCommitWidths,
+  type RelativeTimeParts,
 } from "../lib/core";
-import type { ArbContext } from "../lib/core";
 import { GitCache, gitLocal, gitNetwork, networkTimeout } from "../lib/git";
-import { type RenderContext, finishSummary, fitToHeight, render } from "../lib/render";
-import { EMPTY_CELL, cell } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
-import { enrichMergedLabel, formatStatusCounts } from "../lib/render";
+import {
+  cell,
+  EMPTY_CELL,
+  enrichMergedLabel,
+  finishSummary,
+  fitToHeight,
+  formatStatusCounts,
+  type RenderContext,
+  render,
+} from "../lib/render";
 import {
   type AnalysisCache,
-  LOSE_WORK_FLAGS,
-  type WorkspaceSummary,
   computeFlags,
   gatherWorkspaceSummary,
   isWorkspaceSafe,
+  LOSE_WORK_FLAGS,
   matchesAge,
   resolveAgeFilter,
   resolveWhereFilter,
+  type WorkspaceSummary,
   workspaceMatchesWhere,
   wouldLoseWork,
 } from "../lib/status";
 import { confirmOrExit, parallelFetch, reportFetchFailures, resolveDefaultFetch } from "../lib/sync";
 import {
-  type TemplateDiff,
   diffTemplates,
   displayAggregatedTemplateDiffs,
   displayTemplateDiffs,
+  type TemplateDiff,
 } from "../lib/templates";
 import {
   analyzeDone,

@@ -1,11 +1,11 @@
 import { basename } from "node:path";
 import { type Command, Option } from "commander";
 import {
-  type OperationRecord,
-  type RepoOperationState,
   arbAction,
   assertNoInProgressOperation,
   captureRepoState,
+  type OperationRecord,
+  type RepoOperationState,
   readWorkspaceConfig,
   withReflogAction,
   writeOperationRecord,
@@ -23,13 +23,13 @@ import {
   verboseCommitsToNodes,
 } from "../lib/render";
 import type { SkipFlag } from "../lib/status";
-import { type RepoStatus, computeFlags, resolveWhereFilter } from "../lib/status";
+import { computeFlags, type RepoStatus, resolveWhereFilter } from "../lib/status";
 import {
-  VERBOSE_COMMIT_LIMIT,
   buildCachedStatusAssess,
   confirmOrExit,
   resolveDefaultFetch,
   runPlanFlow,
+  VERBOSE_COMMIT_LIMIT,
 } from "../lib/sync";
 import type { CommitDisplayEntry } from "../lib/sync/types";
 import { dryRunNotice, info, inlineResult, inlineStart, plural, shouldColor, warn, yellow } from "../lib/terminal";

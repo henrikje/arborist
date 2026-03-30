@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Command } from "commander";
-import { type CommandContext, arbAction, readOperationRecord, readWorkspaceConfig } from "../lib/core";
+import { arbAction, type CommandContext, readOperationRecord, readWorkspaceConfig } from "../lib/core";
 import { getRemoteNames, getRemoteUrl } from "../lib/git";
 import { AnalysisCache, computeFlags, gatherWorkspaceSummary } from "../lib/status";
 import { listRepos, listWorkspaces, readGitdirFromWorktree, workspaceRepoDirs } from "../lib/workspace";

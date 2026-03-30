@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { type TestEnv, arb, withEnv } from "./helpers/env";
+import { arb, type TestEnv, withEnv } from "./helpers/env";
 
 const ARB_BIN = resolve(join(import.meta.dir, "../../dist/arb"));
 

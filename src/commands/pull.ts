@@ -3,16 +3,17 @@ import { type Command, Option } from "commander";
 import { predictMergeConflict, predictRebaseConflictCommits, predictStashPopConflict } from "../lib/analysis";
 import {
   ArbError,
+  arbAction,
+  assertNoInProgressOperation,
   type CommandContext,
   type OperationRecord,
   type RepoOperationState,
-  arbAction,
-  assertNoInProgressOperation,
   readInProgressOperation,
   readWorkspaceConfig,
   withReflogAction,
   writeOperationRecord,
 } from "../lib/core";
+import type { RepoRemotes } from "../lib/git";
 import {
   detectOperation,
   getCommitsBetweenFull,
@@ -22,16 +23,26 @@ import {
   networkTimeout,
   parseGitStatus,
 } from "../lib/git";
-import type { RepoRemotes } from "../lib/git";
-import { createRenderContext, finishSummary, render } from "../lib/render";
 import type { Cell, OutputNode } from "../lib/render";
-import { buildConflictReport, buildStashPopFailureReport, skipCell, upToDateCell } from "../lib/render";
-import { cell, spans, suffix } from "../lib/render";
-import { verboseCommitsToNodes } from "../lib/render";
-import { type RepoStatus, computeFlags, resolveWhereFilter } from "../lib/status";
-import { VERBOSE_COMMIT_LIMIT, buildCachedStatusAssess, confirmOrExit, runPlanFlow } from "../lib/sync";
+import {
+  buildConflictReport,
+  buildStashPopFailureReport,
+  cell,
+  createRenderContext,
+  finishSummary,
+  render,
+  skipCell,
+  spans,
+  suffix,
+  upToDateCell,
+  verboseCommitsToNodes,
+} from "../lib/render";
+import { computeFlags, type RepoStatus, resolveWhereFilter } from "../lib/status";
+import { buildCachedStatusAssess, confirmOrExit, runPlanFlow, VERBOSE_COMMIT_LIMIT } from "../lib/sync";
 import { runContinueFlow } from "../lib/sync/continue-flow";
+
 export type { PullAssessment } from "../lib/sync";
+
 import type { PullAssessment } from "../lib/sync";
 import { dryRunNotice, error, info, inlineResult, inlineStart, plural, shouldColor, yellow } from "../lib/terminal";
 import { requireBranch, requireWorkspace, resolveReposFromArgsOrStdin, workspaceRepoDirs } from "../lib/workspace";

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { basename, join } from "node:path";
 import { dim, hintsEnabled, warn } from "../terminal/output";
 import { listRepos, listWorkspaces, workspaceRepoDirs } from "./repos";

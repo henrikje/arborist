@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { type TestEnv, arb, git, withEnv, write } from "./helpers/env";
+import { arb, git, type TestEnv, withEnv, write } from "./helpers/env";
 
 const VALIDATE_SCRIPT = resolve(join(import.meta.dir, "../../scripts/validate-json-schema.ts"));
 

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { makeRepo } from "../status/test-helpers";
 import type { WorkspaceSummary } from "../status/types";
 import type { TableNode } from "./model";
-import { type StatusViewContext, buildRefParenthetical, buildStatusView } from "./status-view";
+import { buildRefParenthetical, buildStatusView, type StatusViewContext } from "./status-view";
 
 function makeSummary(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary {
   return {

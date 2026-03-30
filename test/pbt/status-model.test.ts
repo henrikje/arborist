@@ -10,12 +10,11 @@
 
 import { describe, test } from "bun:test";
 import { realpathSync } from "node:fs";
-import { cp, readFile, writeFile } from "node:fs/promises";
-import { mkdtemp } from "node:fs/promises";
+import { cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fc from "fast-check";
-import { type TestEnv, arb, cleanupTestEnv, createTestEnv } from "../integration/helpers/env";
+import { arb, cleanupTestEnv, createTestEnv, type TestEnv } from "../integration/helpers/env";
 import {
   MakeCommit,
   MakeCommitOnBase,
@@ -26,7 +25,7 @@ import {
   Rebase,
   Undo,
 } from "./helpers/commands";
-import { type RealSystem, type WorkspaceModel, freshWorkspaceModel } from "./helpers/model";
+import { freshWorkspaceModel, type RealSystem, type WorkspaceModel } from "./helpers/model";
 
 // ── Template ─────────────────────────────────────────────────────
 

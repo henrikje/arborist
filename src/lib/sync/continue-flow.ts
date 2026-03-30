@@ -6,7 +6,7 @@ import { gitLocal, parseGitStatus } from "../git/git";
 import { buildConflictReport, buildStashPopFailureReport } from "../render/conflict-report";
 import type { Cell, OutputNode } from "../render/model";
 import { cell } from "../render/model";
-import { type RenderContext, finishSummary, render } from "../render/render";
+import { finishSummary, type RenderContext, render } from "../render/render";
 import { dryRunNotice, info, inlineResult, inlineStart, plural, yellow } from "../terminal/output";
 import { shouldColor } from "../terminal/tty";
 import { workspaceRepoDirs } from "../workspace/repos";

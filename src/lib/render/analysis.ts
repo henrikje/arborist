@@ -1,8 +1,8 @@
 import { plainBaseDiff, remoteDiffParts } from "../status/analysis";
-import { AT_RISK_FLAGS, FLAG_LABELS, MERGED_IMPLIED_FLAGS } from "../status/types";
 import type { RepoFlags, RepoStatus, WorkspaceSummary } from "../status/types";
+import { AT_RISK_FLAGS, FLAG_LABELS, MERGED_IMPLIED_FLAGS } from "../status/types";
 import { yellow } from "../terminal/output";
-import { type Cell, EMPTY_CELL, type Span, cell, join, spans, suffix } from "./model";
+import { type Cell, cell, EMPTY_CELL, join, type Span, spans, suffix } from "./model";
 
 // Re-export plain* functions from their new home for barrel consumers
 export { plainBaseDiff, plainLocal, plainRemoteDiff } from "../status/analysis";

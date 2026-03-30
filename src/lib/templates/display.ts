@@ -1,6 +1,6 @@
 import { basename } from "node:path";
-import { cell } from "../render/model";
 import type { Cell, OutputNode } from "../render/model";
+import { cell } from "../render/model";
 import { info, plural, warn } from "../terminal/output";
 import {
   ARBTEMPLATE_EXT,

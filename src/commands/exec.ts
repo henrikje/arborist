@@ -1,8 +1,7 @@
 import { basename } from "node:path";
 import type { Command } from "commander";
 import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
-import { type RenderContext, finishSummary, render } from "../lib/render";
-import { repoHeaderNode } from "../lib/render";
+import { finishSummary, type RenderContext, render, repoHeaderNode } from "../lib/render";
 import { computeFlags, gatherRepoStatus, repoMatchesWhere, resolveWhereFilter } from "../lib/status";
 import { error, plural, shouldColor } from "../lib/terminal";
 import { collectRepo, requireBranch, requireWorkspace, validateRepoNames, workspaceRepoDirs } from "../lib/workspace";

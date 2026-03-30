@@ -4,11 +4,9 @@ import { type Command, Option } from "commander";
 import { z } from "zod";
 import { ArbError, arbAction, readProjectConfig, writeProjectConfig } from "../lib/core";
 import { gitLocal, gitNetwork, networkTimeout } from "../lib/git";
-import { printSchema } from "../lib/json";
-import { type RepoListJsonEntry, RepoListJsonEntrySchema } from "../lib/json";
-import { type RenderContext, render } from "../lib/render";
-import { cell } from "../lib/render";
+import { printSchema, type RepoListJsonEntry, RepoListJsonEntrySchema } from "../lib/json";
 import type { OutputNode } from "../lib/render";
+import { cell, type RenderContext, render } from "../lib/render";
 import { classifyNetworkError, confirmOrExit, networkErrorHint } from "../lib/sync";
 import {
   dim,

@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { ArbError, type OperationRecord, arbAction, deleteOperationRecord, readOperationRecord } from "../lib/core";
+import { ArbError, arbAction, deleteOperationRecord, type OperationRecord, readOperationRecord } from "../lib/core";
 import { runUndoFlow } from "../lib/sync";
 import { error, info, readNamesFromStdin } from "../lib/terminal";
 import { requireWorkspace } from "../lib/workspace";

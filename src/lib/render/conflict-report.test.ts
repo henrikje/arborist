@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type ConflictEntry, buildConflictReport, buildStashPopFailureReport } from "./conflict-report";
+import { buildConflictReport, buildStashPopFailureReport, type ConflictEntry } from "./conflict-report";
 import type { MessageNode, SectionNode } from "./model";
 
 describe("buildConflictReport", () => {

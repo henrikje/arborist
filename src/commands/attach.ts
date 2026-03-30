@@ -4,9 +4,7 @@ import { ArbError, arbAction, readWorkspaceConfig } from "../lib/core";
 import { finishSummary, render } from "../lib/render";
 import { parallelFetch, reportFetchFailures, resolveDefaultFetch } from "../lib/sync";
 import { applyRepoTemplates, applyWorkspaceTemplates, displayOverlaySummary } from "../lib/templates";
-import { error, info, plural, warn } from "../lib/terminal";
-import { readNamesFromStdin } from "../lib/terminal";
-import { shouldColor } from "../lib/terminal";
+import { error, info, plural, readNamesFromStdin, shouldColor, warn } from "../lib/terminal";
 import {
   addWorktrees,
   listDefaultRepos,

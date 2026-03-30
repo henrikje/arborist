@@ -12,7 +12,7 @@ import {
   plainLocal,
   plainRemoteDiff,
 } from "./analysis";
-import { EMPTY_CELL, cell, join, spans, suffix } from "./model";
+import { cell, EMPTY_CELL, join, spans, suffix } from "./model";
 
 // ── Primitive helpers ──
 

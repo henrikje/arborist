@@ -8,10 +8,10 @@ import {
 } from "./git";
 import { type GitVersion, parseGitVersion } from "./parsing";
 import {
-  type RepoRemotes,
   getRemoteNames as _getRemoteNames,
   getRemoteUrl as _getRemoteUrl,
   resolveRemotes as _resolveRemotes,
+  type RepoRemotes,
 } from "./remotes";
 
 /**

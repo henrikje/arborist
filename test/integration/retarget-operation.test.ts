@@ -95,11 +95,7 @@ async function setupRetargetConflictScenario(env: { testDir: string; projectDir:
 /**
  * Multi-repo retarget conflict scenario: repo-a will conflict, repo-b will succeed.
  */
-async function setupMultiRepoRetargetConflictScenario(env: {
-  testDir: string;
-  projectDir: string;
-  originDir: string;
-}) {
+async function setupMultiRepoRetargetConflictScenario(env: { testDir: string; projectDir: string; originDir: string }) {
   const mainRepoA = join(env.projectDir, ".arb/repos/repo-a");
   const mainRepoB = join(env.projectDir, ".arb/repos/repo-b");
 

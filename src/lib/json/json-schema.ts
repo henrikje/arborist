@@ -1,4 +1,4 @@
-import { type ZodType, toJSONSchema } from "zod";
+import { toJSONSchema, type ZodType } from "zod";
 
 export function printSchema(schema: ZodType): void {
   const jsonSchema = toJSONSchema(schema, { target: "draft-2020-12" });

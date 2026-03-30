@@ -7,17 +7,17 @@ export {
 } from "./commit-matching";
 export { predictMergeConflict, predictRebaseConflictCommits, predictStashPopConflict } from "./conflict-prediction";
 export {
-  type MergeDetectionResult,
   detectBranchMerged,
   findMergeCommitForBranch,
   findTicketReferencedCommit,
+  type MergeDetectionResult,
   verifySquashRange,
 } from "./merge-detection";
 export {
-  crossMatchPatchIds,
   computeCumulativePatchId,
   computeDiffTreePatchId,
   computePatchIds,
+  crossMatchPatchIds,
   parsePatchIdOutput,
 } from "./patch-id";
-export { type ReplayPlanAnalysis, analyzeReplayPlan, analyzeRetargetReplay } from "./replay-analysis";
+export { analyzeReplayPlan, analyzeRetargetReplay, type ReplayPlanAnalysis } from "./replay-analysis";

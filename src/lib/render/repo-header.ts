@@ -1,6 +1,6 @@
 import type { RepoFlags, RepoStatus } from "../status/types";
-import { cell } from "./model";
 import type { OutputNode, RepoHeaderNode } from "./model";
+import { cell } from "./model";
 
 /**
  * Build a RepoHeaderNode with an optional note (dimmed by default).

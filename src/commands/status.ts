@@ -1,12 +1,12 @@
 import { basename, resolve } from "node:path";
 import { type Command, Option } from "commander";
 import { predictMergeConflict } from "../lib/analysis";
-import { type CommandContext, arbAction, readOperationRecord, readWorkspaceConfig } from "../lib/core";
+import { arbAction, type CommandContext, readOperationRecord, readWorkspaceConfig } from "../lib/core";
 import { localTimeout } from "../lib/git/git";
-import { printSchema } from "../lib/json";
-import { type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
+import { printSchema, type StatusJsonOutput, StatusJsonOutputSchema } from "../lib/json";
 import {
   buildRefParenthetical,
+  buildStatusView,
   createRenderContext,
   fitToHeight,
   render,
@@ -14,19 +14,18 @@ import {
   runPhasedRender,
   spans,
 } from "../lib/render";
-import { buildStatusView } from "../lib/render";
 import {
-  type RepoStatus,
-  type VerboseDetail,
-  type WorkspaceSummary,
   baseRef,
   computeFlags,
   computeSummaryAggregates,
   gatherVerboseDetail,
   gatherWorkspaceSummary,
+  type RepoStatus,
   repoMatchesWhere,
   resolveWhereFilter,
   toJsonVerbose,
+  type VerboseDetail,
+  type WorkspaceSummary,
 } from "../lib/status";
 import {
   type FetchResult,

@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import type { RepoRemotes } from "../lib/git";
 import { makeRepo } from "../lib/status";
 import {
-  type PullAssessment,
   assessPullRepo,
   evaluateSafeResetEligibility,
   formatPullPlan,
+  type PullAssessment,
   pullActionCell,
   resetRebasedSkips,
 } from "./pull";

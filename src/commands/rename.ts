@@ -1,24 +1,23 @@
 import { existsSync, realpathSync, renameSync } from "node:fs";
 import { basename } from "node:path";
 import { type Command, Option } from "commander";
+import type { ArbContext } from "../lib/core";
 import {
   ArbError,
-  type OperationRecord,
-  type RepoOperationState,
   arbAction,
   assertNoInProgressOperation,
   captureRepoState,
+  type OperationRecord,
+  type RepoOperationState,
   readInProgressOperation,
   readWorkspaceConfig,
   withReflogAction,
   writeOperationRecord,
   writeWorkspaceConfig,
 } from "../lib/core";
-import type { ArbContext } from "../lib/core";
-import { GitCache, branchNameError, gitLocal, gitNetwork, networkTimeout, renameBranch } from "../lib/git";
-import { type RenderContext, finishSummary, render } from "../lib/render";
+import { branchNameError, GitCache, gitLocal, gitNetwork, networkTimeout, renameBranch } from "../lib/git";
 import type { OutputNode } from "../lib/render";
-import { cell } from "../lib/render";
+import { cell, finishSummary, type RenderContext, render } from "../lib/render";
 import { confirmOrExit, resolveDefaultFetch, runPlanFlow } from "../lib/sync";
 import {
   dryRunNotice,
@@ -33,7 +32,7 @@ import {
   yellow,
 } from "../lib/terminal";
 import { requireWorkspace, validateWorkspaceName, workspaceRepoDirs } from "../lib/workspace";
-import { type RepoAssessment, assessRepo, buildRenamePlanNodes } from "./branch-rename";
+import { assessRepo, buildRenamePlanNodes, type RepoAssessment } from "./branch-rename";
 import { deriveWorkspaceNameFromBranch } from "./create";
 
 interface RenameCommandOptions {

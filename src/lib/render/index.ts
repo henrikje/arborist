@@ -14,9 +14,9 @@ export {
   plainRemoteDiff,
 } from "./analysis";
 export {
-  type ConflictEntry,
   buildConflictReport,
   buildStashPopFailureReport,
+  type ConflictEntry,
 } from "./conflict-report";
 export { countNodeLines, fitToHeight } from "./height-fit";
 export { type IntegrateActionDesc, integrateActionCell } from "./integrate-cells";
@@ -24,9 +24,11 @@ export { formatBranchGraph } from "./integrate-graph";
 export {
   type Attention,
   type Cell,
+  cell,
   EMPTY_CELL,
   type GapNode,
   type HintNode,
+  join,
   type MessageNode,
   type OutputNode,
   type RawTextNode,
@@ -34,29 +36,27 @@ export {
   type SectionNode,
   type Span,
   type SummaryNode,
+  spans,
+  suffix,
   type TableColumnDef,
   type TableNode,
   type TableRow,
-  cell,
-  join,
-  spans,
-  suffix,
 } from "./model";
 export { type PhasedRenderOptions, type RenderPhase, runPhasedRender } from "./phased-render";
 export { headShaCell, skipCell, stashHintCell, upToDateCell, withSuffixes } from "./plan-format";
-export { type RenderContext, createRenderContext, finishSummary, render, renderCell } from "./render";
+export { createRenderContext, finishSummary, type RenderContext, render, renderCell } from "./render";
 export { buildRepoSkipHeader, repoHeaderNode } from "./repo-header";
 export {
-  type StatusViewContext,
-  type StatusViewResult,
-  buildRefParenthetical,
-  buildStatusView,
-} from "./status-view";
-export {
-  ITEM_INDENT,
-  SECTION_INDENT,
   formatVerboseCommits,
   formatVerboseDetail,
+  ITEM_INDENT,
+  SECTION_INDENT,
   verboseCommitsToNodes,
   verboseDetailToNodes,
 } from "./status-verbose";
+export {
+  buildRefParenthetical,
+  buildStatusView,
+  type StatusViewContext,
+  type StatusViewResult,
+} from "./status-view";

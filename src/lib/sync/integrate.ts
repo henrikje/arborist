@@ -23,7 +23,7 @@ import { formatBranchGraph } from "../render/integrate-graph";
 import type { Cell, OutputNode } from "../render/model";
 import { cell, suffix } from "../render/model";
 import { skipCell, upToDateCell } from "../render/plan-format";
-import { type RenderContext, finishSummary, render } from "../render/render";
+import { finishSummary, type RenderContext, render } from "../render/render";
 import { verboseCommitsToNodes } from "../render/status-verbose";
 import { resolveWhereFilter } from "../status/where";
 import { dryRunNotice, error, info, inlineResult, inlineStart, plural, yellow } from "../terminal/output";
@@ -32,13 +32,15 @@ import { workspaceBranch } from "../workspace/branch";
 import { requireBranch, requireWorkspace } from "../workspace/context";
 import { resolveRepoSelection, workspaceRepoDirs } from "../workspace/repos";
 import { buildCachedStatusAssess } from "./assess-with-cache";
-import { type IntegrateMode, assessIntegrateRepo } from "./classify-integrate";
+import { assessIntegrateRepo, type IntegrateMode } from "./classify-integrate";
 import { VERBOSE_COMMIT_LIMIT } from "./constants";
 import { runContinueFlow } from "./continue-flow";
 import { confirmOrExit, runPlanFlow } from "./mutation-flow";
 import { resolveDefaultFetch } from "./parallel-fetch";
 import { runUndoFlow } from "./undo";
+
 export type { RepoAssessment } from "./types";
+
 import type { RepoAssessment } from "./types";
 
 /** Build the git ref for the base branch, respecting local resolution. */

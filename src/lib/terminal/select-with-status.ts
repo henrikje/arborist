@@ -1,13 +1,13 @@
 import { styleText } from "node:util";
 import { cursorHide } from "@inquirer/ansi";
 import {
-  type KeypressEvent,
   createPrompt,
   isBackspaceKey,
   isDownKey,
   isEnterKey,
   isNumberKey,
   isUpKey,
+  type KeypressEvent,
   makeTheme,
   useEffect,
   useKeypress,

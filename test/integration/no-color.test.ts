@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join, resolve } from "node:path";
-import { type TestEnv, arb, withEnv } from "./helpers/env";
+import { arb, type TestEnv, withEnv } from "./helpers/env";
 
 const ARB_BIN = resolve(join(import.meta.dir, "../../dist/arb"));
 

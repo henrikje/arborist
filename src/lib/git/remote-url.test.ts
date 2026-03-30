@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type ParsedRemoteUrl, buildPrUrl, parseRemoteUrl } from "./remote-url";
+import { buildPrUrl, type ParsedRemoteUrl, parseRemoteUrl } from "./remote-url";
 
 describe("parseRemoteUrl", () => {
   describe("GitHub", () => {

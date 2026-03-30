@@ -3,10 +3,10 @@ import { basename } from "node:path";
 import { type Command, Option } from "commander";
 import {
   ArbError,
-  type OperationRecord,
-  type RepoOperationState,
   arbAction,
   assertNoInProgressOperation,
+  type OperationRecord,
+  type RepoOperationState,
   readInProgressOperation,
   readWorkspaceConfig,
   withReflogAction,
@@ -14,14 +14,11 @@ import {
   writeWorkspaceConfig,
 } from "../lib/core";
 import { branchExistsLocally, getCommitsBetweenFull, gitLocal } from "../lib/git";
-import { finishSummary, render, verboseCommitsToNodes } from "../lib/render";
-import type { RenderContext } from "../lib/render";
-import type { Cell, OutputNode } from "../lib/render";
-import { cell, skipCell } from "../lib/render";
+import type { Cell, OutputNode, RenderContext } from "../lib/render";
+import { cell, finishSummary, render, skipCell, verboseCommitsToNodes } from "../lib/render";
 import { buildConflictReport } from "../lib/render/conflict-report";
 import { EXTRACT_EXEMPT_SKIPS } from "../lib/status";
 import {
-  VERBOSE_COMMIT_LIMIT,
   buildCachedStatusAssess,
   confirmOrExit,
   parallelFetch,
@@ -29,6 +26,7 @@ import {
   resolveDefaultFetch,
   runPlanFlow,
   selectExtractBoundaries,
+  VERBOSE_COMMIT_LIMIT,
 } from "../lib/sync";
 import { assessExtractRepo } from "../lib/sync/classify-extract";
 import { runContinueFlow } from "../lib/sync/continue-flow";

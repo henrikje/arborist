@@ -176,7 +176,6 @@ export async function withReflogAction<T>(action: string, fn: () => Promise<T>):
   try {
     return await fn();
   } finally {
-    // biome-ignore lint/performance/noDelete: must truly unset env var, not coerce to string
     delete process.env.GIT_REFLOG_ACTION;
   }
 }
