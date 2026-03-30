@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.115.1](https://github.com/henrikje/arborist/compare/v0.115.0...v0.115.1) (2026-03-30)
+
+
+### Bug Fixes
+
+* **status:** suppress false-positive "base merged" when branch hasn't diverged ([166862c](https://github.com/henrikje/arborist/commit/166862c7f4fed57e7c51eb8f0e562ec876e50c35))
+
 ## [0.115.0](https://github.com/henrikje/arborist/compare/v0.114.0...v0.115.0) (2026-03-30)
 
 
