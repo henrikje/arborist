@@ -105,6 +105,17 @@ export async function gitLocal(
   return { exitCode, stdout, stderr };
 }
 
+/** Like gitLocal(), but throws ArbError on non-zero exit. Returns { stdout, stderr } (no exitCode — guaranteed 0). */
+export async function gitLocalOrThrow(repoDir: string, ...args: string[]): Promise<{ stdout: string; stderr: string }> {
+  const result = await gitLocal(repoDir, ...args);
+  if (result.exitCode !== 0) {
+    const msg = `git ${args.join(" ")} failed: ${result.stderr.trim() || `exit code ${result.exitCode}`}`;
+    error(msg);
+    throw new ArbError(msg);
+  }
+  return { stdout: result.stdout, stderr: result.stderr };
+}
+
 export interface GitWithTimeoutOptions {
   signal?: AbortSignal;
   cwd?: string;
@@ -315,6 +326,7 @@ export async function renameBranch(
     if (step1.exitCode !== 0) return step1;
     const step2 = await gitLocal(repoDir, "branch", "-m", temp, newBranch);
     if (step2.exitCode !== 0) {
+      // arb:unchecked-exit — error recovery — best-effort rollback of temp branch
       await gitLocal(repoDir, "branch", "-m", temp, oldBranch);
       return step2;
     }

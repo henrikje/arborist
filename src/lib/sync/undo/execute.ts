@@ -24,13 +24,17 @@ export async function executeBranchRenameUndo(
       if (result.exitCode === 0) {
         const state = record.repos[a.repo];
         if (state?.tracking?.remote) {
+          // arb:unchecked-exit — best-effort tracking config restoration
           await gitLocal(a.repoDir, "config", `branch.${record.oldBranch}.remote`, state.tracking.remote);
         } else {
+          // arb:unchecked-exit — best-effort tracking config restoration
           await gitLocal(a.repoDir, "config", "--unset", `branch.${record.oldBranch}.remote`);
         }
         if (state?.tracking?.merge) {
+          // arb:unchecked-exit — best-effort tracking config restoration
           await gitLocal(a.repoDir, "config", `branch.${record.oldBranch}.merge`, state.tracking.merge);
         } else {
+          // arb:unchecked-exit — best-effort tracking config restoration
           await gitLocal(a.repoDir, "config", "--unset", `branch.${record.oldBranch}.merge`);
         }
         inlineResult(a.repo, `reverted to ${record.oldBranch}`);
@@ -71,13 +75,17 @@ export async function executeRenameUndo(
         if (result.exitCode === 0) {
           const state = record.repos[a.repo];
           if (state?.tracking?.remote) {
+            // arb:unchecked-exit — best-effort tracking config restoration
             await gitLocal(a.repoDir, "config", `branch.${oldBranch}.remote`, state.tracking.remote);
           } else {
+            // arb:unchecked-exit — best-effort tracking config restoration
             await gitLocal(a.repoDir, "config", "--unset", `branch.${oldBranch}.remote`);
           }
           if (state?.tracking?.merge) {
+            // arb:unchecked-exit — best-effort tracking config restoration
             await gitLocal(a.repoDir, "config", `branch.${oldBranch}.merge`, state.tracking.merge);
           } else {
+            // arb:unchecked-exit — best-effort tracking config restoration
             await gitLocal(a.repoDir, "config", "--unset", `branch.${oldBranch}.merge`);
           }
           inlineResult(a.repo, `reverted to ${oldBranch}`);

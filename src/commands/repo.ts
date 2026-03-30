@@ -116,6 +116,7 @@ export function registerRepoCommand(program: Command): void {
           throw new ArbError(`Clone failed: ${errMsg}`);
         }
 
+        // arb:unchecked-exit — post-clone setup — detach HEAD in canonical repo
         await gitLocal(target, "checkout", "--detach");
 
         if (options.upstream) {
@@ -127,7 +128,7 @@ export function registerRepoCommand(program: Command): void {
             throw new ArbError(`Failed to add upstream remote: ${addResult.stderr.trim()}`);
           }
 
-          // Set remote.pushDefault so resolveRemotes() detects the fork layout
+          // arb:unchecked-exit — post-clone config — set pushDefault for fork layout detection
           await gitLocal(target, "config", "remote.pushDefault", "origin");
 
           // Fetch upstream and auto-detect HEAD
@@ -140,6 +141,7 @@ export function registerRepoCommand(program: Command): void {
             info(`  Retry manually: git -C ${target} fetch upstream`);
             throw new ArbError(`Failed to fetch upstream: ${fetchErr}`);
           }
+          // arb:unchecked-exit — post-clone setup — best-effort HEAD detection
           await gitLocal(target, "remote", "set-head", "upstream", "--auto");
 
           info(`  share: origin (${url})`);

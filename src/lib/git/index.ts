@@ -17,6 +17,7 @@ export {
   getMergeBase,
   getShortHead,
   gitLocal,
+  gitLocalOrThrow,
   gitNetwork,
   isCaseInsensitiveFS,
   isLinkedWorktree,

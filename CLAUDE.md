@@ -8,8 +8,6 @@ Key concepts: `arb init` creates a project — an `.arb/` marker directory lives
 
 ## Critical Rules
 
-**`gitLocal()` does not throw on non-zero exit.** Check `result.exitCode !== 0`. `try/catch` only catches spawn failures and timeouts — wrapping `gitLocal()` in `try/catch` to detect errors silently succeeds, treating empty stdout as valid.
-
 **All human-facing output goes to stderr; only machine data goes to stdout.** Use `success`/`info`/`warn`/`error` helpers (stderr) and the `stdout` helper for `--json`/`--quiet` data.
 
 **Colors have fixed meaning.** Green = success confirmation. Yellow = noteworthy/risky. Red = errors. Dim = supplementary. Default = normal content.
