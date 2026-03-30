@@ -378,30 +378,8 @@ throw new ArbError(`Cannot capture HEAD for ${repo}`);
 ```
 
 Exception types:
-- `ArbError` — error condition → `process.exit(1)`.
-- `ArbAbort` — user cancellation (declined prompt, Ctrl-C during inquirer) → prints `info(err.message)` (default: "Aborted.") then `process.exit(130)`.
-
-### gitLocal() return convention
-
-**`gitLocal()` does not throw on non-zero exit — check `result.exitCode !== 0` to detect failures.** `try/catch` only catches spawn failures and timeouts, not git errors.
-
-```ts
-// CORRECT — check exitCode
-const result = await gitLocal(repoDir, "rev-parse", "HEAD");
-if (result.exitCode !== 0) {
-  error(`Failed to resolve HEAD: ${result.stderr}`);
-  throw new ArbError("...");
-}
-const head = result.stdout.trim();
-
-// WRONG — try/catch silently succeeds on non-zero exit
-try {
-  const result = await gitLocal(repoDir, "rev-parse", "HEAD");
-  const head = result.stdout.trim(); // empty string, no error thrown
-} catch {
-  // Never reached for git errors — only spawn failures and timeouts
-}
-```
+- `ArbError` — error condition → exit 1.
+- `ArbAbort` — user cancellation (declined prompt, Ctrl-C during inquirer) → prints `info(err.message)` (default: "Aborted.") then exit 130.
 
 ### Context validation guards
 

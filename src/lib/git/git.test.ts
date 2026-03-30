@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { predictMergeConflict } from "../analysis/conflict-prediction";
+import { ArbError } from "../core/errors";
 import { validateWorkspaceName } from "../workspace/validation";
 import {
   branchExistsLocally,
@@ -10,6 +11,7 @@ import {
   detectOperation,
   getCommitsBetweenFull,
   getDefaultBranch,
+  gitLocalOrThrow,
   isCaseInsensitiveFS,
   isLinkedWorktree,
   isRepoDirty,
@@ -376,6 +378,33 @@ describe("git repo functions", () => {
       withRepo(async ({ repoDir }) => {
         const shallow = await isShallowRepo(repoDir);
         expect(shallow).toBe(false);
+      }));
+  });
+
+  describe("gitLocalOrThrow", () => {
+    test("returns stdout and stderr on success", () =>
+      withRepo(async ({ repoDir }) => {
+        const result = await gitLocalOrThrow(repoDir, "rev-parse", "HEAD");
+        expect(result.stdout.trim()).toMatch(/^[0-9a-f]{40}$/);
+        expect(result).not.toHaveProperty("exitCode");
+      }));
+
+    test("throws ArbError on non-zero exit", () =>
+      withRepo(async ({ repoDir }) => {
+        expect(gitLocalOrThrow(repoDir, "rev-parse", "--verify", "refs/heads/no-such-branch")).rejects.toThrow(
+          ArbError,
+        );
+      }));
+
+    test("includes stderr in error message", () =>
+      withRepo(async ({ repoDir }) => {
+        try {
+          await gitLocalOrThrow(repoDir, "checkout", "no-such-branch");
+          throw new Error("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(ArbError);
+          expect((err as ArbError).message).toContain("git checkout no-such-branch failed:");
+        }
       }));
   });
 

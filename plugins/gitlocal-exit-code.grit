@@ -1,0 +1,21 @@
+engine biome(1.0)
+language js(typescript)
+
+or {
+  // Rule 1: Bare await gitLocal() — result discarded without checking exitCode.
+  // Use gitLocalOrThrow() if you want throw-on-error, or capture the result and check exitCode.
+  JsExpressionStatement(expression=JsAwaitExpression(argument=JsCallExpression(callee=`gitLocal`))) as $stmt where {
+    register_diagnostic(span=$stmt, message="gitLocal() return value discarded. Check exitCode, use gitLocalOrThrow(), or suppress with biome-ignore if intentionally unchecked.")
+  },
+  // Rule 2: .catch() on gitLocal — wrong error handling.
+  // gitLocal() does not reject on non-zero exit codes; .catch() only handles spawn failures.
+  `gitLocal($...).catch($...)` as $call where {
+    register_diagnostic(span=$call, message="gitLocal() does not reject on non-zero exit codes. .catch() only handles spawn failures. Check exitCode instead.")
+  },
+  // Rule 3: Destructuring gitLocal() result without exitCode.
+  // If you omit exitCode from the binding, a non-zero exit silently falls through.
+  JsVariableDeclarator(id=JsObjectBindingPattern() as $pattern, init=JsAwaitExpression(argument=JsCallExpression(callee=`gitLocal`))) where {
+    not $pattern <: contains `exitCode`,
+    register_diagnostic(span=$pattern, message="Destructuring gitLocal() without exitCode. Add exitCode to the binding or use gitLocalOrThrow().")
+  }
+}

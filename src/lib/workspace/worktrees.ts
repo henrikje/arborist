@@ -207,6 +207,7 @@ export async function addWorktrees(
     if (needsRelink) {
       if (!relinkWorktreeInPlace(wtTarget, `${wsDir}/${repo}`)) {
         error(`  [${repo}] failed to re-link worktree in place`);
+        // arb:unchecked-exit — cleanup after failed relink
         await gitLocal(repoPath, "worktree", "remove", "--force", wtTarget);
         result.failed.push(repo);
         continue;
@@ -265,7 +266,7 @@ export async function pruneWorktreeEntriesForDir(repoPath: string, targetDir: st
     if (!wtPath.startsWith(`${targetDir}/`)) continue;
     // If the target still exists on disk, it's not stale
     if (existsSync(wtPath)) continue;
-    // Stale entry for this workspace — remove it
+    // arb:unchecked-exit — pruning stale worktree entries
     await gitLocal(repoPath, "worktree", "remove", "--force", wtPath);
   }
 }
@@ -287,6 +288,7 @@ async function removeStaleEntryAtPath(repoPath: string, targetPath: string): Pro
   for (const wtPath of paths) {
     if (wtPath === repoPath) continue;
     if (wtPath === targetPath) {
+      // arb:unchecked-exit — removing stale worktree entry at exact path
       await gitLocal(repoPath, "worktree", "remove", "--force", wtPath);
       return true;
     }
@@ -434,25 +436,20 @@ export async function rollbackWorktrees(
 
   for (const repo of result.created) {
     const repoPath = `${reposDir}/${repo}`;
-    try {
-      await gitLocal(repoPath, "worktree", "remove", "--force", `${wsDir}/${repo}`);
-    } catch {
+    const wtResult = await gitLocal(repoPath, "worktree", "remove", "--force", `${wsDir}/${repo}`);
+    if (wtResult.exitCode !== 0) {
       warn(`  [${repo}] failed to remove worktree during rollback`);
     }
 
     if (createdSet.has(repo)) {
-      try {
-        await gitLocal(repoPath, "branch", "-D", branch);
-      } catch {
+      const brResult = await gitLocal(repoPath, "branch", "-D", branch);
+      if (brResult.exitCode !== 0) {
         warn(`  [${repo}] failed to delete branch '${branch}' during rollback`);
       }
     }
 
-    try {
-      await gitLocal(repoPath, "worktree", "prune");
-    } catch {
-      // Pruning is best-effort
-    }
+    // arb:unchecked-exit — best-effort worktree prune during rollback
+    await gitLocal(repoPath, "worktree", "prune");
   }
 
   rmSync(wsDir, { recursive: true, force: true });

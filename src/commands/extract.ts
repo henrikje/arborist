@@ -13,7 +13,7 @@ import {
   writeOperationRecord,
   writeWorkspaceConfig,
 } from "../lib/core";
-import { branchExistsLocally, getCommitsBetweenFull, gitLocal } from "../lib/git";
+import { branchExistsLocally, getCommitsBetweenFull, gitLocal, gitLocalOrThrow } from "../lib/git";
 import type { Cell, OutputNode, RenderContext } from "../lib/render";
 import { cell, finishSummary, render, skipCell, verboseCommitsToNodes } from "../lib/render";
 import { buildConflictReport } from "../lib/render/conflict-report";
@@ -223,7 +223,7 @@ export function registerExtractCommand(program: Command): void {
               const baseRef = configBase
                 ? `origin/${configBase}`
                 : `origin/${(await cache.getDefaultBranch(`${ctx.reposDir}/${repo}`, "origin")) ?? "main"}`;
-              const { stdout } = await gitLocal(repoDir, "merge-base", "HEAD", baseRef);
+              const { stdout } = await gitLocalOrThrow(repoDir, "merge-base", "HEAD", baseRef);
               mergeBaseMap.set(repo, stdout.trim());
             } catch {
               // No merge-base available — skip (repo may have no base)
@@ -300,7 +300,7 @@ export function registerExtractCommand(program: Command): void {
               const n = status.base.merge.newCommitsAfter;
               try {
                 // HEAD~(n-1) is the first post-merge commit (the inclusive floor)
-                const { stdout: floorStr } = await gitLocal(repoDir, "rev-parse", `HEAD~${n - 1}`);
+                const { stdout: floorStr } = await gitLocalOrThrow(repoDir, "rev-parse", `HEAD~${n - 1}`);
                 const floor = floorStr.trim();
                 const { exitCode } = await gitLocal(repoDir, "merge-base", "--is-ancestor", floor, boundary);
                 if (exitCode !== 0) {
@@ -347,7 +347,7 @@ export function registerExtractCommand(program: Command): void {
               const shortBoundary = a.boundary.slice(0, 7);
               if (direction === "prefix") {
                 // Extracted = merge-base to boundary (inclusive)
-                const { stdout: extractedStr } = await gitLocal(
+                const { stdout: extractedStr } = await gitLocalOrThrow(
                   a.repoDir,
                   "rev-list",
                   "--count",
@@ -355,7 +355,7 @@ export function registerExtractCommand(program: Command): void {
                 );
                 a.commitsExtracted = Number.parseInt(extractedStr.trim(), 10);
                 // Remaining = boundary to HEAD (exclusive of boundary)
-                const { stdout: remainingStr } = await gitLocal(
+                const { stdout: remainingStr } = await gitLocalOrThrow(
                   a.repoDir,
                   "rev-list",
                   "--count",
@@ -365,7 +365,7 @@ export function registerExtractCommand(program: Command): void {
                 // Endpoints: extracted ends at boundary, remaining starts at boundary's child
                 let remainStart = "";
                 if (a.commitsRemaining > 0) {
-                  const { stdout: childStr } = await gitLocal(
+                  const { stdout: childStr } = await gitLocalOrThrow(
                     a.repoDir,
                     "rev-list",
                     "--reverse",
@@ -378,11 +378,16 @@ export function registerExtractCommand(program: Command): void {
                 planEndpoints.set(a.repo, { extractEnd: shortBoundary, remainEnd: remainStart });
               } else {
                 // Extracted = boundary to HEAD (inclusive of boundary)
-                const { stdout: afterStr } = await gitLocal(a.repoDir, "rev-list", "--count", `${a.boundary}..HEAD`);
+                const { stdout: afterStr } = await gitLocalOrThrow(
+                  a.repoDir,
+                  "rev-list",
+                  "--count",
+                  `${a.boundary}..HEAD`,
+                );
                 const afterCount = Number.parseInt(afterStr.trim(), 10);
                 a.commitsExtracted = afterCount + 1; // +1 for the boundary commit itself
                 // Remaining = merge-base to boundary (exclusive of boundary)
-                const { stdout: beforeStr } = await gitLocal(
+                const { stdout: beforeStr } = await gitLocalOrThrow(
                   a.repoDir,
                   "rev-list",
                   "--count",
@@ -392,7 +397,7 @@ export function registerExtractCommand(program: Command): void {
                 // Endpoints: remaining ends at boundary's parent, extracted starts at boundary
                 let remainEnd = "";
                 if (a.commitsRemaining > 0) {
-                  const { stdout: parentStr } = await gitLocal(a.repoDir, "rev-parse", `${a.boundary}^`);
+                  const { stdout: parentStr } = await gitLocalOrThrow(a.repoDir, "rev-parse", `${a.boundary}^`);
                   remainEnd = parentStr.trim().slice(0, 7);
                 }
                 planEndpoints.set(a.repo, { extractEnd: shortBoundary, remainEnd });
@@ -480,12 +485,17 @@ export function registerExtractCommand(program: Command): void {
         const noOps = assessments.filter((a) => a.outcome === "no-op");
         for (const a of [...willExtract, ...noOps]) {
           const headResult = await gitLocal(a.repoDir, "rev-parse", "HEAD");
+          if (headResult.exitCode !== 0) throw new ArbError(`Cannot capture HEAD for ${a.repo}`);
           const preHead = headResult.stdout.trim();
-          if (!preHead) throw new ArbError(`Cannot capture HEAD for ${a.repo}`);
           if (direction === "suffix" && a.outcome === "will-extract") {
             // Suffix modifies the original branch (reset) — capture stash
+            // stash create exits 0 with empty stdout when there is nothing to stash
             const stashResult = await gitLocal(a.repoDir, "stash", "create");
-            repoStates[a.repo] = { preHead, stashSha: stashResult.stdout.trim() || null, status: "skipped" };
+            repoStates[a.repo] = {
+              preHead,
+              stashSha: stashResult.exitCode === 0 ? stashResult.stdout.trim() || null : null,
+              status: "skipped",
+            };
           } else {
             // Prefix doesn't modify the branch — no stash needed
             repoStates[a.repo] = { preHead, status: "skipped" };
@@ -534,7 +544,8 @@ export function registerExtractCommand(program: Command): void {
             const result = await gitLocal(repoPath, "branch", targetBranch, startPoint);
             if (result.exitCode !== 0) {
               for (const created of createdBranches) {
-                await gitLocal(`${ctx.reposDir}/${created}`, "branch", "-D", targetBranch).catch(() => {});
+                // arb:unchecked-exit — best-effort branch deletion on rollback
+                await gitLocal(`${ctx.reposDir}/${created}`, "branch", "-D", targetBranch);
               }
               throw new ArbError(
                 `Failed to create branch '${targetBranch}' in repo '${a.repo}': ${result.stderr.trim()}`,
@@ -881,7 +892,8 @@ async function cleanupExtractBranches(
   for (const repoName of Object.keys(record.repos)) {
     const repoPath = `${reposDir}/${repoName}`;
     if (await branchExistsLocally(repoPath, record.targetBranch)) {
-      await gitLocal(repoPath, "branch", "-D", record.targetBranch).catch(() => {});
+      // arb:unchecked-exit — cleanup — best-effort branch deletion on abort
+      await gitLocal(repoPath, "branch", "-D", record.targetBranch);
     }
   }
 }

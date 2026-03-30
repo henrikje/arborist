@@ -427,9 +427,11 @@ async function executeDelete(
   const deleteCache = new GitCache();
   for (const repo of repos) {
     const repoPath = `${ctx.reposDir}/${repo}`;
+    // arb:unchecked-exit — cleanup — workspace directory already being deleted
     await gitLocal(repoPath, "worktree", "remove", "--force", `${wsDir}/${repo}`);
 
     if (await deleteCache.branchExistsLocally(repoPath, branch)) {
+      // arb:unchecked-exit — cleanup — branch deletion during workspace teardown
       await gitLocal(repoPath, "branch", "-D", branch);
     }
 
@@ -458,6 +460,7 @@ async function executeDelete(
   rmSync(wsDir, { recursive: true, force: true });
 
   for (const repo of repos) {
+    // arb:unchecked-exit — cleanup — best-effort worktree prune
     await gitLocal(`${ctx.reposDir}/${repo}`, "worktree", "prune");
   }
 

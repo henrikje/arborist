@@ -264,6 +264,7 @@ export async function integrate(
         const progressMsg = `merging ${ref} into ${a.branch}`;
         inlineStart(a.repo, progressMsg);
         if (a.needsStash) {
+          // arb:unchecked-exit — autostash is best-effort before merge
           await gitLocal(a.repoDir, "stash", "push", "-m", "arb: autostash before merge");
         }
         result = await gitLocal(a.repoDir, "merge", ref);
