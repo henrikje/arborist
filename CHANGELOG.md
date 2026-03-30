@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.115.2](https://github.com/henrikje/arborist/compare/v0.115.1...v0.115.2) (2026-03-30)
+
+
+### Bug Fixes
+
+* **retarget:** use "reset to" message for noop merged-base rebases ([6cd8a67](https://github.com/henrikje/arborist/commit/6cd8a67aaaf7fb1b315fb8ad60a61c29afd9a7ed))
+
 ## [0.115.1](https://github.com/henrikje/arborist/compare/v0.115.0...v0.115.1) (2026-03-30)
 
 
