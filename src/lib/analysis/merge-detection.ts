@@ -53,7 +53,19 @@ export async function detectBranchMerged(
 ): Promise<MergeDetectionResult | null> {
   // Phase 1: Ancestor check (instant) — detects merge commits and fast-forwards
   const ancestor = await gitLocal(repoDir, "merge-base", "--is-ancestor", branchRef, baseBranchRef);
-  if (ancestor.exitCode === 0) return { kind: "merge" };
+  if (ancestor.exitCode === 0) {
+    // Guard: if both refs resolve to the same commit, the branch hasn't diverged —
+    // it's "equal" to the base, not "merged" into it. This avoids false positives
+    // for branches that were created from the base but never had unique commits.
+    const [branchSha, baseSha] = await Promise.all([
+      gitLocal(repoDir, "rev-parse", branchRef),
+      gitLocal(repoDir, "rev-parse", baseBranchRef),
+    ]);
+    if (branchSha.exitCode === 0 && baseSha.exitCode === 0 && branchSha.stdout.trim() === baseSha.stdout.trim()) {
+      return null;
+    }
+    return { kind: "merge" };
+  }
 
   // Resolve base branch patch-id map (shared across Phase 2 + Phase 3, and across workspaces)
   const basePatchIdMap = await resolveBasePatchIdMap(repoDir, baseBranchRef, commitLimit, basePatchIdCache);
