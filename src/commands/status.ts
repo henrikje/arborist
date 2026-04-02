@@ -280,11 +280,12 @@ function reportWorkspaceHints(summary: WorkspaceSummary, wsDir: string): void {
     return; // Don't stack multiple hints
   }
 
-  // Hint 2: configured base branch not found
+  // Hint 2: configured base branch not found (only when NO repo resolved it)
   const baseMissingRepos = summary.repos.filter(
     (r) => r.base?.configuredRef != null && r.base.baseMergedIntoDefault == null,
   );
-  if (baseMissingRepos.length > 0 && configBase) {
+  const baseResolvedInAnyRepo = summary.repos.some((r) => r.base && r.base.configuredRef == null);
+  if (baseMissingRepos.length > 0 && configBase && !baseResolvedInAnyRepo) {
     warn(
       `  hint: configured base branch '${configBase}' not found — run 'arb branch base --unset' to track the default, or 'arb branch base <branch>' to set a new base`,
     );
