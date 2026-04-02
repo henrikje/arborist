@@ -152,9 +152,21 @@ export function buildRefParenthetical(
 
   // Base ref — when column is hidden
   if (!showBaseRef) {
-    const firstBase = summary.repos.find((r) => r.base)?.base;
-    if (firstBase) {
-      parts.push(`base ${baseRef(firstBase)}`);
+    if (summary.base) {
+      // Configured base: prefer a repo that resolved it (configuredRef == null) over one that fell back
+      const resolvedRepo = summary.repos.find((r) => r.base && r.base.configuredRef == null);
+      if (resolvedRepo?.base) {
+        parts.push(`base ${baseRef(resolvedRepo.base)}`);
+      } else {
+        const remote = summary.repos.find((r) => r.base)?.base?.remote;
+        const display = remote ? `${remote}/${summary.base}` : summary.base;
+        parts.push(`base ${display}`);
+      }
+    } else {
+      const firstBase = summary.repos.find((r) => r.base)?.base;
+      if (firstBase) {
+        parts.push(`base ${baseRef(firstBase)}`);
+      }
     }
   }
 
