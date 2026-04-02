@@ -150,7 +150,7 @@ describe("assessRetargetRepo", () => {
     expect(a.skipReason).toContain("already based on");
   });
 
-  test("skips when old base branch not found", async () => {
+  test("skips benignly when old base branch not found and no stacked work", async () => {
     const a = await assess(
       makeRepo({
         base: {
@@ -171,7 +171,32 @@ describe("assessRetargetRepo", () => {
       },
     );
     expect(a.outcome).toBe("skip");
+    expect(a.skipFlag).toBe("retarget-target-not-found");
+  });
+
+  test("blocks when old base branch not found and repo has stacked work", async () => {
+    const a = await assess(
+      makeRepo({
+        base: {
+          remote: "origin",
+          ref: "main",
+          configuredRef: "feat/deleted",
+          resolvedVia: "remote",
+          ahead: 3,
+          behind: 0,
+          baseMergedIntoDefault: null,
+        },
+      }),
+      "develop",
+      {},
+      {
+        remoteBranchExists: async (_dir, branch) => branch === "develop",
+        branchExistsLocally: async () => false,
+      },
+    );
+    expect(a.outcome).toBe("skip");
     expect(a.skipFlag).toBe("retarget-base-not-found");
+    expect(a.skipReason).toContain("cannot determine rebase boundary");
   });
 
   test("skips dirty repos without autostash", async () => {
