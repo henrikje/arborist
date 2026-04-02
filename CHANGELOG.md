@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.115.3](https://github.com/henrikje/arborist/compare/v0.115.2...v0.115.3) (2026-04-02)
+
+
+### Bug Fixes
+
+* **branch:** show configured base when only some repos have the branch ([b3fb18d](https://github.com/henrikje/arborist/commit/b3fb18df6c1d7f9827be1607f34697c50175c7db))
+* **retarget:** allow retarget when some repos lack the old base branch ([b944986](https://github.com/henrikje/arborist/commit/b944986d472751811a548a4bacf256ce4c7ad4cf))
+* **status:** suppress base-not-found hint when at least one repo has the branch ([aa344f5](https://github.com/henrikje/arborist/commit/aa344f52f4b339cedeb14fb9e98aa8b0414394f4))
+
 ## [0.115.2](https://github.com/henrikje/arborist/compare/v0.115.1...v0.115.2) (2026-03-30)
 
 
