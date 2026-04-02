@@ -37,16 +37,27 @@ interface VerboseRow {
   branchNoteworthy: boolean;
 }
 
-function deriveWorkspaceSummary(repos: RepoRefs[]): { resolvedBase: string | null; share: string } {
-  const first = repos[0];
-
-  // Base: format as remote/ref (or bare branch for local-primary)
+function deriveWorkspaceSummary(
+  repos: RepoRefs[],
+  configBase: string | null,
+): { resolvedBase: string | null; share: string } {
+  // Base: when a configured base exists, prefer a repo that resolved it (configuredRef == null)
+  // over one that fell back (configuredRef != null).
   let resolvedBase: string | null = null;
-  if (first?.base) {
-    resolvedBase = statusBaseRef(first.base);
+  if (configBase) {
+    const resolvedRepo = repos.find((r) => r.base && r.base.configuredRef == null);
+    if (resolvedRepo?.base) {
+      resolvedBase = statusBaseRef(resolvedRepo.base);
+    } else {
+      const remote = repos[0]?.base?.remote;
+      resolvedBase = remote ? `${remote}/${configBase}` : configBase;
+    }
+  } else if (repos[0]?.base) {
+    resolvedBase = statusBaseRef(repos[0].base);
   }
 
   // Share: derive from first repo's share state
+  const first = repos[0];
   let share = "(unknown)";
   if (first) {
     switch (first.share.refMode) {
@@ -248,8 +259,8 @@ async function runBranch(
     return;
   }
 
-  // Derive workspace-level base and share from first repo
-  const { resolvedBase, share } = deriveWorkspaceSummary(repoRefs);
+  // Derive workspace-level base and share
+  const { resolvedBase, share } = deriveWorkspaceSummary(repoRefs, base);
 
   // Default table output
   const nodes = buildBranchSummaryNodes(branch, resolvedBase, !base, share, repos);
@@ -386,7 +397,7 @@ function buildVerboseRows(repos: RepoRefs[], branch: string): VerboseRow[] {
 }
 
 function formatVerboseOutput(repos: RepoRefs[], branch: string, base: string | null): string {
-  const { resolvedBase, share } = deriveWorkspaceSummary(repos);
+  const { resolvedBase, share } = deriveWorkspaceSummary(repos, base);
   const nodes = buildVerboseNodes(repos, branch, base, resolvedBase, share);
   const rCtx: RenderContext = { tty: shouldColor() };
   return render(nodes, rCtx);

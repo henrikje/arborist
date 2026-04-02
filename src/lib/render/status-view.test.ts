@@ -397,4 +397,51 @@ describe("buildRefParenthetical", () => {
     const result = buildRefParenthetical(summary, false, false);
     expect(result).toBe("share origin/feature");
   });
+
+  test("prefers repo that resolved configured base over repo that fell back", () => {
+    const fellBackRepo = makeRepo({
+      name: "infra",
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: "feat-target",
+        resolvedVia: "remote",
+        ahead: 0,
+        behind: 0,
+        baseMergedIntoDefault: null,
+      },
+    });
+    const resolvedRepo = makeRepo({
+      name: "svc",
+      base: {
+        remote: "origin",
+        ref: "feat-target",
+        configuredRef: null,
+        resolvedVia: "remote",
+        ahead: 0,
+        behind: 0,
+        baseMergedIntoDefault: null,
+      },
+    });
+    const summary = makeSummary({ workspace: "feature", base: "feat-target", repos: [fellBackRepo, resolvedRepo] });
+    const result = buildRefParenthetical(summary, false, false);
+    expect(result).toBe("base origin/feat-target, share origin/feature");
+  });
+
+  test("shows configured base from config when all repos fell back", () => {
+    const fellBackRepo = makeRepo({
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: "feat-target",
+        resolvedVia: "remote",
+        ahead: 0,
+        behind: 0,
+        baseMergedIntoDefault: null,
+      },
+    });
+    const summary = makeSummary({ workspace: "feature", base: "feat-target", repos: [fellBackRepo] });
+    const result = buildRefParenthetical(summary, false, false);
+    expect(result).toBe("base origin/feat-target, share origin/feature");
+  });
 });
