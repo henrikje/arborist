@@ -140,6 +140,16 @@ export async function assessRetargetRepo(
   const oldBaseRemoteExists = await deps.remoteBranchExists(repoDir, oldBaseName, base.baseRemote);
   const oldBaseLocalExists = !oldBaseRemoteExists ? await deps.branchExistsLocally(repoDir, oldBaseName) : false;
   if (!oldBaseRemoteExists && !oldBaseLocalExists) {
+    // No stacked work (ahead === 0): the old base was never present on this repo — safe to skip.
+    // With stacked work: the boundary commit is unknown — must block to prevent data loss.
+    if (status.base.ahead === 0) {
+      return {
+        ...base,
+        outcome: "skip",
+        skipReason: `base branch ${oldBaseName} not found on ${base.baseRemote}`,
+        skipFlag: "retarget-target-not-found",
+      };
+    }
     return {
       ...base,
       outcome: "skip",
