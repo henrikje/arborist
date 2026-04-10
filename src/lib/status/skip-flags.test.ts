@@ -22,11 +22,11 @@ describe("RETARGET_EXEMPT_SKIPS", () => {
   test("contains retarget exemptions", () => {
     expect(RETARGET_EXEMPT_SKIPS.has("no-base-branch")).toBe(true);
     expect(RETARGET_EXEMPT_SKIPS.has("retarget-target-not-found")).toBe(true);
+    expect(RETARGET_EXEMPT_SKIPS.has("retarget-base-not-found")).toBe(true);
   });
 
   test("does not contain blocking flags", () => {
     expect(RETARGET_EXEMPT_SKIPS.has("dirty")).toBe(false);
     expect(RETARGET_EXEMPT_SKIPS.has("wrong-branch")).toBe(false);
-    expect(RETARGET_EXEMPT_SKIPS.has("retarget-base-not-found")).toBe(false);
   });
 });

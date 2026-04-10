@@ -463,7 +463,7 @@ describe("explicit retarget to non-default branch", () => {
       expect(result.output).not.toContain("may not be merged");
     }));
 
-  test("arb retarget blocks when old base ref is missing in truly stacked repo", () =>
+  test("arb retarget proceeds when old base ref is missing in stacked repo", () =>
     withEnv(async (env) => {
       const repoA = join(env.projectDir, ".arb/repos/repo-a");
       await git(repoA, ["checkout", "-b", "feat/auth"]);
@@ -499,14 +499,14 @@ describe("explicit retarget to non-default branch", () => {
       }
 
       // repo-a is truly stacked (base exists), repo-b's base is gone (both remote and local)
-      // Retarget can't compute the --onto boundary for repo-b → blocks all-or-nothing check
+      // repo-b is skipped (retarget-base-not-found) but does not block the operation
       const result = await arb(env, ["retarget", "main", "--yes"], {
         cwd: join(env.projectDir, "stacked"),
       });
-      expect(result.exitCode).not.toBe(0);
-      expect(result.output).toContain("Cannot retarget");
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain("Retargeted");
       expect(result.output).toContain("repo-b");
-      expect(result.output).toContain("not found");
+      expect(result.output).toContain("skipped");
     }));
 
   test("arb retarget rejects retargeting to the current feature branch", () =>
