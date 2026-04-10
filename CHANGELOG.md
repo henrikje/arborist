@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.115.4](https://github.com/henrikje/arborist/compare/v0.115.3...v0.115.4) (2026-04-10)
+
+
+### Bug Fixes
+
+* **rebase:** add missing dirty check for merged-new-work branches ([144b62d](https://github.com/henrikje/arborist/commit/144b62dbdb89c24fe8c16bb76d52ba62f82a73cf))
+* **retarget:** exempt retarget-base-not-found from blocking the operation ([9c12a42](https://github.com/henrikje/arborist/commit/9c12a42aecd4b8eaa8d7a3a5ddd3922847a4e07a))
+
 ## [0.115.3](https://github.com/henrikje/arborist/compare/v0.115.2...v0.115.3) (2026-04-02)
 
 
