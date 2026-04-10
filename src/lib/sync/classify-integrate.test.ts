@@ -494,6 +494,138 @@ describe("assessIntegrateRepo", () => {
     expect(a.skipFlag).toBe("already-merged");
   });
 
+  // ── merged-new-work dirty checks ──
+
+  test("merged-new-work with dirty worktree and no autostash returns skip (dirty)", async () => {
+    const status = makeRepo({
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: null,
+        resolvedVia: "remote",
+        ahead: 4,
+        behind: 3,
+        merge: { kind: "merge", newCommitsAfter: 2 },
+        baseMergedIntoDefault: null,
+      },
+      local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
+    });
+    const a = await assessIntegrateRepo(
+      status,
+      DIR,
+      "feature",
+      [],
+      defaultOptions({ autostash: false, mode: "rebase" }),
+      mockDeps({ git: async () => ({ exitCode: 0, stdout: "deadbeef\n", stderr: "" }) }),
+    );
+    expect(a.outcome).toBe("skip");
+    expect(a.skipFlag).toBe("dirty");
+  });
+
+  test("merged-new-work with dirty worktree and autostash returns will-operate with needsStash (rebase)", async () => {
+    const status = makeRepo({
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: null,
+        resolvedVia: "remote",
+        ahead: 4,
+        behind: 3,
+        merge: { kind: "merge", newCommitsAfter: 2 },
+        baseMergedIntoDefault: null,
+      },
+      local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
+    });
+    const a = await assessIntegrateRepo(
+      status,
+      DIR,
+      "feature",
+      [],
+      defaultOptions({ autostash: true, mode: "rebase" }),
+      mockDeps({ git: async () => ({ exitCode: 0, stdout: "deadbeef\n", stderr: "" }) }),
+    );
+    expect(a.outcome).toBe("will-operate");
+    expect(a.needsStash).toBe(true);
+    expect(a.retarget?.from).toBe("deadbeef");
+  });
+
+  test("merged-new-work with dirty worktree and autostash returns will-operate with needsStash (merge)", async () => {
+    const status = makeRepo({
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: null,
+        resolvedVia: "remote",
+        ahead: 4,
+        behind: 3,
+        merge: { kind: "merge", newCommitsAfter: 2 },
+        baseMergedIntoDefault: null,
+      },
+      local: { staged: 0, modified: 1, untracked: 0, conflicts: 0 },
+    });
+    const a = await assessIntegrateRepo(
+      status,
+      DIR,
+      "feature",
+      [],
+      defaultOptions({ autostash: true, mode: "merge" }),
+      mockDeps(),
+    );
+    expect(a.outcome).toBe("will-operate");
+    expect(a.needsStash).toBe(true);
+  });
+
+  test("merged-new-work in merge mode with behind=0 returns up-to-date even when dirty", async () => {
+    const status = makeRepo({
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: null,
+        resolvedVia: "remote",
+        ahead: 4,
+        behind: 0,
+        merge: { kind: "merge", newCommitsAfter: 2 },
+        baseMergedIntoDefault: null,
+      },
+      local: { staged: 1, modified: 0, untracked: 0, conflicts: 0 },
+    });
+    const a = await assessIntegrateRepo(
+      status,
+      DIR,
+      "feature",
+      [],
+      defaultOptions({ autostash: false, mode: "merge" }),
+      mockDeps(),
+    );
+    expect(a.outcome).toBe("up-to-date");
+  });
+
+  test("merged-new-work with untracked-only changes and autostash does not set needsStash", async () => {
+    const status = makeRepo({
+      base: {
+        remote: "origin",
+        ref: "main",
+        configuredRef: null,
+        resolvedVia: "remote",
+        ahead: 4,
+        behind: 3,
+        merge: { kind: "merge", newCommitsAfter: 2 },
+        baseMergedIntoDefault: null,
+      },
+      local: { staged: 0, modified: 0, untracked: 3, conflicts: 0 },
+    });
+    const a = await assessIntegrateRepo(
+      status,
+      DIR,
+      "feature",
+      [],
+      defaultOptions({ autostash: true, mode: "rebase" }),
+      mockDeps({ git: async () => ({ exitCode: 0, stdout: "deadbeef\n", stderr: "" }) }),
+    );
+    expect(a.outcome).toBe("will-operate");
+    expect(a.needsStash).toBeUndefined();
+  });
+
   test("baseMergedIntoDefault returns skip", async () => {
     const status = makeRepo({
       base: {

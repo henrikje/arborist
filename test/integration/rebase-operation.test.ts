@@ -567,6 +567,115 @@ describe("rebase autostash + conflict + undo", () => {
     }));
 });
 
+// ── merged-new-work + dirty tree ────────────────────────────────
+
+/**
+ * Simulate a merge on the bare remote: clone, merge source into target, push.
+ */
+async function simulateMerge(
+  env: { testDir: string; originDir: string },
+  repo: string,
+  source: string,
+  target: string,
+) {
+  const bareDir = join(env.originDir, `${repo}.git`);
+  const tmpClone = join(env.testDir, `tmp-merge-${repo}-${Date.now()}`);
+  await git(env.testDir, ["clone", bareDir, tmpClone]);
+  await git(tmpClone, ["checkout", target]);
+  await git(tmpClone, ["merge", `origin/${source}`]);
+  await git(tmpClone, ["push"]);
+}
+
+describe("merged-new-work with dirty tree", () => {
+  /** Advance main via a temp clone (avoids stale canonical repo after simulateMerge). */
+  async function advanceMainViaClone(
+    env: { testDir: string; originDir: string },
+    repo: string,
+    file: string,
+    content: string,
+  ) {
+    const tmpClone = join(env.testDir, `tmp-advance-${repo}-${Date.now()}`);
+    await git(env.testDir, ["clone", join(env.originDir, `${repo}.git`), tmpClone]);
+    await git(tmpClone, ["checkout", "main"]);
+    await write(join(tmpClone, file), content);
+    await git(tmpClone, ["add", file]);
+    await git(tmpClone, ["commit", "-m", `advance main: ${file}`]);
+    await git(tmpClone, ["push"]);
+  }
+
+  test("merged-new-work with dirty tree and no autostash skips (not a false conflict)", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+
+      // Make a commit on feature and push so remote knows about the branch
+      await write(join(wt, "feature.txt"), "feature");
+      await git(wt, ["add", "feature.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+      await git(wt, ["push", "-u", "origin", "my-feature"]);
+
+      // Simulate merge of feature branch into main on the remote
+      await simulateMerge(env, "repo-a", "my-feature", "main");
+
+      // Add new commit after the merge (the "new work")
+      await write(join(wt, "new-feature.txt"), "new feature");
+      await git(wt, ["add", "new-feature.txt"]);
+      await git(wt, ["commit", "-m", "new feature work"]);
+
+      // Advance main separately so there's behind count
+      await advanceMainViaClone(env, "repo-a", "main-advance.txt", "main advance");
+
+      // Create dirty changes (unstaged modified file)
+      await write(join(wt, "feature.txt"), "dirty modification");
+
+      // Rebase without --autostash — should skip with "uncommitted changes", not report false conflict
+      const r = await arb(env, ["rebase", "--yes"], { cwd: ws });
+      const output = r.stderr;
+      expect(output).toContain("uncommitted changes");
+      expect(output).not.toContain("conflict");
+    }));
+
+  test("merged-new-work with dirty tree and --autostash succeeds", () =>
+    withEnv(async (env) => {
+      await arb(env, ["create", "my-feature", "repo-a", "--base", "main"]);
+      const ws = join(env.projectDir, "my-feature");
+      const wt = join(ws, "repo-a");
+
+      // Make a commit on feature and push
+      await write(join(wt, "feature.txt"), "feature");
+      await git(wt, ["add", "feature.txt"]);
+      await git(wt, ["commit", "-m", "feature"]);
+      await git(wt, ["push", "-u", "origin", "my-feature"]);
+
+      // Simulate merge of feature branch into main on the remote
+      await simulateMerge(env, "repo-a", "my-feature", "main");
+
+      // Add new commit after the merge
+      await write(join(wt, "new-feature.txt"), "new feature");
+      await git(wt, ["add", "new-feature.txt"]);
+      await git(wt, ["commit", "-m", "new feature work"]);
+
+      // Advance main separately
+      await advanceMainViaClone(env, "repo-a", "main-advance.txt", "main advance");
+
+      // Create dirty changes on a file not touched by rebased commits
+      await write(join(wt, "dirty.txt"), "uncommitted work");
+      await git(wt, ["add", "dirty.txt"]);
+
+      // Rebase with --autostash — should succeed
+      const r = await arb(env, ["rebase", "--yes", "--autostash"], { cwd: ws });
+      if (r.exitCode !== 0) {
+        throw new Error(`arb rebase failed (exit ${r.exitCode}):\nstderr: ${r.stderr}\nstdout: ${r.stdout}`);
+      }
+      expect(r.stderr).toContain("Rebased 1 repo");
+      expect(r.stderr).not.toContain("conflicted");
+
+      // Dirty file should be preserved
+      expect(existsSync(join(wt, "dirty.txt"))).toBe(true);
+    }));
+});
+
 // ── continue-then-undo end-to-end ────────────────────────────────
 
 describe("rebase continue then undo", () => {
