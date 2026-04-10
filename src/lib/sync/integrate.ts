@@ -15,7 +15,14 @@ import {
   withReflogAction,
   writeOperationRecord,
 } from "../core/operation";
-import { getCommitsBetweenFull, getDiffShortstat, getMergeBase, gitLocal, parseGitStatus } from "../git/git";
+import {
+  detectOperation,
+  getCommitsBetweenFull,
+  getDiffShortstat,
+  getMergeBase,
+  gitLocal,
+  parseGitStatus,
+} from "../git/git";
 import type { GitCache } from "../git/git-cache";
 import { buildConflictReport, buildStashPopFailureReport } from "../render/conflict-report";
 import { type IntegrateActionDesc, integrateActionCell } from "../render/integrate-cells";
@@ -232,6 +239,7 @@ export async function integrate(
 
   // Phase 6: execute sequentially
   let succeeded = 0;
+  let errored = 0;
   const conflicted: { assessment: RepoAssessment; stdout: string; stderr: string }[] = [];
   const stashPopFailed: RepoAssessment[] = [];
   await withReflogAction(`arb-${mode}`, async () => {
@@ -313,17 +321,25 @@ export async function integrate(
         inlineResult(a.repo, doneMsg);
         succeeded++;
       } else {
-        // For rebase mode, git rebase --autostash handles stash internally.
-        // For merge mode with stash, do NOT pop if merge conflicted.
+        // Check if git actually entered conflict state. If no rebase/merge is in progress,
+        // this was an error (dirty tree, timeout, etc.) — not a conflict that --continue can resolve.
+        const op = await detectOperation(a.repoDir);
+        const isActualConflict = op === "rebase" || op === "merge";
         const existing = record.repos[a.repo];
         if (existing) {
           const errorOutput = result.stderr.trim().slice(0, 4000) || undefined;
-          record.repos[a.repo] = { ...existing, status: "conflicting", errorOutput };
+          record.repos[a.repo] = { ...existing, status: isActualConflict ? "conflicting" : "skipped", errorOutput };
         }
         writeOperationRecord(wsDir, record);
 
-        inlineResult(a.repo, yellow("conflict"));
-        conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
+        if (isActualConflict) {
+          inlineResult(a.repo, yellow("conflict"));
+          conflicted.push({ assessment: a, stdout: result.stdout, stderr: result.stderr });
+        } else {
+          const firstLine = result.stderr.trim().split("\n")[0] ?? "git failed";
+          inlineResult(a.repo, yellow(`error: ${firstLine}`));
+          errored++;
+        }
       }
     }
   });
@@ -369,10 +385,11 @@ export async function integrate(
   const parts: string[] = [];
   parts.push(`${verbed} ${plural(succeeded, "repo")}`);
   if (conflicted.length > 0) parts.push(`${conflicted.length} conflicted`);
+  if (errored > 0) parts.push(`${errored} errored`);
   if (stashPopFailed.length > 0) parts.push(`${stashPopFailed.length} stash pop failed`);
   if (upToDate.length > 0) parts.push(`${upToDate.length} up to date`);
   if (skipped.length > 0) parts.push(`${skipped.length} skipped`);
-  finishSummary(parts, conflicted.length > 0 || stashPopFailed.length > 0);
+  finishSummary(parts, conflicted.length > 0 || stashPopFailed.length > 0 || errored > 0);
 }
 
 export async function maybeWriteBaseFallbackConfig(options: {

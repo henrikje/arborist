@@ -177,6 +177,9 @@ export async function assessIntegrateRepo(
     mode: options.mode,
     repoDir,
     deps,
+    status,
+    branch,
+    autostash: options.autostash,
   });
   if (mergedNewWorkAssessment) return mergedNewWorkAssessment;
 
@@ -283,26 +286,46 @@ async function assessMergedNewWork(input: {
   mode: IntegrateMode;
   repoDir: string;
   deps: IntegrateClassifierDependencies;
+  status: RepoStatus;
+  branch: string;
+  autostash: boolean;
 }): Promise<RepoAssessment | null> {
-  const { classified, base, isMergedNewWork, mode, repoDir, deps } = input;
+  const { classified, base, isMergedNewWork, mode, repoDir, deps, status, branch, autostash } = input;
   if (!isMergedNewWork || !base) return null;
 
+  // Up-to-date check before dirty (per GUIDELINES.md § Classification check order).
+  // Only merge mode has an up-to-date case — rebase always retargets.
+  if (mode === "merge" && base.behind === 0) {
+    return {
+      ...withoutSkipFields(classified),
+      outcome: "up-to-date",
+      baseBranch: base.ref,
+      behind: 0,
+      ahead: base.ahead,
+    };
+  }
+
+  // All remaining paths need work — check dirty before will-operate
+  const flags = computeFlags(status, branch);
+  if (flags.isDirty && !autostash) {
+    return {
+      ...classified,
+      outcome: "skip" as const,
+      skipReason: "uncommitted changes (use --autostash)",
+      skipFlag: "dirty" as const,
+    };
+  }
+  const needsStash =
+    flags.isDirty && autostash && (status.local.staged > 0 || status.local.modified > 0) ? true : undefined;
+
   if (mode === "merge") {
-    if (base.behind === 0) {
-      return {
-        ...withoutSkipFields(classified),
-        outcome: "up-to-date",
-        baseBranch: base.ref,
-        behind: 0,
-        ahead: base.ahead,
-      };
-    }
     return {
       ...withoutSkipFields(classified),
       outcome: "will-operate",
       baseBranch: base.ref,
       behind: base.behind,
       ahead: base.ahead,
+      needsStash,
     };
   }
 
@@ -316,6 +339,7 @@ async function assessMergedNewWork(input: {
     baseBranch: base.ref,
     behind: base.behind,
     ahead: replayCount,
+    needsStash,
     retarget: {
       from: boundarySha,
       to: base.ref,
